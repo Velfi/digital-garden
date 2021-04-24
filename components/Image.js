@@ -1,4 +1,4 @@
-import NextImage from 'next/image'
+import NextImage from "next/image";
 
 export default function Image(props) {
   let {
@@ -6,35 +6,28 @@ export default function Image(props) {
     alt,
     width = 600,
     height = 460,
-    layout = 'intrinsic' } = props
-  if(src.includes('?')) {
-    const dimensions = src.split('?')
-    const widthHeight = dimensions[1].split('x')
-    width = widthHeight[0]
-    height = widthHeight[1]
+    layout = "intrinsic",
+    subtitle,
+  } = props;
+  if (src.includes("?")) {
+    const dimensions = src.split("?");
+    const widthHeight = dimensions[1].split("x");
+    width = widthHeight[0];
+    height = widthHeight[1];
   }
-  if (layout === 'fixed' || layout === 'responsive') {
-    return (
-      <>
-        <NextImage
-          src={src}
-          alt={alt}
-          width={width}
-          height={height}
-          layout={layout}
-        />
-      </>
-      )
-  } else {
-    return (
-      <>
-        <NextImage
-          src={src}
-          alt={alt}
-          width={width}
-          height={height}
-        />
-      </>
-    )
-  }
+
+  return (
+    <>
+      <NextImage
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        layout={layout}
+      />
+      {subtitle !== undefined && (
+        <p className="nextImageSubtitle">{subtitle}</p>
+      )}
+    </>
+  );
 }

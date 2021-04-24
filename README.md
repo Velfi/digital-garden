@@ -1,3 +1,7 @@
+# www.zelderp.com
+
+This is the code powering my personal digital garden. Preserved for my own erudition below is the readme of the template project that I cloned.
+
 # Foamy NextJS Starter
 
 This starter combines [Foam](https://foambubble.github.io/foam) with [NextJS](https://nextjs.org). I built this using [NextJS with MDX example repo](https://github.com/vercel/next.js/tree/canary/examples/with-mdx) as my base repo.
