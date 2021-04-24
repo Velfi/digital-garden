@@ -5,5 +5,3 @@ import Button from '../components/button.js'
 Look, a button! 👇
 
 <Button>👋 Hello</Button>
-
-

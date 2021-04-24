@@ -18,6 +18,8 @@
     "remark-numbered-footnote-labels": "^1.1.0",
     "remark-unwrap-images": "^2.0.0"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "prettier": "^2.2.1"
+  },
   "license": "ISC"
 }
