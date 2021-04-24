@@ -1,8 +1,8 @@
 code[class*="language-"],
 pre[class*="language-"] {
   color: #ebdbb2;
-  font-family: Fira Code, Consolas, Monaco, "Andale Mono", "Ubuntu Mono",
-    monospace;
+  font-family: "Fira Code", Consolas, Monaco, "Andale Mono", "Ubuntu Mono",
+    "Courier New", Courier, monospace;
   text-align: left;
   white-space: pre;
   word-spacing: normal;
