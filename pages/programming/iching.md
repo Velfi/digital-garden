@@ -1,6 +1,7 @@
 # I Ching
 
-[crates.io/crates/iching/][crates-link]
+The source code is available on [GitHub]
+This is a published Rust [crate]
 
 This library contains methods for divination using the I Ching and also includes a CLI app
 for making predictions in your terminal. The CLI app was inspired by the original
@@ -59,6 +60,7 @@ fn main() {
 }
 ```
 
-[crates-link]: https://crates.io/crates/iching/
+[crate]: https://crates.io/crates/iching/
 [ching(6)]: http://cfcl.com/ching/man/
 [Wikipedia]: https://en.wikipedia.org/wiki/I_Ching
+[GitHub]: https://github.com/Velfi/i-ching

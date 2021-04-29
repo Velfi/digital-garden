@@ -2,7 +2,7 @@ import VerticalSpacer from '../../components/VerticalSpacer.js'
 
 # Slime Mold (Physarum) Simulation
 
-The source code is available on [GitHub].
+The source code is available on [GitHub]
 
 ## To those whom I've imitated
 
@@ -26,7 +26,7 @@ Many thanks to [Sage Jenson] and [Jeff Jones]. Without their work I couldn't hav
 
 ## How it works
 
-// TODO
+_TODO_
 
 [GitHub]: https://github.com/Velfi/slime-mold
 [Sage Jenson]: https://sagejenson.com/physarum

@@ -29,7 +29,7 @@ numbers, but the styling is consistent in most cases.
 
 ## Bonus Wallpaper
 
-I adapted this one from a scene in [Doctor Mordrid][doctor-mordrid].
+I adapted this one from a scene in [Doctor Mordrid].
 
 <a href="images/2016-11-09-space_eyes.png" data-lightbox="space-eyes">
   <Image src="/images/2016-11-09-space_eyes.png" alt="Space Eyes" width="800" height="450" layout="responsive" />
@@ -40,4 +40,4 @@ _(Don’t bother watching it unless you're a fan of Jeffrey Combs; it’s kinda 
 [bitfontmaker2]: http://www.pentacom.jp/pentacom/bitfontmaker2/
 [atalanta-download]: fonts/atalanta/Atalanta_Font.zip
 [rudras-download]: fonts/rudras/Rudras_Font.zip
-[doctor-mordrid]: https://youtu.be/42xdx4MZALQ
+[Doctor Mordrid]: https://youtu.be/42xdx4MZALQ
