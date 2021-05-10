@@ -15,6 +15,11 @@ I hope you find them amusing, educational, useful, and interesting.
 
 Incomplete thoughts start in the [[inbox]] before making their way to a category below.
 
+## Neat e-people of the web
+
+- [casey]
+- [thatzopoulos]
+
 ## Arts
 
 - [[smt-wallpapers]]
@@ -53,6 +58,7 @@ Incomplete thoughts start in the [[inbox]] before making their way to a category
 This site is based on [this template][site-template] with several of my own customizations and you can view the full source code on [GitHub].
 
 [thatzopoulos]: https://athanasi.us
+[casey]: sowe.li
 [digital garden]: https://maggieappleton.com/garden-history
 [site-template]: https://github.com/yenly/foamy-nextjs
 [GitHub]: https://github.com/Velfi/digital-garden
