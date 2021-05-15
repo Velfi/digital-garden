@@ -36,7 +36,7 @@ const RectangleScallops = () => {
 
   const draw = (ctx) => {
     let originFn = chooseRandomOriginFn();
-    let steps = 4;
+    let steps = 8;
     let stepSize = ctx.canvas.width / steps;
     let startingColor = rgbToHsluv(getRandomColor());
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -45,8 +45,8 @@ const RectangleScallops = () => {
     for (let i = 0; i < steps; i += 1) {
       let modifiedColor = hsluvToHex([
         startingColor[0] + i * 20.0,
-        100.0,
-        60.0,
+        startingColor[1],
+        70,
       ]);
 
       let step = ctx.canvas.width - i * stepSize;

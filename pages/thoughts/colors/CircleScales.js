@@ -2,6 +2,10 @@ import React, { useEffect, useRef } from "react";
 
 import { hsluvToHex } from "hsluv";
 
+function degToRad(degrees) {
+  return degrees * (Math.PI / 180);
+}
+
 const CircleScales = () => {
   const canvasRef = useRef(null);
 
@@ -17,13 +21,13 @@ const CircleScales = () => {
       let modifiedColor = hsluvToHex([startingHue + i * 5.0, 100, 75]);
       ctx.fillStyle = modifiedColor;
       // let step = ctx.canvas.width - i * stepSize;
-      let circle = new Path2D();
       let [x, y] = [i % circlesPerRow, Math.floor(i / circlesPerRow)];
       x = x * circleSpacing + circleSpacing / 2;
       y = y * circleSpacing + circleSpacing / 2;
-      circle.arc(x, y, 100, 0, 360);
-      ctx.fill(circle);
-      ctx.stroke(circle);
+      ctx.beginPath();
+      ctx.ellipse(x, y, 100, 100, 0, degToRad(0), degToRad(270));
+      ctx.fill();
+      ctx.stroke();
     }
   };
 
