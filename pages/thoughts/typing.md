@@ -8,3 +8,5 @@ With that in mind, I purchased an Ergodox Moonlander, a rather esoteric ergonomi
 
 - Day 2 (05/15/21):
   - 8 wpm. Struggle, frustration, and woe.
+- Day 4 (05/17/21):
+  - 14 wpm. Showing some improvement. I used it all day at work.
