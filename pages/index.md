@@ -18,6 +18,7 @@ Incomplete thoughts start in the [[inbox]] before making their way to a category
 ## Neat e-people of the web
 
 - [casey]
+- [tessarine]
 - [thatzopoulos]
 
 ## Arts
@@ -60,8 +61,9 @@ Incomplete thoughts start in the [[inbox]] before making their way to a category
 
 This site is based on [this template][site-template] with several of my own customizations and you can view the full source code on [GitHub].
 
+[casey]: https://sowe.li
+[tessarine]: http://tesseract.page
 [thatzopoulos]: https://athanasi.us
-[casey]: sowe.li
 [digital garden]: https://maggieappleton.com/garden-history
 [site-template]: https://github.com/yenly/foamy-nextjs
 [GitHub]: https://github.com/Velfi/digital-garden
