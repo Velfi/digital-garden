@@ -10,3 +10,7 @@ With that in mind, I purchased an Ergodox Moonlander, a rather esoteric ergonomi
   - 8 wpm. Struggle, frustration, and woe.
 - Day 4 (05/17/21):
   - 14 wpm. Showing some improvement. I used it all day at work.
+- Day 7 (05/20/21):
+  - 23 wpm. Learning a new keyboard layout has been difficult but not as difficult as I had expected. I changed the modifier key layouts on the keyboard and I am getting pretty comfortable with my [current arrangement][workman-05-20-21]. I can't believe how far I've come in a week.
+
+[workman-05-20-21]: https://configure.zsa.io/moonlander/layouts/KvONw/DYYjE/0
