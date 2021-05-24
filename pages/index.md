@@ -44,11 +44,11 @@ Incomplete thoughts start in the [[inbox]] before making their way to a category
 - [[slime-mold]]
 - [[wrestler-markov]]
 - [[diffuser]]
+- [[vector-field-visualization]]
 - [[cellular-automata]]
 - [[interactive-flow-field]]
 - [[reaction-diffusion]]
 - [[roving-bishop]]
-- [[vector-field-visualization]]
 - [[canvas-animations-in-this-garden]]
 
 ## Thoughts
@@ -82,11 +82,11 @@ This site is based on [this template][site-template] with several of my own cust
 [slime-mold]: programming/slime-mold "Slime Mold (Physarum) Simulation"
 [wrestler-markov]: programming/wrestler-markov "I created a Wrestler"
 [diffuser]: programming/diffuser "Diffuser"
+[vector-field-visualization]: programming/vector-field-visualization "Visualizing dimensional noise algorithms"
 [cellular-automata]: programming/cellular-automata "TODO cellular-automata"
 [interactive-flow-field]: programming/interactive-flow-field "TODO interactive-flow-field"
 [reaction-diffusion]: programming/reaction-diffusion "TODO reaction-diffusion"
 [roving-bishop]: programming/roving-bishop "TODO roving-bishop"
-[vector-field-visualization]: programming/vector-field-visualization "TODO vector-field-visualization"
 [canvas-animations-in-this-garden]: programming/canvas-animations-in-this-garden "How this site uses Canvas to render art and animations"
 [colors]: thoughts/colors/colors "On Colors"
 [technopastoral]: thoughts/technopastoral "On Digital Gardens"
