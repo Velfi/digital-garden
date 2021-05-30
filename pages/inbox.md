@@ -2,7 +2,8 @@
 
 Disorganized notes belong here.
 
-- Bring in my other visual project
+- I bought a lot of fancy ramen, maybe I should write about it.
+- Bring in my other visual projects
   - Compile them to WASM or just link the GitHub pages?
 - check out
   - https://github.com/lettier/3d-game-shaders-for-beginners
