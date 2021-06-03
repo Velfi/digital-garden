@@ -16,6 +16,8 @@ With that in mind, I purchased an Ergodox Moonlander, a rather esoteric ergonomi
   - 28 wpm. I have been training with [keybr.com] and I'm finding it quite helpful.
 - Day 17 (05/30/21):
   - 32 wpm. I feel like I'm hitting a soft-cap in terms of my typing abilities. The improvements feel like they're coming slower although that could be due to the fact that I'm practicing with all the keys now rather than the smaller subsets you start with in training. One strange habit I've noticed is that I sometimes have a reflexive urge to look at my hands even though I know all the keys at this point.
+- Day 21 (06/03/21):
+  - 35 wpm. Typing is hard but after three weeks I've definitely made a lot of progress. I wish I had done a QWERTY speed test before I started so I'd have something to compare to.
 
 [workman-05-20-21]: https://configure.zsa.io/moonlander/layouts/KvONw/DYYjE/0
 [keybr.com]: https://www.keybr.com/
