@@ -22,6 +22,8 @@ You can view data visualizations based on my learning progression in my [keybr.c
   - 35 wpm. Typing is hard but after three weeks I've definitely made a lot of progress. I wish I had done a QWERTY speed test before I started so I'd have something to compare to.
 - Day 28 (06/09/21):
   - 38 wpm. Four weeks and 726 lessons later. I've put in 9 1/2 hours practice in total and I'm pretty happy with where I'm at. Last Thursday, I replaced the Kailh Copper switches with [Kailh Pro Burgundy] switches. They have a smooth linear actuation and are really quiet if you don't bottom out. I think I like them more than the Coppers but I'm not certain.
+- Day 38 (06/19/21)
+  - 45 wpm. Constant practice really does improve touch typing skills.
 
 [workman-05-20-21]: https://configure.zsa.io/moonlander/layouts/KvONw/DYYjE/0
 [keybr.com]: https://www.keybr.com/
