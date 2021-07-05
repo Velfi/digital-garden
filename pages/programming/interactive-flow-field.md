@@ -1,3 +1,5 @@
+import VerticalSpacer from '../../components/VerticalSpacer.js'
+
 # Painting flow fields
 
 The source code is available on [GitHub]
@@ -50,9 +52,6 @@ _Note: Because of how the flowing lines are painted, the UI won't immediately di
   height="1080"
   layout="responsive"
   subtitle="Fantasy palette painted over noise produced by the Worley algorithm" />
-
-<VerticalSpacer/>
-
 
 [GitHub]: https://github.com/Velfi/Flow
 
