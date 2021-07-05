@@ -1,20 +1,16 @@
 import "../styles/global.css";
 import "../styles/prism-theme-gruvbox-dark.css";
-import Layout from "../components/Layout";
-import siteData from "../siteconfig";
-import { MDXProvider } from "@mdx-js/react";
-import CodeBlock from "../components/CodeBlock";
+
 import AnchorTag from "../components/AnchorTag";
+import CodeBlock from "../components/CodeBlock";
 import Image from "../components/Image";
+import Layout from "../components/Layout";
+import { MDXProvider } from "@mdx-js/react";
+import siteData from "../siteconfig";
 
 const mdComponents = {
   a: (props) => <AnchorTag {...props} />,
   code: CodeBlock,
-  img: (props) => (
-    <div className="nextImageWrapper">
-      <Image {...props} />
-    </div>
-  ),
   Image: (props) => (
     <div className="nextImageWrapper">
       <Image {...props} />
