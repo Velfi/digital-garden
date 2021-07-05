@@ -4,7 +4,7 @@ import VerticalSpacer from '../../components/VerticalSpacer.js'
 
 The source code is available on [GitHub]
 
-This project was born out of a deeper exploration into dimensional noise with the knowledge gained from my "[[vector-field-visualization]]" project.
+This project was born out of a deeper exploration into dimensional noise with the knowledge gained from my [[vector-field-visualization]] project.
 In this app, a dimensional noise feel is used to guide particle that leave a colorful trail behind them. The trails combine over time to reveal the
 "flow" of dimensional noise. Several noise algorithms are available to guide the particles. This visualization contains a UI for easy modification of
 the app's configuration. Particles can be placed individually by left clicking or painted by holding the right mouse button.
