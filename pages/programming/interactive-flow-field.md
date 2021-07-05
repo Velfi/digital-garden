@@ -23,9 +23,36 @@ _Note: Because of how the flowing lines are painted, the UI won't immediately di
 
 ## Examples
 
-<Image src="/images/programming/flow/turbo.png" alt="Turbo palette painted over noise produced by the billow algorithm" width="1920" height="1080" layout="responsive" />
-<Image src="/images/programming/flow/viridis.png" alt="Viridis palette painted over noise produced by the billow algorithm" width="1920" height="1080" layout="responsive" />
-<Image src="/images/programming/flow/fantasy.png" alt="Fantasy palette painted over noise produced by the Worley algorithm" width="1920" height="1080" layout="responsive" />
+<Image
+  src="/images/programming/flow/turbo.png"
+  alt="Turbo palette painted over noise produced by the billow algorithm"
+  width="1920"
+  height="1080"
+  layout="responsive"
+  subtitle="Turbo palette painted over noise produced by the billow algorithm" />
+
+<VerticalSpacer/>
+
+<Image
+  src="/images/programming/flow/viridis.png"
+  alt="Viridis palette painted over noise produced by the billow algorithm"
+  width="1920"
+  height="1080"
+  layout="responsive"
+  subtitle="Viridis palette painted over noise produced by the billow algorithm" />
+
+<VerticalSpacer/>
+
+<Image
+  src="/images/programming/flow/fantasy.png"
+  alt="Fantasy palette painted over noise produced by the Worley algorithm"
+  width="1920"
+  height="1080"
+  layout="responsive"
+  subtitle="Fantasy palette painted over noise produced by the Worley algorithm" />
+
+<VerticalSpacer/>
+
 
 [GitHub]: https://github.com/Velfi/Flow
 
