@@ -45,8 +45,8 @@ Incomplete thoughts start in the [[inbox]] before making their way to a category
 - [[wrestler-markov]]
 - [[diffuser]]
 - [[vector-field-visualization]]
-- [[cellular-automata]]
 - [[interactive-flow-field]]
+- [[cellular-automata]]
 - [[reaction-diffusion]]
 - [[roving-bishop]]
 - [[canvas-animations-in-this-garden]]
@@ -83,8 +83,8 @@ This site is based on [this template][site-template] with several of my own cust
 [wrestler-markov]: programming/wrestler-markov "I created a Wrestler"
 [diffuser]: programming/diffuser "Diffuser"
 [vector-field-visualization]: programming/vector-field-visualization "Visualizing dimensional noise algorithms"
+[interactive-flow-field]: programming/interactive-flow-field "Painting flow fields"
 [cellular-automata]: programming/cellular-automata "TODO cellular-automata"
-[interactive-flow-field]: programming/interactive-flow-field "TODO interactive-flow-field"
 [reaction-diffusion]: programming/reaction-diffusion "TODO reaction-diffusion"
 [roving-bishop]: programming/roving-bishop "TODO roving-bishop"
 [canvas-animations-in-this-garden]: programming/canvas-animations-in-this-garden "How this site uses Canvas to render art and animations"
