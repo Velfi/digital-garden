@@ -45,8 +45,8 @@ Incomplete thoughts start in the [[inbox]] before making their way to a category
 - [[slime-mold]]
 - [[wrestler-markov]]
 - [[diffuser]]
-- [[vector-field-visualization]]
-- [[interactive-flow-field]]
+- [[vector-field-visualizer]]
+- [[flow-field-interactive-visualizer]]
 - [[cellular-automata]]
 - [[reaction-diffusion]]
 - [[roving-bishop]]
@@ -84,8 +84,8 @@ This site is based on [this template][site-template] with several of my own cust
 [slime-mold]: programming/slime-mold "Slime Mold (Physarum) Simulation"
 [wrestler-markov]: programming/wrestler-markov "I created a Wrestler"
 [diffuser]: programming/diffuser "Diffuser"
-[vector-field-visualization]: programming/vector-field-visualization "Visualizing dimensional noise algorithms"
-[interactive-flow-field]: programming/interactive-flow-field "Painting flow fields"
+[vector-field-visualizer]: programming/vector-field-visualizer "Visualizing dimensional noise algorithms"
+[flow-field-interactive-visualizer]: programming/flow-field-interactive-visualizer "Painting flow fields"
 [cellular-automata]: programming/cellular-automata "TODO cellular-automata"
 [reaction-diffusion]: programming/reaction-diffusion "TODO reaction-diffusion"
 [roving-bishop]: programming/roving-bishop "TODO roving-bishop"

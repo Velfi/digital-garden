@@ -6,5 +6,5 @@ Disorganized notes belong here.
 - Bring in my other visual projects
   - Compile them to WASM or just link the GitHub pages?
 - check out
-  - <a target="_blank" href="https://github.com/lettier/3d-game-shaders-for-beginners">https://github.com/lettier/3d-game-shaders-for-beginners</a>
-  - <a target="_blank" href="https://nercury.github.io/rust/opengl/tutorial/2018/02/10/opengl-in-rust-from-scratch-03-compiling-shaders.html">https://nercury.github.io/rust/opengl/tutorial/2018/02/10/opengl-in-rust-from-scratch-03-compiling-shaders.html</a>
+  - https://github.com/lettier/3d-game-shaders-for-beginners
+  - https://nercury.github.io/rust/opengl/tutorial/2018/02/10/opengl-in-rust-from-scratch-03-compiling-shaders.html
