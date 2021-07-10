@@ -5,6 +5,7 @@ import AnchorTag from "../components/AnchorTag";
 import CodeBlock from "../components/CodeBlock";
 import Image from "../components/Image";
 import Layout from "../components/Layout";
+import { LightSwitch } from "../components/LightSwitch";
 import { MDXProvider } from "@mdx-js/react";
 import siteData from "../siteconfig";
 
@@ -24,6 +25,8 @@ export default function App({ Component, pageProps }) {
       <Layout siteData={siteData}>
         <Component {...pageProps} />
       </Layout>
+      <div>&nbsp;</div>
+      <LightSwitch />
     </MDXProvider>
   );
 }

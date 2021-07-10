@@ -16,6 +16,11 @@ body {
     Oxygen, Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
   font-size: 1rem;
   line-height: 1.5rem;
+  color: #253131;
+  background-color: #ffedcf;
+}
+
+body.dark-mode {
   color: #ffe8c3;
   background-color: #253131;
 }
@@ -134,15 +139,28 @@ pre {
 }
 
 a {
-  color: #85ffb5;
+  color: #0b834b;
   text-decoration: none;
 }
 
 a:visited {
-  color: #73c0a0;
+  color: #315746;
 }
 
 a:hover {
+  text-decoration: underline;
+}
+
+body.dark-mode a {
+  color: #85ffb5;
+  text-decoration: none;
+}
+
+body.dark-mode a:visited {
+  color: #73c0a0;
+}
+
+body.dark-mode a:hover {
   text-decoration: underline;
 }
 

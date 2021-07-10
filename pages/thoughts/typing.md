@@ -1,5 +1,7 @@
 # On Typing
 
+_Editor's Note: With my typing journey complete, I've since stopped adding to this journal_
+
 Being a programmer by profession, I spend a great deal of time typing each day. My hands are paying the price for this.
 
 I have good days and bad days. On most days my fingers feel a bit creaky. On a bad day I feel like I never want to touch a keyboard again. Considering also that my two main hobbies are gaming a piano playing, losing my fine motor skills would be pretty hard to deal with.
@@ -24,9 +26,12 @@ You can view data visualizations based on my learning progression in my [keybr.c
   - 38 wpm. Four weeks and 726 lessons later. I've put in 9 1/2 hours practice in total and I'm pretty happy with where I'm at. Last Thursday, I replaced the Kailh Copper switches with [Kailh Pro Burgundy] switches. They have a smooth linear actuation and are really quiet if you don't bottom out. I think I like them more than the Coppers but I'm not certain.
 - Day 38 (06/19/21)
   - 45 wpm. Constant practice really does improve touch typing skills.
+- Day 57 (07/10/21)
+  - 52 wpm. I'm ending my typing journal after two months with a sense of accomplishment. [Here's my current layout][workman-07-03-21]. I can still use QWERTY keyboards although it feels a little strange sometimes. I'm quite pleased with where I ended up on this journey and I can see myself trying out more layouts in the future. I'd definitely recommend that people practice their touch typing skills, no matter the layout. You will see improvement and it's worth it.
 
 [workman-05-20-21]: https://configure.zsa.io/moonlander/layouts/KvONw/DYYjE/0
 [keybr.com]: https://www.keybr.com/
 [keybr profile]: https://www.keybr.com/profile/s32zch1
 [Kailh Copper]: https://kono.store/collections/switches/products/kailh-speed-switches?variant=31458096054355
 [Kailh Pro Burgundy]: https://kono.store/collections/switches/products/kailh-pro-switches?variant=31458088484947
+[workman-07-03-21]: https://configure.zsa.io/moonlander/layouts/KvONw/Y6pQQ/0
