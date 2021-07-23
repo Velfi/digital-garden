@@ -16,13 +16,13 @@ body {
     Oxygen, Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
   font-size: 1rem;
   line-height: 1.5rem;
-  color: #253131;
-  background-color: #ffedcf;
-}
-
-body.dark-mode {
   color: #ffe8c3;
   background-color: #253131;
+}
+
+body.light-mode {
+  color: #253131;
+  background-color: #ffedcf;
 }
 
 code {
@@ -139,29 +139,25 @@ pre {
 }
 
 a {
-  color: #0b834b;
+  color: #85ffb5;
   text-decoration: none;
 }
 
 a:visited {
-  color: #315746;
+  color: #73c0a0;
 }
 
 a:hover {
   text-decoration: underline;
 }
 
-body.dark-mode a {
-  color: #85ffb5;
+body.light-mode a {
+  color: #0b834b;
   text-decoration: none;
 }
 
-body.dark-mode a:visited {
-  color: #73c0a0;
-}
-
-body.dark-mode a:hover {
-  text-decoration: underline;
+body.light-mode a:visited {
+  color: #315746;
 }
 
 /* img {

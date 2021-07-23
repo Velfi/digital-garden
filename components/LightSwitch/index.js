@@ -23,10 +23,10 @@ export const LightSwitch = () => {
       return;
     }
 
-    if (displayMode === darkMode) {
-      domDocument.current.body.classList.add("dark-mode");
-    } else if (displayMode === lightMode) {
-      domDocument.current.body.classList.remove("dark-mode");
+    if (displayMode === lightMode) {
+      domDocument.current.body.classList.add("light-mode");
+    } else if (displayMode === darkMode) {
+      domDocument.current.body.classList.remove("light-mode");
     }
   }, [displayMode, domDocument]);
 

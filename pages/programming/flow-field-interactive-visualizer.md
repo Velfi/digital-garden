@@ -2,8 +2,6 @@ import VerticalSpacer from '../../components/VerticalSpacer.js'
 
 # Painting flow fields
 
-_TODO: auto-generated links to other pages in the same subfolder are currently broken. This will be fixed by [<img src="https://img.shields.io/github/pulls/detail/state/yenly/foamy-nextjs/9" />](https://github.com/yenly/foamy-nextjs/pull/9)_
-
 The source code is available on [GitHub]
 
 This project was born out of a deeper exploration into dimensional noise with the knowledge gained from my [[vector-field-visualizer]] project.
