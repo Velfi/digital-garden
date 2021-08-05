@@ -1,12 +1,10 @@
+import VerticalSpacer from '../../components/VerticalSpacer.js'
+
 # Plotter Art Generation Suite
 
 The source code is available on [GitHub]
 
-A collection of art generators that can export SVGs. I purchased an [AxiDraw V3] and it's been a lot of fun. Feel free to use these generators to make your own art.
-
-## Running it yourself
-
-Rust is required. To export to SVG, set the `SVG_EXPORT_DIRECTORY` environment variable. The programs support `.env` files.
+A collection of art generators that can export SVGs. I purchased an [AxiDraw V3] and it's been a lot of fun. Feel free to use these generators to make your own art. Running it requires you to have Rust installed. To export SVGs, set the `SVG_EXPORT_DIRECTORY` environment variable (you can create an `.env` file in the project root to set this as well).
 
 ## Generators
 
@@ -14,26 +12,29 @@ Rust is required. To export to SVG, set the `SVG_EXPORT_DIRECTORY` environment v
 
 Run it with this command: `cargo run release --bin line_groups`
 
-![Line Groups](/previews/line_groups.png)
-<Image src="/images/programming/plotlings/line_groups.svg" alt="Line Groups" width="799" height="346" layout="responsive" />
-The first one I created for this project. It generates groups of lines that look neat.
+<Image src="/images/programming/plotlings/line_groups.svg" alt="Groups of wavy lines overlaid on top of each other at regular intervals" width="523" height="900" layout="responsive" />
+The first one I created for this project. It generates groups of lines that look neat. It can also look similar to a [ridgeline plot].
+
+<VerticalSpacer/>
 
 ### Maze
 
 Run it with this command: `cargo run release --bin maze`
 
-![Maze](/previews/maze.png)
-<Image src="/images/programming/plotlings/maze.svg" alt="Maze" width="799" height="346" layout="responsive" />
-Based on the classic maze BASIC program.
+<Image src="/images/programming/plotlings/maze.svg" alt="An unsolvable maze" width="900" height="655" layout="responsive" />
+Based on the classic [maze BASIC program].
+
+<VerticalSpacer/>
 
 ### Dune
 
 Run it with this command: `cargo run release --bin dune`
 
-![Dune](/previews/dune.png)
-<Image src="/images/programming/plotlings/dune.svg" alt="Dune" width="799" height="346" layout="responsive" />
-A naïve recreation of [Sohan Murthy's Continuity Correction][continuity-correction] that ended up going in a new direction.
+<Image src="/images/programming/plotlings/dune.svg" alt="A series of regularly spaced triangles that, togehter, have the appearance of a sand dune" width="673" height="900" layout="responsive" />
+A naïve recreation of [Sohan Murthy's Continuity Correction] that ended up going in a new direction.
 
 [GitHub]: https://github.com/Velfi/plotlings
-[continuity-correction]: https://sohan.space/portfolio/continuity-correction/
+[ridgeline plot]: https://www.data-to-viz.com/graph/ridgeline.html
+[maze BASIC program]: http://www.slate.com/articles/technology/books/2012/11/computer_programming_10_print_chr_205_5_rnd_1_goto_10_from_mit_press_reviewed.html
+[Sohan Murthy's Continuity Correction]: https://sohan.space/portfolio/continuity-correction/
 [AxiDraw V3]: https://shop.evilmadscientist.com/productsmenu/846

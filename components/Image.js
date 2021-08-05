@@ -23,12 +23,6 @@ export default function Image(props) {
     height = widthHeight[1];
   }
 
-  let className;
-
-  if (src.includes(".svg")) {
-    className = styles.filter;
-  }
-
   return (
     <>
       <NextImage
@@ -37,7 +31,7 @@ export default function Image(props) {
         width={width}
         height={height}
         layout={layout}
-        className={className}
+        className={src.includes(".svg") && "svgFilter"}
       />
       {subtitle !== undefined && (
         <p className="nextImageSubtitle">{subtitle}</p>
