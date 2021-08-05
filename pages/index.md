@@ -41,6 +41,7 @@ Incomplete thoughts start in the [[inbox]] before making their way to a category
 
 ## Programmings
 
+- [[plotlings]]
 - [[iching]]
 - [[slime-mold]]
 - [[wrestler-markov]]
@@ -80,6 +81,7 @@ This site is based on [this template][site-template] with several of my own cust
 [patches]: synth/patches "Synth Presets"
 [habanera]: music/habanera "Habanera For Two Flutes And A Cello"
 [belltower-fight]: music/belltower-fight "Belltower Fight"
+[plotlings]: programming/plotlings "Plotter Art Generation Suite"
 [iching]: programming/iching "I Ching"
 [slime-mold]: programming/slime-mold "Slime Mold (Physarum) Simulation"
 [wrestler-markov]: programming/wrestler-markov "I created a Wrestler"

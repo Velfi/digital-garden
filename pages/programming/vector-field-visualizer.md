@@ -21,10 +21,12 @@ The app demonstrates different noise algorithms provided by the [noise] crate in
 - [Value Noise]
 - [Fractal Brownian Motion Noise]
 
+If you're generally interested in how noise algorithms work, check out the noise section in the [Book Of Shaders].
+
 <Image src="/images/programming/vector-field-visualizer/fbm-noise-example-1.png" alt="visualization of noise produced by fractal brownian motion algorithm" width="800" height="450" layout="responsive" />
 
 [GitHub]: https://github.com/Velfi/Rust-Vector-Field-Visualization
-[bos-noise]: https://thebookofshaders.com/11/
+[book of shaders]: https://thebookofshaders.com/11/
 [noise]: https://crates.io/crates/noise
 [OpenSimplex Noise]: https://en.wikipedia.org/wiki/OpenSimplex_noise
 [Perlin Noise]: https://en.wikipedia.org/wiki/Perlin_noise
