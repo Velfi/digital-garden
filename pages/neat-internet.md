@@ -5,6 +5,7 @@ The web ain't all good but it ain't all bad neither
 ## Games I enjoyed playing from the internet
 
 - [AIeyes: A walking simulator in a city where the world is seen through a real time neural network](https://tmdev.itch.io/aieyes)
+- [Anagrammer: a tool for creating anagrams](https://www.wordplays.com/anagrammer)
 
 ## Stuff I enjoyed reading on the internet
 
