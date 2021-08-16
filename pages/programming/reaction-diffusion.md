@@ -1,3 +1,5 @@
+import VerticalSpacer from '../../components/VerticalSpacer.js'
+
 # Gray Scott Reaction Diffusion Simulation
 
 The source code is available on [GitHub].
@@ -9,9 +11,13 @@ If that sounds like gibberish, just know that it's an algorithm for modeling the
 
 [Click here for more info on cool patterns that appear in nature.][patterns-in-nature]
 
-<Image src="/images/programming/reaction-diffusion/soliton.png" alt="The 'Soliton Collapse' setting" subtitle="The 'Soliton Collapse' setting" />
+<Image src="/images/programming/reaction-diffusion/soliton.png" height="1716" width="2772" alt="The 'Soliton Collapse' setting" subtitle="The 'Soliton Collapse' setting" />
 
-<Image src="/images/programming/reaction-diffusion/brain_coral.png" alt="The 'Brain Coral' setting" subtitle="The 'Brain Coral' setting" />
+<VerticalSpacer/>
+
+<Image src="/images/programming/reaction-diffusion/brain_coral.png" height="1706" width="2800" alt="The 'Brain Coral' setting" subtitle="The 'Brain Coral' setting" />
+
+<VerticalSpacer/>
 
 ## Running The Visualizer
 
@@ -40,7 +46,7 @@ The options available are:
 | UNDULATING       | 0.0260    | 0.0510       |
 | WORMS            | 0.0780    | 0.0610       |
 
-You can also enter a tuple of your own values here if you prefer. Each value should be `< 1.0`. The first value is the feed rate of chemical A and the second value is the removal rate of chemical B.
+You can also enter a tuple of your own values here if you prefer.
 
 [Reaction Diffusion System Wikipedia]: https://en.wikipedia.org/wiki/Reaction%E2%80%93diffusion_system
 [patterns-in-nature]: https://en.wikipedia.org/wiki/Patterns_in_nature

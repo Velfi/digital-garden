@@ -28,7 +28,7 @@ body.light-mode {
 code {
   font-family: "Fira Code", Consolas, Monaco, "Andale Mono", "Ubuntu Mono",
     "Courier New", Courier, monospace;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
 }
 
 h1,
@@ -121,6 +121,20 @@ sub {
   bottom: -0.25em;
 }
 /* end gridlover perfect fourth scale */
+
+table {
+  font-size: 85%;
+}
+
+th,
+td {
+  padding-right: 1rem;
+  border-bottom: 1px;
+}
+
+th {
+  text-align: left;
+}
 
 .container {
   max-width: 1000px;
