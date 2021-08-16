@@ -17,6 +17,11 @@ const withMDX = require("@next/mdx")({
       remarkSlug,
     ],
   },
+  webpack(config, options) {
+    config.output.webassemblyModuleFilename = "static/wasm/[modulehash].wasm";
+    config.experiments = { asyncWebAssembly: true };
+    return config;
+  },
 });
 module.exports = withMDX({
   pageExtensions: ["js", "jsx", "mdx", "md"],

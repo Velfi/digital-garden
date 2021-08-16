@@ -1,0 +1,17 @@
+.word {
+  padding: 0 4px;
+  border: 3px solid;
+
+  border-color: #ffe8c3;
+  border-radius: 3px;
+  margin: 5px;
+  cursor: pointer;
+}
+
+.buttonRemoveWord {
+  
+}
+
+body.light-mode .word {
+  border-color: #253131;
+}

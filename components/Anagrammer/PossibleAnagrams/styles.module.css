@@ -1,0 +1,4 @@
+.anagrams {
+  display: flex;
+  flex-wrap: wrap;
+}

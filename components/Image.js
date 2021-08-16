@@ -30,7 +30,7 @@ export default function Image(props) {
         width={width}
         height={height}
         layout={layout}
-        className={src.includes(".svg") && "svgFilter"}
+        className={src.includes(".svg") ? "svgFilter" : undefined}
       />
       {subtitle !== undefined && (
         <p className="nextImageSubtitle">{subtitle}</p>

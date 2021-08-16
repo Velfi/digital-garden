@@ -196,3 +196,33 @@ body.light-mode .svgFilter {
   filter: invert(12%) sepia(18%) saturate(645%) hue-rotate(131deg)
     brightness(99%) contrast(85%);
 }
+
+button {
+  background-color: unset;
+  border-color: #ffe8c3;
+  border-radius: 3px;
+  border: 1px solid;
+  color: inherit;
+  font-size: inherit;
+  padding: 5px;
+}
+
+body.light-mode button {
+  border-color: #253131;
+  border-color: 1px solid;
+}
+
+input {
+  background-color: unset;
+  border-color: #ffe8c3;
+  border-radius: 3px;
+  border: 1px solid;
+  color: inherit;
+  font-size: inherit;
+  padding: 5px;
+}
+
+body.light-mode button {
+  border-color: #253131;
+  border-color: 1px solid;
+}
