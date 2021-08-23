@@ -22,6 +22,92 @@ I hope to achieve three things:
 
 I think this task will be the most difficult because I've never used `druid` before and the [instructional book] is incomplete. I'm counting on my past experience with creating GUIs for the web and the work I've done with [`conrod`][conrod] for my plotter art generators. If I run into too much trouble, I can switch over to a more familiar framework like [`ggez`][ggez], [`nannou`][nannou], or even [`pixels`][pixels]. This project is also a good opportunity to work on graph traversal algorithms. The object of the game is to build an unbroken line from the left of the screen to the right. An individual segment of the line is valid if it's connected on both sides to either another line or a screen edge. Building that solver will be the first thing that I tackle.
 
+## August 23rd
+
+I was right to guess that learning Druid would be difficult but that's only been true for some aspects of it. My past experience making websites with React has been helpful overall but I've still made a few mistakes that I could have avoided.
+Just like React, Druid UI are declarative. The "view" that users see and interact with is constructed from a central blob of "state". Druid tracks what state each widget (component in React) relies on and re-renders widgets when state is changed.
+Just like React, it's easy to misunderstand what constitutes a change and what doesn't.
+
+### State changes in React
+
+*(This part applies to older Class-style React components. The new method of using hooks to manage state has it's own set of footguns)*
+
+If you've used React, you may have been bitten by this because of how JavaScript handles equality comparisons between objects.
+When comparing objects, JS only compares the pointers for those objects and disregards the values they contain.
+
+e.g.
+
+```javascript
+let objA = {
+  bestKaiju: "Biolante",
+};
+let objB = {
+  bestKaiju: "Biolante",
+};
+
+console.assert(objA === objA, "This is true");
+console.assert(objA.bestKaiju === objB.bestKaiju, "This is true");
+console.assert(objA === objB, "This is false");
+```
+
+What this means in React is that if you directly modify the object where you store your state, React will think that nothing has changed because JavaScript says that the pointer to the object is still the same:
+
+```javascript
+class Foo extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { name: "world" };
+  }
+
+  handleNameChange() {
+    // Modifying the state object like this is a no-no.
+    // React will never notice that this was changed.
+    this.state.name = "Zelda";
+  }
+
+  render() {
+    return (
+      <div>
+        <h1>Hello, {this.state.name}!</h1>
+        <button onClick={handleNameChange}>change name</button>
+      </div>
+    );
+  }
+}
+```
+
+In order to make the change noticeable, a new object has to be created to replace the old one:
+
+```javascript
+  handleNameChange() {
+    // Creating a new object like this is a noticeable change
+    this.state = { name: "Zelda"};
+    // React also provides a nice function to call to make state changes
+    // this.setState({ name: "Zelda"});
+  }
+```
+
+*(for more info on React state, see [here][React State FAQ])*
+
+Druid works in much the same way.
+
+### State changes in Druid
+
+In Druid, the [Data trait] is responsible for defining how state containers should be compared. One of the default `impl`s of Data is for `Arc` which ends up working exactly like the JavaScript object pointer comparison mentioned earlier.
+Whatever is defined as state is cloned often and it's up to the user to either make sure that your state itself is cheap-to-clone or that your expensive-to-clone state is behind a cheap-to-clone `Arc`.
+Before I had internalized this, I ran into some roadblocks with widgets that didn't want to update even though I thought that I had changed their state.
+
+### Where I'm currently at
+
+I made a good amount of progress over the weekend and have actually taken a liking to Druid in spite of my confusion.
+
+<Image src="/images/thoughts/24-days-between-jobs/gunpey-in-progress-1.png" alt="Gunpey game dev progress example depicting partially-working graph algorithm" width="302" height="453" subtitle="The graph algorithm is having some trouble" />
+<VerticalSpacer/>
+
+I've added a start screen and a game screen to the app. The game screen has a few buttons for testing the score meter and adding rows to the game board.
+Grid cells can be swapped and connections are usually calculated correctly although it also misses a few valid connections in the above screenshot.
+The tests pass so I'm wondering if it's an issue with the Druid widget I created to represent the game grid. This has definitely been one of the most difficult projects I've attempted and I'm definitely planning on turning this experience into a tutorial for aspiring Rust game developers. I'm going to continue on with Druid for the next few days but I'm still considering the option of switching it out for a framework that I'm more experienced with.
+
 [Raph Levien]: https://www.levien.com/
 [druid]: https://github.com/linebender/druid
 [Gunpey]: https://en.wikipedia.org/wiki/Gunpey
@@ -37,6 +123,8 @@ I think this task will be the most difficult because I've never used `druid` bef
 [ggez]: https://github.com/ggez/ggez
 [nannou]: https://github.com/nannou-org/nannou
 [pixels]: https://github.com/parasyte/pixels
+[React State FAQ]: https://reactjs.org/docs/faq-state.html
+[Data trait]: https://docs.rs/druid/0.7.0/druid/trait.Data.html
 
 [//begin]: # "Autogenerated link references for markdown compatibility"
 [plotlings]: ../programming/plotlings "Plotter Art Generation Suite"

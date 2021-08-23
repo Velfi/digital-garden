@@ -1,5 +1,3 @@
-import VerticalSpacer from '../../components/VerticalSpacer.js'
-
 # Slime Mold (Physarum) Simulation
 
 The source code is available on [GitHub]

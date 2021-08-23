@@ -1,5 +1,3 @@
-import VerticalSpacer from '../../components/VerticalSpacer.js'
-
 # Gray Scott Reaction Diffusion Simulation
 
 The source code is available on [GitHub].

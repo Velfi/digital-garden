@@ -1,5 +1,3 @@
-import VerticalSpacer from '../../components/VerticalSpacer.js'
-
 # Painting flow fields
 
 The source code is available on [GitHub]

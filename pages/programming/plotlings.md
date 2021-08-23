@@ -1,5 +1,3 @@
-import VerticalSpacer from '../../components/VerticalSpacer.js'
-
 # Plotter Art Generation Suite
 
 The source code is available on [GitHub]

@@ -1,5 +1,3 @@
-import VerticalSpacer from '../../components/VerticalSpacer.js'
-
 # Shin Megami Tensei Wallpapers
 
 I’m a big nerd when it comes to Atlas JRPGs. They’ve developed nearly two

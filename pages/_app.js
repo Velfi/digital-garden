@@ -7,6 +7,7 @@ import Image from "../components/Image";
 import Layout from "../components/Layout";
 import { LightSwitch } from "../components/LightSwitch";
 import { MDXProvider } from "@mdx-js/react";
+import VerticalSpacer from "../components/VerticalSpacer.js";
 import siteData from "../siteconfig";
 
 const mdComponents = {
@@ -17,6 +18,7 @@ const mdComponents = {
       <Image {...props} />
     </div>
   ),
+  VerticalSpacer: (props) => <VerticalSpacer {...props} />,
 };
 
 export default function App({ Component, pageProps }) {
