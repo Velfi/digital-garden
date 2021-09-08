@@ -31,10 +31,10 @@
      inkscape:document-rotation="0"
      showgrid="false"
      inkscape:snap-global="true"
-     inkscape:window-width="1091"
-     inkscape:window-height="1368"
-     inkscape:window-x="1460"
-     inkscape:window-y="0"
+     inkscape:window-width="1267"
+     inkscape:window-height="1198"
+     inkscape:window-x="225"
+     inkscape:window-y="134"
      inkscape:window-maximized="0" />
   <metadata
      id="metadata5">
@@ -44,6 +44,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
       </cc:Work>
     </rdf:RDF>
   </metadata>

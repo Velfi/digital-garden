@@ -101,7 +101,7 @@ Before I had internalized this, I ran into some roadblocks with widgets that did
 
 I made a good amount of progress over the weekend and have actually taken a liking to Druid in spite of my confusion.
 
-<Image src="/images/thoughts/24-days-between-jobs/gunpey-in-progress-1.png" alt="Gunpey game dev progress example depicting partially-working graph algorithm" width="302" height="453" subtitle="The graph algorithm is having some trouble" />
+<Image src="/images/thoughts/24-days-between-jobs/gunpey-in-progress-1.png" alt="Gunpey game dev progress example depicting results of a partially-correct graph algorithm" width="302" height="453" subtitle="The graph algorithm is having some trouble" />
 <VerticalSpacer/>
 
 I've added a start screen and a game screen to the app. The game screen has a few buttons for testing the score meter and adding rows to the game board.
@@ -111,6 +111,34 @@ The tests pass so I'm wondering if it's an issue with the Druid widget I created
 ## August 30th
 
 I spent most of the past week working on music and playing videogames. I've been putting effort into learning the [Octatrack] and it's starting to pay off although the device feels no less arcane. I have another piece I started in Ableton that needs polish but it's also a candidate for my "write a song" goal. More on this to come.
+
+## September 8th
+
+It's almost the end of my time between jobs. I have spent a large amount of the time just chillin and I've beaten a few adventure games:
+
+- [Myst (2021 Remake)]
+  - I played Myst as a child and have had a love of adventure games ever since. In my youth, I hadn't actually been able to beat it without resorting to a walkthrough. This time I got through it all myself with the new "randomizer" option enabled. It's a fun, if short game. I'd definitely recommend it to anyone that remembers it from their childhood.
+- [Obduction]
+  - The most recently released game by the Myst developers. I bounced off this one when it came out in 2016 and I wanted to revisit it and beat it to experience the full story. I did manage that this time and I found a few of the later puzzles really tedious. I'm of the opinion that a good adventure game puzzle is one that's easily solvable once you know the answer. Several puzzles in Obduction required waiting through long chains of animations and the game's unique mechanic (which I won't spoil) also adds significant overhead to puzzle completion times. That being said, I liked the story and I'm very much looking forward to Cyan World's next game [Firmament]. I might finally purchase a VR headset for that one.
+- [Quern: Undying Thoughts]
+  - A game made by four Hungarian university students that's surprisingly good. The developers are clear fans of Myst and Riven and it really shows in both the visual style and the puzzle designs. I recommend this game to anyone that likes puzzlers, although it's not without its faults. I found some of the puzzles a little tedious and there's a good amount of backtracking necessary. Still, the game teaches you how to succeed at most puzzles instead of throwing one-off brain teasers at you and it does a good job of reusing puzzle concepts throughout the game while expanding on them whenever they reappear. Go buy the game and don't feel bad if you need walkthrough to get past any places where you feel stuck. The developers try to telegraph where you need to go in the game but I missed the signs a few times and would have been completely stuck without the internet.
+
+### Gunpey graph algorithm progress
+
+The graph algorithm for determining connection is now fully working and correct:
+
+<Image src="/images/thoughts/24-days-between-jobs/gunpey-in-progress-2.png" alt="Gunpey game dev progress example depicting results of a correct graph algorithm" width="291" height="488" subtitle="(compare this screenshot to the previous update)" />
+<VerticalSpacer/>
+
+The breakthrough that made this possible was focusing on the grid as a bunch of corners. Focusing on the cells alone made it easy to reason about cells that formed a chain between the left and right sides but it made considering how the cells were actually connected difficult. Changing the focus to the corners of cells made it possible to focus on that important missing piece.
+
+<Image src="/images/thoughts/24-days-between-jobs/gunpey_graph_explainer_1.svg" alt="Gunpey graph explainer" width="679.3" height="285.7" layout="responsive" subtitle="in the corner-wise diagram, it's easy to see the unconnected end at (3,2)" />
+
+My friend Tess was instrumental in creating the final algorithm based on this method. I'll write about exactly how it works as part of a separate tutorial article.
+
+### Music
+
+I put some more polish on the song I was working on but I want to add a second part to it based on a suggestion from my piano teacher. I swear I'm actually going to share it at some point.
 
 [Raph Levien]: https://www.levien.com/
 [druid]: https://github.com/linebender/druid
@@ -130,6 +158,10 @@ I spent most of the past week working on music and playing videogames. I've been
 [React State FAQ]: https://reactjs.org/docs/faq-state.html
 [Data trait]: https://docs.rs/druid/0.7.0/druid/trait.Data.html
 [Octatrack]: https://www.elektron.se/products/octatrack-mkii/
+[Obduction]: https://store.steampowered.com/app/306760/Obduction/
+[Quern: Undying Thoughts]: https://store.steampowered.com/app/512790/Quern__Undying_Thoughts/
+[Myst (2021 Remake)]: https://store.steampowered.com/app/1255560/Myst/
+[Firmament]: https://fulfillment.fangamer.com/kindling/firmament
 
 [//begin]: # "Autogenerated link references for markdown compatibility"
 [plotlings]: ../programming/plotlings "Plotter Art Generation Suite"
