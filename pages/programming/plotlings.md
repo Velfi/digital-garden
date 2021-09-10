@@ -28,8 +28,13 @@ Based on the classic [maze BASIC program].
 
 Run it with this command: `cargo run release --bin dune`
 
-<Image src="/images/programming/plotlings/dune.svg" alt="A series of regularly spaced triangles that, togehter, have the appearance of a sand dune" width="673" height="900" layout="responsive" />
-A naïve recreation of [Sohan Murthy's Continuity Correction] that ended up going in a new direction.
+<Image src="/images/programming/plotlings/dune.svg" alt="A series of regularly spaced triangles that, together, have the appearance of a sand dune" width="673" height="900" layout="responsive" subtitle="A naïve recreation of [Sohan Murthy's Continuity Correction] that ended up going in a new direction."/>
+
+### Line Noise
+
+Run it with this command: `cargo run release --bin line_noise`
+
+<Image src="/images/programming/plotlings/line_noise.svg" alt="A cloud of short horizontal lines" width="816" height="1056" layout="responsive" />
 
 [GitHub]: https://github.com/Velfi/plotlings
 [ridgeline plot]: https://www.data-to-viz.com/graph/ridgeline.html
