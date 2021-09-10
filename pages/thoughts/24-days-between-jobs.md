@@ -1,6 +1,6 @@
 # Time off between jobs
 
-On August 20th, 2021 I am leaving my job at Tempus for a job at AWS working on the AWS Rust SDK. In the between, I am taking 24 days for leisure time and personal projects. This page is a chronicle of that period.
+On August 20th, 2021 I left my job at Tempus for a job at AWS working on the AWS Rust SDK. In the between, I took 24 days for leisure time and personal projects. This page is a chronicle of that period.
 
 ## August 17th
 
