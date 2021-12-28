@@ -18,6 +18,7 @@ const withMDX = require("@next/mdx")({
     ],
   },
   webpack(config, options) {
+    // TODO figure out how to fix broken wasm loading
     config.output.webassemblyModuleFilename = "static/wasm/[modulehash].wasm";
     config.experiments = { asyncWebAssembly: true };
     return config;

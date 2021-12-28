@@ -34,7 +34,7 @@ Incomplete thoughts start in the [[inbox]] before making their way to a category
 
 ## Games
 
-- [[anagrammer]]
+- anagrammer (offline until I fix a WASM loading issue)
 
 ## Music
 
@@ -83,7 +83,6 @@ This site is based on [this template][site-template] with several of my own cust
 [antique-stamps]: art/antique-stamps "Antique stamps converted to SVG"
 [tiles]: art/tiles/tiles "Tiles"
 [atalanta-and-rudras]: fonts/atalanta-and-rudras "Pixel Fonts (Atalanta and Rudras)"
-[anagrammer]: games/anagrammer "(Work In Progress) Anagram Creation Helper"
 [piano-bookmarks]: music/piano-bookmarks "Piano Bookmarks"
 [manuals]: synth/manuals "Synth Manuals"
 [patches]: synth/patches "Synth Presets"
