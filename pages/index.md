@@ -26,6 +26,7 @@ Incomplete thoughts start in the [[inbox]] before making their way to a category
 
 - [[smt-wallpapers]]
 - [[antique-stamps]]
+- [[tiles]]
 
 ## Fonts
 
@@ -80,6 +81,7 @@ This site is based on [this template][site-template] with several of my own cust
 [neat-internet]: neat-internet "Cool stuff the internet exposed me to"
 [smt-wallpapers]: games/smt-wallpapers "Shin Megami Tensei Wallpapers"
 [antique-stamps]: art/antique-stamps "Antique stamps converted to SVG"
+[tiles]: art/tiles/tiles "Tiles"
 [atalanta-and-rudras]: fonts/atalanta-and-rudras "Pixel Fonts (Atalanta and Rudras)"
 [anagrammer]: games/anagrammer "(Work In Progress) Anagram Creation Helper"
 [piano-bookmarks]: music/piano-bookmarks "Piano Bookmarks"
