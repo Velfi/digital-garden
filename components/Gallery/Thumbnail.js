@@ -7,7 +7,7 @@ function thumbnailPath(root, filename) {
   return `${root}/${filename}-thumbnail.webp`;
 }
 
-export default function Thumbnail({ photosFolder, photo, onClick }) {
+export default function Thumbnail({ photosFolder, photo, onClick = () => {} }) {
   return (
     <div onClick={() => onClick(photo)}>
       <img
