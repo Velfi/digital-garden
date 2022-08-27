@@ -1,0 +1,6 @@
+.name {
+  font-size: 1.3em;
+  font-weight: bold;
+  text-align: center;
+  transform: perspective(40px) rotateX(15deg) scaleY(140%);
+}

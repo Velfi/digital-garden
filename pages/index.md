@@ -22,6 +22,12 @@ Incomplete thoughts start in the [[inbox]] before making their way to a category
 - [thatzopoulos]
 - [[neat-internet]]
 
+## My Store
+
+***New! Wow! Amazing! [I sell stickers!](store/zelda)***
+
+I love stickers and collect them. I recently purchased a printer and a cutting robot and started making my own. Most of them are images that I generated with DALL*E. I sell them in 1-sheet packs for $20 apiece. Shipping is included and if we're already friends then local pickup is available.
+
 ## Arts
 
 - [[smt-wallpapers]]

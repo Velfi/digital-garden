@@ -96,16 +96,6 @@ hr,
   margin: 1rem 0;
 }
 
-a,
-b,
-i,
-strong,
-em,
-small,
-code {
-  line-height: 0;
-}
-
 sub,
 sup {
   line-height: 0;
@@ -239,4 +229,12 @@ input {
 body.light-mode button {
   border-color: #253131;
   border-color: 1px solid;
+}
+
+.yellow {
+  color: #fed707;
+}
+
+body.light-mode .yellow {
+  color: #e7b912;
 }
