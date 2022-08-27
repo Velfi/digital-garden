@@ -32,6 +32,7 @@ I love stickers and collect them. I recently purchased a printer and a cutting r
 
 - [[smt-wallpapers]]
 - [[antique-stamps]]
+- [[tiles]]
 
 ## Fonts
 
@@ -39,7 +40,7 @@ I love stickers and collect them. I recently purchased a printer and a cutting r
 
 ## Games
 
-- [[anagrammer]]
+- anagrammer (offline until I fix a WASM loading issue)
 
 ## Music
 
@@ -86,8 +87,8 @@ This site is based on [this template][site-template] with several of my own cust
 [neat-internet]: neat-internet "Cool stuff the internet exposed me to"
 [smt-wallpapers]: games/smt-wallpapers "Shin Megami Tensei Wallpapers"
 [antique-stamps]: art/antique-stamps "Antique stamps converted to SVG"
+[tiles]: art/tiles/tiles "Tiles"
 [atalanta-and-rudras]: fonts/atalanta-and-rudras "Pixel Fonts (Atalanta and Rudras)"
-[anagrammer]: games/anagrammer "(Work In Progress) Anagram Creation Helper"
 [piano-bookmarks]: music/piano-bookmarks "Piano Bookmarks"
 [manuals]: synth/manuals "Synth Manuals"
 [patches]: synth/patches "Synth Presets"
