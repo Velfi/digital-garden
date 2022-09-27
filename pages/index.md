@@ -33,6 +33,7 @@ I love stickers and collect them. I recently purchased a printer and a cutting r
 - [[smt-wallpapers]]
 - [[antique-stamps]]
 - [[tiles]]
+- [[2022-09-photospheres]]
 
 ## Fonts
 
@@ -88,6 +89,7 @@ This site is based on [this template][site-template] with several of my own cust
 [smt-wallpapers]: games/smt-wallpapers "Shin Megami Tensei Wallpapers"
 [antique-stamps]: art/antique-stamps "Antique stamps converted to SVG"
 [tiles]: art/tiles/tiles "Tiles"
+[2022-09-photospheres]: art/photos/2022-09-photospheres "September '22 Photo Spheres"
 [atalanta-and-rudras]: fonts/atalanta-and-rudras "Pixel Fonts (Atalanta and Rudras)"
 [piano-bookmarks]: music/piano-bookmarks "Piano Bookmarks"
 [manuals]: synth/manuals "Synth Manuals"

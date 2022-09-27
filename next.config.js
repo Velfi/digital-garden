@@ -5,6 +5,11 @@ const remarkReferencLinks = require("remark-reference-links");
 const remarkSlug = require("remark-slug");
 const remarkUnwrapImages = require("remark-unwrap-images");
 
+// ESM modules have to be declared here or else we'll get errors when importing them
+const withTM = require('next-transpile-modules')([
+  'react-photo-sphere-viewer'
+]);
+
 const withMDX = require("@next/mdx")({
   extension: /\.mdx?$/,
   options: {
@@ -24,6 +29,6 @@ const withMDX = require("@next/mdx")({
     return config;
   },
 });
-module.exports = withMDX({
+module.exports = withTM(withMDX({
   pageExtensions: ["js", "jsx", "mdx", "md"],
-});
+}));

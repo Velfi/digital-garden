@@ -4,7 +4,7 @@ import ThumbnailGallery from '../../components/Store/ThumbnailGallery'
 
 # Zelda's Store
 
-> **A note from Zelda:** I kept things simple when coding this store up meaning you can only purchase sticker set per transaction. If you hate this, send an email to **store** *at* **zeldas** *dot* **page** and we'll figure something out.
+> **A note from Zelda:** *I kept things simple when coding this store up meaning you can only purchase stickers from one set per transaction (although you can adjust the quantity on the checkout page.) If you hate this, send an email to **store** *at* **zeldas** *dot* **page** and we'll figure something out.*
 
 Thanks for checking out my personal store. I ship all stickers using USPS to anywhere in the US and they should take 1-2 weeks to arrive **(shipping costs are included in the price.)** I print, laminate, and cut the stickers myself. They may fade if left outside for a long time and the laminate may not protect against all liquids. If you feel like I did you dirty at any point, send an email with your order info and your grievance to **store** *at* **zeldas** *dot* **page**.
 
@@ -34,6 +34,30 @@ Thanks for checking out my personal store. I ship all stickers using USPS to any
       "/images/store/zelda/sticker-set-2-lovely-lizard-ladies-3.jpg",
     ]}/>
     <p>My second set. I love lizards and dresses, so I combined two of my favorite things in this set! I love the gecko wearing the <span className="yellow">yellow</span> bow. Includes 9 stickers of various sizes. All images were generated with DALL·E.</p>
+  </Product>
+    <Product
+    name="Set #6 - Haeckel Hexacoralla"
+    purchaseLink="https://buy.stripe.com/4gw03z3azfyfgUw3ce"
+    purchaseText="Click for corals ($20)"
+>
+    <ThumbnailGallery images={[
+      "/images/store/zelda/sticker-set-6-haeckel-hexacorolla-1.jpg",
+      "/images/store/zelda/sticker-set-6-haeckel-hexacorolla-2.jpg",
+      "/images/store/zelda/sticker-set-6-haeckel-hexacorolla-3.jpg",
+    ]}/>
+  <p>I'm a big fan of Ernst Haeckel's lithographs <em>(and not a fan of his racism)</em>. Here's one of my favorite plates from <strong>Kunstformen der Natur</strong> in holographic sticker form: <a href="https://commons.wikimedia.org/wiki/Kunstformen_der_Natur#/media/File:Haeckel_Hexacoralla.jpg">"Plate 26: Hexacoralla"</a>. Includes 17 monochrome stickers on holographic backing.</p>
+  </Product>
+  <Product
+    name="Set #7 - Haeckel Tetracorolla"
+    purchaseLink="https://buy.stripe.com/28o2bH7qPeub0Vy003"
+    purchaseText="Click for more corals ($20)"
+  >
+    <ThumbnailGallery images={[
+      "/images/store/zelda/sticker-set-7-haeckel-tetracorolla-1.jpg",
+      "/images/store/zelda/sticker-set-7-haeckel-tetracorolla-2.jpg",
+      "/images/store/zelda/sticker-set-7-haeckel-tetracorolla-3.jpg",
+    ]}/>
+  <p>Here's another of Ernst Haeckel's lithographs from <strong>Kunstformen der Natur</strong> in holographic sticker form: <a href="https://commons.wikimedia.org/wiki/Kunstformen_der_Natur#/media/File:Haeckel_Tetracoralla.jpg">"Plate 29: Tetracoralla"</a>. Includes 15 monochrome stickers on holographic backing.</p>
   </Product>
 </StoreFront>
 
