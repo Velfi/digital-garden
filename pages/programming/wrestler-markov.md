@@ -6,8 +6,8 @@ Modern wrestling is a ridiculous combo of athleticism, improv, and melodrama. I 
 My wife and I love to watch WWE pay-per-views. I especially love the promos where the wrestlers bad mouth each other,
 so I decided to create a bot that could do the same thing.
 
-<blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">And when it comes to fightin&#39;, you&#39;re gonna find out what this clown is made of, what is he all about and what I see is a shell of a woman.</p>&mdash; Mitch Ragnarok (@MitchRagnarok) <a href="https://twitter.com/MitchRagnarok/status/830265120043462656?ref_src=twsrc%5Etfw">February 11, 2017</a></blockquote>
-<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+<blockquote className="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">And when it comes to fightin&#39;, you&#39;re gonna find out what this clown is made of, what is he all about and what I see is a shell of a woman.</p>&mdash; Mitch Ragnarok (@MitchRagnarok) <a href="https://twitter.com/MitchRagnarok/status/830265120043462656?ref_src=twsrc%5Etfw">February 11, 2017</a></blockquote>
+<script async src="https://platform.twitter.com/widgets.js" charSet="utf-8"></script>
 
 The bot produces random sentences by using a Markov chain. A good explanation of how they work can be seen [here](http://setosa.io/ev/markov-chains/).
 
