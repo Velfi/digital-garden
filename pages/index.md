@@ -53,6 +53,7 @@ I love stickers and collect them. I recently purchased a printer and a cutting r
 
 ## Programmings
 
+- [[fun-with-large-language-models]]
 - [[plotlings]]
 - [[iching]]
 - [[slime-mold]]
@@ -96,6 +97,7 @@ This site is based on [this template][site-template] with several of my own cust
 [patches]: synth/patches "Synth Presets"
 [habanera]: music/habanera "Habanera For Two Flutes And A Cello"
 [belltower-fight]: music/belltower-fight "Belltower Fight"
+[fun-with-large-language-models]: ai/fun-with-large-language-models "Fun with large language models"
 [plotlings]: programming/plotlings "Plotter Art Generation Suite"
 [iching]: programming/iching "I Ching"
 [slime-mold]: programming/slime-mold "Slime Mold (Physarum) Simulation"

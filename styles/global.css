@@ -157,12 +157,12 @@ a:hover {
 }
 
 body.light-mode a {
-  color: #0b834b;
+  color: #1b7650;
   text-decoration: none;
 }
 
 body.light-mode a:visited {
-  color: #315746;
+  color: #136433;
 }
 
 /* img {
@@ -237,4 +237,18 @@ body.light-mode button {
 
 body.light-mode .yellow {
   color: #e7b912;
+}
+
+blockquote {
+  padding: 0.5rem 1rem;
+  background-color: rgba(0.0, 0.0, 0.0, 0.1);
+  border-radius: 3px;
+}
+
+body.light-mode blockquote {
+  background-color: rgb(255, 244, 225);
+}
+
+blockquote > *:last-child {
+  margin-bottom: 0;
 }
