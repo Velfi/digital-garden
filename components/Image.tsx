@@ -1,0 +1,45 @@
+import NextImage, { ImageProps as NextImageProps } from "next/image";
+
+export interface ImageProps extends NextImageProps {
+  subtitle?: string;
+  src: string;
+}
+
+export const Image = (props: ImageProps) => {
+  let {
+    src,
+    alt,
+    width = 600,
+    height = 460,
+    /*
+    When fixed, the image dimensions will not change as the viewport changes (no responsiveness) similar to the native img element.
+    When intrinsic, the image will scale the dimensions down for smaller viewports but maintain the original dimensions for larger viewports.
+    When responsive, the image will scale the dimensions down for smaller viewports and scale up for larger viewports.
+    When fill, the image will stretch both width and height to the dimensions of the parent element, provided the parent element is relative. This is usually paired with the objectFit property.
+    */
+    layout = "intrinsic",
+    subtitle,
+  } = props;
+  if (src.includes("?")) {
+    const dimensions = src.split("?");
+    const widthHeight = dimensions[1].split("x");
+    width = parseInt(widthHeight[0], 10);
+    height = parseInt(widthHeight[1], 10);
+  }
+
+  return (
+    <>
+      <NextImage
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        layout={layout}
+        className={src.includes(".svg") ? "svgFilter" : undefined}
+      />
+      {subtitle !== undefined && (
+        <p className="nextImageSubtitle">{subtitle}</p>
+      )}
+    </>
+  );
+};

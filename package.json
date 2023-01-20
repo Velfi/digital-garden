@@ -1,33 +1,43 @@
 {
   "name": "digital-garden",
-  "version": "1.0.0",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "dev": "next",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
-    "@mdx-js/loader": "^1.6.21",
-    "@next/mdx": "^12.3.1",
-    "hsluv": "^0.1.0",
-    "next": "^12.3.1",
-    "next-transpile-modules": "^9.0.0",
-    "prism-react-renderer": "^1.3.5",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-dnd": "^14.0.4",
-    "react-dnd-html5-backend": "^14.0.0",
-    "react-photo-sphere-viewer": "^2.1.2",
-    "remark-external-links": "^7.0.1",
-    "remark-images": "^2.0.0",
+    "@mdx-js/loader": "^2.2.1",
+    "@mdx-js/react": "^2.2.1",
+    "@next/font": "13.1.3",
+    "@next/mdx": "^13.1.3",
+    "@types/react": "18.0.27",
+    "@types/react-dom": "18.0.10",
+    "eslint": "8.32.0",
+    "eslint-config-next": "13.1.3",
+    "hsluv": "^1.0.0",
+    "jsx": "^0.9.89",
+    "next": "13.1.3",
+    "pannellum-react": "^1.2.4",
+    "photo-sphere-viewer": "^4.8.1",
+    "postcss": "^8.4.21",
+    "prop-types": "^15.8.1",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "react-pannellum": "^0.2.13",
+    "react-photo-sphere-viewer": "^3.2.0-psv5.0.2",
+    "rehype-highlight": "^6.0.0",
+    "remark-external-links": "^9.0.1",
+    "remark-images": "^3.1.0",
     "remark-numbered-footnote-labels": "^1.1.0",
-    "remark-reference-links": "^5.0.0",
-    "remark-slug": "^6.0.0",
-    "remark-unwrap-images": "^2.0.0",
-    "styled-components": "^5.3.6"
+    "remark-reference-links": "^6.0.1",
+    "remark-slug": "^7.0.1",
+    "remark-unwrap-images": "^3.0.1"
   },
   "devDependencies": {
-    "prettier": "^2.7.1"
-  },
-  "license": "ISC"
+    "@types/node": "18.11.18",
+    "typescript": "4.9.4"
+  }
 }

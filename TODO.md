@@ -1,0 +1,2 @@
+- Fix the broken photospheres section.
+- Fix iching

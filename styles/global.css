@@ -252,3 +252,8 @@ body.light-mode blockquote {
 blockquote > *:last-child {
   margin-bottom: 0;
 }
+
+.flex-wrap-container {
+  display: flex;
+  flex-wrap: wrap;
+}

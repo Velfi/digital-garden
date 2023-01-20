@@ -1,105 +1,42 @@
 # www.zelderp.com
 
-This is the code powering my personal digital garden. Preserved for my own erudition below is the readme of the template project that I cloned.
+My personal digital garden.
 
-# Foamy NextJS Starter
-
-This starter combines [Foam](https://foambubble.github.io/foam) with [NextJS](https://nextjs.org). I built this using [NextJS with MDX example repo](https://github.com/vercel/next.js/tree/canary/examples/with-mdx) as my base repo.
+This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
 ## Getting Started
 
-1. Click on **Use this template** button
-2. Clone the repository locally
+First, run the development server:
 
 ```bash
-cd your-local-repo-name
-npm install
-# or
-yarn install
-
 npm run dev
 # or
 yarn dev
+# or
+pnpm dev
 ```
 
-Foam requires specific VS Code extensions for it to work properly. Open the repository as a folder using the File > Open... menu item. When prompted to install recommended extensions, click **Install all** (or **Show Recommendations** if you want to review and install them one by one).
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-Open `index.md` in `/pages` directory and edit to your heart's content. All other markdown files and notes folder are examples. Before doing so, I recommend clicking around to see how things work.
+You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
 
-## How to customize
+[API routes](https://nextjs.org/docs/api-routes/introduction) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
 
-I purposefully built this starter to be bare in styling and functionality to leave plenty of room to customize and build on top.
+The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/api-routes/introduction) instead of React pages.
 
-### Basic Global styles
+This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
 
-I used Gridlover to generate a typography system with modular scale and vertical rhythm. Add your preferred fonts, [choose your own scale](https://www.gridlover.net/try), and replace all styles in `/styles/global.css` between these comments
+## Learn More
 
-```CSS
-/* begin gridlover perfect fourth scale */
-// ...
-/* end gridlover perfect fourth scale */
-```
+To learn more about Next.js, take a look at the following resources:
 
-### Syntax highlighting theme
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-Add your preferred prism theme CSS file in `/styles` folder and import it to `_app.js`
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
 
-```javascript
-import "../styles/prism-theme-night-owl.css";
-```
+## Deploy on Vercel
 
-You can convert your VS Code theme to use with this tool:
-[VS Code to Prism Themes](https://prism.dotenv.dev/)
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-_Note:_ This uses prism-react-renderer for syntax highlight. It's set to use styles from css so the theme is set to null in CodeBlock component. Refer to [prism-react-renderer FAQ](https://github.com/FormidableLabs/prism-react-renderer#faq) for other methods.
-
-### CSS Styling Methods
-
-NextJS uses CSS Modules by default. [Next JS Docs: Built-In CSS Support](https://nextjs.org/docs/basic-features/built-in-css-support) on how to configure for other methods.
-
-### Siteconfig.js
-
-`siteconfig.js` is used for populating site name in the Header and Layout components.
-
-```javascript
-export default {
-  title: "Foamy NextJS",
-  description: "Digital Garden built with Foam and NextJS with MDX",
-  author: "Yenly Ma",
-};
-```
-
-### Remark and Rehype plugins
-
-Add/remove plugins in `next.config.js`
-
-```javascript
-const remarkImages = require("remark-images");
-const remarkExternalLinks = require("remark-external-links");
-const remarkFootnote = require("remark-numbered-footnote-labels");
-
-const withMDX = require("@next/mdx")({
-  extension: /\.mdx?$/,
-  options: {
-    remarkPlugins: [remarkImages, remarkExternalLinks, [remarkFootnotes]],
-  },
-});
-```
-
-### How to upgrade Foam
-
-[Fork the latest Foam template](https://github.com/foambubble/foam-template). Copy `.vscode` directory to your root level of your repo. Open your workspace and things should magically work. It's Foam's magic sauce. If not, try:
-
-- update VS Code extensions defined in `.vscode/extensions.json`
-- disable and enable extensions needed and restart VS Code
-
-### How to deploy
-
-I pick this stack for its easy [deploy to Vercel](https://nextjs.org/docs/deployment). To deploy under a sub-path on your domain, [use `basePath` option](https://nextjs.org/docs/api-reference/next.config.js/basepath).
-
-### Recommended Resources
-
-- [Foam Recipes](https://foambubble.github.io/foam/recipes)
-- [Learn NextJS](https://nextjs.org/learn/basics/create-nextjs-app) or dig into their [Docs](https://nextjs.org/docs/getting-started)
-- [MDXJS](https://mdxjs.com/)
-  - [MDX Conf 2020](https://egghead.io/playlists/mdx-conf-3fc2) - Demystifying MDX talk is particularly helpful for me as a beginner
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
