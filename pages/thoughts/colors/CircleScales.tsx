@@ -39,7 +39,7 @@ const CircleScales = () => {
     }
 
     draw(context);
-  }, [draw]);
+  }, []);
 
   return <canvas ref={canvasRef} height="750" width="1000" />;
 };

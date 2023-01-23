@@ -1,2 +1,4 @@
 - Fix the broken photospheres section.
 - Fix iching
+- Fix image styling
+- 

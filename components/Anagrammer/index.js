@@ -17,13 +17,16 @@ const Anagrammer = () => {
   const anagrammer = useRef(undefined);
 
   // Load our wasm asynchronously and hook it up
-  useEffect(async () => {
-    if (!isLoadingWasm) {
-      return;
-    }
+  useEffect(() => {
+    async function loadWasm() {
+      if (!isLoadingWasm) {
+        return;
+      }
 
-    initialize_dictionary(anagrammer);
-    setIsLoadingWasm(false);
+      initialize_dictionary(anagrammer);
+      setIsLoadingWasm(false);
+    }
+    loadWasm();
   }, [isLoadingWasm, setIsLoadingWasm, anagrammer]);
 
   const onSubmitOriginalTextForm = (event) => {

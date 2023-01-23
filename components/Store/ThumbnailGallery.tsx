@@ -46,7 +46,9 @@ export default function ThumbnailGallery({ images }: Props) {
       >
         &#706;
       </button>
-      <button className={styles.newTabButton} onClick={openImageInNewTab}>&nbsp;</button>
+      <button className={styles.newTabButton} onClick={openImageInNewTab}>
+        &nbsp;
+      </button>
       <button
         className={[styles.indexButton, styles.right].join(" ")}
         onClick={nextImageIndex}

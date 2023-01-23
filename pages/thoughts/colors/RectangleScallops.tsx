@@ -64,7 +64,7 @@ const RectangleScallops = () => {
     }
 
     draw(context);
-  }, [draw]);
+  }, []);
 
   return <canvas ref={canvasRef} height="250" width="250" />;
 };

@@ -63,7 +63,7 @@ const TriangleWaves = () => {
     return () => {
       window.cancelAnimationFrame(animationFrameId);
     };
-  }, [draw]);
+  }, []);
 
   return <canvas ref={canvasRef} height="750" width="1000" />;
 };

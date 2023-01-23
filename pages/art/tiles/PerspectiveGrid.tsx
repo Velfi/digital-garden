@@ -43,7 +43,7 @@ const PerspectiveGrid = () => {
     }
 
     draw(context);
-  }, [draw]);
+  }, []);
 
   return (
     <canvas ref={canvasRef} height={tileWidth + 2} width={tileWidth + 2} />

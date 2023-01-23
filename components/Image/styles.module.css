@@ -1,0 +1,9 @@
+.image {
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+.container {
+  margin-bottom: 1rem;
+}
