@@ -5,12 +5,14 @@ import styles from "./styles.module.css";
 const lightMode = "lightMode";
 const darkMode = "darkMode";
 
-export const LightSwitch = () => {
+const LightSwitch = () => {
   const domDocument = useRef<Document | undefined>(undefined);
   const [displayMode, setDisplayMode] = useLocalStorage(
     "displayMode",
     darkMode
   );
+  const title = `Toggle ${displayMode === lightMode ? "light" : "dark"} mode`;
+  const icon = displayMode === lightMode ? "🌞" : "🌚";
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -22,11 +24,12 @@ export const LightSwitch = () => {
     if (domDocument.current === undefined) {
       return;
     }
+    const classList = domDocument.current.body.classList;
 
-    if (displayMode === lightMode) {
-      domDocument.current.body.classList.add("light-mode");
+    if (displayMode === lightMode && !classList.contains(lightMode)) {
+      classList.add("light-mode");
     } else if (displayMode === darkMode) {
-      domDocument.current.body.classList.remove("light-mode");
+      classList.remove("light-mode");
     }
   }, [displayMode, domDocument]);
 
@@ -38,16 +41,14 @@ export const LightSwitch = () => {
     }
   };
 
-  let contents = displayMode === lightMode ? "🌞" : "🌚";
-  let title =
-    displayMode === lightMode ? "Toggle dark mode" : "Toggle light mode";
-
   return (
     <button onClick={onClick} className={styles.lightSwitch} title={title}>
-      {contents}
+      {icon}
     </button>
   );
 };
+
+export default LightSwitch;
 
 // credit to https://usehooks.com/useLocalStorage/
 function useLocalStorage(key: string, initialValue: string) {

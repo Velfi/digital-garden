@@ -1,3 +1,6 @@
+import { useEffect } from "react";
+import ReactPannellum, { getConfig } from "react-pannellum";
+
 interface ProductProps {
   subtitle?: string;
   src: string;
@@ -13,6 +16,14 @@ export default function Product({
 }: ProductProps) {
   return (
     <div>
+        <ReactPannellum
+          id={subtitle}
+          sceneId={subtitle}
+          imageSource={src}
+          config={{
+            autoLoad: true,
+          }}
+        />
       {subtitle !== undefined && <p>{subtitle}</p>}
     </div>
   );

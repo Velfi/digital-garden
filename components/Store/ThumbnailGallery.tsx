@@ -1,4 +1,4 @@
-import Image from "../Image";
+import { Image } from "@/components/Image";
 import styles from "./ThumbnailGallery.module.css";
 import { useState } from "react";
 
