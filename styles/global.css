@@ -244,3 +244,9 @@ blockquote > *:last-child {
   display: flex;
   flex-wrap: wrap;
 }
+
+.flex-center-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}

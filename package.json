@@ -13,6 +13,8 @@
     "@mdx-js/react": "^2.2.1",
     "@next/font": "13.1.3",
     "@next/mdx": "^13.1.3",
+    "@remark-embedder/core": "^3.0.1",
+    "@remark-embedder/transformer-oembed": "^3.0.0",
     "@types/react": "18.0.27",
     "@types/react-dom": "18.0.10",
     "eslint": "8.32.0",
