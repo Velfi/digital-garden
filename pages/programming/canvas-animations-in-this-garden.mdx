@@ -2,10 +2,10 @@
 
 The [colors] page features some dynamic illustrations implemented with HTML canvas. Below is an example of the
 
-```jsx
+```tsx
 import React, { useEffect, useRef } from "react";
 
-const ColorExample1 = (props) => {
+export const ColorExample1: React.FC = (props) => {
   const canvasRef = useRef(null);
 
   const draw = (ctx, frameCount) => {
@@ -37,9 +37,7 @@ const ColorExample1 = (props) => {
 
   return <canvas ref={canvasRef} {...props} />;
 };
-
-export default ColorExample1;
 ```
 
-[Canvas with React.js]: https://medium.com/@pdx.lucasm/canvas-with-react-js-32e133c05258
+[canvas with react.js]: https://medium.com/@pdx.lucasm/canvas-with-react-js-32e133c05258
 [colors]: ../thoughts/colors/colors

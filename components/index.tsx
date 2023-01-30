@@ -1,5 +1,4 @@
 export { AnchorTag } from "./AnchorTag";
-export { Button } from "./Button";
 export { Grid } from "./Grid";
 export { Header } from "./Header";
 export { Layout } from "./Layout";
