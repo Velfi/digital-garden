@@ -1,9 +1,9 @@
-import { Image } from "@/components";
 import styles from "./ThumbnailGallery.module.css";
 import { useState } from "react";
+import Image, { StaticImageData } from "next/image";
 
 interface Props {
-  images: string[];
+  images: (string | StaticImageData)[];
 }
 
 export const ThumbnailGallery: React.FC<Props> = ({ images }) => {
@@ -27,21 +27,19 @@ export const ThumbnailGallery: React.FC<Props> = ({ images }) => {
       setImageIndex(imageIndex - 1);
     }
   };
-  const openImageInNewTab = () => {
-    window.open(images[imageIndex], "_blank");
-  };
 
   return (
     <div className={styles.gallery}>
-      <Image alt="a product thumbnail" src={images[imageIndex]} />
+      <Image
+        alt="a product thumbnail"
+        src={images[imageIndex]}
+        style={{ height: "auto", maxWidth: "100%" }}
+      />
       <button
         className={[styles.indexButton, styles.left].join(" ")}
         onClick={previousImageIndex}
       >
         &#706;
-      </button>
-      <button className={styles.newTabButton} onClick={openImageInNewTab}>
-        &nbsp;
       </button>
       <button
         className={[styles.indexButton, styles.right].join(" ")}

@@ -2,11 +2,12 @@ import styles from "./BuyButton.module.css";
 
 interface Props {
   purchaseLink: string;
-  purchaseText: string;
+  purchaseCta: string;
+  purchasePrice: number;
 }
 
-export const BuyButton: React.FC<Props> = ({ purchaseLink, purchaseText }) => (
+export const BuyButton: React.FC<Props> = ({ purchaseLink, purchaseCta, purchasePrice }) => (
   <a className={styles.linkButton} href={purchaseLink}>
-    {purchaseText}
+    {purchaseCta} (${purchasePrice})
   </a>
 );

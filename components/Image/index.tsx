@@ -1,10 +1,10 @@
 import styles from "./styles.module.css";
-import NextImage from "next/image";
+import NextImage, { StaticImageData } from "next/image";
 import cn from "classnames";
 
 export interface Props {
   subtitle?: string;
-  src: string;
+  src: string | StaticImageData;
   alt?: string;
 }
 
