@@ -1,0 +1,2 @@
+- Fix iching
+- Update image subtitle to stick to image

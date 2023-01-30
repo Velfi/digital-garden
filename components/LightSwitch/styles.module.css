@@ -19,3 +19,8 @@
 .lightSwitch:hover {
   opacity: 1;
 }
+
+.lightSwitch.hide {
+  display: none;
+  pointer-events: none;
+}
