@@ -8,3 +8,4 @@ export { VerticalSpacer } from "./VerticalSpacer";
 export { WallpaperGallery } from "./WallpaperGallery";
 export { LightSwitch } from "./LightSwitch";
 export { Image } from "./Image";
+export { RovingBishopExamples } from "./RovingBishopExamples";

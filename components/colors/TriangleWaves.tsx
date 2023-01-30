@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { hsluvToHex } from "@/hsluvUtils";
 
-const TriangleWaves: React.FC = () => {
+export const TriangleWaves: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const draw = (
@@ -67,5 +67,3 @@ const TriangleWaves: React.FC = () => {
 
   return <canvas ref={canvasRef} height="750" width="1000" />;
 };
-
-export default TriangleWaves;

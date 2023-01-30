@@ -27,7 +27,7 @@ function chooseRandomOriginFn() {
   return originFns[Math.floor(Math.random() * originFns.length)];
 }
 
-const RectangleScallops: React.FC = () => {
+export const RectangleScallops: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const draw = (ctx: CanvasRenderingContext2D) => {
@@ -68,5 +68,3 @@ const RectangleScallops: React.FC = () => {
 
   return <canvas ref={canvasRef} height="250" width="250" />;
 };
-
-export default RectangleScallops;

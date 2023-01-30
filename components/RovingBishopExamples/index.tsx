@@ -1,4 +1,4 @@
-import styles from "./RovingBishopExamples.module.css";
+import styles from "./styles.module.css";
 
 const EXAMPLE_A = `╬═════════════════╬
 ║                 ║

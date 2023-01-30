@@ -1,7 +1,7 @@
-import CircleScales from "./CircleScales";
+import { CircleScales } from "./CircleScales";
 import React from "react";
-import RectangleScallops from "./RectangleScallops";
-import TriangleWaves from "./TriangleWaves";
+import { RectangleScallops } from "./RectangleScallops";
+import { TriangleWaves } from "./TriangleWaves";
 
 let examples = [
   "bloop",
@@ -20,8 +20,10 @@ let examples = [
   "coastline",
 ];
 
-const ColorExamples: React.FC = () => (
+export const ColorExamples: React.FC = () => (
   <>
+    <em>Waves</em>
+    <TriangleWaves />
     <em>Scallops</em>
     <div className="flex-wrap-container">
       {examples.map((example) => (
@@ -30,9 +32,5 @@ const ColorExamples: React.FC = () => (
     </div>
     <em>Scales</em>
     <CircleScales />
-    <em>Waves</em>
-    <TriangleWaves />
   </>
 );
-
-export default ColorExamples;
