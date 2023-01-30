@@ -1,4 +1,7 @@
-import { Image, VerticalSpacer } from "@/components";
+import LineGroups from "@/public/images/programming/plotlings/line_groups.svg";
+import Maze from "@/public/images/programming/plotlings/maze.svg";
+import Dune from "@/public/images/programming/plotlings/dune.svg";
+import LineNoise from "@/public/images/programming/plotlings/line_noise.svg";
 
 # Plotter Art Generation Suite
 
@@ -12,7 +15,7 @@ A collection of art generators that can export SVGs. I purchased an [AxiDraw V3]
 
 Run it with this command: `cargo run release --bin line_groups`
 
-<Image src="/images/programming/plotlings/line_groups.svg" alt="Groups of wavy lines overlaid on top of each other at regular intervals" />
+<Image src={LineGroups} alt="Groups of wavy lines overlaid on top of each other at regular intervals" />
 The first one I created for this project. It generates groups of lines that look neat. It can also look similar to a [ridgeline plot].
 
 <VerticalSpacer/>
@@ -21,7 +24,7 @@ The first one I created for this project. It generates groups of lines that look
 
 Run it with this command: `cargo run release --bin maze`
 
-<Image src="/images/programming/plotlings/maze.svg" alt="An unsolvable maze" width="900" height="655" />
+<Image src={Maze} alt="An unsolvable maze" width="900" height="655" />
 Based on the classic [maze BASIC program].
 
 <VerticalSpacer/>
@@ -30,7 +33,7 @@ Based on the classic [maze BASIC program].
 
 Run it with this command: `cargo run release --bin dune`
 
-<Image src="/images/programming/plotlings/dune.svg" alt="A series of regularly spaced triangles that, together, have the appearance of a sand dune" subtitle="A naïve recreation of Sohan Murthy's Continuity Correction that ended up going in a new direction."/>
+<Image src={Dune} alt="A series of regularly spaced triangles that, together, have the appearance of a sand dune" subtitle="A naïve recreation of Sohan Murthy's Continuity Correction that ended up going in a new direction."/>
 
 I had a link to [Sohan's page][Sohan Murthy's Continuity Correction] here, but it broke and I can't find the original artwork anymore.
 
@@ -38,7 +41,7 @@ I had a link to [Sohan's page][Sohan Murthy's Continuity Correction] here, but i
 
 Run it with this command: `cargo run release --bin line_noise`
 
-<Image src="/images/programming/plotlings/line_noise.svg" alt="A cloud of short horizontal lines" />
+<Image src={LineNoise} alt="A cloud of short horizontal lines" />
 
 [GitHub]: https://github.com/Velfi/plotlings
 [ridgeline plot]: https://www.data-to-viz.com/graph/ridgeline.html

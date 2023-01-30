@@ -1,4 +1,4 @@
-import { Image } from "@/components/Image";
+import { Image } from "@/components";
 import styles from "./ThumbnailGallery.module.css";
 import { useState } from "react";
 
@@ -33,9 +33,7 @@ export const ThumbnailGallery: React.FC<Props> = ({ images }) => {
 
   return (
     <div className={styles.gallery}>
-      <Image
-        src={images[imageIndex]}
-      />
+      <Image alt="a product thumbnail" src={images[imageIndex]} />
       <button
         className={[styles.indexButton, styles.left].join(" ")}
         onClick={previousImageIndex}
@@ -53,4 +51,4 @@ export const ThumbnailGallery: React.FC<Props> = ({ images }) => {
       </button>
     </div>
   );
-}
+};

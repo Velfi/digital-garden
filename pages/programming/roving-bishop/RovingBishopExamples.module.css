@@ -1,0 +1,11 @@
+.container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.example {
+  font-family: "Fira Code", Consolas, Monaco, "Andale Mono", "Ubuntu Mono",
+    "Courier New", Courier, monospace;
+  font-size: 0.9rem;
+  text-align: center;
+}

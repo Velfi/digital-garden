@@ -1,4 +1,6 @@
 import styles from "./styles.module.css";
+import NextImage from "next/image";
+import cn from "classnames";
 
 export interface Props {
   subtitle?: string;
@@ -11,13 +13,25 @@ export const Image: React.FC<Props> = ({
   // An empty string is a valid alt attribute value for decorative images.
   alt = "",
   subtitle,
-}) => (
-  <div className={styles.container}>
-    <img
-      src={src}
-      alt={alt}
-      className={src.includes(".svg") ? "svgFilter" : styles.image}
-    />
-    {subtitle !== undefined && <p className={styles.subtitle}>{subtitle}</p>}
-  </div>
-);
+  ...props
+}) => {
+  let isSvg;
+
+  if (typeof src === "string") {
+    isSvg = src.endsWith(".svg");
+  } else {
+    isSvg = (src as any).src.endsWith(".svg");
+  }
+
+  return (
+    <div className={styles.container}>
+      <NextImage
+        src={src}
+        alt={alt}
+        className={cn(styles.image, { svgFilter: isSvg })}
+        {...props}
+      />
+      {subtitle !== undefined && <p className={styles.subtitle}>{subtitle}</p>}
+    </div>
+  );
+};
