@@ -81,11 +81,11 @@ const PRODUCTS: ProductInfo[] = [
     purchaseContents: "17 monochrome stickers on holographic backing.",
     description: (
       <p>
-        I'm a big fan of Ernst Haeckel&apos;s lithographs{" "}
-        <em>(and not a fan of his racism)</em>. Here's one of my favorite plates
-        from <strong>Kunstformen der Natur</strong> in holographic sticker form:{" "}
+        I&rsquo;m a big fan of Ernst Haeckel&rsquo;s lithographs. Here&rsquo;s
+        one of my favorite plates from <strong>Kunstformen der Natur</strong> in
+        holographic sticker form:{" "}
         <a href="https://commons.wikimedia.org/wiki/Kunstformen_der_Natur#/media/File:Haeckel_Hexacoralla.jpg">
-          "Plate 26: Hexacoralla"
+          &ldquo;Plate 26: Hexacoralla&rdquo;
         </a>
         .
       </p>
@@ -103,10 +103,10 @@ const PRODUCTS: ProductInfo[] = [
     purchaseContents: "15 monochrome stickers on holographic backing.",
     description: (
       <p>
-        Here&apos;s another of Ernst Haeckel's lithographs from{" "}
+        Here&rsquo;s another of Ernst Haeckel&rsquo;s lithographs from{" "}
         <strong>Kunstformen der Natur</strong> in holographic sticker form:{" "}
         <a href="https://commons.wikimedia.org/wiki/Kunstformen_der_Natur#/media/File:Haeckel_Tetracoralla.jpg">
-          "Plate 29: Tetracoralla"
+          &ldquo;Plate 29: Tetracoralla&rdquo;
         </a>
         .
       </p>
