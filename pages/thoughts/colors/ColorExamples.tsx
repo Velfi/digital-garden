@@ -20,7 +20,7 @@ let examples = [
   "coastline",
 ];
 
-const ColorExamples = () => (
+const ColorExamples: React.FC = () => (
   <>
     <em>Scallops</em>
     <div className="flex-wrap-container">

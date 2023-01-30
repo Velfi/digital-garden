@@ -75,8 +75,7 @@ p,
 ul,
 ol,
 pre,
-table,
-blockquote {
+table {
   margin-top: 0rem;
   margin-bottom: 1.5rem;
 }
@@ -87,6 +86,10 @@ ul ol,
 ol ul {
   margin-top: 0rem;
   margin-bottom: 0rem;
+}
+
+blockquote {
+  margin: 0.25rem 0 0.25 2rem;
 }
 
 /* Let's make sure all's aligned */
@@ -165,25 +168,9 @@ body.light-mode a:visited {
   color: #136433;
 }
 
-/* img {
-  max-width: 100%;
-  display: block;
-} */
-
-.nextImageWrapper {
-  text-align: center;
-}
-
 .footnotes {
   font-size: 0.8rem;
   line-height: 1.25rem;
-}
-
-.nextImageSubtitle {
-  font-style: italic;
-  text-align: left;
-  margin: 0 0 0.2rem 0.2rem;
-  font-size: 0.9rem;
 }
 
 /*

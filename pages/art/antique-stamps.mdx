@@ -1,9 +1,11 @@
-import { Image } from "@/components/Image";
-import FlowerStampRefined from "@/components/stamps/flower-refined";
-import FlowerStampRough from "@/components/stamps/flower-rough";
-import VinesStampRough from "@/components/stamps/vines-rough";
-import HorseStamp from "@/components/stamps/horse";
-import PeacockStamp from "@/components/stamps/peacock";
+import { Image } from "@/components";
+import {
+  FlowerStampRefined,
+  FlowerStampRough,
+  VinesStampRough,
+  HorseStamp,
+  PeacockStamp,
+} from "@/components/stamps";
 
 # Antique stamps converted to SVG
 
@@ -14,11 +16,10 @@ My mother sent me some antique wooden stamps a little while back. I don't stamp 
 <Image
   src="/images/wooden-stamps/flower.jpg"
   alt="photo of a wooden flower stamp"
-  width="1200"
-  height="800"
 />
 
 <FlowerStampRefined />
+
 <p>
   <a href="/images/wooden-stamps/flower-refined.svg">
     download refined version
@@ -26,6 +27,7 @@ My mother sent me some antique wooden stamps a little while back. I don't stamp 
 </p>
 
 <FlowerStampRough />
+
 <p>
   <a href="/images/wooden-stamps/flower-rough.svg">download rough version</a>
 </p>
@@ -35,8 +37,6 @@ My mother sent me some antique wooden stamps a little while back. I don't stamp 
 <Image
   src="/images/wooden-stamps/peacock.jpg"
   alt="photo of a wooden peacock stamp"
-  width="1200"
-  height="800"
 />
 <PeacockStamp />
 
@@ -49,8 +49,6 @@ My mother sent me some antique wooden stamps a little while back. I don't stamp 
 <Image
   src="/images/wooden-stamps/horse.jpg"
   alt="photo of a wooden horse stamp"
-  width="1200"
-  height="800"
 />
 <HorseStamp />
 
@@ -63,9 +61,8 @@ My mother sent me some antique wooden stamps a little while back. I don't stamp 
 <Image
   src="/images/wooden-stamps/vines.jpg"
   alt="photo of a wooden vines stamp"
-  width="1200"
-  height="800"
 />
+{/* There are two so the tiling of the stamp is more apparent */}
 <VinesStampRough />
 <VinesStampRough />
 

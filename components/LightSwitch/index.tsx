@@ -5,7 +5,7 @@ import styles from "./styles.module.css";
 const lightMode = "lightMode";
 const darkMode = "darkMode";
 
-const LightSwitch = () => {
+export const LightSwitch: React.FC = () => {
   const domDocument = useRef<Document | undefined>(undefined);
   const [displayMode, setDisplayMode] = useLocalStorage(
     "displayMode",
@@ -47,8 +47,6 @@ const LightSwitch = () => {
     </button>
   );
 };
-
-export default LightSwitch;
 
 // credit to https://usehooks.com/useLocalStorage/
 function useLocalStorage(key: string, initialValue: string) {

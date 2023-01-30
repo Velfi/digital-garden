@@ -1,5 +1,6 @@
+import { PropsWithChildren } from "react";
 import styles from "./StoreFront.module.css";
 
-export default function StoreFront({ children }) {
+export const StoreFront: React.FC<PropsWithChildren> = ({ children }) => {
   return <div className={styles.grid}>{children}</div>;
 }

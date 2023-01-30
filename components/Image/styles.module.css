@@ -2,8 +2,16 @@
   height: auto;
   display: block;
   margin: 0 auto;
+  max-width: 100%;
 }
 
 .container {
   margin-bottom: 1rem;
+}
+
+.subtitle {
+  font-style: italic;
+  text-align: left;
+  margin: 0 0 0.2rem 0.2rem;
+  font-size: 0.9rem;
 }

@@ -5,7 +5,7 @@ function degToRad(degrees: number) {
   return degrees * (Math.PI / 180);
 }
 
-const CircleScales = () => {
+const CircleScales: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const draw = (ctx: CanvasRenderingContext2D) => {

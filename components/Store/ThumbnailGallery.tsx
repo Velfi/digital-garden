@@ -6,7 +6,7 @@ interface Props {
   images: string[];
 }
 
-export default function ThumbnailGallery({ images }: Props) {
+export const ThumbnailGallery: React.FC<Props> = ({ images }) => {
   if (images.length == 0) {
     throw Error("must pass at least one image to Thumbnail Gallery!");
   }
@@ -35,10 +35,6 @@ export default function ThumbnailGallery({ images }: Props) {
     <div className={styles.gallery}>
       <Image
         src={images[imageIndex]}
-        alt="Alice"
-        width="800"
-        height="800"
-        layout="responsive"
       />
       <button
         className={[styles.indexButton, styles.left].join(" ")}

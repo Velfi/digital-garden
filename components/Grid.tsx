@@ -1,9 +1,17 @@
-export default function Grid({
+import { PropsWithChildren } from "react";
+
+interface Props {
+  rows?: string;
+  columns?: string;
+  gap?: string;
+}
+
+export const Grid: React.FC<PropsWithChildren<Props>> = ({
   children,
   rows,
   columns = "repeat(2, 1fr)",
-  gap = "1rem"
-}) {
+  gap = "1rem",
+}) => {
   const style = {
     display: "grid",
     gap: gap,
@@ -11,7 +19,5 @@ export default function Grid({
     gridTemplateColumns: columns,
   };
 
-  return (<div style={style}>
-    {children}
-  </div>)
-}
+  return <div style={style}>{children}</div>;
+};

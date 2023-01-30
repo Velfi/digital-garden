@@ -2,16 +2,16 @@ import "@/styles/global.css";
 import "@/styles/hljs-gruvbox-dark-hard.css";
 
 import dynamic from "next/dynamic";
-import AnchorTag from "@/components/AnchorTag";
+import { AnchorTag, Layout, VerticalSpacer } from "@/components";
 import type { AppProps } from "next/app";
-import { Image, ImageProps } from "@/components/Image";
-import Layout from "@/components/Layout";
 import { MDXProvider } from "@mdx-js/react";
-import VerticalSpacer from "@/components/VerticalSpacer";
 
-const LightSwitch = dynamic(() => import("@/components/LightSwitch"), {
-  ssr: false,
-});
+const LightSwitch = dynamic(
+  () => import("@/components").then((mod) => mod.LightSwitch),
+  {
+    ssr: false,
+  }
+);
 
 const mdComponents = {
   a: (props: any) => <AnchorTag {...props} />,
