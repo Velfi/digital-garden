@@ -1,6 +1,6 @@
 const siteConfig = {
-  title: "Digital Garden by Zelda",
-  description: "A digital garden built by Zelda using Foam and NextJS with MDX",
+  title: "Zelda's Digital Garden",
+  description: "A digital garden built by me (Zelda) using NextJS with MDX. I share my thoughts, projects, and art here.",
   author: "Zelda Hessler",
 };
 
