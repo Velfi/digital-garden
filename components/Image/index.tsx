@@ -6,6 +6,8 @@ export interface Props {
   subtitle?: string;
   src: string | StaticImageData;
   alt?: string;
+  height?: number;
+  width?: number;
 }
 
 export const Image: React.FC<Props> = ({
@@ -18,15 +20,17 @@ export const Image: React.FC<Props> = ({
   let isSvg;
 
   if (typeof src === "string") {
-    isSvg = src.endsWith(".svg");
+    isSvg = src.endsWith(".svg") || src.startsWith("data:image/svg+xml");
   } else {
-    isSvg = (src as any).src.endsWith(".svg");
+    isSvg =
+      src.src.endsWith(".svg") || src.src.startsWith("data:image/svg+xml");
   }
 
   return (
     <div className={styles.container}>
       <NextImage
         src={src}
+        title={alt}
         alt={alt}
         className={cn(styles.image, { svgFilter: isSvg })}
         {...props}
