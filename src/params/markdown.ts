@@ -12,6 +12,7 @@ const postsAllowlist = [
   'fun-with-large-language-models',
   'iching',
   'manuals',
+  'neat-internet',
   'patches',
   'piano-bookmarks',
   'plotlings',
