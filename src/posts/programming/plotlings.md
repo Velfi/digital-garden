@@ -1,7 +1,7 @@
 ---
-title: 'Plotter Art Generation Suite'
-description: 'A collection of art generators that can export SVGs. I purchased an AxiDraw V3 and it's been a lot of fun. Feel free to use these generators to make your own art.'
-keywords: 'plotter, art, svg, rust'
+title: Plotter Art Generation Suite
+description: A collection of art generators that can export SVGs. I purchased an AxiDraw V3 and its been a lot of fun. Feel free to use these generators to make your own art.
+keywords: plotter, art, svg, rust
 ---
 
 The source code is available on [GitHub]

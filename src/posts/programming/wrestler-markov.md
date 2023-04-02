@@ -1,7 +1,7 @@
 ---
-title: 'I created a Wrestler'
-description: 'A Twitter bot that generates random wrestling promos from a fictional wrestler.'
-keywords: 'twitter, markov chain, python, programming'
+title: I created a Wrestler
+description: A Twitter bot that generates random wrestling promos from a fictional wrestler.
+keywords: twitter, markov chain, python, programming
 ---
 
 _His name is [Mitch Ragnarok](https://twitter.com/MitchRagnarok)_
@@ -79,7 +79,7 @@ for i in range(1,1243):
         # Remove any random double quotes
         decoded_page_text = re.sub(r'"', '', decoded_page_text)
         # Fix missing whitespace at beginning of some sentences
-        decoded_page_text = re.sub('([a-z]|\s?)([.,?!])([A-Z])', r'\1\2 \3', decoded_page_text)
+        decoded_page_text = re.sub('([a-z]|\s?)([.,?!])([A-Z])', r'\\1\\2 \\3', decoded_page_text)
         # Turn ... into an ellipse
         decoded_page_text = re.sub(r'\s?\.\.\.|\s?\.\s\.', '\u2026', decoded_page_text)
         # append the formatted promo to the big list

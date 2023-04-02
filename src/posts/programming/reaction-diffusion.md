@@ -1,7 +1,7 @@
 ---
-title: 'Gray Scott Reaction Diffusion Simulation'
-description: 'A Rust implementation of a reaction diffusion simulation.'
-keywords: 'reaction diffusion, rust, programming'
+title: Gray Scott Reaction Diffusion Simulation
+description: A Rust implementation of a reaction diffusion simulation.
+keywords: reaction diffusion, rust, programming
 ---
 
 The source code is available on [GitHub].

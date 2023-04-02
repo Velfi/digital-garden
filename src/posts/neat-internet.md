@@ -39,4 +39,3 @@ The web ain't all good but it ain't all bad neither
 
 - [Senator Ted Stevens explains the internet](https://youtu.be/lTonHRerMC4)
 - [The Expert](https://youtu.be/BKorP55Aqvg)
--

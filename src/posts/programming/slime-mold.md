@@ -1,6 +1,6 @@
 ---
-title: 'Slime Mold (Physarum) Simulation'
-description: 'A Rust implementation of a slime mold simulation.'
+title: Slime Mold (Physarum) Simulation
+description: A Rust implementation of a slime mold simulation.
 keywords: slime mold, rust, programming, physarum
 ---
 

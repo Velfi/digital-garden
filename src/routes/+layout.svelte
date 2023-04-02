@@ -1,6 +1,6 @@
 <script lang="ts">
   import './styles.scss';
-  import './hljs-gruvbox-dark-hard.css';
+  import './prism-gruvbox-dark.css';
   import { darkMode, displayMode, lightMode } from '$lib/stores/displayMode';
   import Header from '$lib/components/Header.svelte';
 

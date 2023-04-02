@@ -61,7 +61,7 @@
     <li><a href="http://tesseract.page">tessarine</a> <i>(currently defunct)</i></li>
     <li><a href="https://athanasi.us">thatzopoulos</a></li>
     <li><a href="http://garden.nekomorphism.com">nekomorphism</a></li>
-    <li><a href="thoughts/neat-internet">Neat things the internet exposed me to</a></li>
+    <li><a href="neat-internet">Neat things the internet exposed me to</a></li>
   </ul>
 
   <h2>My Store</h2>

@@ -1,7 +1,7 @@
 ---
-title: 'Visualizing dimensional noise algorithms'
-description: 'A Rust app for visualizing dimensional noise algorithms'
-keywords: 'noise, rust, programming'
+title: Visualizing dimensional noise algorithms
+description: A Rust app for visualizing dimensional noise algorithms
+keywords: noise, rust, programming
 ---
 
 The source code is available on [GitHub]
