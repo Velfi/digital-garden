@@ -1,7 +1,7 @@
 ---
 title: Time off between jobs
-description: "A chronicle of my 24 days between jobs. In the post I talk about my goals for the time off, what I learned, and what I accomplished."
-keywords: "time off, job, rust, druid, plotlings, music"
+description: 'A chronicle of my 24 days between jobs. In the post I talk about my goals for the time off, what I learned, and what I accomplished.'
+keywords: 'time off, job, rust, druid, plotlings, music'
 ---
 
 On August 20th, 2021 I left my job at Tempus for a job at AWS working on the AWS Rust SDK. In the between, I took 24 days for leisure time and personal projects. This page is a chronicle of that period.
@@ -106,8 +106,8 @@ Before I had internalized this, I ran into some roadblocks with widgets that did
 I made a good amount of progress over the weekend and have actually taken a liking to Druid in spite of my confusion.
 
 ![Gunpey game dev progress example depicting results of a partially-correct graph algorithm](/images/thoughts/24-days-between-jobs/gunpey-in-progress-1.png)
-<p class="image-subtitle">The graph algorithm is having some trouble</p>
 
+<p class="image-subtitle">The graph algorithm is having some trouble</p>
 
 I've added a start screen and a game screen to the app. The game screen has a few buttons for testing the score meter and adding rows to the game board.
 Grid cells can be swapped and connections are usually calculated correctly although it also misses a few valid connections in the above screenshot.
@@ -139,6 +139,7 @@ The graph algorithm for determining connection is now fully working and correct:
 The breakthrough that made this possible was focusing on the grid as a bunch of corners. Focusing on the cells alone made it easy to reason about cells that formed a chain between the left and right sides but it made considering how the cells were actually connected difficult. Changing the focus to the corners of cells made it possible to focus on that important missing piece.
 
 ![Gunpey graph explainer](/images/thoughts/24-days-between-jobs/gunpey_graph_explainer_1.svg)
+
 <p class="image-subtitle">in the corner-wise diagram, it's easy to see the unconnected end at (3,2)</p>
 
 My friend Tess was instrumental in creating the final algorithm based on this method. I'll write about exactly how it works as part of a separate tutorial article.

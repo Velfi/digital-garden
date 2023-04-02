@@ -1,21 +1,21 @@
 <script>
-  import ZLH03822Small from '$lib/assets/images/wallpapers/2022/ZLH03822.png?w=650';
-  import ZLH03843Small from '$lib/assets/images/wallpapers/2022/ZLH03843.png?w=650';
-  import ZLH03850Small from '$lib/assets/images/wallpapers/2022/ZLH03850.png?w=650';
-  import ZLH04841Small from '$lib/assets/images/wallpapers/2022/ZLH04841.png?w=650';
-  import ZLH04872Small from '$lib/assets/images/wallpapers/2022/ZLH04872.png?w=650';
-  import ZLH06630Small from '$lib/assets/images/wallpapers/2022/ZLH06630.png?w=650';
-  import ZLH07304v1Small from '$lib/assets/images/wallpapers/2022/ZLH07304v1.png?w=650';
-  import ZLH07317v1Small from '$lib/assets/images/wallpapers/2022/ZLH07317v1.png?w=650';
-  import ZLH07346Small from '$lib/assets/images/wallpapers/2022/ZLH07346.png?w=650';
-  import ZLH07364v1Small from '$lib/assets/images/wallpapers/2022/ZLH07364v1.png?w=650';
-  import ZLH07377v1Small from '$lib/assets/images/wallpapers/2022/ZLH07377v1.png?w=650';
-  import ZLH07395Small from '$lib/assets/images/wallpapers/2022/ZLH07395.png?w=650';
-  import ZLH07422Small from '$lib/assets/images/wallpapers/2022/ZLH07422.png?w=650';
-  import ZLH07450v1Small from '$lib/assets/images/wallpapers/2022/ZLH07450v1.png?w=650';
-  import ZLH07492Small from '$lib/assets/images/wallpapers/2022/ZLH07492.png?w=650';
-  import ZLH07561Small from '$lib/assets/images/wallpapers/2022/ZLH07561.png?w=650';
-  import ZLH07563Small from '$lib/assets/images/wallpapers/2022/ZLH07563.png?w=650';
+  import ZLH03822Small from '$lib/assets/images/wallpapers/2022/ZLH03822.png?w=650&imagetools';
+  import ZLH03843Small from '$lib/assets/images/wallpapers/2022/ZLH03843.png?w=650&imagetools';
+  import ZLH03850Small from '$lib/assets/images/wallpapers/2022/ZLH03850.png?w=650&imagetools';
+  import ZLH04841Small from '$lib/assets/images/wallpapers/2022/ZLH04841.png?w=650&imagetools';
+  import ZLH04872Small from '$lib/assets/images/wallpapers/2022/ZLH04872.png?w=650&imagetools';
+  import ZLH06630Small from '$lib/assets/images/wallpapers/2022/ZLH06630.png?w=650&imagetools';
+  import ZLH07304v1Small from '$lib/assets/images/wallpapers/2022/ZLH07304v1.png?w=650&imagetools';
+  import ZLH07317v1Small from '$lib/assets/images/wallpapers/2022/ZLH07317v1.png?w=650&imagetools';
+  import ZLH07346Small from '$lib/assets/images/wallpapers/2022/ZLH07346.png?w=650&imagetools';
+  import ZLH07364v1Small from '$lib/assets/images/wallpapers/2022/ZLH07364v1.png?w=650&imagetools';
+  import ZLH07377v1Small from '$lib/assets/images/wallpapers/2022/ZLH07377v1.png?w=650&imagetools';
+  import ZLH07395Small from '$lib/assets/images/wallpapers/2022/ZLH07395.png?w=650&imagetools';
+  import ZLH07422Small from '$lib/assets/images/wallpapers/2022/ZLH07422.png?w=650&imagetools';
+  import ZLH07450v1Small from '$lib/assets/images/wallpapers/2022/ZLH07450v1.png?w=650&imagetools';
+  import ZLH07492Small from '$lib/assets/images/wallpapers/2022/ZLH07492.png?w=650&imagetools';
+  import ZLH07561Small from '$lib/assets/images/wallpapers/2022/ZLH07561.png?w=650&imagetools';
+  import ZLH07563Small from '$lib/assets/images/wallpapers/2022/ZLH07563.png?w=650&imagetools';
 
   import ZLH03822Full from '$lib/assets/images/wallpapers/2022/ZLH03822.png';
   import ZLH03843Full from '$lib/assets/images/wallpapers/2022/ZLH03843.png';

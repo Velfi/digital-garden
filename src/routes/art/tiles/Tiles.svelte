@@ -21,12 +21,10 @@
       return;
     }
 
-    let frameCount = 0;
     let animationFrameId: number;
 
     const render = () => {
-      frameCount++;
-      draw(context, frameCount);
+      draw(context);
       animationFrameId = window.requestAnimationFrame(render);
     };
     render();
@@ -38,7 +36,7 @@
 
   onDestroy(unsubscribe);
 
-  const draw = (ctx: CanvasRenderingContext2D, _frameCount: number) => {
+  const draw = (ctx: CanvasRenderingContext2D) => {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     ctx.strokeStyle = hsluvToHex([0, 0, 255]);
     const origin: [number, number] = [1, 1];

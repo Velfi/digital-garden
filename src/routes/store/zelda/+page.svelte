@@ -22,10 +22,7 @@
 
 <svelte:head>
   <title>Zelda's Store</title>
-  <meta
-    name="description"
-    content="Zelda's personal store. She sells stickers."
-  />
+  <meta name="description" content="Zelda's personal store. She sells stickers." />
   <meta name="keywords" content="zelda, store, stickers" />
 </svelte:head>
 

@@ -1,17 +1,17 @@
 <script>
-  import ZLH07694Small from '$lib/assets/images/wallpapers/2023/ZLH07694.png?w=650';
-  import ZLH07704Small from '$lib/assets/images/wallpapers/2023/ZLH07704.png?w=650';
-  import ZLH07747Small from '$lib/assets/images/wallpapers/2023/ZLH07747.png?w=650';
-  import ZLH07763Small from '$lib/assets/images/wallpapers/2023/ZLH07763.png?w=650';
-  import ZLH07773Small from '$lib/assets/images/wallpapers/2023/ZLH07773.png?w=650';
-  import ZLH07814Small from '$lib/assets/images/wallpapers/2023/ZLH07814.png?w=650';
-  import ZLH07820Small from '$lib/assets/images/wallpapers/2023/ZLH07820.png?w=650';
-  import ZLH07872Small from '$lib/assets/images/wallpapers/2023/ZLH07872.png?w=650';
-  import ZLH07882Small from '$lib/assets/images/wallpapers/2023/ZLH07882.png?w=650';
-  import ZLH07891v1Small from '$lib/assets/images/wallpapers/2023/ZLH07891v1.png?w=650';
-  import ZLH07978Small from '$lib/assets/images/wallpapers/2023/ZLH07978.png?w=650';
-  import ZLH07996Small from '$lib/assets/images/wallpapers/2023/ZLH07996.png?w=650';
-  import ZLH08032Small from '$lib/assets/images/wallpapers/2023/ZLH08032.png?w=650';
+  import ZLH07694Small from '$lib/assets/images/wallpapers/2023/ZLH07694.png?w=650&imagetools';
+  import ZLH07704Small from '$lib/assets/images/wallpapers/2023/ZLH07704.png?w=650&imagetools';
+  import ZLH07747Small from '$lib/assets/images/wallpapers/2023/ZLH07747.png?w=650&imagetools';
+  import ZLH07763Small from '$lib/assets/images/wallpapers/2023/ZLH07763.png?w=650&imagetools';
+  import ZLH07773Small from '$lib/assets/images/wallpapers/2023/ZLH07773.png?w=650&imagetools';
+  import ZLH07814Small from '$lib/assets/images/wallpapers/2023/ZLH07814.png?w=650&imagetools';
+  import ZLH07820Small from '$lib/assets/images/wallpapers/2023/ZLH07820.png?w=650&imagetools';
+  import ZLH07872Small from '$lib/assets/images/wallpapers/2023/ZLH07872.png?w=650&imagetools';
+  import ZLH07882Small from '$lib/assets/images/wallpapers/2023/ZLH07882.png?w=650&imagetools';
+  import ZLH07891v1Small from '$lib/assets/images/wallpapers/2023/ZLH07891v1.png?w=650&imagetools';
+  import ZLH07978Small from '$lib/assets/images/wallpapers/2023/ZLH07978.png?w=650&imagetools';
+  import ZLH07996Small from '$lib/assets/images/wallpapers/2023/ZLH07996.png?w=650&imagetools';
+  import ZLH08032Small from '$lib/assets/images/wallpapers/2023/ZLH08032.png?w=650&imagetools';
 
   import ZLH07694Full from '$lib/assets/images/wallpapers/2023/ZLH07694.png';
   import ZLH07704Full from '$lib/assets/images/wallpapers/2023/ZLH07704.png';
@@ -37,6 +37,8 @@
     content="Wallpapers made from my 2023 photos. The year isn't over yet, so this is still an ongoing project. I'll be adding more as I take them."
   />
   <meta name="keywords" content="wallpapers, 2023, photos" />
+</svelte:head>
+
 <h1>2023 Wallpapers</h1>
 
 <p>

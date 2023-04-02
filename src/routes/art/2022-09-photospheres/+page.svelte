@@ -14,7 +14,10 @@
 
 <svelte:head>
   <title>September '22 Photo Spheres</title>
-  <meta name="description" content="Photo sphere images taken with my GoPro Max in September 2022." />
+  <meta
+    name="description"
+    content="Photo sphere images taken with my GoPro Max in September 2022."
+  />
   <meta name="keywords" content="photography, photosphere, gopro, gopro max" />
 </svelte:head>
 

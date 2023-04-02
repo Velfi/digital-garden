@@ -1,12 +1,12 @@
 <script>
-  import AliceSmall from '$lib/assets/images/wallpapers/smt/Alice.png?w=650';
-  import AlrauneSmall from '$lib/assets/images/wallpapers/smt/Alraune.png?w=650';
-  import HecateSmall from '$lib/assets/images/wallpapers/smt/Hecate.png?w=650';
-  import ParvatiSmall from '$lib/assets/images/wallpapers/smt/Parvati.png?w=650';
-  import MabSmall from '$lib/assets/images/wallpapers/smt/Queen_Mab.png?w=650';
-  import SeiryuSmall from '$lib/assets/images/wallpapers/smt/Seiryu.png?w=650';
-  import SmtIISmall from '$lib/assets/images/wallpapers/smt/smtii.png?w=650';
-  import TiamatSmall from '$lib/assets/images/wallpapers/smt/Tiamat.png?w=650';
+  import AliceSmall from '$lib/assets/images/wallpapers/smt/Alice.png?w=650&imagetools';
+  import AlrauneSmall from '$lib/assets/images/wallpapers/smt/Alraune.png?w=650&imagetools';
+  import HecateSmall from '$lib/assets/images/wallpapers/smt/Hecate.png?w=650&imagetools';
+  import ParvatiSmall from '$lib/assets/images/wallpapers/smt/Parvati.png?w=650&imagetools';
+  import MabSmall from '$lib/assets/images/wallpapers/smt/Queen_Mab.png?w=650&imagetools';
+  import SeiryuSmall from '$lib/assets/images/wallpapers/smt/Seiryu.png?w=650&imagetools';
+  import SmtIISmall from '$lib/assets/images/wallpapers/smt/smtii.png?w=650&imagetools';
+  import TiamatSmall from '$lib/assets/images/wallpapers/smt/Tiamat.png?w=650&imagetools';
 
   import AliceFull from '$lib/assets/images/wallpapers/smt/Alice.png';
   import AlrauneFull from '$lib/assets/images/wallpapers/smt/Alraune.png';

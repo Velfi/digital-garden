@@ -1,8 +1,8 @@
 <script>
-  import FlowerStampPhoto from '$lib/assets/images/wooden-stamps/flower.jpg?w=650';
-  import PeacockStampPhoto from '$lib/assets/images/wooden-stamps/peacock.jpg?w=650';
-  import HorseStampPhoto from '$lib/assets/images/wooden-stamps/horse.jpg?w=650';
-  import VinesStampPhoto from '$lib/assets/images/wooden-stamps/vines.jpg?w=650';
+  import FlowerStampPhoto from '$lib/assets/images/wooden-stamps/flower.jpg?w=650&imagetools';
+  import PeacockStampPhoto from '$lib/assets/images/wooden-stamps/peacock.jpg?w=650&imagetools';
+  import HorseStampPhoto from '$lib/assets/images/wooden-stamps/horse.jpg?w=650&imagetools';
+  import VinesStampPhoto from '$lib/assets/images/wooden-stamps/vines.jpg?w=650&imagetools';
 
   import VinesStampRough from './VinesStampRough.svelte';
   import PeacockStamp from './PeacockStamp.svelte';
@@ -13,7 +13,10 @@
 
 <svelte:head>
   <title>Antique stamps converted to SVG</title>
-  <meta name="description" content="My mother sent me some antique wooden stamps a little while back. I don't stamp things so they just sat on my curio shelf for the longest time. But then I thought of turning them into SVGs." />
+  <meta
+    name="description"
+    content="My mother sent me some antique wooden stamps a little while back. I don't stamp things so they just sat on my curio shelf for the longest time. But then I thought of turning them into SVGs."
+  />
   <meta name="keywords" content="wooden stamps, svg, svelte" />
 </svelte:head>
 
