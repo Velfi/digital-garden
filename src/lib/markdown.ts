@@ -7,7 +7,7 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeStringify from 'rehype-stringify';
 import remarkRehype from 'remark-rehype';
 import rehypeSlug from 'rehype-slug';
-import vfile from 'to-vfile';
+import { readSync } from 'to-vfile';
 import yaml from 'js-yaml';
 import { unified } from 'unified';
 
@@ -86,7 +86,7 @@ const runner = unified()
   .use(rehypeStringify);
 
 export function process(filename: string) {
-  const tree = parser.parse(vfile.readSync(filename));
+  const tree = parser.parse(readSync(filename));
   let metadata = null;
   if (tree.children.length > 0 && tree.children[0].type == 'yaml') {
     metadata = yaml.load(tree.children[0].value);

@@ -52,12 +52,12 @@
 
   .index-button.left {
     left: 0;
-    cursor: url('/left-arrow.cur'), pointer;
+    cursor: url('../../assets/left-arrow.cur'), pointer;
   }
 
   .index-button.right {
     right: 0;
-    cursor: url('/right-arrow.cur'), pointer;
+    cursor: url('../../assets/right-arrow.cur'), pointer;
   }
 
   .new-tab-button {
