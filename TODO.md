@@ -1,2 +1,2 @@
-- Fix iching
-- Update image subtitle to stick to image
+- Figure out how to embed twitter posts in markdown
+- Figure out how to embed youtube videos in markdown properly so that I don't have to write those posts as svelte pages.

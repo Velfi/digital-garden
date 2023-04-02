@@ -1,0 +1,281 @@
+* {
+  box-sizing: border-box;
+}
+
+/* begin gridlover perfect fourth scale */
+html,
+.root {
+  font-size: 18px;
+  line-height: 20px;
+}
+
+body {
+  font-family: 'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
+    Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+  font-size: 1rem;
+  line-height: 1.1111111rem;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
+
+code {
+  font-family: 'Fira Code', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', 'Courier New', Courier,
+    monospace;
+  font-size: inherit;
+  font-size: 90%;
+}
+
+h1,
+.h1 {
+  font-size: 4.2222222rem;
+  line-height: 4.4444444rem;
+  margin-top: 1.1111111rem;
+  margin-bottom: 2.2222222rem;
+}
+
+h2,
+.h2 {
+  font-size: 2.6111111rem;
+  line-height: 3.3333333rem;
+  margin-top: 1.1111111rem;
+  margin-bottom: 1.1111111rem;
+}
+
+h3,
+.h3 {
+  font-size: 1.6111111rem;
+  line-height: 2.2222222rem;
+  margin-top: 1.1111111rem;
+  margin-bottom: 0rem;
+}
+
+h4,
+.h4 {
+  font-size: 1rem;
+  line-height: 1.1111111rem;
+  margin-top: 1.1111111rem;
+  margin-bottom: 0rem;
+}
+
+h5,
+.h5 {
+  font-size: 1rem;
+  line-height: 1.1111111rem;
+  margin-top: 1.1111111rem;
+  margin-bottom: 0rem;
+}
+
+p,
+ul,
+ol,
+pre,
+table,
+blockquote {
+  margin-top: 0rem;
+  margin-bottom: 1.1111111rem;
+}
+
+ul ul,
+ol ol,
+ul ol,
+ol ul {
+  margin-top: 0rem;
+  margin-bottom: 0rem;
+}
+
+/* Let's make sure all's aligned */
+hr,
+.hr {
+  border: 1px solid;
+  margin: -1px 0;
+}
+
+sub,
+sup {
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+sup {
+  top: -0.5em;
+}
+
+sub {
+  bottom: -0.25em;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 700;
+  text-align: left;
+}
+
+li > p {
+  margin-bottom: 0;
+}
+
+// Cozy up ULs with preceding paragraphs
+p + ul {
+  margin-top: -1rem;
+}
+
+p.center {
+  text-align: center;
+}
+
+p.right {
+  text-align: right;
+}
+
+p.image-subtitle {
+  font-style: italic;
+  margin-top: -1rem;
+  text-align: center;
+}
+
+ul ul,
+ol ol,
+ul ol,
+ol ul {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+blockquote {
+  margin: 0 1rem 1.5rem;
+  background-color: var(--block-quote-bg-color);
+  padding: 0.5rem 1rem;
+  border-radius: 3px;
+
+  & > *:last-child {
+    margin-bottom: 0;
+  }
+}
+
+/* Let's make sure all's aligned */
+hr,
+.hr {
+  border: 1px solid;
+  margin: 1rem 0;
+}
+
+sup {
+  top: -0.5em;
+}
+
+sub {
+  bottom: -0.25em;
+}
+/* end gridlover perfect fourth scale */
+
+table {
+  font-size: 85%;
+}
+
+th,
+td {
+  padding-right: 1rem;
+  border-bottom: 1px;
+}
+
+th {
+  text-align: left;
+}
+
+.container {
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.contains-task-list {
+  list-style-type: none;
+}
+
+.task-list-item input {
+  margin-left: -20px;
+}
+
+pre {
+  font-size: 0.9rem;
+}
+
+a {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+a:visited {
+  color: var(--link-visited-color);
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.footnotes {
+  font-size: 0.8rem;
+  line-height: 1.25rem;
+}
+
+img[src$='.svg'],
+img[src^='data:image/svg+xml'] {
+  filter: var(--svg-filter);
+}
+
+button {
+  background-color: unset;
+  border-color: var(--border-color);
+  border-radius: 3px;
+  border: 1px solid;
+  color: inherit;
+  font-size: inherit;
+  padding: 5px;
+  cursor: pointer;
+}
+
+input {
+  background-color: unset;
+  border-color: var(--border-color);
+  border-radius: 3px;
+  border: 1px solid;
+  color: inherit;
+  font-size: inherit;
+  padding: 5px;
+}
+
+.yellow {
+  color: var(--yellow-color);
+}
+
+.flex-wrap-container {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.flex-center-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.center {
+  text-align: center;
+}
+
+.post {
+  display: flex;
+  flex-direction: column;
+  max-width: 45rem;
+  margin: 0 auto;
+
+  img {
+    max-width: 80%;
+    margin: 0 auto;
+    display: block;
+  }
+}
