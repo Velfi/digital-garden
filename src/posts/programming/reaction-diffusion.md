@@ -11,7 +11,7 @@ The source code is available on [GitHub].
 > substances: local chemical reactions in which the substances are transformed into each other, and
 > diffusion which causes the substances to spread out over a surface in space.
 >
-> <p class="right"><i>from the [<a href="https://en.wikipedia.org/wiki/Reaction%E2%80%93diffusion_system">Reaction Diffusion System Wikipedia</a>] article</i></p>
+> <p class="right"><i>&mdash; <a href="https://en.wikipedia.org/wiki/Reaction%E2%80%93diffusion_system">Wikipedia</a></i></p>
 
 If that sounds like gibberish, just know that it's an algorithm for modeling the processes that
 create lots of natural patterns. To understand how the simulation works, imagine that you have a

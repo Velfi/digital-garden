@@ -1,6 +1,6 @@
-import StickerSet2LovelyLizardLadies1 from '$lib/assets/images/store/zelda/sticker-set-2-lovely-lizard-ladies-1.jpg';
-import StickerSet2LovelyLizardLadies2 from '$lib/assets/images/store/zelda/sticker-set-2-lovely-lizard-ladies-2.jpg';
-import StickerSet2LovelyLizardLadies3 from '$lib/assets/images/store/zelda/sticker-set-2-lovely-lizard-ladies-3.jpg';
+import StickerSet2LovelyLizardLadies1 from '$lib/assets/images/store/zelda/sticker-set-2-lovely-lizard-ladies-1.jpg?w=800&webp&imagetools';
+import StickerSet2LovelyLizardLadies2 from '$lib/assets/images/store/zelda/sticker-set-2-lovely-lizard-ladies-2.jpg?w=800&webp&imagetools';
+import StickerSet2LovelyLizardLadies3 from '$lib/assets/images/store/zelda/sticker-set-2-lovely-lizard-ladies-3.jpg?w=800&webp&imagetools';
 
 export const productInfo = {
   images: [

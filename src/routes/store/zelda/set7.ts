@@ -1,6 +1,6 @@
-import StickerSet4HaecklTetracorolla1 from '$lib/assets/images/store/zelda/sticker-set-7-haeckel-tetracorolla-1.jpg';
-import StickerSet4HaecklTetracorolla2 from '$lib/assets/images/store/zelda/sticker-set-7-haeckel-tetracorolla-2.jpg';
-import StickerSet4HaecklTetracorolla3 from '$lib/assets/images/store/zelda/sticker-set-7-haeckel-tetracorolla-3.jpg';
+import StickerSet4HaecklTetracorolla1 from '$lib/assets/images/store/zelda/sticker-set-7-haeckel-tetracorolla-1.jpg?w=800&webp&imagetools';
+import StickerSet4HaecklTetracorolla2 from '$lib/assets/images/store/zelda/sticker-set-7-haeckel-tetracorolla-2.jpg?w=800&webp&imagetools';
+import StickerSet4HaecklTetracorolla3 from '$lib/assets/images/store/zelda/sticker-set-7-haeckel-tetracorolla-3.jpg?w=800&webp&imagetools';
 
 export const productInfo = {
   images: [

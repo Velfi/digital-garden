@@ -1,6 +1,6 @@
-import StickerSet3HaecklHexacoralla1 from '$lib/assets/images/store/zelda/sticker-set-6-haeckel-hexacorolla-1.jpg';
-import StickerSet3HaecklHexacoralla2 from '$lib/assets/images/store/zelda/sticker-set-6-haeckel-hexacorolla-2.jpg';
-import StickerSet3HaecklHexacoralla3 from '$lib/assets/images/store/zelda/sticker-set-6-haeckel-hexacorolla-3.jpg';
+import StickerSet3HaecklHexacoralla1 from '$lib/assets/images/store/zelda/sticker-set-6-haeckel-hexacorolla-1.jpg?w=800&webp&imagetools';
+import StickerSet3HaecklHexacoralla2 from '$lib/assets/images/store/zelda/sticker-set-6-haeckel-hexacorolla-2.jpg?w=800&webp&imagetools';
+import StickerSet3HaecklHexacoralla3 from '$lib/assets/images/store/zelda/sticker-set-6-haeckel-hexacorolla-3.jpg?w=800&webp&imagetools';
 
 export const productInfo = {
   images: [

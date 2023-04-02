@@ -2,8 +2,6 @@
   import { hsluvToHex } from '$lib/hsluv';
   import { onDestroy, onMount } from 'svelte';
 
-  // export let height: string | number | null | undefined;
-  // export let width: string | number | null | undefined;
   let canvasRef: HTMLCanvasElement;
   const tileWidth = 240;
   const unit = tileWidth / 10;
@@ -139,3 +137,9 @@
 </script>
 
 <canvas bind:this={canvasRef} height={tileWidth + 2} width={tileWidth + 2} />
+
+<style>
+  canvas {
+    width: 33.33%;
+  }
+</style>

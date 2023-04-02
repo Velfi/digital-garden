@@ -1,6 +1,6 @@
-import StickerSet1AssortedDalle1 from '$lib/assets/images/store/zelda/sticker-set-1-assorted-dalle-1.jpg';
-import StickerSet1AssortedDalle2 from '$lib/assets/images/store/zelda/sticker-set-1-assorted-dalle-2.jpg';
-import StickerSet1AssortedDalle3 from '$lib/assets/images/store/zelda/sticker-set-1-assorted-dalle-3.jpg';
+import StickerSet1AssortedDalle1 from '$lib/assets/images/store/zelda/sticker-set-1-assorted-dalle-1.jpg?w=800&webp&imagetools';
+import StickerSet1AssortedDalle2 from '$lib/assets/images/store/zelda/sticker-set-1-assorted-dalle-2.jpg?w=800&webp&imagetools';
+import StickerSet1AssortedDalle3 from '$lib/assets/images/store/zelda/sticker-set-1-assorted-dalle-3.jpg?w=800&webp&imagetools';
 
 export const productInfo = {
   images: [StickerSet1AssortedDalle1, StickerSet1AssortedDalle2, StickerSet1AssortedDalle3],
