@@ -14,13 +14,13 @@
 </svelte:head>
 
 <main class="container">
-  <h1>Welcome to<br />the garden</h1>
-
-  <h2>About This Site</h2>
+  <h1>Welcome to the garden</h1>
 
   <div class="site-logo">
     <SiteLogo />
   </div>
+
+  <h2>About This Site</h2>
 
   <p>
     I was inspired by my friend <a href="https://athanasi.us">thatzopoulos</a> to cultivate a
@@ -163,5 +163,10 @@
     margin: 1rem 0rem 0.5rem 1rem;
     float: right;
     width: 30%;
+  }
+
+  .container {
+    display: block;
+    flex-direction: unset;
   }
 </style>

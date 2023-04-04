@@ -1,3 +1,3 @@
-<div class="post">
+<div class="container">
   <slot />
 </div>

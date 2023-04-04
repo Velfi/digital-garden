@@ -6,7 +6,7 @@
   div {
     display: flex;
     flex-direction: column;
-    max-width: 45rem;
+    max-width: 48rem;
     margin: 0 auto;
   }
 </style>

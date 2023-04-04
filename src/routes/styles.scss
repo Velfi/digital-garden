@@ -2,6 +2,10 @@
   box-sizing: border-box;
 }
 
+:root {
+  --container-width: 48rem;
+}
+
 /* begin gridlover perfect fourth scale */
 html,
 .root {
@@ -183,8 +187,16 @@ th {
 }
 
 .container {
-  max-width: 40rem;
+  display: flex;
+  flex-direction: column;
+  max-width: var(--container-width);
   margin: 0 auto;
+
+  img {
+    max-width: 80%;
+    margin: 0 auto;
+    display: block;
+  }
 }
 
 .contains-task-list {
@@ -260,17 +272,4 @@ input {
 
 .center {
   text-align: center;
-}
-
-.post {
-  display: flex;
-  flex-direction: column;
-  max-width: 45rem;
-  margin: 0 auto;
-
-  img {
-    max-width: 80%;
-    margin: 0 auto;
-    display: block;
-  }
 }
