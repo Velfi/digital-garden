@@ -131,6 +131,7 @@
 
   <h2>Thoughts</h2>
   <ul>
+    <li><a href="ai/ai-and-institutions">AI & Institutions</a></li>
     <li><a href="thoughts/24-days-between-jobs">Time off between jobs</a></li>
     <li><a href="thoughts/typing">On Typing</a></li>
     <li><a href="thoughts/colors">On Colors <em><small>(interactive)</small></em></a></li>
