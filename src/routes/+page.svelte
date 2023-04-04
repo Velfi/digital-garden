@@ -84,9 +84,9 @@
 
   <h3>Wallpapers</h3>
   <ul>
-    <li><a href="art/wallpapers/smt">Shin Megami Tensei Wallpapers</a></li>
-    <li><a href="art/wallpapers/2022">2022 Wallpapers</a></li>
-    <li><a href="art/wallpapers/2023">2023 Wallpapers</a></li>
+    <li><a href="art/smt-wallpapers">Shin Megami Tensei Wallpapers</a></li>
+    <li><a href="art/2022-wallpapers">2022 Wallpapers</a></li>
+    <li><a href="art/2023-wallpapers">2023 Wallpapers</a></li>
   </ul>
 
   <h2>Fonts</h2>

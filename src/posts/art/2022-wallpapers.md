@@ -1,3 +1,9 @@
+---
+title: 2022 Wallpapers
+description: Wallpapers I made from photos I took in 2022." />
+keywords: wallpapers, photos, 2022
+---
+
 <script>
   import ZLH03822Small from '$lib/assets/images/wallpapers/2022/ZLH03822.png?w=650&imagetools';
   import ZLH03843Small from '$lib/assets/images/wallpapers/2022/ZLH03843.png?w=650&imagetools';
@@ -38,21 +44,9 @@
   import WallpaperGallery from '$lib/components/WallpaperGallery.svelte';
 </script>
 
-<svelt:head>
-  <title>2022 Wallpapers</title>
-  <meta name="description" content="Wallpapers I made from photos I took in 2022." />
-  <meta name="keywords" content="wallpapers, photos, 2022" />
-</svelt:head>
+# {title}
 
-<h1>2022 Wallpapers</h1>
-
-<p>
-  Here are some wallpapers I made from my 2022 photos. Thanks to the Field Museum's
-  <a
-    href="https://fieldguides.fieldmuseum.org/sites/default/files/rapid-color-guides-pdfs/593_usa_chicago_summer_birds.pdf"
-    >"Common Summer Birds of Chicago" guide (PDF)</a
-  > for helping me identify the birds in the photos.
-</p>
+Here are some wallpapers I made from my 2022 photos. Thanks to the Field Museum's ["Common Summer Birds of Chicago" guide (PDF)](https://fieldguides.fieldmuseum.org/sites/default/files/rapid-color-guides-pdfs/593_usa_chicago_summer_birds.pdf) for helping me identify the birds in the photos.
 
 <WallpaperGallery
   images={[

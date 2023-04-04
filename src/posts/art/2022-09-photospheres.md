@@ -1,3 +1,9 @@
+---
+title: September '22 Photo Spheres
+description: Photo sphere images taken with my GoPro Max in September 2022.
+keywords: content="photography, photosphere, GoPro, GoPro max
+---
+
 <script>
   import GS__0013 from '$lib/assets/images/photospheres/2022-09/GS__0013.jpg';
   import GS__0016 from '$lib/assets/images/photospheres/2022-09/GS__0016.jpg';
@@ -12,22 +18,12 @@
   import PhotoSphere from '$lib/components/PhotoSphere.svelte';
 </script>
 
-<svelte:head>
-  <title>September '22 Photo Spheres</title>
-  <meta
-    name="description"
-    content="Photo sphere images taken with my GoPro Max in September 2022."
-  />
-  <meta name="keywords" content="photography, photosphere, gopro, gopro max" />
-</svelte:head>
+# {title}
 
-<h1>September '22 Photo Spheres</h1>
+*Taken with my GoPro Max.*
 
-<p><em>Taken with my GoPro Max.</em></p>
-<p>
-  I went to the Art Institute with Felicity and Amy. Felicity wanted to try out her new camera. She
-  says her pictures came out blurry.
-</p>
+I went to the Art Institute with Felicity and Amy. Felicity wanted to try out her new camera. She
+says her pictures came out blurry.
 
 <PhotoSphere panorama={GS__0013} caption="Viewing The Hen and The Wrestler" />
 <PhotoSphere panorama={GS__0016} caption="The Art Institute courtyard" />

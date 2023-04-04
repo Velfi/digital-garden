@@ -1,3 +1,10 @@
+---
+title: 2023 Wallpapers
+description:
+  Wallpapers made from my 2023 photos. The year isn't over yet, so this is still an ongoing project. I'll be adding more as I take them.
+keywords: wallpapers, 2023, photos
+---
+
 <script>
   import ZLH07694Small from '$lib/assets/images/wallpapers/2023/ZLH07694.png?w=650&imagetools';
   import ZLH07704Small from '$lib/assets/images/wallpapers/2023/ZLH07704.png?w=650&imagetools';
@@ -30,21 +37,9 @@
   import WallpaperGallery from '$lib/components/WallpaperGallery.svelte';
 </script>
 
-<svelte:head>
-  <title>2023 Wallpapers</title>
-  <meta
-    name="description"
-    content="Wallpapers made from my 2023 photos. The year isn't over yet, so this is still an ongoing project. I'll be adding more as I take them."
-  />
-  <meta name="keywords" content="wallpapers, 2023, photos" />
-</svelte:head>
+# {title}
 
-<h1>2023 Wallpapers</h1>
-
-<p>
-  Wallpapers made from my 2023 photos. The year isn't over yet, so this is still an ongoing project.
-  I'll be adding more as I take them.
-</p>
+Wallpapers made from my 2023 photos. The year isn't over yet, so this is still an ongoing project. I'll be adding more as I take them.
 
 <WallpaperGallery
   images={[

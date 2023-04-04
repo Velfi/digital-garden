@@ -17,6 +17,8 @@ import Spoilers from '$lib/components/Spoilers.svelte';
 
 My favorite character archetype, be they god or mortal, is the trickster. A trickster may survive by being strong and capable, but it is their cleverness that brings them victory. Even in stories where the trickster isn't the main character, I find myself focusing on them, and trying to figure out what their gambit is.
 
+Zardoz features one of my favorite trickster gods.
+
 ## What even is "Zardoz"?
 
 Zardoz opens with a floating, talking head named Arthur Frayn; A late addition by the writer/director John Boorman in an attempt to make the plot a bit clearer. After a short speech, the prologue cuts to the true first scene in the movie: another floating, talking head, although this one is gigantic and made of stone. It hovers over misty green hills before landing in front of a group of barbarian worshipers and shouting these outstanding lines:
@@ -43,11 +45,30 @@ In "Zardoz", Arthur Frayn is the trickster. Although he spends most of the movie
 
 His plan is a [Batman Gambit], i.e. his plan relies on all actors behaving just as they normally would. His being immortal also means that he can afford to be patient.
 
+## Things I love about this movie
+
+- The gay subtext between Arthur and Friend.
+- The psychedelic nature of the Tabernacle.
+- The silly hats the Eternals wear.
+- The green bread.
+- The fact that inflatables are such a big part of the set design that they credited the company that made them (Air Structures Design.)
+  - Based on [this article][Pink Floyd Behind The Scenes] and this [bio][Mark Fisher bio], both of which mention "Air Structures Design" as being founded by [Mark Fisher], I'm guessing we have him to thank for this.
+
 ## Into a world of eternal life, he brought the gift of death
 
 If you've never seen Zardoz, then I suggest you go watch it. In fact, you should so as a double feature with John Boorman's [Excalibur]. Let me know what you think. Hopefully, seeing Sean Connery in a bikini isn't too upsetting for you.
+
+## Links
+
+* [Watch the entire movie free, without ads](https://archive.org/details/zardoz-1974_202201)
+  * The internet archive is such a treasure.
+* [IMDB](https://www.imdb.com/title/tt0070917/)
+* [Quotes](https://en.wikiquote.org/wiki/Zardoz)
 
 [hall of mirrors]: https://tvtropes.org/pmwiki/pmwiki.php/Main/HallOfMirrors
 [Beethoven's 7th Symphony 2nd Movement]: https://www.youtube.com/watch?v=mgHxmAsINDk
 [Batman Gambit]: https://tvtropes.org/pmwiki/pmwiki.php/Main/BatmanGambit
 [Excalibur]: https://en.wikipedia.org/wiki/Excalibur_(film)
+[Pink Floyd Behind The Scenes]: https://www.designcurial.com/news/behind-the-scenes-of-the-pink-floyd-exhibition-their-mortal-remains-5813552/2
+[Mark Fisher]: https://en.wikipedia.org/wiki/Mark_Fisher_%28architect%29
+[Mark Fisher Bio]: https://markfisher.aaschool.ac.uk/mark-fisher/
