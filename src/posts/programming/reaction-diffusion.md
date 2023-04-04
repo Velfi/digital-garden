@@ -4,6 +4,8 @@ description: A Rust implementation of a reaction diffusion simulation.
 keywords: reaction diffusion, rust, programming
 ---
 
+# {title}
+
 The source code is available on [GitHub].
 
 > Reaction–diffusion systems are mathematical models which correspond to several physical phenomena:

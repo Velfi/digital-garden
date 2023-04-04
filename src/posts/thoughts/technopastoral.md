@@ -4,6 +4,8 @@ description: A few thoughts on digital gardens.
 keywords: digital garden, garden, stream, technopastoral
 ---
 
+# {title}
+
 ## March 31st, 2023
 
 I've already re-written this site twice. It looks like that's going to be a yearly tradition for me. The first rewrite replaced the `foamy-js` templating system with a more basic one based on MDX. For this latest

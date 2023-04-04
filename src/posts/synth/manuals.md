@@ -4,6 +4,8 @@ description: A collection of links to the manuals of synthesizers I use.
 keywords: synth, manuals
 ---
 
+# {title}
+
 A collection of links to the manuals of synthesizers I use:
 
 - [Novation Summit]

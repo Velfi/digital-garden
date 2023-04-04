@@ -4,6 +4,8 @@ description: A collection of art generators that can export SVGs. I purchased an
 keywords: plotter, art, svg, rust
 ---
 
+# {title}
+
 The source code is available on [GitHub]
 
 A collection of art generators that can export SVGs. I purchased an [AxiDraw V3] and it's been a lot

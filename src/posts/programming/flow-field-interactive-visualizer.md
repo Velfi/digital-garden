@@ -4,6 +4,8 @@ description: An interactive visualization of dimensional noise.
 keywords: flow field, dimensional noise, noise, visualization, rust
 ---
 
+# {title}
+
 The source code is available on [GitHub]
 
 This project was born out of a deeper exploration into dimensional noise with the knowledge gained

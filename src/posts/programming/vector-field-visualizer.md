@@ -4,6 +4,8 @@ description: A Rust app for visualizing dimensional noise algorithms
 keywords: noise, rust, programming
 ---
 
+# {title}
+
 The source code is available on [GitHub]
 
 ![visualization of noise produced by fractal brownian motion algorithm](/images/programming/vector-field-visualizer/fbm-noise-example-1.png 'FBM Noise Example 1')

@@ -4,6 +4,8 @@ description: A collection of neat things I found on the internet.
 keywords: internet, bookmarks
 ---
 
+# {title}
+
 The web ain't all good but it ain't all bad neither
 
 ## Games I enjoyed playing from the internet

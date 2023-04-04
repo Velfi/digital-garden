@@ -4,6 +4,8 @@ description: A Rust implementation of a slime mold simulation.
 keywords: slime mold, rust, programming, physarum
 ---
 
+# {title}
+
 The source code is available on [GitHub]. I also made a music video that you can watch on [YouTube].
 
 ## To those whom I've imitated

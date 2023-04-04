@@ -103,6 +103,11 @@
     <li><a href="synth/patches">Synth Presets</a></li>
   </ul>
 
+  <h2>Movies</h2>
+  <ul>
+    <li><a href="movies/zardoz">Zardoz (1974), dir. John Boorman</a></li>
+  </ul>
+
   <h2>Programmings</h2>
   <ul>
     <li>

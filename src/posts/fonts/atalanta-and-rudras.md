@@ -4,6 +4,8 @@ description: I made some pixel fonts for my games. They're free to use under the
 keywords: fonts, pixel fonts, bitmap fonts, atalanta, rudras
 ---
 
+# {title}
+
 I wanted to share some of the fonts I've been making for my games.
 
 Here's Atalanta and Rudras. I made them with [BITFONTMAKER2],

@@ -7,6 +7,8 @@ description:
 keywords: ai, institutions, bias, justice, data, economics
 ---
 
+# {title}
+
 I am not afraid of AIs. What I am afraid of is people deferring all personal responsibility and agency to institutions. This already happens.
 
 AIs are trained on data, and the data we have was produced by our current institutions. The data reflects the ideas and philosophies of those institutions. As such, AIs trained on that data necessarily reflect the ideas and philosophy of those institutions. It is the institutions themselves that are broken; AI is only a mirror.

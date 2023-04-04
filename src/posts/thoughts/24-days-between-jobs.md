@@ -4,6 +4,8 @@ description: 'A chronicle of my 24 days between jobs. In the post I talk about m
 keywords: 'time off, job, rust, druid, plotlings, music'
 ---
 
+# {title}
+
 On August 20th, 2021 I left my job at Tempus for a job at AWS working on the AWS Rust SDK. In the between, I took 24 days for leisure time and personal projects. This page is a chronicle of that period.
 
 ## August 17th

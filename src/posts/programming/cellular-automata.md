@@ -4,6 +4,8 @@ description: A Rust implementation of a cellular automata described in Stephen W
 keywords: cellular automata, rust, programming
 ---
 
+# {title}
+
 The source code is available on [GitHub]
 
 This is a companion project that I worked on while reading Stephen Wolfram's "A New Kind of Science".

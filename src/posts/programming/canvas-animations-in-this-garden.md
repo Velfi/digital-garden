@@ -4,6 +4,8 @@ description: A brief history of how this site used Canvas to render art and anim
 keywords: canvas, react, animation, art
 ---
 
+# {title}
+
 The [colors] page features some dynamic illustrations implemented with HTML canvas. Below is an example of the
 
 ```tsx

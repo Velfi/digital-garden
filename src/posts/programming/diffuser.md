@@ -4,6 +4,8 @@ description: A Rust program that simulates the diffusion of ink on a grid.
 keywords: diffusion, ink, rust, programming
 ---
 
+# {title}
+
 The source code is available on [GitHub]
 
 A common theme in visualizations I create is their dependence on performing operations in parallel on a grid of values.

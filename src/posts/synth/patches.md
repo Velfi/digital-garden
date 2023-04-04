@@ -4,6 +4,8 @@ description: A collection of synth presets I've created.
 keywords: synth, presets
 ---
 
+# {title}
+
 I like to create synth presets. Feel free to download them and use them in your own creations.
 
 - [Novation Summit] patch bank _(updated April, 2021)_

@@ -7,6 +7,8 @@ description:
 keywords: gpt-3, chatbot, koboldai, writing, adventure, dnd, dungeons and dragons
 ---
 
+# {title}
+
 I wrote a GPT-3 [chatbot] terminal app. It doesn't run the model on the user's computer. Rather, it's just a frontend for talking to OpenAI's text completion models. Every conversation begins with a prompt. If the user doesn't set one, then a default will be used. This prompt, along with several of the most recently sent messages, is sent to OpenAI, and the response text is then formatted and displayed to the user. This is pretty fun on its own, but ChatGPT was announced and made available to the public while I was only halfway done working on the app.
 
 I've really enjoyed using ChatGPT (except when it refuses to engage with my questions.) It's pretty OK at writing code that I can then fix up and expand upon. It's also nice for playing games with.

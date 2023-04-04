@@ -4,6 +4,8 @@ description: A Rust library for divination using the I Ching.
 keywords: rust, programming, i ching, divination
 ---
 
+# {title}
+
 The source code is available on [GitHub]
 This is a published Rust [crate]
 

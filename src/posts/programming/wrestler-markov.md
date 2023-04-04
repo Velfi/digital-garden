@@ -4,6 +4,8 @@ description: A Twitter bot that generates random wrestling promos from a fiction
 keywords: twitter, markov chain, python, programming
 ---
 
+# {title}
+
 _His name is [Mitch Ragnarok](https://twitter.com/MitchRagnarok)_
 
 Modern wrestling is a ridiculous combo of athleticism, improv, and melodrama. I love it, even if I

@@ -10,6 +10,4 @@
   <meta name="keywords" content={data?.keywords} />
 </svelte:head>
 
-<h1>{data?.title}</h1>
-
 <svelte:component this={data.content} />

@@ -4,6 +4,8 @@ description: A journal that I kept while learning to type on a new keyboard layo
 keywords: typing, keyboard, workman, ergodox, moonlander
 ---
 
+# {title}
+
 _Editor's Note: With my typing journey complete, I've since stopped adding to this journal_
 
 Being a programmer by profession, I spend a great deal of time typing each day. My hands are paying the price for this.
