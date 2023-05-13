@@ -58,9 +58,7 @@
 
   <ul>
     <li><a href="https://sowe.li">casey</a></li>
-    <li><a href="http://tesseract.page">tessarine</a> <i>(currently defunct)</i></li>
     <li><a href="https://athanasi.us">thatzopoulos</a></li>
-    <li><a href="http://garden.nekomorphism.com">nekomorphism</a></li>
     <li><a href="neat-internet">Neat things the internet exposed me to</a></li>
   </ul>
 
@@ -80,6 +78,7 @@
     <li><a href="art/antique-stamps">Antique stamps converted to SVG</a></li>
     <li><a href="art/tiles">Tiles</a></li>
     <li><a href="art/2022-09-photospheres">September '22 Photo Spheres</a></li>
+    <li><a href="poppy-sprouts">Poppy Sprout Time Lapse</a></li>
   </ul>
 
   <h3>Wallpapers</h3>
@@ -99,6 +98,7 @@
   <ul>
     <li><a href="music/habanera">Habanera For Two Flutes And A Cello</a></li>
     <li><a href="music/belltower-fight">Belltower Fight</a></li>
+    <li><a href="synth/assorted-synth-tunes">Synth Tunes I Wrote/Performed</a></li>
     <li><a href="synth/manuals">Synth Manuals</a></li>
     <li><a href="synth/patches">Synth Presets</a></li>
   </ul>

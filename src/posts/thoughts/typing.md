@@ -8,6 +8,8 @@ keywords: typing, keyboard, workman, ergodox, moonlander
 
 _Editor's Note: With my typing journey complete, I've since stopped adding to this journal_
 
+_Editor's Editor's Note: [I was interviewed] by the company that makes the Moonlander_
+
 Being a programmer by profession, I spend a great deal of time typing each day. My hands are paying the price for this.
 
 I have good days and bad days. On most days my fingers feel a bit creaky. On a bad day I feel like I never want to touch a keyboard again. Considering also that my two main hobbies are gaming a piano playing, losing my fine motor skills would be pretty hard to deal with.
@@ -41,3 +43,4 @@ You can view data visualizations based on my learning progression in my [keybr.c
 [Kailh Copper]: https://kono.store/collections/switches/products/kailh-speed-switches?variant=31458096054355
 [Kailh Pro Burgundy]: https://kono.store/collections/switches/products/kailh-pro-switches?variant=31458088484947
 [workman-07-03-21]: https://configure.zsa.io/moonlander/layouts/KvONw/Y6pQQ/0
+[I was interviewed]: https://people.zsa.io/zelda-hessler/
