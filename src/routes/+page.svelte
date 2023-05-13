@@ -95,6 +95,11 @@
     <li><a href="fonts/cistercian-monk-numerals">Cistercian Monk Numerals</a></li>
   </ul>
 
+  <h2>Games</h2>
+  <ul>
+    <li><a href="games/new-wave-paradise">New Wave Paradise</a></li>
+  </ul>
+
   <h2>Music</h2>
   <ul>
     <li><a href="music/habanera">Habanera For Two Flutes And A Cello</a></li>

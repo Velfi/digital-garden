@@ -1,0 +1,23 @@
+*START*
+Zelda: "Have you ever played Disco Elysium? It's an isometric RPG."
+  You: "No, I haven't played it.",
+  Zelda: "It's a wonderful game. I'd certainly recommend it. At the very least, you should consider watching a Let's Play of it."
+
+  You: 'I prefer to spend my time doing things other than gaming.',
+  Zelda: "Ah, well then I suppose you won't be interested in my opinion of it then."
+  goto *END*
+
+  You: "Yes, I've played it. I may have even enjoyed it.",
+  Zelda: 'Ah! Then you probably recognize this UI from the game'
+Zelda: "I wrote this dialogue system to work similar to the one in the game. I was able to get very close to the game's UI with CSS alone. If I had used images then I would have been able to get even closer. The dialogue tree system in implemented in TypeScript."
+  You: "Interesting. But why would you spend your free time making something like this?"
+  Zelda: "I thought it would be cool!"
+    You: "It is!"
+
+    You: "I see..."
+
+  You: "I'd lake to take a look at the code."
+  Zelda: "In that case, you can view it on GitHub."
+Zelda: "Writing the dialog tree system was a very interesting problem. A movie script is one-dimensional, in that it proceeds from start to finish. That format is a good match for regular text files, which proceed from top to bottom."
+Zelda (Cont.): "In most games nowadays, the player is offered the ability to choose responses and dialog can take different branches based on those choices. Furthermore, some choices can cause dialog to loop back on itself. This graph-like structure isn't such a great fit for a text file." 
+*END*

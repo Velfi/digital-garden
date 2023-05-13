@@ -1,0 +1,194 @@
+%START%
+ZELDA H. SAY "Sometimes I wonder if I spend too much time on the computer."
+%END%
+
+%START%
+ASHLEY SAY "Did it work?"
+ZELDA SAY "Well of course it did! Do you think I'm some two-bit hack?"
+ASHLEY SAY "Well, no; But isn't this the first such system you've written?"
+%END%
+
+%START%
+JIMI HENDRIX SAY "Excuse me while I kiss the sky."
+  CHOICE Wait patiently.
+  SAY You wait patiently.
+JIMI HENDRIX SAY Jimi kisses the sky before turning to you and saying "Thanks for your patience."
+%END%
+
+%START%
+Zelda SAY "Have you ever played Disco Elysium? It's an isometric RPG."
+  CHOICE "No, I haven't played it.",
+  You SAY "No, I haven't played it.",
+  Zelda SAY "It's a wonderful game. I'd certainly recommend it. At the very least, you should consider watching a Let's Play of it."
+
+  CHOICE 'I prefer to spend my time doing things other than gaming.',
+  You SAY 'I prefer to spend my time doing things other than gaming.',
+  Zelda SAY "Ah, well then I suppose you won't be interested in my opinion of it then."
+  GOTO %END%
+
+  CHOICE "Yes, I've played it. I may have even enjoyed it.",
+  You SAY "Yes, I've played it. I may have even enjoyed it.",
+  Zelda SAY 'Ah! Then you probably recognize this UI from the game'
+Zelda SAY "I wrote this dialogue system to work similar to the one in the game. I was able to get very close to the game's UI with CSS alone. If I had used images then I would have been able to get even closer. The dialogue tree system in implemented in TypeScript."
+  CHOICE "Interesting. But why would you spend your free time making something like this?"
+  You SAY "Interesting. But why would you spend your free time making something like this?"
+  Zelda SAY "I thought it would be cool!"
+    CHOICE "It is!"
+    You SAY "It is!"
+    CHOICE "I see..."
+    You SAY "I see..."
+
+  CHOICE "I'd lake to take a look at the code."
+  You SAY "I'd lake to take a look at the code."
+    Zelda SAY "In that case, you can view it on GitHub."
+Zelda SAY "Writing the dialog tree system was a very interesting problem. A movie script is one-dimensional, in that it proceeds from start to finish. That format is a good match for regular text files, which proceed from top to bottom."
+Zelda (Cont.) SAY "In most games nowadays, the player is offered the ability to choose responses and dialog can take different branches based on those choices. Furthermore, some choices can cause dialog to loop back on itself. This graph-like structure isn't such a great fit for a text file." 
+%END%
+
+%START%
+DAISY SAY "This is a test."
+DAISY SAY "You got that?"
+    CHOICE No
+    LUIGI SAY "Come again?"
+    GOTO %START%
+
+    CHOICE Yes
+    LUIGI SAY "Ah, yes. Thank you."
+DAISY SAY "You're welcome."
+SAY With that, Daisy leaves.
+%END%
+
+%START%
+SAY What is the capital of Spain?
+  CHOICE A: Barcelona 
+    YOU SAY Barcelona is the capital.
+    SAY Incorrect!
+
+  CHOICE B: Madrid 
+    YOU SAY Madrid is the capital.
+    SAY Correct!
+
+  CHOICE C: Bilbao 
+    YOU SAY Bilbao is the capital.
+    SAY Incorrect!
+
+  CHOICE D: Seville 
+    YOU SAY Seville is the capital.
+    SAY Incorrect!
+SAY Thank you for taking the test.
+%END%
+
+%START%
+%YOUR-PLACE%
+SAY You're at your place, out front. Where do you want to go?
+CHOICE The Alley
+  GOTO %THE-ALLEY%
+CHOICE Elk Street
+  GOTO %ELK-STREET%
+%THE-ALLEY%
+SAY The alley by your place is dark and quiet. Where do you want to go?
+CHOICE The Tavern
+  GOTO %THE-TAVERN%
+CHOICE By the Water
+  GOTO %BY-THE-WATER%
+%ELK-STREET%
+SAY You're on Elk Street. Where do you want to go?
+CHOICE The Tavern
+  GOTO %THE-TAVERN%
+CHOICE Moose Street
+  GOTO %MOOSE-STREET%
+%THE-TAVERN%
+SAY You're in your local tavern. The air is thick with smoke and the smell of stale beer. Where do you want to go?
+CHOICE Merchants Plaza
+  GOTO %MERCHANTS-PLAZA%
+CHOICE Kings Plaza
+  GOTO %KINGS-PLAZA%
+%BY-THE-WATER%;
+SAY You're by the water. The smell of the fish wrinkles your nose (not to mention the smell of the dockworkers.) Where do you want to go?
+CHOICE The Dock
+  GOTO %THE-DOCK%
+CHOICE Merchants Plaza
+  GOTO %MERCHANTS-PLAZA%
+%MOOSE-STREET%
+SAY You're on Moose Street, home of the Moose Lodge. Where do you want to go?
+CHOICE Kings Plaza
+  GOTO %KINGS-PLAZA%
+CHOICE Caribou Street
+  GOTO %CARIBOU-STREET%
+%KINGS-PLAZA%
+SAY You're in Kings Plaza, where they hold the annual King's Day celebration. Where do you want to go?
+CHOICE Your Place
+  GOTO %YOUR-PLACE%
+CHOICE The Getaway Car
+  GOTO %THE-GETAWAY-CAR%
+%THE-PORT-OFFICE%
+SAY You're outside the Port Office. Wasn't there something you were supposed to be doing? Where do you want to go?
+  CHOICE The Dock
+    GOTO %THE-DOCK%
+  CHOICE Merchants Plaza
+    GOTO %MERCHANTS-PLAZA%
+%MERCHANTS-PLAZA%
+SAY You're in Merchants Plaza, a place of commerce and trade. Where do you want to go?
+CHOICE Your Place
+  GOTO %YOUR-PLACE%
+CHOICE The Port Office
+  GOTO %THE-PORT-OFFICE%
+%CARIBOU-STREET%
+SAY You're on Caribou Street, where fur traders come to sell their wares. Where do you want to go?
+CHOICE The Getaway Car
+  GOTO %THE-GETAWAY-CAR%
+CHOICE Reindeer Street
+%REINDEER-STREET%
+SAY You know what they say: "Reindeer Street is the end of the line!"
+GOTO %END%
+%THE-GETAWAY-CAR%
+  SAY You hop in, start the engine, and head out of the city.
+  GOTO %ESCAPE%
+%THE-GETAWAY-BOAT%
+  SAY You hop in, start the engine, and head out to sea.
+  GOTO %ESCAPE%
+%ESCAPE%
+SAY You've finally escaped your boring life, but you're not sure where to go next.
+%END%
+
+%START%
+SAY You are lost in a maze of twisty passages
+  CHOICE Go West
+    SAY You head West
+    GOTO %THE_WEST%
+
+  CHOICE Go East
+    SAY You head East
+    GOTO %THE_EAST%
+
+  CHOICE Down the ladder
+    SAY You climb down the ladder
+    GOTO %LADDER%
+
+  CHOICE Wait, patiently
+    SAY You take a seat on the ground and relax.
+    SAY Some time passes...
+    GOTO %START%
+%THE_WEST%
+SAY You find yourself in a dark, outdoor space. The full moon lights your way.
+  CHOICE Go West
+    SAY You head west
+    GOTO %THE_EAST%
+
+  CHOICE Go East
+    SAY You head east
+    GOTO %START%
+%THE_EAST%
+SAY You find yourself in a white tile room, lit by glowing ceiling panels.
+  CHOICE Go East
+    SAY You head east
+    GOTO %THE_WEST%
+
+  CHOICE Go West
+    SAY You head west
+    GOTO %START%
+%LADDER%
+DM SAY As you climb down the ladder, the air dampens and becomes smelly.
+DM SAY Despite the smell, it appears that this was the correct direction.
+DM SAY You exit the maze, the air clears, and you feel great pride in yourself.
+%END%

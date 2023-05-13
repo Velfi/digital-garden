@@ -20,7 +20,7 @@ const config = {
     adapter: adapter()
   },
 
-  extensions: ['.svelte', '.md']
+  extensions: ['.svelte', '.md', '.script']
 };
 
 export default config;

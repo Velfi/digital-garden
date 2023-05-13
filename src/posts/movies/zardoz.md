@@ -13,7 +13,7 @@ import Spoilers from '$lib/components/Spoilers.svelte';
 
 <Spoilers year={1974} />
 
-*For the correct atmosphere, please play [Beethoven's 7th Symphony 2nd Movement] while reading this.*
+_For the correct atmosphere, please play [Beethoven's 7th Symphony 2nd Movement] while reading this._
 
 My favorite character archetype, be they god or mortal, is the trickster. A trickster may survive by being strong and capable, but it is their cleverness that brings them victory. Even in stories where the trickster isn't the main character, I find myself focusing on them, and trying to figure out what their gambit is.
 
@@ -24,16 +24,16 @@ Zardoz features one of my favorite trickster gods.
 Zardoz opens with a floating, talking head named Arthur Frayn; A late addition by the writer/director John Boorman in an attempt to make the plot a bit clearer. After a short speech, the prologue cuts to the true first scene in the movie: another floating, talking head, although this one is gigantic and made of stone. It hovers over misty green hills before landing in front of a group of barbarian worshipers and shouting these outstanding lines:
 
 > Zardoz speaks to you, His chosen ones.
-> 
-> You have been raised up from Brutality, to kill the Brutals who multiply, and are legion. To this end, Zardoz your God gave you the gift of the Gun. The Gun is good! 
-> 
+>
+> You have been raised up from Brutality, to kill the Brutals who multiply, and are legion. To this end, Zardoz your God gave you the gift of the Gun. The Gun is good!
+>
 > The Penis is evil! The Penis shoots Seeds, and makes new Life to poison the Earth with a plague of men, as once it was. But the Gun shoots Death and purifies the Earth of the filth of Brutals. Go forth, and kill. Zardoz has spoken.
 
-It dispenses a stream of rifles and ammunition from its mouth, and the barbarians transport grain inside it. One "Brutal", Zed *(played by a post-Bond Sean Connery)*, stows away in a pile of grain. Later, when the head once again takes off, Zed emerges from the grain and is startled to see a man, the same man who delivered the prologue. A startled Zed, shoots the man, causing him to awkwardly tumble out of the head's mouth.
+It dispenses a stream of rifles and ammunition from its mouth, and the barbarians transport grain inside it. One "Brutal", Zed _(played by a post-Bond Sean Connery)_, stows away in a pile of grain. Later, when the head once again takes off, Zed emerges from the grain and is startled to see a man, the same man who delivered the prologue. A startled Zed, shoots the man, causing him to awkwardly tumble out of the head's mouth.
 
 Eventually, the great stone head lands Zed next to a mysterious village. Zardoz there meets a community of ageless telepaths who style themselves as "The Eternals". They study Zed, and Zed studies them in turn, learning how their society is managed by a supercomputer called "The Tabernacle".
 
-Although an Eternal can be killed, The Tabernacle has the power to resurrect them. Zed even sees a gestating clone of Arthur Frayn *(the man he shot.)* The telepaths do not age naturally, but are subjected to forced aging as punishment. Eternals that have committed repeated crimes *(or grave ones)* are aged to the point of senility, whereupon they are sent to a separate village for the insane. Zed also learns of a third village for *"Apathetics"*: immortals that have lost the will to live and stopped moving or interacting with anyone.
+Although an Eternal can be killed, The Tabernacle has the power to resurrect them. Zed even sees a gestating clone of Arthur Frayn _(the man he shot.)_ The telepaths do not age naturally, but are subjected to forced aging as punishment. Eternals that have committed repeated crimes _(or grave ones)_ are aged to the point of senility, whereupon they are sent to a separate village for the insane. Zed also learns of a third village for _"Apathetics"_: immortals that have lost the will to live and stopped moving or interacting with anyone.
 
 The Eternal's society is dysfunctional, and clearly unsustainable. Zed learns that Zardoz was a scheme concocted by the Eternals to control the Brutals. At this point, he decides to end the Eternals and destroy the Tabernacle.
 
@@ -60,10 +60,10 @@ If you've never seen Zardoz, then I suggest you go watch it. In fact, you should
 
 ## Links
 
-* [Watch the entire movie free, without ads](https://archive.org/details/zardoz-1974_202201)
-  * The internet archive is such a treasure.
-* [IMDB](https://www.imdb.com/title/tt0070917/)
-* [Quotes](https://en.wikiquote.org/wiki/Zardoz)
+- [Watch the entire movie free, without ads](https://archive.org/details/zardoz-1974_202201)
+  - The internet archive is such a treasure.
+- [IMDB](https://www.imdb.com/title/tt0070917/)
+- [Quotes](https://en.wikiquote.org/wiki/Zardoz)
 
 [hall of mirrors]: https://tvtropes.org/pmwiki/pmwiki.php/Main/HallOfMirrors
 [Beethoven's 7th Symphony 2nd Movement]: https://www.youtube.com/watch?v=mgHxmAsINDk
