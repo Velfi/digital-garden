@@ -77,8 +77,9 @@
   <ul>
     <li><a href="art/antique-stamps">Antique stamps converted to SVG</a></li>
     <li><a href="art/tiles">Tiles</a></li>
-    <li><a href="art/2022-09-photospheres">September '22 Photo Spheres</a></li>
+    <li><a href="art/2022-09-photospheres">September '22 photo spheres</a></li>
     <li><a href="poppy-sprouts">Poppy Sprout Time Lapse</a></li>
+    <li><a href="art/2023-art">2023 Assorted prints and paintings</a></li>
   </ul>
 
   <h3>Wallpapers</h3>
