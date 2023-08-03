@@ -62,17 +62,6 @@
     <li><a href="neat-internet">Neat things the internet exposed me to</a></li>
   </ul>
 
-  <h2>My Store</h2>
-
-  <p><strong><em>Wow! Amazing! <a href="/store/zelda">I sell stickers!</a></em></strong></p>
-
-  <p>
-    I love stickers and collect them. Since I purchased a printer and a cutting robot, I've been
-    able to start making my own. Some of them are images that I generated with DALL·E. I sell them
-    in packs for $15. Shipping is included and if you know where I live then local pickup is
-    available.
-  </p>
-
   <h2>Arts</h2>
   <ul>
     <li><a href="art/antique-stamps">Antique stamps converted to SVG</a></li>
