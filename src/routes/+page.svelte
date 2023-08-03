@@ -58,6 +58,7 @@
 
   <ul>
     <li><a href="https://sowe.li">casey</a></li>
+    <li><a href="https://sleepy.moe">nekomorphism</a></li>
     <li><a href="https://athanasi.us">thatzopoulos</a></li>
     <li><a href="neat-internet">Neat things the internet exposed me to</a></li>
   </ul>
