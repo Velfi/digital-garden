@@ -18,6 +18,7 @@ The web ain't all good but it ain't all bad neither
 - [The Fun Scale (a.k.a. "Types of Fun")](https://www.rei.com/blog/climb/fun-scale)
 - [Shipping Out: On the (nearly lethal) comforts of a luxury cruise by David Foster Wallace](https://harpers.org/wp-content/uploads/2008/09/HarpersMagazine-1996-01-0007859.pdf)
 - [Different languages, similar encoding efficiency: Comparable information rates across the human communicative niche](https://www.science.org/doi/epdf/10.1126/sciadv.aaw2594)
+- [Making architecture easy](https://worksinprogress.co/issue/making-architecture-easy)
 
 ## Fonts I enjoyed downloading from the internet
 
