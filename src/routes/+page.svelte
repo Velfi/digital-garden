@@ -60,6 +60,11 @@
     <li><a href="https://sowe.li">casey</a></li>
     <li><a href="https://sleepy.moe">nekomorphism</a></li>
     <li><a href="https://athanasi.us">thatzopoulos</a></li>
+    <li>
+      <a href="https://vinylsquid.com">vinyl squid</a><sup
+        ><small>(check out that sweet visitor counter!)</small></sup
+      >
+    </li>
     <li><a href="neat-internet">Neat things the internet exposed me to</a></li>
   </ul>
 
@@ -92,6 +97,7 @@
     <li><a href="synth/assorted-synth-tunes">Synth Tunes I Wrote/Performed</a></li>
     <li><a href="synth/manuals">Synth Manuals</a></li>
     <li><a href="synth/patches">Synth Presets</a></li>
+    <li><a href="music/music-i-have-jammed-to">Music I have jammed to</a></li>
   </ul>
 
   <h2>Movies</h2>
