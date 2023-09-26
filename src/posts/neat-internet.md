@@ -12,6 +12,7 @@ The web ain't all good but it ain't all bad neither
 
 - [AIeyes: A walking simulator in a city where the world is seen through a real time neural network](https://tmdev.itch.io/aieyes)
 - [Anagrammer: a tool for creating anagrams](https://www.wordplays.com/anagrammer)
+- [The Collection Chamber: Abandonware and forgotten games, made compatible with modern systems](https://collectionchamber.blogspot.com)
 
 ## Stuff I enjoyed reading on the internet
 
@@ -19,6 +20,7 @@ The web ain't all good but it ain't all bad neither
 - [Shipping Out: On the (nearly lethal) comforts of a luxury cruise by David Foster Wallace](https://harpers.org/wp-content/uploads/2008/09/HarpersMagazine-1996-01-0007859.pdf)
 - [Different languages, similar encoding efficiency: Comparable information rates across the human communicative niche](https://www.science.org/doi/epdf/10.1126/sciadv.aaw2594)
 - [Making architecture easy](https://worksinprogress.co/issue/making-architecture-easy)
+- [Who Lusts for Certainty Lusts for Lies](https://www.etymonline.com/columns/post/who-lusts-for-certainty-lusts-for-lies)
 
 ## Fonts I enjoyed downloading from the internet
 
@@ -43,3 +45,7 @@ The web ain't all good but it ain't all bad neither
 
 - [Senator Ted Stevens explains the internet](https://youtu.be/lTonHRerMC4)
 - [The Expert](https://youtu.be/BKorP55Aqvg)
+
+## Poetry is good for you
+
+- [Calmly We Walk through This April’s Day (Delmore Schwartz)](https://www.poetryfoundation.org/poems/42633/calmly-we-walk-through-this-aprils-day)
