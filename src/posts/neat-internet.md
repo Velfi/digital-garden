@@ -21,6 +21,7 @@ The web ain't all good but it ain't all bad neither
 - [Different languages, similar encoding efficiency: Comparable information rates across the human communicative niche](https://www.science.org/doi/epdf/10.1126/sciadv.aaw2594)
 - [Making architecture easy](https://worksinprogress.co/issue/making-architecture-easy)
 - [Who Lusts for Certainty Lusts for Lies](https://www.etymonline.com/columns/post/who-lusts-for-certainty-lusts-for-lies)
+- [Drag knife✒️ and Laser🔫 Etched (Specular) Holograms](https://forum.v1e.com/t/drag-knife-and-laser-etched-specular-holograms/36888)
 
 ## Fonts I enjoyed downloading from the internet
 
