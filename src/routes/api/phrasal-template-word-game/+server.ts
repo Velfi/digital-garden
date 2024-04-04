@@ -76,7 +76,8 @@ export const GET: RequestHandler = async ({ url }) => {
 
   const msg = await anthropic.messages.create({
     model: 'claude-3-opus-20240229',
-    max_tokens: 500,
+    // Higher means longer stories but Vercel will time out this function if it runs longer than 10 seconds.
+    max_tokens: 375,
     temperature: 0.2,
     system: PROMPT,
     stream: false,

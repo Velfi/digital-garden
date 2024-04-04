@@ -17,12 +17,20 @@
       );
 
       story = await response.text();
+      if (story.startsWith('An error occurred with your deployment FUNCTION_INVOCATION_TIMEOUT')) {
+        throw new Error('Vercel killed the function for running too long.');
+      }
+
       blanks = getBlanks(story);
+      if (blanks.length === 0) {
+        throw new Error("Couldn't read any blanks in the generated story.");
+      }
+
       filledBlanks = blanks.map(() => '');
     } catch (error) {
-      alert(
-        'Failed to generate a new story. The server may be overloaded. Please try again later.'
-      );
+      if (error instanceof Error) {
+        alert(error.message + ' Please try generating another.');
+      }
       reset();
     }
 
@@ -97,11 +105,9 @@
   <small
     ><p>
       <em
-        >The AI tends to write stories with too many blanks. I'm still trying to figure out a way to
-        encourage it to keep it to 10-15 blanks. Also, it's possible for Vercel to time out the
-        function if it runs too long. Also, this only works so long as I remember to fill up my
-        <a href="https://console.anthropic.com/dashboard">Claude</a> credits. If it's broken and you
-        want to try it, lmk and I'll drop some more money on it.</em
+        >Vercel will time out the function if it runs too long. Also, this only works so long as I
+        remember to fill up my <a href="https://console.anthropic.com/dashboard">Claude</a> credits.
+        If it's broken and you want to try it, lmk and I'll drop some more money on it.</em
       >
     </p>
   </small>
