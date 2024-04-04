@@ -1,5 +1,8 @@
 <script lang="ts">
   import Numeral from './Numeral.svelte';
+
+  export const ssr = false;
+
   const allDigits = Array.from(Array(10000).keys()).map((n) => n.toString());
   const NUMBER_REGEX = /^\d{1,4}$/;
 
