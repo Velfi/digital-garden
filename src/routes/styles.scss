@@ -10,7 +10,7 @@
 html,
 .root {
   font-size: 18px;
-  line-height: 20px;
+  line-height: 22px;
 }
 
 body {
@@ -107,6 +107,11 @@ sup {
 
 sub {
   bottom: -0.25em;
+}
+
+big {
+  font-size: xx-large;
+  line-height: 1;
 }
 
 h1,

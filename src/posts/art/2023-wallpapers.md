@@ -1,7 +1,6 @@
 ---
 title: 2023 Wallpapers
-description:
-  Wallpapers made from my 2023 photos. The year isn't over yet, so this is still an ongoing project. I'll be adding more as I take them.
+description: Wallpapers made from my 2023 photos. The year isn't over yet, so this is still an ongoing project. I'll be adding more as I take them.
 keywords: wallpapers, 2023, photos
 ---
 
@@ -42,23 +41,23 @@ keywords: wallpapers, 2023, photos
 Wallpapers made from my 2023 photos. The year isn't over yet, so this is still an ongoing project. I'll be adding more as I take them.
 
 <WallpaperGallery
-  images={[
-    [ZLH07694Small, ZLH07694Full, 'A pond at Rosehill Cemetery, Chicago, IL'],
-    [ZLH07704Small, ZLH07704Full, 'A road through Rosehill Cemetery, Chicago, IL'],
-    [ZLH07747Small, ZLH07747Full, 'A red-breasted nuthatch, harassing a tree'],
-    [ZLH07763Small, ZLH07763Full, 'Canada geese'],
-    [ZLH07773Small, ZLH07773Full, 'A canada goose doing yoga'],
-    [ZLH07814Small, ZLH07814Full, 'An exceptionally dark rock pigeon'],
-    [ZLH07820Small, ZLH07820Full, 'Grass and steel plating'],
-    [
-      ZLH07872Small,
-      ZLH07872Full,
-      'Aqua: an 82-story mixed-use skyscraper in Lakeshore East, Chicago, IL'
-    ],
-    [ZLH07882Small, ZLH07882Full, 'The heart of the loop, Chicago, IL'],
-    [ZLH07891v1Small, ZLH07891v1Full, 'A lizard on a palm tree'],
-    [ZLH07978Small, ZLH07978Full, 'Stucco buildings silhouetted against the sunset'],
-    [ZLH07996Small, ZLH07996Full, 'A lizard on a crape myrtle tree'],
-    [ZLH08032Small, ZLH08032Full, 'A dwarf umbrella tree']
-  ]}
+images={[
+[ZLH07694Small, ZLH07694Full, 'A pond at Rosehill Cemetery, Chicago, IL'],
+[ZLH07704Small, ZLH07704Full, 'A road through Rosehill Cemetery, Chicago, IL'],
+[ZLH07747Small, ZLH07747Full, 'A red-breasted nuthatch, harassing a tree'],
+[ZLH07763Small, ZLH07763Full, 'Canada geese'],
+[ZLH07773Small, ZLH07773Full, 'A canada goose doing yoga'],
+[ZLH07814Small, ZLH07814Full, 'An exceptionally dark rock pigeon'],
+[ZLH07820Small, ZLH07820Full, 'Grass and steel plating'],
+[
+ZLH07872Small,
+ZLH07872Full,
+'Aqua: an 82-story mixed-use skyscraper in Lakeshore East, Chicago, IL'
+],
+[ZLH07882Small, ZLH07882Full, 'The heart of the loop, Chicago, IL'],
+[ZLH07891v1Small, ZLH07891v1Full, 'A lizard on a palm tree'],
+[ZLH07978Small, ZLH07978Full, 'Stucco buildings silhouetted against the sunset'],
+[ZLH07996Small, ZLH07996Full, 'A lizard on a crape myrtle tree'],
+[ZLH08032Small, ZLH08032Full, 'A dwarf umbrella tree']
+]}
 />

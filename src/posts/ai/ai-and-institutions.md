@@ -25,12 +25,12 @@ For transgender people, [stories][I Emailed My Doctor 133 Times: The Crisis In t
 
 With AI, I see similar issues. AIs are trained on what is quantifiable, but not everything can be easily measured.
 
-- *It's not that a law enforcement officer is bigoted, the AI told them this person was suspicious.*
-- *It's not that the loan officer relies on data that unfairly favors certain groups, the AI told them not to lend to this person.*
-- *It's not that our economic system serves the interests of capital at the expense of human beings, it's that humans are too expensive compared to an AI.*
-- *etc.*
+- _It's not that a law enforcement officer is bigoted, the AI told them this person was suspicious._
+- _It's not that the loan officer relies on data that unfairly favors certain groups, the AI told them not to lend to this person._
+- _It's not that our economic system serves the interests of capital at the expense of human beings, it's that humans are too expensive compared to an AI._
+- _etc._
 
-Rather than confront the iniquities in our society and institutions, the media paints AI as the source of these issues. AI technology, like computer technology in general, changes the math of "scaling." Things that used to be expensive *(calculation, quantitative analysis, information retrieval and processing)* are getting cheaper by the day. Even so, inequality is increasing, and [56% of Americans can't afford a $1000 emergency expense][Bankrate emergency savings report].
+Rather than confront the iniquities in our society and institutions, the media paints AI as the source of these issues. AI technology, like computer technology in general, changes the math of "scaling." Things that used to be expensive _(calculation, quantitative analysis, information retrieval and processing)_ are getting cheaper by the day. Even so, inequality is increasing, and [56% of Americans can't afford a $1000 emergency expense][Bankrate emergency savings report].
 
 ## The act of measurement can change the thing being measured
 
@@ -38,7 +38,7 @@ Consider a search engine's adversarial relationship with [search engine optimiza
 
 The idea is closely related to [Campbell's Law] which states:
 
-> "The more any quantitative [social indicator](https://en.wikipedia.org/wiki/Social_indicator "Social indicator") is used for social decision-making, the more subject it will be to corruption pressures and the more apt it will be to distort and corrupt the social processes it is intended to monitor."
+> "The more any quantitative [social indicator](https://en.wikipedia.org/wiki/Social_indicator 'Social indicator') is used for social decision-making, the more subject it will be to corruption pressures and the more apt it will be to distort and corrupt the social processes it is intended to monitor."
 
 [Goodhart's Law], as often stated, simplifies the above into:
 
@@ -50,9 +50,9 @@ Thus, any system in which an AI is used to inform outcomes AND where the AI is t
 
 It's not hard to imagine things getting worse in the future, in part due to AI. But it's also very difficult for me to believe that the solution to these issues is to focus on regulating AI. Rather, we should rethink our failing institutions, and decide what kind of world we want to live in.
 
-- *How can we achieve justice despite bigotry?*
-- *How can we make data-driven decisions when the only data we have was produced by an unfair system?*
-- *How can we transition to a human-centered economic system?*
+- _How can we achieve justice despite bigotry?_
+- _How can we make data-driven decisions when the only data we have was produced by an unfair system?_
+- _How can we transition to a human-centered economic system?_
 
 🤷‍♀️
 

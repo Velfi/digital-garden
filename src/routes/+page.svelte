@@ -68,6 +68,11 @@
     <li><a href="neat-internet">Neat things the internet exposed me to</a></li>
   </ul>
 
+  <h2>A bit of fun</h2>
+  <ul>
+    <li><a href="ai/phrasal-template-word-game">An AI-generated phrasal template word game</a></li>
+  </ul>
+
   <h2>Arts</h2>
   <ul>
     <li><a href="art/antique-stamps">Antique stamps converted to SVG</a></li>

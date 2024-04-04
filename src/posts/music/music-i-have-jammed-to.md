@@ -15,7 +15,7 @@ currently liking. Good luck!
 
 [soma fm](https://somafm.com/player/) is my perennial favorite, so it gets
 permanent first billing. I've been listening to their stations since I was a
-teen. I listen to the *Secret Agent* and *Illinois Street Lounge* stations the
+teen. I listen to the _Secret Agent_ and _Illinois Street Lounge_ stations the
 most.
 
 - [Cumbias Chichadélicas: Peruvian Psychedelic Chicha](https://www.youtube.com/watch?v=IhgnxSSc8gQ)

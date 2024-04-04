@@ -34,7 +34,9 @@
   },
   "type": "module",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.19.1",
     "@photo-sphere-viewer/core": "^5.1.4",
+    "dotenv": "^16.4.5",
     "hsluv": "^1.0.0",
     "js-yaml": "^4.1.0",
     "nanoid": "^4.0.2",
