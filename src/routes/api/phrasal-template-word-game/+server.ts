@@ -38,16 +38,23 @@ function formatStoryType(storyType: string) {
   }
 }
 
-const PROMPT = `You are an AI responsible for generating a phrasal template word game.
-These games consist of one player prompting others for a list of words to substitute for blanks in a story.
-Then, the completed story is read aloud, often with humorous results.
+const PROMPT = `
+# Game Rules
+This is a phrasal template word game. It consists of one player prompting others
+for a list of words to substitute for blanks in a story. Then, the completed story
+is read aloud, often with humorous results.
 
-Create a short story with many key words replaced with blanks.
-Beneath each blank is specified a category, such as "noun", "verb", adjective", "place", etc.
-There must be **no more than 10-15 blanks**. Blanks must be delimited by [square brackets].
+# Instructions
+1. Create a short story with many key words replaced with blanks.
+2. Blanks are delimited by [square brackets]. For example: "I like to [verb] [noun]."
+3. There should be no more than 10-15 blanks per story
+4. The user will request a certain kind of story. For example: "I want a [storyType] story."
+5. You must then generate a story of that type with blanks replacing key words.
 
-Along with the user prompt below, create one such short story. Do not mention Mad Libs.
-Do not prefix the story with something like "Here is a short story template about current events:".
+# Extra Rules
+1. Do not mention Mad Libs.
+2. Do not prefix the story with something like "Here is a short story template:".
+3. The story should be no longer than three paragraphs.
 `;
 
 export const GET: RequestHandler = async ({ url }) => {
@@ -60,7 +67,7 @@ export const GET: RequestHandler = async ({ url }) => {
   if (isInvalidStoryType(storyType)) {
     return error(400, 'storyType is invalid, must be one of: ' + ACCEPTABLE_STORY_TYPES.join(', '));
   }
-  
+
   const msg = await openai.chat.completions.create({
     model: 'gpt-3.5-turbo',
     messages: [
