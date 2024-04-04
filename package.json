@@ -14,6 +14,8 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.19.1",
+    "@aws-amplify/backend": "^0.12.1",
+    "@aws-amplify/backend-cli": "^0.11.1",
     "@photo-sphere-viewer/core": "^5.1.4",
     "@sveltejs/adapter-vercel": "^5.2.0",
     "@sveltejs/kit": "^2.0.0",
@@ -21,6 +23,9 @@
     "@types/js-yaml": "^4.0.5",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
+    "aws-cdk": "^2.135.0",
+    "aws-cdk-lib": "^2.135.0",
+    "constructs": "^10.3.0",
     "dotenv": "^16.4.5",
     "eslint": "^8.28.0",
     "eslint-config-prettier": "^8.5.0",
@@ -35,10 +40,13 @@
     "svelte": "^4.0.0",
     "svelte-check": "^3.4.3",
     "tslib": "^2.4.1",
-    "typescript": "^5.0.0",
+    "typescript": "^5.4.3",
     "vite": "^5.0.0",
     "vite-imagetools": "^7.0.1",
     "vitest": "^1.4.0"
   },
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "aws-amplify": "^6.0.27"
+  }
 }

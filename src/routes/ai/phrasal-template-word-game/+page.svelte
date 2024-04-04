@@ -118,7 +118,7 @@
 {#if isGenerating}
   <div>
     <p>Please be patient, generating your story now...</p>
-    <p>This can take 10+ seconds depending on the server load.</p>
+    <p>This will take less than ten seconds (Vercel's free-tier timeout)</p>
   </div>
 {:else if story}
   <div>
