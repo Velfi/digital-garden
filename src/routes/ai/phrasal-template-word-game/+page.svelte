@@ -98,7 +98,8 @@
     ><p>
       <em
         >The AI tends to write stories with too many blanks. I'm still trying to figure out a way to
-        encourage it to keep it to 10-15 blanks.</em
+        encourage it to keep it to 10-15 blanks. Also, it's possible for Vercel to time out the
+        function if it runs too long.</em
       >
     </p>
   </small>

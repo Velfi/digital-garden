@@ -92,7 +92,11 @@
   <h2>Fonts</h2>
   <ul>
     <li><a href="fonts/atalanta-and-rudras">Pixel Fonts (Atalanta and Rudras)</a></li>
-    <li><a href="fonts/cistercian-monk-numerals">Cistercian Monk Numerals</a></li>
+    <li>
+      <a href="fonts/cistercian-monk-numerals">Cistercian Monk Numerals</a><em
+        >*fair warning: this will <strong>destroy</strong> your mobile data plan</em
+      >
+    </li>
   </ul>
 
   <h2>Music</h2>
