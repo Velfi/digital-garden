@@ -76,9 +76,10 @@ export const GET: RequestHandler = async ({ url }) => {
 
   const msg = await anthropic.messages.create({
     model: 'claude-3-opus-20240229',
-    max_tokens: 1000,
-    temperature: 0,
+    max_tokens: 500,
+    temperature: 0.2,
     system: PROMPT,
+    stream: false,
     messages: [newStoryRequest(storyType)]
   });
 
