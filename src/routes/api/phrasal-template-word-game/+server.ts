@@ -2,8 +2,13 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { MessageParam } from '@anthropic-ai/sdk/resources';
 import { error, type RequestHandler } from '@sveltejs/kit';
 
+const apiKey = process.env['ANTHROPIC_API_KEY'];
+if (!apiKey) {
+  throw new Error('ANTHROPIC_API_KEY env var is required');
+}
+
 const anthropic = new Anthropic({
-  apiKey: process.env['ANTHROPIC_API_KEY']
+  apiKey: apiKey
 });
 
 const ACCEPTABLE_STORY_TYPES = [

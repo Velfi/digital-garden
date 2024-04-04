@@ -23,6 +23,7 @@
       alert(
         'Failed to generate a new story. The server may be overloaded. Please try again later.'
       );
+      reset();
     }
 
     isGenerating = false;
