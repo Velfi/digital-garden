@@ -1,7 +1,6 @@
 ---
 title: Shin Megami Tensei Wallpapers
-description:
-    I'm a big nerd when it comes to Atlas JRPGs. They've developed nearly two Megami Tensei series games a year since they started back in 1987. Here are some wallpapers I made from the SNES games.
+description: I'm a big nerd when it comes to Atlas JRPGs. They've developed nearly two Megami Tensei series games a year since they started back in 1987. Here are some wallpapers I made from the SNES games.
 keywords: wallpapers, megami tensei, shin megami tensei
 ---
 
@@ -28,6 +27,7 @@ keywords: wallpapers, megami tensei, shin megami tensei
 </script>
 
 # {title}
+
 I'm a big nerd when it comes to Atlas JRPGs. They've developed nearly two Megami Tensei series games a year since they started back in 1987. The first game in the series that I played was [Persona 3: FES](https://www.mobygames.com/game/32307/shin-megami-tensei-persona-3-fes/), a spin-off of the Shin Megami Tensei (SMT) main series of games.
 
 I've since also played:
@@ -38,14 +38,14 @@ I've since also played:
 I couldn't find any desktop backgrounds that I liked from the games so I made some by taking sprites ripped from the SNES games and scaling them to 1080p. Here they are:
 
 <WallpaperGallery
-  images={[
-    [AliceSmall, AliceFull, 'Alice'],
-    [AlrauneSmall, AlrauneFull, 'Alraune'],
-    [HecateSmall, HecateFull, 'Hecate'],
-    [ParvatiSmall, ParvatiFull, 'Parvati'],
-    [MabSmall, MabFull, 'Queen Mab'],
-    [SeiryuSmall, SeiryuFull, 'Seiryu'],
-    [SmtIISmall, SmtIIFull, 'A screenshot from SMT II'],
-    [TiamatSmall, TiamatFull, 'Tiamat']
-  ]}
+images={[
+[AliceSmall, AliceFull, 'Alice'],
+[AlrauneSmall, AlrauneFull, 'Alraune'],
+[HecateSmall, HecateFull, 'Hecate'],
+[ParvatiSmall, ParvatiFull, 'Parvati'],
+[MabSmall, MabFull, 'Queen Mab'],
+[SeiryuSmall, SeiryuFull, 'Seiryu'],
+[SmtIISmall, SmtIIFull, 'A screenshot from SMT II'],
+[TiamatSmall, TiamatFull, 'Tiamat']
+]}
 />

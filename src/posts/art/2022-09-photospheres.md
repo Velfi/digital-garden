@@ -20,7 +20,7 @@ keywords: content="photography, photosphere, GoPro, GoPro max
 
 # {title}
 
-*Taken with my GoPro Max.*
+_Taken with my GoPro Max._
 
 I went to the Art Institute with Felicity and Amy. Felicity wanted to try out her new camera. She
 says her pictures came out blurry.
