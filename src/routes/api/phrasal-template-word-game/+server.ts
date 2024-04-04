@@ -7,9 +7,7 @@ if (!apiKey) {
   throw new Error('ANTHROPIC_API_KEY env var is required');
 }
 
-const anthropic = new Anthropic({
-  apiKey: apiKey
-});
+const anthropic = new Anthropic({ apiKey });
 
 const ACCEPTABLE_STORY_TYPES = [
   'ai',

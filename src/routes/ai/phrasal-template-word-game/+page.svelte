@@ -1,6 +1,6 @@
 <script lang="ts">
   let selectedStoryType = 'current-events';
-  let story: string;
+  let story: string | undefined;
   let blanks: string[] = [];
   let filledBlanks: string[] = [];
   let filledInStory: string | undefined;
