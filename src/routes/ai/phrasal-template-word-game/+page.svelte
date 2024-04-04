@@ -94,6 +94,14 @@
     AIs are mostly useful for making stuff up, so they're a natural fit for generating such
     templates. I hope you enjoy the game.
   </p>
+  <small
+    ><p>
+      <em
+        >The AI tends to write stories with too many blanks. I'm still trying to figure out a way to
+        encourage it to keep it to 10-15 blanks.</em
+      >
+    </p>
+  </small>
 </div>
 <hr />
 {#if isGenerating}
@@ -164,9 +172,4 @@
   .storyType {
     height: 1rem;
   }
-
-  // button[disabled] {
-  //   cursor: not-allowed;
-  //   opacity: 0.5;
-  // }
 </style>
