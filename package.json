@@ -13,7 +13,6 @@
     "format": "prettier --plugin-search-dir . --write ."
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.19.1",
     "@aws-amplify/backend": "^0.12.1",
     "@aws-amplify/backend-cli": "^0.11.1",
     "@photo-sphere-viewer/core": "^5.1.4",
@@ -34,6 +33,7 @@
     "js-yaml": "^4.1.0",
     "mdsvex": "^0.11.0",
     "nanoid": "^4.0.2",
+    "openai": "^4.32.1",
     "prettier": "^2.8.0",
     "prettier-plugin-svelte": "^2.10.1",
     "sass": "^1.60.0",

@@ -108,8 +108,8 @@
     ><p>
       <em
         >Vercel will time out the function if it runs too long. Also, this only works so long as I
-        remember to fill up my <a href="https://console.anthropic.com/dashboard">Claude</a> credits.
-        If it's broken and you want to try it, lmk and I'll drop some more money on it.</em
+        remember to fill up my API credits. If it's broken and you want to try it, lmk and I'll feed
+        it some more quarters.</em
       >
     </p>
   </small>

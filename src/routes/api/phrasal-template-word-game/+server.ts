@@ -1,13 +1,12 @@
-import Anthropic from '@anthropic-ai/sdk';
-import type { MessageParam } from '@anthropic-ai/sdk/resources';
 import { error, type RequestHandler } from '@sveltejs/kit';
+import OpenAI from 'openai';
 
-const apiKey = process.env['ANTHROPIC_API_KEY'];
+const apiKey = process.env['OPENAI_API_KEY'];
 if (!apiKey) {
-  throw new Error('ANTHROPIC_API_KEY env var is required');
+  throw new Error('OPENAI_API_KEY env var is required');
 }
 
-const anthropic = new Anthropic({ apiKey });
+const openai = new OpenAI({ apiKey });
 
 const ACCEPTABLE_STORY_TYPES = [
   'ai',
@@ -51,18 +50,6 @@ Along with the user prompt below, create one such short story. Do not mention Ma
 Do not prefix the story with something like "Here is a short story template about current events:".
 `;
 
-function newStoryRequest(storyType: string): MessageParam {
-  return {
-    role: 'user',
-    content: [
-      {
-        type: 'text',
-        text: `I want a ${formatStoryType(storyType)} story`
-      }
-    ]
-  };
-}
-
 export const GET: RequestHandler = async ({ url }) => {
   const storyType = url.searchParams.get('storyType');
 
@@ -73,21 +60,31 @@ export const GET: RequestHandler = async ({ url }) => {
   if (isInvalidStoryType(storyType)) {
     return error(400, 'storyType is invalid, must be one of: ' + ACCEPTABLE_STORY_TYPES.join(', '));
   }
-
-  const msg = await anthropic.messages.create({
-    model: 'claude-3-opus-20240229',
+  
+  const msg = await openai.chat.completions.create({
+    model: 'gpt-3.5-turbo',
+    messages: [
+      {
+        role: 'system',
+        content: PROMPT
+      },
+      {
+        role: 'user',
+        content: `I want a ${formatStoryType(storyType)} story`
+      }
+    ],
+    temperature: 1.1,
     // Higher means longer stories but Vercel will time out this function if it runs longer than 10 seconds.
-    max_tokens: 375,
-    temperature: 0.2,
-    system: PROMPT,
-    stream: false,
-    messages: [newStoryRequest(storyType)]
+    max_tokens: 400,
+    top_p: 1,
+    frequency_penalty: 0,
+    presence_penalty: 0
   });
 
   // This way I can scan the logs later to see what was generated in case something fucky happens.
   console.log(msg);
 
-  const story = msg.content[0].text;
+  const story = msg.choices[0].message.content;
 
   return new Response(story);
 };
