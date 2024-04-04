@@ -19,6 +19,8 @@
       story = await response.text();
       if (story.startsWith('An error occurred with your deployment FUNCTION_INVOCATION_TIMEOUT')) {
         throw new Error('Vercel killed the function for running too long.');
+      } else if (!story.includes('[')) {
+        throw new Error(story);
       }
 
       blanks = getBlanks(story);
