@@ -1,23 +1,26 @@
 import { error, type RequestHandler } from '@sveltejs/kit';
 import OpenAI from 'openai';
 
-const apiKey = process.env['OPENAI_API_KEY'];
-if (!apiKey) {
-  throw new Error('OPENAI_API_KEY env var is required');
-}
+const cannedStoryMode = false;
 
-const openai = new OpenAI({ apiKey });
+let openai: OpenAI | undefined;
 
 const ACCEPTABLE_STORY_TYPES = [
+  'adventure',
   'ai',
   'anime',
   'comedy',
   'current-events',
+  'esoteric',
   'fantasy',
+  'heist',
+  'historical',
   'horror',
   'mystery',
+  'rhyming',
   'romance',
   'sci-fi',
+  'sports',
   'true-crime'
 ];
 
@@ -34,30 +37,42 @@ function formatStoryType(storyType: string) {
     case 'true-crime':
       return 'true crime';
     default:
-      return storyType;
+      if (
+        storyType.startsWith('a') ||
+        storyType.startsWith('e') ||
+        storyType.startsWith('i') ||
+        storyType.startsWith('o') ||
+        storyType.startsWith('u')
+      ) {
+        return `an ${storyType}`;
+      } else {
+        return `a ${storyType}`;
+      }
   }
 }
 
-const PROMPT = `
-# Game Rules
-This is a phrasal template word game. It consists of one player prompting others
-for a list of words to substitute for blanks in a story. Then, the completed story
-is read aloud, often with humorous results.
+let prompt: string | undefined;
 
-# Instructions
-1. Create a short story with many key words replaced with blanks.
-2. Blanks are delimited by [square brackets]. For example: "I like to [verb] [noun]."
-3. There should be no more than 10-15 blanks per story
-4. The user will request a certain kind of story. For example: "I want a [storyType] story."
-5. You must then generate a story of that type with blanks replacing key words.
+export const GET: RequestHandler = async ({ url, fetch }) => {
+  if (cannedStoryMode) {
+    const cannedStory = await fetch('/text/canned-story-esoteric.txt').then((response) =>
+      response.text()
+    );
+    return new Response(cannedStory);
+  }
 
-# Extra Rules
-1. Do not mention Mad Libs.
-2. Do not prefix the story with something like "Here is a short story template:".
-3. The story should be no longer than three paragraphs.
-`;
+  // This convoluted way of fetching the prompt is a way to avoid packing too much text into the bundle files.
+  // The Vercel build process doesn't like when it uses too much memory.
+  if (!prompt) {
+    prompt = await fetch('/text/phrasal-template-word-game-prompt.txt').then((response) =>
+      response.text()
+    );
 
-export const GET: RequestHandler = async ({ url }) => {
+    if (!prompt) {
+      return error(500, 'Failed to fetch prompt, this is a bug.');
+    }
+  }
+
   const storyType = url.searchParams.get('storyType');
 
   if (!storyType) {
@@ -68,16 +83,24 @@ export const GET: RequestHandler = async ({ url }) => {
     return error(400, 'storyType is invalid, must be one of: ' + ACCEPTABLE_STORY_TYPES.join(', '));
   }
 
+  if (!openai) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY env var is required');
+    }
+    openai = new OpenAI({ apiKey });
+  }
+
   const msg = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
+    model: 'gpt-4-turbo-preview',
     messages: [
       {
         role: 'system',
-        content: PROMPT
+        content: prompt
       },
       {
         role: 'user',
-        content: `I want a ${formatStoryType(storyType)} story`
+        content: `I want ${formatStoryType(storyType)} story`
       }
     ],
     temperature: 1.1,
@@ -89,9 +112,19 @@ export const GET: RequestHandler = async ({ url }) => {
   });
 
   // This way I can scan the logs later to see what was generated in case something fucky happens.
-  console.log(msg);
+  console.log('msg', msg);
 
-  const story = msg.choices[0].message.content;
+  let story = msg.choices[0].message.content?.trim();
+  if (story == null) {
+    return error(500, "The server didn't respond with a story. Please try again later.");
+  }
+
+  // Trim off an "[end]" if the story string ends with one before returning it.
+  while (story.endsWith('[end]')) {
+    story = story.slice(0, -5);
+  }
+
+  console.log('story', story);
 
   return new Response(story);
 };

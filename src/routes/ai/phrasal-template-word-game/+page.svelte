@@ -66,6 +66,32 @@
     filledBlanks = [];
     filledInStory = undefined;
   }
+
+  function setFilledBlank(i: number, category: string, value: string) {
+    const len = category.length;
+    if (category[len - 1].match(/\d/)) {
+      // If the category is numbered like [Name 1], then those fields values should be kept in sync
+      let indexesOfSameCategory = getIndexesOfSameCategory(category);
+      indexesOfSameCategory.forEach((index: number) => (filledBlanks[index] = value));
+    } else {
+      filledBlanks[i] = value;
+    }
+  }
+
+  function getIndexesOfSameCategory(category: string) {
+    let indexes: number[] = [];
+    let c_lc = category.toLowerCase();
+    // Check to make sure the field is a numbered one. We don't want to link non-numbered fields.
+    if (category[category.length - 1].match(/\d/)) {
+      for (let i = 0; i < blanks.length; i++) {
+        if (blanks[i].toLowerCase().startsWith(c_lc)) {
+          indexes.push(i);
+        }
+      }
+    }
+
+    return indexes;
+  }
 </script>
 
 <svelte:head>
@@ -116,7 +142,7 @@
 </div>
 <hr />
 {#if isGenerating}
-  <div>
+  <div class="align-center">
     <p>Please be patient, generating your story now...</p>
     <p>This will take less than ten seconds (Vercel's free-tier timeout)</p>
   </div>
@@ -130,8 +156,21 @@
       <form class="blanks-form" autocomplete="off" on:submit={onSubmit} on:reset={reset}>
         {#each blanks as blank, i}
           <label class="blanks-label">
-            {blank}
-            <input type="text" bind:value={filledBlanks[i]} />
+            {blank}&nbsp;
+            <input
+              type="text"
+              value={filledBlanks[i]}
+              on:input={(input) => {
+                try {
+                  const value = input.currentTarget.value;
+                  if (value != null) {
+                    setFilledBlank(i, blank, value);
+                  }
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+            />
           </label>
         {/each}
         <button type="submit">Fill in the blanks</button>
@@ -144,14 +183,20 @@
       Choose the kind of story to generate:
       <select class="storyType" bind:value={selectedStoryType}>
         <option value="ai">AI</option>
+        <option value="adventure">Adventure</option>
         <option value="anime">Anime</option>
         <option value="comedy">Comedy</option>
         <option value="current-events">Current Events</option>
+        <option value="esoteric">Esoteric</option>
         <option value="fantasy">Fantasy</option>
+        <option value="heist">Heist</option>
+        <option value="historical">Historical</option>
         <option value="horror">Horror</option>
         <option value="mystery">Mystery</option>
+        <option value="rhyming">Rhyming</option>
         <option value="romance">Romance</option>
-        <option value="sci-fi">Sci-Fi</option>
+        <option value="sci-fi">Sci-fi</option>
+        <option value="sports">Sports</option>
         <option value="true-crime">True Crime</option>
       </select></label
     >
@@ -160,6 +205,10 @@
 {/if}
 
 <style lang="scss">
+  .align-center {
+    text-align: center;
+  }
+
   .blanks-form {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -178,9 +227,5 @@
   p.story {
     font-size: 130%;
     line-height: 1.6;
-  }
-
-  .storyType {
-    height: 1rem;
   }
 </style>
