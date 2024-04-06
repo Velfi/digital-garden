@@ -144,14 +144,20 @@
       Choose the kind of story to generate:
       <select class="storyType" bind:value={selectedStoryType}>
         <option value="ai">AI</option>
+        <option value="adventure">Adventure</option>
         <option value="anime">Anime</option>
         <option value="comedy">Comedy</option>
         <option value="current-events">Current Events</option>
+        <option value="esoteric">Esoteric</option>
         <option value="fantasy">Fantasy</option>
+        <option value="heist">Heist</option>
+        <option value="historical">Historical</option>
         <option value="horror">Horror</option>
         <option value="mystery">Mystery</option>
+        <option value="rhyming">Rhyming</option>
         <option value="romance">Romance</option>
-        <option value="sci-fi">Sci-Fi</option>
+        <option value="sci-fi">Sci-fi</option>
+        <option value="sports">Sports</option>
         <option value="true-crime">True Crime</option>
       </select></label
     >
