@@ -2,12 +2,8 @@ import { error, type RequestHandler } from '@sveltejs/kit';
 import OpenAI from 'openai';
 
 const cannedStoryMode = false;
-const apiKey = process.env['OPENAI_API_KEY'];
-if (!apiKey) {
-  throw new Error('OPENAI_API_KEY env var is required');
-}
 
-const openai = new OpenAI({ apiKey });
+let openai: OpenAI | undefined;
 
 const ACCEPTABLE_STORY_TYPES = [
   'adventure',
@@ -85,6 +81,14 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
 
   if (isInvalidStoryType(storyType)) {
     return error(400, 'storyType is invalid, must be one of: ' + ACCEPTABLE_STORY_TYPES.join(', '));
+  }
+
+  if (!openai) {
+    const apiKey = process.env['OPENAI_API_KEY'];
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY env var is required');
+    }
+    openai = new OpenAI({ apiKey });
   }
 
   const msg = await openai.chat.completions.create({
