@@ -1,7 +1,7 @@
 import { error, type RequestHandler } from '@sveltejs/kit';
 import OpenAI from 'openai';
 
-const cannedStoryMode = true;
+const cannedStoryMode = false;
 const apiKey = process.env['OPENAI_API_KEY'];
 if (!apiKey) {
   throw new Error('OPENAI_API_KEY env var is required');
