@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stringToCloudFormation } from 'aws-cdk-lib';
+
   let selectedStoryType = 'current-events';
   let story: string | undefined;
   let blanks: string[] = [];
@@ -66,6 +68,29 @@
     filledBlanks = [];
     filledInStory = undefined;
   }
+
+  function setFilledBlank(category: string, value: string) {
+    const len = category.length;
+    if (category[len - 1].match(/\d/)) {
+      // If the category is numbered like [Name 1], then those fields values should be kept in sync
+      let indexesOfSameCategory = getIndexesOfSameCategory(category);
+      indexesOfSameCategory.forEach((index: number) => (filledBlanks[index] = value));
+    } else {
+      let index = blanks.indexOf(category);
+      filledBlanks[index] = value;
+    }
+  }
+
+  function getIndexesOfSameCategory(category: string) {
+    let indexes: number[] = [];
+    let c_lc = category.toLowerCase();
+    for (let i = 0; i < blanks.length; i++) {
+      if (blanks[i].toLowerCase().startsWith(c_lc)) {
+        indexes.push(i);
+      }
+    }
+    return indexes;
+  }
 </script>
 
 <svelte:head>
@@ -116,7 +141,7 @@
 </div>
 <hr />
 {#if isGenerating}
-  <div>
+  <div class="align-center">
     <p>Please be patient, generating your story now...</p>
     <p>This will take less than ten seconds (Vercel's free-tier timeout)</p>
   </div>
@@ -130,8 +155,21 @@
       <form class="blanks-form" autocomplete="off" on:submit={onSubmit} on:reset={reset}>
         {#each blanks as blank, i}
           <label class="blanks-label">
-            {blank}
-            <input type="text" bind:value={filledBlanks[i]} />
+            {blank}&nbsp;
+            <input
+              type="text"
+              value={filledBlanks[i]}
+              on:input={(input) => {
+                try {
+                  const value = input.currentTarget.value;
+                  if (value != null) {
+                    setFilledBlank(blank, value);
+                  }
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+            />
           </label>
         {/each}
         <button type="submit">Fill in the blanks</button>
@@ -166,6 +204,10 @@
 {/if}
 
 <style lang="scss">
+  .align-center {
+    text-align: center;
+  }
+
   .blanks-form {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -184,9 +226,5 @@
   p.story {
     font-size: 130%;
     line-height: 1.6;
-  }
-
-  .storyType {
-    height: 1rem;
   }
 </style>
