@@ -46,6 +46,9 @@
       save();
     }
   }}
+  aria-label={`Download the number ${value} represented as a Cistercian Monk numeral`}
+  role="button"
+  tabindex="0"
 >
   <title>The number {value} represented as a Cistercian Monk numeral</title>
   <g transform="scale({scale} {scale})">

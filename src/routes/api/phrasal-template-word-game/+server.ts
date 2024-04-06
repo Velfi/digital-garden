@@ -9,15 +9,21 @@ if (!apiKey) {
 const openai = new OpenAI({ apiKey });
 
 const ACCEPTABLE_STORY_TYPES = [
+  'adventure',
   'ai',
   'anime',
   'comedy',
   'current-events',
+  'esoteric',
   'fantasy',
+  'heist',
+  'historical',
   'horror',
   'mystery',
+  'rhyming',
   'romance',
   'sci-fi',
+  'sports',
   'true-crime'
 ];
 
@@ -34,27 +40,52 @@ function formatStoryType(storyType: string) {
     case 'true-crime':
       return 'true crime';
     default:
-      return storyType;
+      if (
+        storyType.startsWith('a') ||
+        storyType.startsWith('e') ||
+        storyType.startsWith('i') ||
+        storyType.startsWith('o') ||
+        storyType.startsWith('u')
+      ) {
+        return `an ${storyType}`;
+      } else {
+        return `a ${storyType}`;
+      }
   }
 }
 
 const PROMPT = `
 # Game Rules
+
 This is a phrasal template word game. It consists of one player prompting others
 for a list of words to substitute for blanks in a story. Then, the completed story
 is read aloud, often with humorous results.
 
 # Instructions
-1. Create a short story with many key words replaced with blanks.
+
+1. Create a short story with many key words replaced with blanks. Each blank has a category, such as "noun", "verb", "adjective", "place", etc.
 2. Blanks are delimited by [square brackets]. For example: "I like to [verb] [noun]."
 3. There should be no more than 10-15 blanks per story
 4. The user will request a certain kind of story. For example: "I want a [storyType] story."
 5. You must then generate a story of that type with blanks replacing key words.
+6. When gender is uncertain, prefer "they" to "he/she". Even better is to refer to a character by their name.
+7. Write "a" and "an" as "a/an".
+8. When several blanks refer to the same name or word, make sure to link them with a number.
 
-# Extra Rules
-1. Do not mention Mad Libs.
-2. Do not prefix the story with something like "Here is a short story template:".
-3. The story should be no longer than three paragraphs.
+For example:
+
+\`\`\`
+Once upon a time, in a far-off [place], lived a [adjective] [noun] named [name 1].
+[Name1] loved to [verb] more than anything else in the world. One day,
+[name1] decided to visit the [place] to find the most [adjective] [noun] known to [noun].
+\`\`\`
+
+9. Do not mention Mad Libs.
+10. Do not prefix the story with something like "Here is a short story template:".
+11. The story should be no longer than three paragraphs. Paragraphs should be short.
+12. End the story with the token [end] (all lowercase). Do not print anything after the [end].
+
+Now create the story that the user asks for.
 `;
 
 export const GET: RequestHandler = async ({ url }) => {
@@ -69,7 +100,7 @@ export const GET: RequestHandler = async ({ url }) => {
   }
 
   const msg = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
+    model: 'gpt-4-turbo-preview',
     messages: [
       {
         role: 'system',
@@ -77,7 +108,7 @@ export const GET: RequestHandler = async ({ url }) => {
       },
       {
         role: 'user',
-        content: `I want a ${formatStoryType(storyType)} story`
+        content: `I want ${formatStoryType(storyType)} story`
       }
     ],
     temperature: 1.1,
