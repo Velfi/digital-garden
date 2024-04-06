@@ -1,17 +1,5 @@
 {
-  "name": "digital-garden-svelte",
-  "version": "0.0.1",
-  "private": true,
-  "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "preview": "vite preview",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "test:unit": "vitest",
-    "lint": "prettier --plugin-search-dir . --check . && eslint .",
-    "format": "prettier --plugin-search-dir . --write ."
-  },
+  "dependencies": {},
   "devDependencies": {
     "@aws-amplify/backend": "^0.12.1",
     "@aws-amplify/backend-cli": "^0.11.1",
@@ -22,6 +10,7 @@
     "@types/js-yaml": "^4.0.5",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
+    "aws-amplify": "^6.0.27",
     "aws-cdk": "^2.135.0",
     "aws-cdk-lib": "^2.135.0",
     "constructs": "^10.3.0",
@@ -43,11 +32,20 @@
     "typescript": "^5.4.3",
     "vite": "^5.0.0",
     "vite-imagetools": "^7.0.1",
-    "vite-plugin-node-polyfills": "^0.21.0",
     "vitest": "^1.4.0"
   },
+  "name": "digital-garden-svelte",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "dev": "vite dev",
+    "format": "prettier --plugin-search-dir . --write .",
+    "lint": "prettier --plugin-search-dir . --check . && eslint .",
+    "preview": "vite preview",
+    "test:unit": "vitest"
+  },
   "type": "module",
-  "dependencies": {
-    "aws-amplify": "^6.0.27"
-  }
+  "version": "0.0.1"
 }

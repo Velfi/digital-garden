@@ -84,7 +84,7 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
   }
 
   if (!openai) {
-    const apiKey = process.env['OPENAI_API_KEY'];
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error('OPENAI_API_KEY env var is required');
     }
