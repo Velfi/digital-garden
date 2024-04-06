@@ -69,26 +69,29 @@
     filledInStory = undefined;
   }
 
-  function setFilledBlank(category: string, value: string) {
+  function setFilledBlank(i: number, category: string, value: string) {
     const len = category.length;
     if (category[len - 1].match(/\d/)) {
       // If the category is numbered like [Name 1], then those fields values should be kept in sync
       let indexesOfSameCategory = getIndexesOfSameCategory(category);
       indexesOfSameCategory.forEach((index: number) => (filledBlanks[index] = value));
     } else {
-      let index = blanks.indexOf(category);
-      filledBlanks[index] = value;
+      filledBlanks[i] = value;
     }
   }
 
   function getIndexesOfSameCategory(category: string) {
     let indexes: number[] = [];
     let c_lc = category.toLowerCase();
-    for (let i = 0; i < blanks.length; i++) {
-      if (blanks[i].toLowerCase().startsWith(c_lc)) {
-        indexes.push(i);
+    // Check to make sure the field is a numbered one. We don't want to link non-numbered fields.
+    if (category[category.length - 1].match(/\d/)) {
+      for (let i = 0; i < blanks.length; i++) {
+        if (blanks[i].toLowerCase().startsWith(c_lc)) {
+          indexes.push(i);
+        }
       }
     }
+
     return indexes;
   }
 </script>
@@ -163,7 +166,7 @@
                 try {
                   const value = input.currentTarget.value;
                   if (value != null) {
-                    setFilledBlank(blank, value);
+                    setFilledBlank(i, blank, value);
                   }
                 } catch (e) {
                   console.error(e);
