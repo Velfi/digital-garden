@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { stringToCloudFormation } from 'aws-cdk-lib';
-
   let selectedStoryType = 'current-events';
   let story: string | undefined;
   let blanks: string[] = [];
