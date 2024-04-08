@@ -97,6 +97,7 @@
         >*fair warning: this will <strong>destroy</strong> your mobile data plan</em
       >
     </li>
+    <li><a href="fonts/my-handwriting">My handwriting, as a font</a></li>
   </ul>
 
   <h2>Music</h2>
