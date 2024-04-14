@@ -4,10 +4,15 @@ description: I made a font of my own handwriting. It's free to use under the Cre
 keywords: fonts, otf, handwriting, script, free, creative commons
 ---
 
+<div class="use-handwriting-font">
+
 # {title}
 
-I like making fonts for some reason. Here's my latest, based on my own
-handwriting. I made it with [Glyphs](https://glyphsapp.com/), a tool I'd
+I like making fonts for some reason. Here's my latest, based on my own handwriting.
+
+</div>
+
+ I made it with [Glyphs](https://glyphsapp.com/), a tool I'd
 recommend. It's a bit pricey, but it's worth it if you're serious about making
 fonts.
 
@@ -47,3 +52,14 @@ You'll need a printer, scanner, and a bit of patience.
 [sample-v0_99]: handwriting/handwriting-sample-v0_99.png
 [file-v1_0]: handwriting/ZeldasHandwriting-v1_0-Regular.otf
 [sample-v1_0]: handwriting/handwriting-sample-v1_0.png
+
+<style>
+  .use-handwriting-font {
+    font-family: "Zeldas Handwriting";
+    line-height: 1.75;
+
+    & h1 {
+      line-height: 1.25;
+    }
+  }
+</style>
