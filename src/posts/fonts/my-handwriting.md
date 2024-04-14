@@ -25,16 +25,25 @@ GitHub][scan-tool-repo], and it can be installed with cargo:
 cargo install handwriting-scan-tool --locked
 ```
 
-To learn how to use it, see the docs on the [GitHub page][scan-tool-repo]. You'll need a printer, scanner, and a bit of patience.
+To learn how to use it, see the docs on the [GitHub page][scan-tool-repo].
+You'll need a printer, scanner, and a bit of patience.
 
 ## Download the font
 
-- [v0.99 Zelda's Handwriting (OTF Format)][file]
+- [v1.0 Zelda's Handwriting (OTF Format)][file-v1_0]
+  - _Fresh new flavor. Nicer to read, but it does look a bit less like my
+    handwriting._ Contains the alphabet, numbers, punctuation, and as many
+    special characters as I bothered to include. Please be patient with my
+    kerning. I'm still learning.
+  - ![v1.0 font sample][sample-v1_0]
+- [v0.99 Zelda's Handwriting (OTF Format)][file-v0_99]
   - _Original flavor. Not too nice to read, but it does look just like my
     handwriting._ Contains the alphabet, numbers, some punctuation, and some
     special characters.
-  - ![v0.99 font sample][sample]
+  - ![v0.99 font sample][sample-v0_99]
 
-[file]: handwriting/Zelda'sHandwriting-Regular.otf
-[sample]: handwriting/handwriting_sample.png
 [scan-tool-repo]: https://github.com/Velfi/handwriting-scan-tool
+[file-v0_99]: handwriting/ZeldasHandwriting-v0_99-Regular.otf
+[sample-v0_99]: handwriting/handwriting-sample-v0_99.png
+[file-v1_0]: handwriting/ZeldasHandwriting-v1_0-Regular.otf
+[sample-v1_0]: handwriting/handwriting-sample-v1_0.png
