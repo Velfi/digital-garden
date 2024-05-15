@@ -108,7 +108,8 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
     max_tokens: 400,
     top_p: 1,
     frequency_penalty: 0,
-    presence_penalty: 0
+    presence_penalty: 0,
+    stop: ['[end]']
   });
 
   // This way I can scan the logs later to see what was generated in case something fucky happens.
