@@ -92,7 +92,7 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
   }
 
   const msg = await openai.chat.completions.create({
-    model: 'gpt-4-turbo-preview',
+    model: 'gpt-4o',
     messages: [
       {
         role: 'system',
