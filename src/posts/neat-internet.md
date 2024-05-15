@@ -22,6 +22,7 @@ The web ain't all good but it ain't all bad neither
 - [Making architecture easy](https://worksinprogress.co/issue/making-architecture-easy)
 - [Who Lusts for Certainty Lusts for Lies](https://www.etymonline.com/columns/post/who-lusts-for-certainty-lusts-for-lies)
 - [Drag knife✒️ and Laser🔫 Etched (Specular) Holograms](https://forum.v1e.com/t/drag-knife-and-laser-etched-specular-holograms/36888)
+- [Adam Curtis on the dangers of self-expression](https://thecreativeindependent.com/people/adam-curtis-on-the-dangers-of-self-expression/)
 
 ## Fonts I enjoyed downloading from the internet
 
@@ -36,6 +37,7 @@ The web ain't all good but it ain't all bad neither
 - [Data structure visualizations](https://www.cs.usfca.edu/~galles/visualization/Algorithms.html)
 - [Ink: A narrative scripting language for games](https://www.inklestudios.com/ink/)
 - [When is a linked list not a linked list?](https://users.rust-lang.org/t/when-is-a-linked-list-not-a-linked-list/51134)
+- [The Grug Brained Developer: A layman's guide to thinking like the self-aware smol brained](https://grugbrain.dev)
 
 ## I don't know these internet people but I love their work
 
