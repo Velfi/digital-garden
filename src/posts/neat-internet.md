@@ -13,7 +13,7 @@ The web ain't all good but it ain't all bad neither
 - [AIeyes: A walking simulator in a city where the world is seen through a real time neural network](https://tmdev.itch.io/aieyes)
 - [Anagrammer: a tool for creating anagrams](https://www.wordplays.com/anagrammer)
 - [The Collection Chamber: Abandonware and forgotten games, made compatible with modern systems](https://collectionchamber.blogspot.com)
-- [The Sword of Kumdor]: https://lynn.github.io/kumdor/
+- [The Sword of Kumdor](https://lynn.github.io/kumdor/)
 
 ## Stuff I enjoyed reading on the internet
 
