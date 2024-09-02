@@ -14,7 +14,7 @@ keywords: fonts, otf, rudras, font, free, creative commons
 > intelligence, the holy race of the Danans. Controlling the seas, the Mermaids.
 > Proud, but arrogant, the Reptiles. And possessing incredible strength, the
 > Giants.
-> 
+>
 > However, they did not have Heaven's favor. And, in time, they
 > disappeared. Then, the Heavens gave birth once again. Life, 'tis said,
 > flourished anew.
