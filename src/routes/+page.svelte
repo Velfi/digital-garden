@@ -80,6 +80,11 @@
     <li><a href="art/2022-09-photospheres">September '22 photo spheres</a></li>
     <li><a href="poppy-sprouts">Poppy Sprout Time Lapse</a></li>
     <li><a href="art/2023-art">2023 Assorted prints and paintings</a></li>
+    <li>
+      <a href="art/visit-beautiful-chornobyl"
+        >Visit Beautiful Chornobyl - Screenshots from Stalker G.A.M.M.A.</a
+      >
+    </li>
   </ul>
 
   <h3>Wallpapers</h3>

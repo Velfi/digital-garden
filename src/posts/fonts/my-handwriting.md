@@ -12,7 +12,7 @@ I like making fonts for some reason. Here's my latest, based on my own handwriti
 
 </div>
 
- I made it with [Glyphs](https://glyphsapp.com/), a tool I'd
+I made it with [Glyphs](https://glyphsapp.com/), a tool I'd
 recommend. It's a bit pricey, but it's worth it if you're serious about making
 fonts.
 
