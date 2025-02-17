@@ -85,6 +85,7 @@
         >Visit Beautiful Chornobyl - Screenshots from Stalker G.A.M.M.A.</a
       >
     </li>
+    <li><a href="art/2025-belize-trip">2025 Belize Trip</a></li>
   </ul>
 
   <h3>Wallpapers</h3>
