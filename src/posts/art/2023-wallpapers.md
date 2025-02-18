@@ -56,7 +56,7 @@ keywords: wallpapers, 2023, photos
 
 # {title}
 
-Wallpapers made from my 2023 photos. The year isn't over yet, so this is still an ongoing project. I'll be adding more as I take them.
+Wallpapers made from my 2023 photos.
 
 <WallpaperGallery
 images={[
