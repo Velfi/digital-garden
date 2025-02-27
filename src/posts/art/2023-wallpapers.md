@@ -60,31 +60,31 @@ Wallpapers made from my 2023 photos.
 
 <WallpaperGallery
 images={[
-  [ZLH07694Small, ZLH07694Full, 'A pond at Rosehill Cemetery, Chicago, IL'],
-  [ZLH07704Small, ZLH07704Full, 'A road through Rosehill Cemetery, Chicago, IL'],
-  [ZLH07747Small, ZLH07747Full, 'A red-breasted nuthatch, harassing a tree'],
-  [ZLH07763Small, ZLH07763Full, 'Canada geese'],
-  [ZLH07773Small, ZLH07773Full, 'A canada goose doing yoga'],
-  [ZLH07814Small, ZLH07814Full, 'An exceptionally dark rock pigeon'],
-  [ZLH07820Small, ZLH07820Full, 'Grass and steel plating'],
-  [
-  ZLH07872Small,
-  ZLH07872Full,
-  'Aqua: an 82-story mixed-use skyscraper in Lakeshore East, Chicago, IL'
-  ],
-  [ZLH07882Small, ZLH07882Full, 'The heart of the loop, Chicago, IL'],
-  [ZLH07891v1Small, ZLH07891v1Full, 'A lizard on a palm tree'],
-  [ZLH07978Small, ZLH07978Full, 'Stucco buildings silhouetted against the sunset'],
-  [ZLH07996Small, ZLH07996Full, 'A lizard on a crape myrtle tree'],
-  [ZLH08032Small, ZLH08032Full, 'A dwarf umbrella tree'],
-  [ZLH8165Small, ZLH8165Full, 'Present day, present time'],
-  [ZLH8175Small, ZLH8175Full, 'Trees and steeple'],
-  [ZLH8184Small, ZLH8184Full, 'Blurry '],
-  [ZLH8216Small, ZLH8216Full, 'Storage'],
-  [ZLH8219Small, ZLH8219Full, 'Parking'],
-  [ZLH8227Small, ZLH8227Full, 'Night lights'],
-  [ZLH8355Small, ZLH8355Full, 'Chicago in the Summer'],
-  [ZLH9853Small, ZLH9853Full, 'Heron and ducks 1'],
-  [ZLH9868Small, ZLH9868Full, 'Heron and ducks 2']
+[ZLH07694Small, ZLH07694Full, 'A pond at Rosehill Cemetery, Chicago, IL'],
+[ZLH07704Small, ZLH07704Full, 'A road through Rosehill Cemetery, Chicago, IL'],
+[ZLH07747Small, ZLH07747Full, 'A red-breasted nuthatch, harassing a tree'],
+[ZLH07763Small, ZLH07763Full, 'Canada geese'],
+[ZLH07773Small, ZLH07773Full, 'A canada goose doing yoga'],
+[ZLH07814Small, ZLH07814Full, 'An exceptionally dark rock pigeon'],
+[ZLH07820Small, ZLH07820Full, 'Grass and steel plating'],
+[
+ZLH07872Small,
+ZLH07872Full,
+'Aqua: an 82-story mixed-use skyscraper in Lakeshore East, Chicago, IL'
+],
+[ZLH07882Small, ZLH07882Full, 'The heart of the loop, Chicago, IL'],
+[ZLH07891v1Small, ZLH07891v1Full, 'A lizard on a palm tree'],
+[ZLH07978Small, ZLH07978Full, 'Stucco buildings silhouetted against the sunset'],
+[ZLH07996Small, ZLH07996Full, 'A lizard on a crape myrtle tree'],
+[ZLH08032Small, ZLH08032Full, 'A dwarf umbrella tree'],
+[ZLH8165Small, ZLH8165Full, 'Present day, present time'],
+[ZLH8175Small, ZLH8175Full, 'Trees and steeple'],
+[ZLH8184Small, ZLH8184Full, 'Blurry '],
+[ZLH8216Small, ZLH8216Full, 'Storage'],
+[ZLH8219Small, ZLH8219Full, 'Parking'],
+[ZLH8227Small, ZLH8227Full, 'Night lights'],
+[ZLH8355Small, ZLH8355Full, 'Chicago in the Summer'],
+[ZLH9853Small, ZLH9853Full, 'Heron and ducks 1'],
+[ZLH9868Small, ZLH9868Full, 'Heron and ducks 2']
 ]}
 />
