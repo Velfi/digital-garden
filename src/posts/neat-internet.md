@@ -25,6 +25,11 @@ The web ain't all good but it ain't all bad neither
 - [Drag knife✒️ and Laser🔫 Etched (Specular) Holograms](https://forum.v1e.com/t/drag-knife-and-laser-etched-specular-holograms/36888)
 - [Adam Curtis on the dangers of self-expression](https://thecreativeindependent.com/people/adam-curtis-on-the-dangers-of-self-expression/)
 
+## Art, illustration, and design
+
+- [Studio Ghibli's movie still archive](https://www.ghibli.jp/works/)
+- [Mateusz Urbanowicz: a Polish watercolor and digital painting artist](https://mateuszurbanowicz.com)
+
 ## Fonts I enjoyed downloading from the internet
 
 - [Creep: a 4px-wide font](https://github.com/romeovs/creep)
