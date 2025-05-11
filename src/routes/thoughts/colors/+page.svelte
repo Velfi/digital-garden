@@ -5,8 +5,15 @@
   import CircleScalesCtrl from './circle-scales/controls.svelte';
   import PsychedelicSpinnerViz from './psychedelic-spinner/viz.svelte';
   import PsychedelicSpinnerCtrl from './psychedelic-spinner/controls.svelte';
+  import ColorHarmoniesViz from './color-harmonies/viz.svelte';
+  import ColorHarmoniesCtrl from './color-harmonies/controls.svelte';
 
-  const VISUALIZATIONS = ['Triangle Waves', 'Circle Scales', 'Psychedelic Spinner'];
+  const VISUALIZATIONS = [
+    'Triangle Waves',
+    'Circle Scales',
+    'Psychedelic Spinner',
+    'Color Harmonies'
+  ];
   let visualization = VISUALIZATIONS[0];
 
   let height;
@@ -57,6 +64,8 @@
     <CircleScalesViz {height} {width} />
   {:else if visualization === 'Psychedelic Spinner'}
     <PsychedelicSpinnerViz {height} {width} />
+  {:else if visualization === 'Color Harmonies'}
+    <ColorHarmoniesViz {height} {width} />
   {/if}
 </div>
 
@@ -67,6 +76,8 @@
     <CircleScalesCtrl />
   {:else if visualization === 'Psychedelic Spinner'}
     <PsychedelicSpinnerCtrl />
+  {:else if visualization === 'Color Harmonies'}
+    <ColorHarmoniesCtrl />
   {/if}
 </div>
 
