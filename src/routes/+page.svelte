@@ -146,6 +146,7 @@
         How this site previously used Canvas to render art and animations
       </a>
     </li>
+    <li><a href="https://timeline-of-you.vercel.app">My timeline creator and viewer app</a></li>
   </ul>
 
   <h2>Thoughts</h2>
