@@ -25,88 +25,58 @@ multitude of different patterns will appear.
 
 [Click here for more info on cool patterns that appear in nature.][patterns-in-nature]
 
-![The 'Soliton Collapse' setting](/images/programming/reaction-diffusion/soliton.png)
+## Example Images
 
-<p class="image-subtitle">The 'Soliton Collapse' setting</p>
-
-![The 'Brain Coral' setting](/images/programming/reaction-diffusion/brain_coral.png)
-
-<p class="image-subtitle">The 'Brain Coral' setting</p>
+![An example of the Reaction Diffusion Simulation](/images/programming/reaction-diffusion/example_1.png)
+![An example of the Reaction Diffusion Simulation](/images/programming/reaction-diffusion/example_2.png)
+![An example of the Reaction Diffusion Simulation](/images/programming/reaction-diffusion/example_3.png)
+![An example of the Reaction Diffusion Simulation](/images/programming/reaction-diffusion/example_4.png)
+![An example of the Reaction Diffusion Simulation](/images/programming/reaction-diffusion/example_5.png)
 
 ## Running The Visualizer
 
-You'll need to have Rust and `cargo` installed. Then, run `cargo run --release` in you terminal of
-choice. Click and drag around to seed the reaction and interact with it.
+You'll need to have Rust and `cargo` installed. Then, run `cargo run --release` in your terminal of choice.
 
-## Seeing Different Reactions
+## Controls
 
-Right now, changing the default interaction is somewhat inconvenient, but I've provided a few
-presets that you can manually enter. Just update line 33 in `main.rs`
+- **Left Mouse Button**: Click and drag to seed the reaction
+- **Right Mouse Button**: Click and drag to erase/create voids in the reaction
+- **Z**: Toggle psychedelic mode (randomly cycles through LUTs)
+- **X**: Clear the screen
+- **N**: Fill the screen with noise
+- **G**: Cycle through different color gradients (hold SHIFT to cycle backwards)
+- **P**: Cycle through different reaction presets (hold SHIFT to cycle backwards)
+- **U**: Cycle through different nutrient patterns (hold SHIFT to cycle backwards)
+- **Arrow Keys**: Adjust feed rate (left/right) and kill rate (up/down) in Custom preset (hold SHIFT for finer control)
+- **? or \\**: Toggle help overlay
+- **ESC**: Exit the application
 
-```rust
-// src/main.rs:33
-// Change the preset to anything exported from `model_presets`
-const CURRENT_MODEL: (f32, f32) = model_presets::SOLITON_COLLAPSE;
-```
+## Reaction Presets
 
-The options available are:
+The simulation comes with several built-in presets that create different patterns:
 
-<table>
-    <thead>
-        <tr>
-            <th>Preset Name</th>
-            <th>Feed Rate</th>
-            <th>Removal Rate</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td>BRAIN_CORAL</td>
-            <td>0.0545</td>
-            <td>0.0620</td>
-        </tr>
-        <tr>
-            <td>FINGERPRINT</td>
-            <td>0.0545</td>
-            <td>0.0620</td>
-        </tr>
-        <tr>
-            <td>MITOSIS</td>
-            <td>0.0367</td>
-            <td>0.0649</td>
-        </tr>
-        <tr>
-            <td>RIPPLES</td>
-            <td>0.0180</td>
-            <td>0.0510</td>
-        </tr>
-        <tr>
-            <td>SOLITON_COLLAPSE</td>
-            <td>0.0220</td>
-            <td>0.0600</td>
-        </tr>
-        <tr>
-            <td>U_SKATE_WORLD</td>
-            <td>0.0620</td>
-            <td>0.0610</td>
-        </tr>
-        <tr>
-            <td>UNDULATING</td>
-            <td>0.0260</td>
-            <td>0.0510</td>
-        </tr>
-        <tr>
-            <td>WORMS</td>
-            <td>0.0780</td>
-            <td>0.0610</td>
-        </tr>
-    </tbody>
-</table>
+- `BRAIN_CORAL`
+- `FINGERPRINT`
+- `MITOSIS`
+- `RIPPLES`
+- `SOLITON_COLLAPSE`
+- `U_SKATE_WORLD`
+- `UNDULATING`
+- `WORMS`
+- `CUSTOM` (Interactive: use arrow keys to adjust feed and kill rates, hold SHIFT for finer control)
 
-You can also enter a tuple of your own values here if you prefer.
+## Nutrient Patterns
+
+The simulation also includes various nutrient patterns that affect how the reaction spreads:
+
+- Uniform
+- Checkerboard
+- Diagonal Gradient
+- Radial Gradient
+- Vertical Stripes
+- Horizontal Stripes
+- Noise
 
 [GitHub]: https://github.com/Velfi/Gray-Scott-Reaction-Diffusion
 [reaction diffusion system wikipedia]: https://en.wikipedia.org/wiki/Reaction%E2%80%93diffusion_system
 [patterns-in-nature]: https://en.wikipedia.org/wiki/Patterns_in_nature
-[example_soliton]: /example_soliton.png "An example of the 'Soliton Collapse' setting"
-[example_brain_coral]: /example_brain_coral.png "An example of the 'Brain Coral' setting"
