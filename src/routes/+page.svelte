@@ -105,6 +105,7 @@
     </li>
     <li><a href="fonts/my-handwriting">My handwriting, as a font</a></li>
     <li><a href="fonts/a-new-rudras-font">A new Rudras font</a></li>
+    <li><a href="fonts/felt-elf">Felt Elf</a></li>
   </ul>
 
   <h2>Music</h2>
