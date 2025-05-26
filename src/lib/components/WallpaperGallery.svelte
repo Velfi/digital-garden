@@ -25,7 +25,9 @@
     padding: 0.8rem;
     background-color: rgb(255, 255, 255, 0.9);
     border-radius: 1px;
-    box-shadow: rgba(0, 0, 0, 0.05) 0px 6px 24px 0px, rgba(0, 0, 0, 0.08) 0px 0px 0px 1px;
+    box-shadow:
+      rgba(0, 0, 0, 0.05) 0px 6px 24px 0px,
+      rgba(0, 0, 0, 0.08) 0px 0px 0px 1px;
     margin-bottom: 0.2rem;
   }
 

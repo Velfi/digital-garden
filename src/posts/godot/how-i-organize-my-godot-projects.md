@@ -6,8 +6,8 @@ keywords: Godot, gamedev, game, development, organization
 
 # {title}
 
-*caveat emptor: I am a hobbyist game developer and a professional software engineer.*
-*The opinions expressed here are just that: opinions. They are just what works for me.*
+_caveat emptor: I am a hobbyist game developer and a professional software engineer._
+_The opinions expressed here are just that: opinions. They are just what works for me._
 
 When doing game development in Godot, I like to organize code into a few categories. This helps me keep things organized and easy to find. It also helps with code re-use. Here's a brief overview:
 

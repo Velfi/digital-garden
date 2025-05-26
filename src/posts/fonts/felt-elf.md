@@ -8,13 +8,13 @@ keywords: font, felt, elf, handwriting, note
 
 # {title}
 
-Felt Elf is a font that feels like a handwritten note. My wife thinks it looks elfy. A work in progress.
+Felt Elf is a font that feels like a handwritten note. My wife thinks it looks elfy. A work in progress. I've since lost the master font file to hard drive failure, so I may never finish this one.
 
 </div>
 
 > I made it with [Glyphs](https://glyphsapp.com/), a tool I'd
-recommend. It's a bit pricey, but it's worth it if you're serious about making
-fonts.
+> recommend. It's a bit pricey, but it's worth it if you're serious about making
+> fonts.
 
 ## Download the font
 

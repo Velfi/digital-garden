@@ -14,8 +14,19 @@ html,
 }
 
 body {
-  font-family: 'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
-    Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+  font-family:
+    'Atkinson Hyperlegible',
+    -apple-system,
+    BlinkMacSystemFont,
+    Segoe UI,
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    Fira Sans,
+    Droid Sans,
+    Helvetica Neue,
+    sans-serif;
   font-size: 1rem;
   line-height: 1.1111111rem;
   background-color: var(--bg-color);
@@ -23,8 +34,8 @@ body {
 }
 
 code {
-  font-family: 'Fira Code', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', 'Courier New', Courier,
-    monospace;
+  font-family:
+    'Fira Code', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', 'Courier New', Courier, monospace;
   font-size: inherit;
   font-size: 90%;
 }

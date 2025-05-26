@@ -13,8 +13,8 @@ I like making fonts for some reason. Here's my latest, based on my own handwriti
 </div>
 
 > I made it with [Glyphs](https://glyphsapp.com/), a tool I'd
-recommend. It's a bit pricey, but it's worth it if you're serious about making
-fonts.
+> recommend. It's a bit pricey, but it's worth it if you're serious about making
+> fonts.
 
 I start by writing out the alphabet, numbers, and some punctuation on a piece of
 specially marked paper. Then I use a tool I wrote to convert that into 108

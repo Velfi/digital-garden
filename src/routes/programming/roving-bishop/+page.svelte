@@ -99,8 +99,8 @@
   }
 
   .example {
-    font-family: 'Fira Code', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', 'Courier New', Courier,
-      monospace;
+    font-family:
+      'Fira Code', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', 'Courier New', Courier, monospace;
     font-size: 0.9rem;
     text-align: center;
   }
