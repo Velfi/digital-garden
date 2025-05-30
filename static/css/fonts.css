@@ -1,0 +1,7 @@
+@font-face {
+  font-family: 'Zelda Sans';
+  src: url('/ZeldaSans-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
