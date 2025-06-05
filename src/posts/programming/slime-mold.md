@@ -1,12 +1,14 @@
 ---
 title: Slime Mold (Physarum) Simulation
-description: A Rust implementation of a slime mold simulation.
-keywords: slime mold, rust, programming, physarum
+description: A GPU-accelerated slime mold simulation written in Rust using WGPU.
+keywords: slime mold, rust, programming, physarum, gpu, wgpu
 ---
 
 # {title}
 
-The source code is available on [GitHub]. I also made a music video that you can watch on [YouTube].
+A GPU-accelerated slime mold simulation written in Rust using WGPU. This project simulates the emergent behavior of slime mold colonies using compute shaders. It supports millions of agents on modern hardware.
+
+The source code is available on [GitHub]. I also made a music video with a previous version of the program that you can watch on [YouTube]. I should make another one of those.
 
 ## To those whom I've imitated
 
@@ -14,23 +16,13 @@ Many thanks to [Sage Jenson] and [Jeff Jones]. Without their work I couldn't hav
 
 ## What it looks like
 
-![Slime mold simulation example 1](/images/programming/slime-mold/slime_mold_example_1.png)
-
-<p class="image-subtitle">Nice orderly paths</p>
-
-![Slime mold simulation example 2](/images/programming/slime-mold/slime_mold_example_2.png)
-
-<p class="image-subtitle">More chaotic slime</p>
-
-![Slime mold simulation example 3](/images/programming/slime-mold/slime_mold_example_3.png)
-
-<p class="image-subtitle">Most chaotic slime</p>
-
-![Slime mold simulation example 4](/images/programming/slime-mold/slime_mold_example_4.png)
-
-<p class="image-subtitle">It does color too</p>
+![Slime mold simulation example 1](/images/programming/slime-mold/example_1.png)
+![Slime mold simulation example 2](/images/programming/slime-mold/example_2.png)
+![Slime mold simulation example 3](/images/programming/slime-mold/example_3.png)
+![Slime mold simulation example 4](/images/programming/slime-mold/example_4.png)
+![Slime mold simulation example 5](/images/programming/slime-mold/example_5.png)
 
 [GitHub]: https://github.com/Velfi/slime-mold
-[youtube]: https://www.youtube.com/watch?v=ms3h8zmB9eg
+[YouTube]: https://www.youtube.com/watch?v=ms3h8zmB9eg
 [Sage Jenson]: https://sagejenson.com/physarum
 [Jeff Jones]: https://uwe-repository.worktribe.com/output/980579
