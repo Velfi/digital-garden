@@ -29,6 +29,8 @@ The web ain't all good but it ain't all bad neither
 
 - [Studio Ghibli's movie still archive](https://www.ghibli.jp/works/)
 - [Mateusz Urbanowicz: a Polish watercolor and digital painting artist](https://mateuszurbanowicz.com)
+- ["POLINE" is an enigmatic color palette generator, that harnesses the mystical witchcraft of polar coordinates.](https://meodai.github.io/poline/)
+- [ARETE: A Visual History of the Latin Alphabet](https://uclab.fh-potsdam.de/arete/en)
 
 ## Fonts I enjoyed downloading from the internet
 
