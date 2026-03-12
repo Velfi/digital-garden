@@ -18,7 +18,7 @@
     ⓘ
   </button>
 </span>
-<div id={id} popover="auto" anchor={`${id}-btn`} role="tooltip" class="param-tooltip">{tip}</div>
+<div {id} popover="auto" anchor={`${id}-btn`} role="tooltip" class="param-tooltip">{tip}</div>
 
 <style>
   .param-label {

@@ -35,12 +35,14 @@ cargo run --release
 ## Controls
 
 ### Camera Controls
+
 - `W/A/S/D` or Arrow Keys - Move camera
 - `Mouse scroll` - Zoom in/out
 - `Shift + Z` - Reset camera with zoom
 - `Z` - Reset camera without zoom
 
 ### Simulation Controls
+
 - `Space` - Pause/Resume simulation
 - `P` - Regenerate particle positions
 - `C` - Regenerate particle types
@@ -51,10 +53,12 @@ cargo run --release
 - `Ctrl + Shift + Scroll` - Adjust simulation speed
 
 ### Mouse Interaction
+
 - Left Click + Drag - Repel particles
 - Right Click + Drag - Attract particles
 
 ### UI Controls
+
 - `/` - Toggle GUI visibility
 - `Esc` - Exit application
 

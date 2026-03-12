@@ -52,7 +52,7 @@ export const history = {
   },
   get canRedo() {
     return canRedoStore;
-  },
+  }
 };
 export const canUndo = canUndoStore;
 export const canRedo = canRedoStore;

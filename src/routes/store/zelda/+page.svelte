@@ -43,9 +43,9 @@
     >(shipping costs are included in the price.)</strong
   >
   I print, laminate, and cut the stickers myself. They may fade if left outside for a long time and the
-  laminate may not protect against all liquids. The stickers are shown on my cutting mat which has a
-  1-inch grid to give you an idea of the size. If you feel like I did you dirty at any point, send an
-  email with your order info and your grievance to <strong>store</strong> <em>at</em>
+  laminate may not protect against all liquids. The stickers are shown on my cutting mat which has a 1-inch
+  grid to give you an idea of the size. If you feel like I did you dirty at any point, send an email with
+  your order info and your grievance to <strong>store</strong> <em>at</em>
   <strong>zeldas</strong> <em>dot</em> <strong>page</strong>.
 </p>
 

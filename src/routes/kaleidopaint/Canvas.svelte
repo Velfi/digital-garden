@@ -33,7 +33,7 @@
     showSymmetryPreview,
     brushRotateWithSymmetry,
     history,
-    mosaicType,
+    mosaicType
   } from './store';
   import { getSymmetricPoints, getSymmetricAngleDeltas, drawMosaicPreview } from './symmetry';
   import {
@@ -42,7 +42,7 @@
     drawBrushPreview,
     applyScatterToDabs,
     type BrushParams,
-    type Dab,
+    type Dab
   } from './brushEngine';
   import paintBucketUrl from '$lib/assets/paint_bucket.png';
 
@@ -172,10 +172,7 @@
 
   function getCenter(): [number, number] {
     if (!canvas) return [0, 0];
-    return [
-      $symmetryOriginX * canvas.width,
-      $symmetryOriginY * canvas.height,
-    ];
+    return [$symmetryOriginX * canvas.width, $symmetryOriginY * canvas.height];
   }
 
   function effectiveMode() {
@@ -244,7 +241,7 @@
       spacing: $brushSpacing,
       isotropicSpacing: $brushIsotropicSpacing,
       source: $brushSource,
-      mix: $brushMix,
+      mix: $brushMix
     };
   }
 
@@ -287,9 +284,22 @@
       prevHoverY = y;
       const params = getBrushParams();
       const [cx, cy] = getCenter();
-      const pts = getSymmetricPoints(x, y, cx, cy, effectiveMode(), $symmetryFolds, $symmetryRotation, canvas?.width, canvas?.height, $mosaicType);
+      const pts = getSymmetricPoints(
+        x,
+        y,
+        cx,
+        cy,
+        effectiveMode(),
+        $symmetryFolds,
+        $symmetryRotation,
+        canvas?.width,
+        canvas?.height,
+        $mosaicType
+      );
       const shapeAngleRad =
-        ($brushShape === 'ellipse' || $brushShape === 'rectangle') ? ($brushAngle * Math.PI) / 180 : 0;
+        $brushShape === 'ellipse' || $brushShape === 'rectangle'
+          ? ($brushAngle * Math.PI) / 180
+          : 0;
       const baseAngleRad =
         $brushRotationMode === 'fixed'
           ? shapeAngleRad + ($brushRotationAngle * Math.PI) / 180
@@ -297,14 +307,24 @@
             ? shapeAngleRad + Math.PI / 4
             : 0;
       const angleDeltas = $brushRotateWithSymmetry
-        ? getSymmetricAngleDeltas(cx, cy, effectiveMode(), $symmetryFolds, $symmetryRotation, baseAngleRad, canvas?.width, canvas?.height, $mosaicType)
+        ? getSymmetricAngleDeltas(
+            cx,
+            cy,
+            effectiveMode(),
+            $symmetryFolds,
+            $symmetryRotation,
+            baseAngleRad,
+            canvas?.width,
+            canvas?.height,
+            $mosaicType
+          )
         : pts.map(() => 0);
       for (let i = 0; i < pts.length; i++) {
         const [px, py] = pts[i];
         const dab: Dab = {
           x: px,
           y: py,
-          angle: 0,
+          angle: 0
         };
         if ($brushRotationMode === 'origin') {
           dab.originAngleRad = Math.atan2(py - cy, px - cx);
@@ -342,7 +362,12 @@
 
     // Draw symmetry guide lines (only when preview enabled)
     const rotRad = ($symmetryRotation * Math.PI) / 180;
-    if ($showSymmetryPreview && $symmetryEnabled && $symmetryMode === 'linear' && $symmetryFolds >= 2) {
+    if (
+      $showSymmetryPreview &&
+      $symmetryEnabled &&
+      $symmetryMode === 'linear' &&
+      $symmetryFolds >= 2
+    ) {
       pCtx.strokeStyle = 'rgba(128, 128, 128, 0.3)';
       pCtx.lineWidth = 1;
       const drawLine = (angle: number) => {
@@ -386,13 +411,7 @@
         // Paint bucket icon in fill mode
         if (paintBucketImg?.complete && paintBucketImg.naturalWidth > 0) {
           const size = 24;
-          pCtx.drawImage(
-            paintBucketImg,
-            hoverX - size / 2,
-            hoverY - size / 2,
-            size,
-            size
-          );
+          pCtx.drawImage(paintBucketImg, hoverX - size / 2, hoverY - size / 2, size, size);
         }
       } else if ($tool !== 'origin' && $tool !== 'rotate' && $tool !== 'eyedropper') {
         // Brush shape preview in paint mode
@@ -426,7 +445,9 @@
         }
         const baseDrawingRad = smoothedDrawingAngleRad;
         const shapeAngleRad =
-          ($brushShape === 'ellipse' || $brushShape === 'rectangle') ? ($brushAngle * Math.PI) / 180 : 0;
+          $brushShape === 'ellipse' || $brushShape === 'rectangle'
+            ? ($brushAngle * Math.PI) / 180
+            : 0;
         const baseAngleRad =
           $brushRotationMode === 'fixed'
             ? shapeAngleRad + ($brushRotationAngle * Math.PI) / 180
@@ -434,7 +455,17 @@
               ? shapeAngleRad + baseDrawingRad
               : 0;
         const angleDeltas = $brushRotateWithSymmetry
-          ? getSymmetricAngleDeltas(cx, cy, effectiveMode(), $symmetryFolds, $symmetryRotation, baseAngleRad, canvas?.width, canvas?.height, $mosaicType)
+          ? getSymmetricAngleDeltas(
+              cx,
+              cy,
+              effectiveMode(),
+              $symmetryFolds,
+              $symmetryRotation,
+              baseAngleRad,
+              canvas?.width,
+              canvas?.height,
+              $mosaicType
+            )
           : points.map(() => 0);
         for (let i = 0; i < points.length; i++) {
           const [px, py] = points[i];
@@ -457,7 +488,7 @@
             rotationMode: $brushRotationMode,
             ...($brushRotationMode === 'origin' || $brushRotationMode === 'drawing'
               ? { previewRotationRad }
-              : {}),
+              : {})
           };
           drawBrushPreview(pCtx, previewParams, `rgba(${r}, ${g}, ${b}, 0.35)`);
           pCtx.restore();
@@ -516,7 +547,7 @@
       size: $brushSize,
       ratio: Math.max(0.1, Math.min(1, $brushRatio)),
       spacing: $brushSpacing,
-      isotropicSpacing: $brushIsotropicSpacing,
+      isotropicSpacing: $brushIsotropicSpacing
     };
     let px = lastX;
     let py = lastY;
@@ -538,7 +569,9 @@
           $mosaicType
         );
         const shapeAngleRad =
-          ($brushShape === 'ellipse' || $brushShape === 'rectangle') ? ($brushAngle * Math.PI) / 180 : 0;
+          $brushShape === 'ellipse' || $brushShape === 'rectangle'
+            ? ($brushAngle * Math.PI) / 180
+            : 0;
         const baseAngleRad =
           $brushRotationMode === 'fixed'
             ? shapeAngleRad + ($brushRotationAngle * Math.PI) / 180
@@ -546,7 +579,17 @@
               ? shapeAngleRad + dab.angle
               : 0;
         const angleDeltas = $brushRotateWithSymmetry
-          ? getSymmetricAngleDeltas(cx, cy, effectiveMode(), $symmetryFolds, $symmetryRotation, baseAngleRad, canvas?.width, canvas?.height, $mosaicType)
+          ? getSymmetricAngleDeltas(
+              cx,
+              cy,
+              effectiveMode(),
+              $symmetryFolds,
+              $symmetryRotation,
+              baseAngleRad,
+              canvas?.width,
+              canvas?.height,
+              $mosaicType
+            )
           : pts.map(() => 0);
         for (let i = 0; i < pts.length; i++) {
           const [sx, sy] = pts[i];
@@ -720,19 +763,18 @@
   function hexToRgb(hex: string): [number, number, number, number] {
     const m = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
     if (!m) return [0, 0, 0, 255];
-    return [
-      parseInt(m[1], 16),
-      parseInt(m[2], 16),
-      parseInt(m[3], 16),
-      255,
-    ];
+    return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16), 255];
   }
 
   function rgbToHex(r: number, g: number, b: number): string {
     return (
       '#' +
       [r, g, b]
-        .map((c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, '0'))
+        .map((c) =>
+          Math.max(0, Math.min(255, Math.round(c)))
+            .toString(16)
+            .padStart(2, '0')
+        )
         .join('')
     );
   }
@@ -755,7 +797,22 @@
     tick().then(fitToView);
   }
 
-  $: $symmetryMode, $symmetryFolds, $symmetryRotation, $symmetryOriginX, $symmetryOriginY, $symmetryEnabled, $showSymmetryPreview, $brushRotateWithSymmetry, $brushRotationMode, $tool, $brushShape, $brushSize, $brushAngle, $brushRatio, $mosaicType, tick().then(drawPreview);
+  $: ($symmetryMode,
+    $symmetryFolds,
+    $symmetryRotation,
+    $symmetryOriginX,
+    $symmetryOriginY,
+    $symmetryEnabled,
+    $showSymmetryPreview,
+    $brushRotateWithSymmetry,
+    $brushRotationMode,
+    $tool,
+    $brushShape,
+    $brushSize,
+    $brushAngle,
+    $brushRatio,
+    $mosaicType,
+    tick().then(drawPreview));
 
   onMount(() => {
     history.undo = doUndo;
@@ -796,7 +853,7 @@
         }
         ctx!.fillStyle = '#ffffff';
         ctx!.fillRect(0, 0, nw, nh);
-      },
+      }
     };
   }
 </script>
@@ -806,7 +863,8 @@
   on:mouseleave={handleMouseLeave}
   on:keydown={(e) => {
     const target = document.activeElement;
-    const isInput = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT';
+    const isInput =
+      target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT';
     if (e.code === 'Space' && !isInput) {
       e.preventDefault();
       spaceHeld = true;
@@ -841,23 +899,30 @@
   on:mouseleave={handleMouseLeave}
   tabindex="0"
 >
-  <div class="zoom-controls" on:mousedown|stopPropagation role="toolbar" aria-label="Zoom controls" tabindex="0">
-    <button type="button" on:click|stopPropagation={zoomOut} title="Zoom out" aria-label="Zoom out">−</button>
-    <span class="zoom-percent">{Math.round(scale * 100)}%</span>
-    <button type="button" on:click|stopPropagation={zoomIn} title="Zoom in" aria-label="Zoom in">+</button>
-    <button type="button" on:click|stopPropagation={fitToView} title="Fit to view" aria-label="Fit canvas to view">Fit</button>
-  </div>
   <div
-    class="canvas-transform"
-    style="transform: translate({panX}px, {panY}px) scale({scale});"
+    class="zoom-controls"
+    on:mousedown|stopPropagation
+    role="toolbar"
+    aria-label="Zoom controls"
+    tabindex="0"
   >
+    <button type="button" on:click|stopPropagation={zoomOut} title="Zoom out" aria-label="Zoom out"
+      >−</button
+    >
+    <span class="zoom-percent">{Math.round(scale * 100)}%</span>
+    <button type="button" on:click|stopPropagation={zoomIn} title="Zoom in" aria-label="Zoom in"
+      >+</button
+    >
+    <button
+      type="button"
+      on:click|stopPropagation={fitToView}
+      title="Fit to view"
+      aria-label="Fit canvas to view">Fit</button
+    >
+  </div>
+  <div class="canvas-transform" style="transform: translate({panX}px, {panY}px) scale({scale});">
     <div class="canvas-wrapper">
-      <canvas
-        id="kaleido-canvas"
-        bind:this={canvas}
-        width={w}
-        height={h}
-        use:initCanvas={{ w, h }}
+      <canvas id="kaleido-canvas" bind:this={canvas} width={w} height={h} use:initCanvas={{ w, h }}
       ></canvas>
       <canvas
         class="preview-overlay"

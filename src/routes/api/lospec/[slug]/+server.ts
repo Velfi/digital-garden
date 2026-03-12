@@ -20,6 +20,6 @@ export const GET: RequestHandler = async ({ params }) => {
   }
 
   return new Response(JSON.stringify(data), {
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' }
   });
 };

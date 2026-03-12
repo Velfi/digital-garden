@@ -48,10 +48,12 @@ const DEFAULT_PARAMS: Partial<BrushParams> = {
   spacing: 0.25,
   isotropicSpacing: true,
   source: 'plain',
-  mix: 0,
+  mix: 0
 };
 
-export function withDefaults(params: Partial<BrushParams> & Pick<BrushParams, 'size' | 'shape' | 'angle' | 'ratio' | 'color'>): BrushParams {
+export function withDefaults(
+  params: Partial<BrushParams> & Pick<BrushParams, 'size' | 'shape' | 'angle' | 'ratio' | 'color'>
+): BrushParams {
   return { ...DEFAULT_PARAMS, ...params } as BrushParams;
 }
 
@@ -96,7 +98,7 @@ export function interpolateDabs(
           size: brushSize!,
           ratio: 1,
           spacing: paramsOrSpacing,
-          isotropicSpacing: true,
+          isotropicSpacing: true
         }
       : paramsOrSpacing;
   const dx = x2 - x1;
@@ -105,9 +107,7 @@ export function interpolateDabs(
   if (dist < 0.001) return [{ x: x1, y: y1, angle: 0 }];
 
   const baseStep = params.size * Math.max(0.05, params.spacing);
-  let step = params.isotropicSpacing
-    ? baseStep
-    : baseStep * Math.min(1, params.ratio);
+  let step = params.isotropicSpacing ? baseStep : baseStep * Math.min(1, params.ratio);
   if (dist <= step) return [{ x: x2, y: y2, angle: Math.atan2(dy, dx) }];
 
   const angle = Math.atan2(dy, dx);
@@ -125,7 +125,7 @@ export function interpolateDabs(
     dabs.push({
       x: x1 + dx * t,
       y: y1 + dy * t,
-      angle,
+      angle
     });
   }
   dabs.push({ x: x2, y: y2, angle });
@@ -137,7 +137,10 @@ export function interpolateDabs(
  * Prefer interpolateDabs(x1,y1,x2,y2, params) for full control.
  */
 export function interpolateDabsLegacy(
-  x1: number, y1: number, x2: number, y2: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
   spacingFraction: number,
   brushSize: number
 ): Dab[] {
@@ -145,7 +148,7 @@ export function interpolateDabsLegacy(
     size: brushSize,
     ratio: 1,
     spacing: spacingFraction,
-    isotropicSpacing: true,
+    isotropicSpacing: true
   });
 }
 
@@ -183,11 +186,7 @@ function getDabColor(params: BrushParams, rng: () => number): string {
   const mix = params.mix;
   const [r1, g1, b1] = hexToRgb(params.color);
   const [r2, g2, b2] = hexToRgb(params.secondaryColor);
-  return rgbToHex(
-    r1 + (r2 - r1) * mix,
-    g1 + (g2 - g1) * mix,
-    b1 + (b2 - b1) * mix
-  );
+  return rgbToHex(r1 + (r2 - r1) * mix, g1 + (g2 - g1) * mix, b1 + (b2 - b1) * mix);
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -239,12 +238,7 @@ interface StampCacheEntry {
 let _stampCache: { key: string; entry: StampCacheEntry } | null = null;
 
 /** Max distance from center to shape boundary - radial gradient must extend this far for softness. */
-function getShapeMaxRadius(
-  shape: BrushShape,
-  rx: number,
-  ry: number,
-  r: number
-): number {
+function getShapeMaxRadius(shape: BrushShape, rx: number, ry: number, r: number): number {
   switch (shape) {
     case 'rectangle':
       return Math.max(Math.hypot(rx, ry), 0.5); // corners at (±rx,±ry)
@@ -262,9 +256,15 @@ function getShapeMaxRadius(
 function stampCacheKey(params: BrushParams): string {
   const p = withDefaults(params);
   return [
-    p.shape, p.size, p.ratio, p.angle,
-    p.softness, p.sharpness, p.sharpnessSoften ?? 0.2,
-    p.mirrorH ? 1 : 0, p.mirrorV ? 1 : 0,
+    p.shape,
+    p.size,
+    p.ratio,
+    p.angle,
+    p.softness,
+    p.sharpness,
+    p.sharpnessSoften ?? 0.2,
+    p.mirrorH ? 1 : 0,
+    p.mirrorV ? 1 : 0
   ].join('|');
 }
 
@@ -342,7 +342,10 @@ function getOrCreateStamp(
   return entry;
 }
 
-function getStampCanvas(w: number, h: number): {
+function getStampCanvas(
+  w: number,
+  h: number
+): {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
 } {
@@ -356,7 +359,10 @@ function getStampCanvas(w: number, h: number): {
   return { canvas: _stampCanvas!, ctx: _stampCtx! };
 }
 
-function getBrushCanvas(w: number, h: number): {
+function getBrushCanvas(
+  w: number,
+  h: number
+): {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
 } {
@@ -373,11 +379,7 @@ function getBrushCanvas(w: number, h: number): {
 /**
  * Draw a single dab to the canvas context.
  */
-export function drawDab(
-  ctx: CanvasRenderingContext2D,
-  dab: Dab,
-  params: BrushParams
-): void {
+export function drawDab(ctx: CanvasRenderingContext2D, dab: Dab, params: BrushParams): void {
   const fullParams = withDefaults(params);
   const color = getDabColor(fullParams, random01);
 
@@ -389,8 +391,7 @@ export function drawDab(
   const h = fullParams.size * Math.max(0.1, fullParams.ratio);
 
   const needsMask =
-    fullParams.softness > 0 ||
-    (fullParams.sharpness > 0 && fullParams.sharpness < 1);
+    fullParams.softness > 0 || (fullParams.sharpness > 0 && fullParams.sharpness < 1);
 
   let dabAngle = 0;
   if (fullParams.shape === 'ellipse' || fullParams.shape === 'rectangle') {
@@ -404,7 +405,8 @@ export function drawDab(
     dabAngle += dab.angle;
   }
   // Don't add symmetryAngleRad when in origin mode - originAngleRad already encodes per-point rotation
-  if (dab.symmetryAngleRad != null && fullParams.rotationMode !== 'origin') dabAngle += dab.symmetryAngleRad;
+  if (dab.symmetryAngleRad != null && fullParams.rotationMode !== 'origin')
+    dabAngle += dab.symmetryAngleRad;
 
   const rx = w / 2;
   const ry = h / 2;
@@ -520,7 +522,7 @@ export function drawBrushPreview(
   if (p.mirrorH) ctx.scale(-1, 1);
   if (p.mirrorV) ctx.scale(1, -1);
   const previewRot = (params as { previewRotationRad?: number }).previewRotationRad;
-  let rot = (p.shape === 'ellipse' || p.shape === 'rectangle') ? (p.angle * Math.PI) / 180 : 0;
+  let rot = p.shape === 'ellipse' || p.shape === 'rectangle' ? (p.angle * Math.PI) / 180 : 0;
   if (p.rotationMode === 'fixed') {
     rot += (p.rotationAngle * Math.PI) / 180;
   } else if (p.rotationMode === 'origin' && previewRot != null) {

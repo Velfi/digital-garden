@@ -41,7 +41,9 @@
   </p>
 
   <p>
-    I'm proud to say that I've made the font for this site myself. It's called <a href="fonts/zelda-sans">Zelda Sans</a>.
+    I'm proud to say that I've made the font for this site myself. It's called <a
+      href="fonts/zelda-sans">Zelda Sans</a
+    >.
   </p>
 
   <h2>Neat e-people of the web</h2>
@@ -128,7 +130,9 @@
   <h2>Movies</h2>
   <ul>
     <li><a href="movies/zardoz">Zardoz (1974), dir. John Boorman</a></li>
-    <li><a href="movies/1988">Watching every movie theatrically released in 1988, with exceptions</a></li>
+    <li>
+      <a href="movies/1988">Watching every movie theatrically released in 1988, with exceptions</a>
+    </li>
   </ul>
 
   <h2>Programmings</h2>
