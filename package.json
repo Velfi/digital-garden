@@ -5,6 +5,7 @@
     "@sveltejs/kit": "^2.17.3",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@types/js-yaml": "^4.0.9",
+    "@types/three": "^0.183.1",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
     "@typescript-eslint/parser": "^8.25.0",
     "constructs": "^10.4.2",
@@ -41,5 +42,8 @@
     "test:unit": "vitest"
   },
   "type": "module",
-  "version": "0.0.1"
+  "version": "0.0.1",
+  "dependencies": {
+    "three": "^0.183.2"
+  }
 }

@@ -54,6 +54,9 @@
     type BrushParams
   } from './brushEngine';
   import ParamLabel from './ParamLabel.svelte';
+  import ArtSidebar from '$lib/components/ArtSidebar.svelte';
+  import LospecPalette from '$lib/components/LospecPalette.svelte';
+  import UndoRedoButtons from '$lib/components/UndoRedoButtons.svelte';
 
   const BRUSH_TIPS: Record<string, string> = {
     'angle-ellipse': 'Rotation of the ellipse shape in degrees.',
@@ -132,47 +135,8 @@
     })());
 
   onMount(() => {
-    loadPaletteBySlug('resurrect-64');
     if ($tool === 'paint') drawBrushPreviewToCanvas();
   });
-
-  const POPULAR_PALETTES: { name: string; slug: string }[] = [
-    { name: 'Resurrect 64', slug: 'resurrect-64' },
-    { name: 'Apollo', slug: 'apollo' },
-    { name: 'Lospec500', slug: 'lospec500' },
-    { name: 'CC-29', slug: 'cc-29' },
-    { name: 'SLSO8', slug: 'slso8' }
-  ];
-
-  let lospecSlug = '';
-  let loading = false;
-  let loadError = '';
-
-  async function loadPaletteBySlug(slug: string) {
-    const normalized = slug.trim().toLowerCase();
-    if (!normalized) return;
-    loading = true;
-    loadError = '';
-    try {
-      const res = await fetch(`/api/lospec/${encodeURIComponent(normalized)}`);
-      const data = await res.json();
-      if (!res.ok) {
-        loadError = data.message || data.error || 'Failed to load palette';
-        return;
-      }
-      const hexColors = (data.colors ?? []).map((c: string) => (c.startsWith('#') ? c : `#${c}`));
-      palette.set(hexColors);
-      if (hexColors.length) color.set(hexColors[0]);
-    } catch (e) {
-      loadError = e instanceof Error ? e.message : 'Failed to load palette';
-    } finally {
-      loading = false;
-    }
-  }
-
-  function loadLospecPalette() {
-    loadPaletteBySlug(lospecSlug);
-  }
 
   let imageFileInput: HTMLInputElement | undefined;
 
@@ -226,18 +190,7 @@
   }
 </script>
 
-<div class="sidebar-wrapper">
-  <aside class="sidebar" class:collapsed={!$sidebarOpen}>
-    <button
-      type="button"
-      class="collapse-btn"
-      on:click={() => sidebarOpen.set(false)}
-      title="Collapse sidebar"
-      aria-label="Collapse sidebar"
-    >
-      ◀
-    </button>
-    <div class="sidebar-inner">
+<ArtSidebar open={sidebarOpen}>
       <h2>Tools</h2>
       <div class="tool-group">
         <button
@@ -554,52 +507,7 @@
         </label>
       </div>
 
-      <h2>Lospec palette</h2>
-      <p class="lospec-hint">
-        <a href="https://lospec.com/palette-list" target="_blank" rel="noopener">Browse palettes</a> and
-        enter a slug (e.g. greyt-bit, apollo)
-      </p>
-      <div class="popular-palettes">
-        {#each POPULAR_PALETTES as p}
-          <a
-            href="https://lospec.com/palette-list/{p.slug}"
-            class="palette-link"
-            on:click|preventDefault={() => loadPaletteBySlug(p.slug)}
-          >
-            {p.name}
-          </a>
-        {/each}
-      </div>
-      <div class="lospec-loader">
-        <input
-          type="text"
-          placeholder="e.g. greyt-bit"
-          bind:value={lospecSlug}
-          on:keydown={(e) => e.key === 'Enter' && loadLospecPalette()}
-          disabled={loading}
-        />
-        <button type="button" on:click={loadLospecPalette} disabled={loading}>
-          {loading ? 'Loading…' : 'Load'}
-        </button>
-      </div>
-      {#if loadError}
-        <span class="load-error">{loadError}</span>
-      {/if}
-      {#if $palette.length > 0}
-        <div class="palette-swatches">
-          {#each $palette as swatch}
-            <button
-              type="button"
-              class="swatch"
-              class:active={swatch === $color}
-              style="background-color: {swatch}"
-              title={swatch}
-              aria-label="Select color {swatch}"
-              on:click={() => color.set(swatch)}
-            ></button>
-          {/each}
-        </div>
-      {/if}
+      <LospecPalette color={color} palette={palette} defaultSlug="resurrect-64" />
 
       <h2>Symmetry</h2>
       <div class="symmetry-section">
@@ -686,25 +594,11 @@
       </div>
 
       <h2>Canvas</h2>
-      <div class="undo-redo">
-        <button
-          type="button"
-          disabled={!$canUndo}
-          on:click={() => history.undo()}
-          title="Undo (Ctrl+Z / Cmd+Z)">Undo</button
-        >
-        <button
-          type="button"
-          disabled={!$canRedo}
-          on:click={() => history.redo()}
-          title="Redo (Ctrl+Shift+Z / Cmd+Y)">Redo</button
-        >
-      </div>
+      <UndoRedoButtons history={history} canUndo={canUndo} canRedo={canRedo} />
       <button type="button" on:click={openNewCanvas}>New canvas</button>
       <button type="button" on:click={exportCanvas}>Export PNG</button>
-    </div>
 
-    {#if showNewCanvas}
+  {#if showNewCanvas}
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         class="modal-overlay"
@@ -729,112 +623,10 @@
         </div>
       </div>
     {/if}
-  </aside>
-  {#if !$sidebarOpen}
-    <button
-      type="button"
-      class="expand-tab"
-      on:click={() => sidebarOpen.set(true)}
-      title="Expand sidebar"
-      aria-label="Expand sidebar"
-    >
-      ▶
-    </button>
-  {/if}
-</div>
+</ArtSidebar>
 
 <style lang="scss">
-  .sidebar-wrapper {
-    display: flex;
-    flex-shrink: 0;
-    align-items: stretch;
-  }
-
-  .sidebar {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    width: 360px;
-    min-width: 360px;
-    flex-shrink: 0;
-    padding: 0.5rem 0.75rem;
-    max-height: calc(100vh - 6rem);
-    overflow-y: auto;
-    overflow-x: hidden;
-    transition:
-      width 0.2s ease,
-      min-width 0.2s ease,
-      padding 0.2s ease;
-
-    &.collapsed {
-      width: 0;
-      min-width: 0;
-      padding-left: 0;
-      padding-right: 0;
-      overflow: hidden;
-
-      .collapse-btn,
-      .sidebar-inner {
-        opacity: 0;
-        pointer-events: none;
-      }
-    }
-  }
-
-  .collapse-btn {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    width: 1.5rem;
-    height: 1.5rem;
-    padding: 0;
-    font-size: 0.75rem;
-    line-height: 1;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 2px;
-    background: rgba(255, 255, 255, 0.15);
-    color: inherit;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.25);
-    }
-  }
-
-  .sidebar-inner {
-    flex: 1;
-    min-width: 0;
-    overflow-y: auto;
-  }
-
-  .expand-tab {
-    width: 1.5rem;
-    padding: 0.5rem 0.25rem;
-    font-size: 0.75rem;
-    line-height: 1;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-left: none;
-    border-radius: 0 4px 4px 0;
-    background: rgba(255, 255, 255, 0.1);
-    color: inherit;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.2);
-    }
-  }
-
-  .sidebar h2 {
+  :global(.sidebar) h2 {
     font-size: 0.9rem;
     margin: 0.5rem 0 0.15rem 0;
     &:first-child {
@@ -919,65 +711,6 @@
     color: var(--text-color-muted, #666);
   }
 
-  .lospec-hint {
-    font-size: 0.8rem;
-    margin: 0;
-    color: var(--text-color-muted, #666);
-    a {
-      color: var(--accent-color, #08c);
-    }
-  }
-
-  .popular-palettes {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem 0.5rem;
-    margin-bottom: 0.25rem;
-
-    .palette-link {
-      font-size: 0.85rem;
-      color: var(--accent-color, #08c);
-      &:hover {
-        text-decoration: underline;
-      }
-    }
-  }
-
-  .lospec-loader {
-    display: flex;
-    gap: 0.25rem;
-    input {
-      flex: 1;
-      padding: 0.25rem 0.5rem;
-    }
-  }
-
-  .load-error {
-    font-size: 0.8rem;
-    color: var(--accent-color, #c44);
-  }
-
-  .palette-swatches {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
-    margin-top: 0.25rem;
-
-    .swatch {
-      width: 20px;
-      height: 20px;
-      padding: 0;
-      border: 1px solid rgba(0, 0, 0, 0.2);
-      border-radius: 2px;
-      cursor: pointer;
-
-      &.active {
-        outline: 2px solid var(--text-color);
-        outline-offset: 1px;
-      }
-    }
-  }
-
   .brush-params-grid {
     display: grid;
     grid-template-columns: auto minmax(8rem, 1fr) auto;
@@ -1057,11 +790,6 @@
       min-width: 0;
       width: 100%;
     }
-  }
-
-  .undo-redo {
-    display: flex;
-    gap: 0.5rem;
   }
 
   .modal-overlay {
