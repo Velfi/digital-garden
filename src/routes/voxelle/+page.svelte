@@ -1,7 +1,16 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
+	import { onMount, onDestroy } from 'svelte';
 	import Sidebar from './Sidebar.svelte';
 	import VoxelCanvas from './VoxelCanvas.svelte';
-	import { history } from './store';
+	import { history, saveToStorage } from './store';
+
+	onMount(() => {
+		if (browser) window.addEventListener('beforeunload', saveToStorage);
+	});
+	onDestroy(() => {
+		if (browser) window.removeEventListener('beforeunload', saveToStorage);
+	});
 </script>
 
 <svelte:head>

@@ -1,4 +1,7 @@
 import { writable, get } from 'svelte/store';
+import { browser } from '$app/environment';
+
+const VOXELLE_STORAGE_KEY = 'voxelle';
 
 export type GridSize = 32 | 64;
 export type Tool = 'add' | 'remove' | 'paint';
@@ -44,7 +47,7 @@ export function deserializeVoxels(json: string): Map<string, number> {
 
 const MAX_UNDO = 50;
 
-export type StrokeMode = 'line' | 'plane';
+export type StrokeMode = 'line' | 'plane' | 'cuboid';
 
 export const gridSize = writable<GridSize>(32);
 export const voxels = writable<Map<string, number>>(new Map());
@@ -124,6 +127,37 @@ export function initCanvas(size: GridSize) {
 	canUndoStore.set(false);
 	canRedoStore.set(false);
 	voxels.set(initFilledCube(size));
+}
+
+export function loadFromStorage(): boolean {
+	if (!browser) return false;
+	try {
+		const raw = localStorage.getItem(VOXELLE_STORAGE_KEY);
+		if (!raw) return false;
+		const { gridSize: sz, voxelsJson } = JSON.parse(raw);
+		if (sz !== 32 && sz !== 64) return false;
+		undoStack.length = 0;
+		redoStack.length = 0;
+		canUndoStore.set(false);
+		canRedoStore.set(false);
+		gridSize.set(sz);
+		voxels.set(deserializeVoxels(voxelsJson));
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+export function saveToStorage() {
+	if (!browser) return;
+	try {
+		localStorage.setItem(
+			VOXELLE_STORAGE_KEY,
+			JSON.stringify({ gridSize: get(gridSize), voxelsJson: serializeVoxels(get(voxels)) })
+		);
+	} catch {
+		// ignore quota etc
+	}
 }
 
 export function resetCanvas(size: GridSize) {

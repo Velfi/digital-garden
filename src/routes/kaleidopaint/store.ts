@@ -1,6 +1,21 @@
 import { writable } from 'svelte/store';
+import { browser } from '$app/environment';
 import type { SymmetryMode, MosaicType } from './symmetry';
 import type { BrushShape, RotationMode, ColorSource } from './brushEngine';
+
+const KALEIDOPAINT_STORAGE_KEY = 'kaleidopaint';
+let saved: { width: number; height: number; dataUrl: string } | null = null;
+if (browser) {
+  try {
+    const raw = localStorage.getItem(KALEIDOPAINT_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.width && parsed?.height && parsed?.dataUrl) saved = parsed;
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
 export type Tool = 'paint' | 'fill' | 'origin' | 'rotate' | 'eyedropper' | 'image';
 
@@ -34,8 +49,18 @@ export const brushRotationAngle = writable<number>(0);
 export const brushIsotropicSpacing = writable<boolean>(true);
 export const brushSource = writable<ColorSource>('plain');
 export const brushMix = writable<number>(0);
-export const canvasWidth = writable<number>(900);
-export const canvasHeight = writable<number>(900);
+export const canvasWidth = writable<number>(saved?.width ?? 900);
+export const canvasHeight = writable<number>(saved?.height ?? 900);
+export const restoreDataUrl = writable<string | null>(saved?.dataUrl ?? null);
+
+export function saveKaleidopaintToStorage(width: number, height: number, dataUrl: string) {
+  if (!browser) return;
+  try {
+    localStorage.setItem(KALEIDOPAINT_STORAGE_KEY, JSON.stringify({ width, height, dataUrl }));
+  } catch {
+    /* ignore */
+  }
+}
 export const canvasKey = writable<number>(0);
 export const showSymmetryPreview = writable<boolean>(true);
 export const brushRotateWithSymmetry = writable<boolean>(true);

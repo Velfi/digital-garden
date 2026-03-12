@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { get } from 'svelte/store';
   import { onMount, onDestroy } from 'svelte';
   import {
     tool,
@@ -37,7 +38,9 @@
     loadedImage,
     imageStampSize,
     imageRotateWithSymmetry,
-    imageConstrainToSection
+    imageConstrainToSection,
+    restoreDataUrl,
+    saveKaleidopaintToStorage
   } from './store';
   import {
     getSymmetricPoints,
@@ -972,9 +975,27 @@
     $imageConstrainToSection,
     tick().then(drawPreview));
 
-  onMount(() => {
+  function saveCanvas() {
+    if (canvas && ctx) {
+      saveKaleidopaintToStorage(canvas.width, canvas.height, canvas.toDataURL('image/png'));
+    }
+  }
+
+  onMount(async () => {
     history.undo = doUndo;
     history.redo = doRedo;
+    window.addEventListener('beforeunload', saveCanvas);
+    await tick();
+    const url = get(restoreDataUrl);
+    if (url && canvas && ctx) {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0);
+        restoreDataUrl.set(null);
+        drawPreview();
+      };
+      img.src = url;
+    }
     const img = new Image();
     img.src = paintBucketUrl;
     img.onload = () => {
@@ -984,6 +1005,8 @@
   });
 
   onDestroy(() => {
+    window.removeEventListener('beforeunload', saveCanvas);
+    saveCanvas();
     history.undo = () => {};
     history.redo = () => {};
     history.canUndo.set(false);

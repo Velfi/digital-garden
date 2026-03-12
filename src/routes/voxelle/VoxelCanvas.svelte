@@ -24,6 +24,8 @@
 		beginStroke,
 		history,
 		initCanvas,
+		loadFromStorage,
+		saveToStorage,
 		coordKey,
 		parseCoordKey,
 		hexToInt
@@ -52,6 +54,13 @@
 	let dragPointerId: number | null = null;
 	let pendingStrokePositions: [number, number, number][] = [];
 
+	// Cuboid two-phase: first drag = plane, second click = depth
+	let cuboidPhase: 'plane' | 'depth' | null = null;
+	let cuboidPlane:
+		| { a: [number, number, number]; b: [number, number, number]; normal: THREE.Vector3 }
+		| null = null;
+	let cuboidDepth = 0; // voxel layers, set during depth phase from pointer move
+
 	let previewMesh: THREE.InstancedMesh | null = null;
 	let previewMaterial: THREE.MeshBasicMaterial | null = null;
 	const PREVIEW_MAX = 4096;
@@ -60,6 +69,8 @@
 	let gridLineMaterial: THREE.LineBasicMaterial | null = null;
 
 	let zoomPercent = $state(100);
+	let deltaDisplay = $state<{ dx: number; dy: number; dz: number } | null>(null);
+	let pointerScreen = $state({ x: 0, y: 0 });
 	const ZOOM_FACTOR_IN = 1 / 1.2;
 	const ZOOM_FACTOR_OUT = 1.2;
 	const MIN_DISTANCE = 5;
@@ -200,6 +211,34 @@
 			const y1 = Math.max(a[1], b[1]);
 			for (let px = x0; px <= x1; px++)
 				for (let py = y0; py <= y1; py++) positions.push([px, py, z]);
+		}
+		return positions;
+	}
+
+	/** Returns all voxel positions in axis-aligned cuboid. Plane from a to b, extruded along faceNormal by depth voxels. */
+	function getAxisAlignedCuboid(
+		a: [number, number, number],
+		b: [number, number, number],
+		faceNormal: THREE.Vector3,
+		depth: number
+	): [number, number, number][] {
+		const planePositions = getAxisAlignedPlaneFromNormal(a, b, faceNormal);
+		if (depth === 0) return planePositions;
+		const positions: [number, number, number][] = [...planePositions];
+		const ax = Math.abs(faceNormal.x);
+		const ay = Math.abs(faceNormal.y);
+		const az = Math.abs(faceNormal.z);
+		const axis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+		const step = faceNormal.getComponent(axis) > 0 ? 1 : -1;
+		const layers = Math.abs(depth);
+		const dir = depth > 0 ? step : -step;
+		for (let k = 1; k <= layers; k++) {
+			const dk = dir * k;
+			for (const [px, py, pz] of planePositions) {
+				const pos: [number, number, number] = [px, py, pz];
+				pos[axis] += dk;
+				positions.push(pos);
+			}
 		}
 		return positions;
 	}
@@ -389,6 +428,13 @@
 	}
 
 	function cancelDrag() {
+		deltaDisplay = null;
+		if (cuboidPhase) {
+			cuboidPhase = null;
+			cuboidPlane = null;
+			pendingStrokePositions = [];
+			updatePreviewMesh([]);
+		}
 		if (isVoxelDrag) {
 			if (dragPointerId !== null) {
 				try {
@@ -405,9 +451,20 @@
 		}
 	}
 
+	function computeCuboidDepthFromPoint(point: [number, number, number]): number {
+		if (!cuboidPlane) return 0;
+		const { a, normal } = cuboidPlane;
+		const ax = Math.abs(normal.x);
+		const ay = Math.abs(normal.y);
+		const az = Math.abs(normal.z);
+		const axis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+		const sign = normal.getComponent(axis) > 0 ? 1 : -1;
+		return (point[axis] - a[axis]) * sign;
+	}
+
 	function handlePointerDown(event: PointerEvent) {
 		if (event.button === 2) {
-			if (isVoxelDrag) {
+			if (isVoxelDrag || cuboidPhase) {
 				event.preventDefault();
 				cancelDrag();
 				render();
@@ -415,6 +472,34 @@
 			return;
 		}
 		if (event.button !== 0) return;
+
+		// Cuboid depth phase: second click commits the cuboid
+		if (
+			get(strokeMode) === 'cuboid' &&
+			cuboidPhase === 'depth' &&
+			cuboidPlane
+		) {
+			event.preventDefault();
+			event.stopPropagation();
+			const positions = getAxisAlignedCuboid(
+				cuboidPlane.a,
+				cuboidPlane.b,
+				cuboidPlane.normal,
+				cuboidDepth
+			);
+			if (positions.length > 0) {
+				beginStroke();
+				applyLineStroke(positions);
+			}
+			deltaDisplay = null;
+			cuboidPhase = null;
+			cuboidPlane = null;
+			pendingStrokePositions = [];
+			updatePreviewMesh([]);
+			render();
+			return;
+		}
+
 		const hit = getIntersection();
 		if (!hit) {
 			// Background click: let OrbitControls handle orbit
@@ -455,6 +540,33 @@
 	}
 
 	function handlePointerMove() {
+		// Cuboid depth phase: update depth from pointer, show full cuboid preview
+		if (cuboidPhase === 'depth' && cuboidPlane) {
+			const hit = getIntersection();
+			if (hit) {
+				const pos =
+					$tool === 'add' ? getAddPosition(hit) : getVoxelPosition(hit);
+				if (pos && inBounds(pos[0], pos[1], pos[2], $gridSize)) {
+					cuboidDepth = computeCuboidDepthFromPoint(pos);
+				}
+			}
+			const ax = Math.abs(cuboidPlane.normal.x);
+			const ay = Math.abs(cuboidPlane.normal.y);
+			const az = Math.abs(cuboidPlane.normal.z);
+			const axis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+			const delta: [number, number, number] = [0, 0, 0];
+			delta[axis] = cuboidDepth;
+			deltaDisplay = { dx: delta[0], dy: delta[1], dz: delta[2] };
+			pendingStrokePositions = getAxisAlignedCuboid(
+				cuboidPlane.a,
+				cuboidPlane.b,
+				cuboidPlane.normal,
+				cuboidDepth
+			);
+			updatePreviewMesh(pendingStrokePositions);
+			render();
+			return;
+		}
 		if (isVoxelDrag && dragStartPos) {
 			// Update preview
 			const hit = getIntersection();
@@ -466,14 +578,22 @@
 			if (currentPos && inBounds(currentPos[0], currentPos[1], currentPos[2], $gridSize)) {
 				const mode = get(strokeMode);
 				pendingStrokePositions =
-					mode === 'plane' && dragFaceNormal
+					(mode === 'plane' || mode === 'cuboid') && dragFaceNormal
 						? getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, dragFaceNormal)
 						: getAxisAlignedLine(dragStartPos, currentPos);
+				deltaDisplay = {
+					dx: currentPos[0] - dragStartPos[0],
+					dy: currentPos[1] - dragStartPos[1],
+					dz: currentPos[2] - dragStartPos[2]
+				};
+			} else {
+				deltaDisplay = null;
 			}
 			updatePreviewMesh(pendingStrokePositions);
 			render();
 			return;
 		}
+		deltaDisplay = null;
 		if ($tool !== 'add') {
 			rollOverMesh.visible = false;
 			render();
@@ -499,6 +619,7 @@
 		const rect = renderer.domElement.getBoundingClientRect();
 		pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
 		pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+		pointerScreen = { x: event.clientX - rect.left, y: event.clientY - rect.top };
 	}
 
 	function onPointerMove(event: PointerEvent) {
@@ -512,17 +633,42 @@
 	}
 
 	function onPointerUp(event: PointerEvent) {
-		if (event.button === 2 && isVoxelDrag) {
+		if (event.button === 2 && (isVoxelDrag || cuboidPhase)) {
 			cancelDrag();
 		}
 		if (event.button === 0 && isVoxelDrag) {
-			// Apply the stroke on release
-			if (pendingStrokePositions.length > 0) {
-				beginStroke();
-				applyLineStroke(pendingStrokePositions);
+			updatePointerFromEvent(event);
+			const mode = get(strokeMode);
+			if (mode === 'cuboid' && dragStartPos && dragFaceNormal) {
+				// Enter depth phase instead of committing
+				let cornerB = dragStartPos;
+				const hit = getIntersection();
+				if (hit) {
+					const pos = $tool === 'add' ? getAddPosition(hit) : getVoxelPosition(hit);
+					if (pos && inBounds(pos[0], pos[1], pos[2], $gridSize)) cornerB = pos;
+				}
+				cuboidPhase = 'depth';
+				cuboidPlane = {
+					a: dragStartPos,
+					b: cornerB,
+					normal: dragFaceNormal
+				};
+				cuboidDepth = 0;
+				pendingStrokePositions = getAxisAlignedPlaneFromNormal(
+					cuboidPlane.a,
+					cuboidPlane.b,
+					cuboidPlane.normal
+				);
+				updatePreviewMesh(pendingStrokePositions);
+			} else {
+				// Apply the stroke on release (line/plane)
+				if (pendingStrokePositions.length > 0) {
+					beginStroke();
+					applyLineStroke(pendingStrokePositions);
+				}
+				pendingStrokePositions = [];
+				updatePreviewMesh([]);
 			}
-			pendingStrokePositions = [];
-			updatePreviewMesh([]);
 			isVoxelDrag = false;
 			dragStartPos = null;
 			dragFaceNormal = null;
@@ -568,6 +714,16 @@
 	}
 
 	$effect(() => {
+		const mode = $strokeMode;
+		if (mode !== 'cuboid' && cuboidPhase) {
+			cuboidPhase = null;
+			cuboidPlane = null;
+			pendingStrokePositions = [];
+			updatePreviewMesh([]);
+		}
+	});
+
+	$effect(() => {
 		const v = $voxels;
 		const sz = $gridSize;
 		rebuildVoxelMeshes(v, sz);
@@ -575,8 +731,8 @@
 	});
 
 	onMount(() => {
-		const sz = $gridSize;
-		initCanvas(sz);
+		if (!loadFromStorage()) initCanvas(get(gridSize));
+		const sz = get(gridSize);
 
 		scene = new THREE.Scene();
 		scene.background = new THREE.Color(hexToInt($backgroundColor));
@@ -603,6 +759,7 @@
 			color: 0xff4444,
 			opacity: 0.5,
 			transparent: true,
+			depthTest: false,
 			depthWrite: false
 		});
 		previewMesh = new THREE.InstancedMesh(boxGeometry, previewMaterial, PREVIEW_MAX);
@@ -690,6 +847,7 @@
 
 	onDestroy(() => {
 		if (!browser) return;
+		saveToStorage();
 		cancelAnimationFrame(animationFrameId);
 		container?.removeEventListener('pointermove', onPointerMove);
 		container?.removeEventListener('pointerdown', onPointerDown, true);
@@ -717,6 +875,15 @@
 </script>
 
 <div class="canvas-container" bind:this={container} role="application" aria-label="Voxel sculpting canvas">
+	{#if deltaDisplay}
+		<div
+			class="delta-display"
+			aria-live="polite"
+			style="left: {pointerScreen.x + 12}px; top: {pointerScreen.y + 12}px;"
+		>
+			Δ {deltaDisplay.dx}, {deltaDisplay.dy}, {deltaDisplay.dz}
+		</div>
+	{/if}
 	<div
 		class="zoom-controls"
 		role="toolbar"
@@ -784,5 +951,17 @@
 		min-width: 3ch;
 		font-size: 0.85rem;
 		color: rgba(255, 255, 255, 0.9);
+	}
+
+	.delta-display {
+		position: absolute;
+		padding: 0.25rem 0.5rem;
+		background: rgba(0, 0, 0, 0.6);
+		border-radius: 4px;
+		font-size: 0.85rem;
+		font-family: monospace;
+		color: rgba(255, 255, 255, 0.9);
+		pointer-events: none;
+		z-index: 1;
 	}
 </style>

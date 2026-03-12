@@ -15,8 +15,10 @@
 		canUndo,
 		canRedo,
 		resetCanvas,
+		voxels,
 		type GridSize
 	} from './store';
+	import { exportVoxelsToGltf } from './exportGltf';
 	import ArtSidebar from '$lib/components/ArtSidebar.svelte';
 	import LospecPalette from '$lib/components/LospecPalette.svelte';
 	import UndoRedoButtons from '$lib/components/UndoRedoButtons.svelte';
@@ -85,6 +87,14 @@
 					title="Fill whole plane"
 				>
 					Plane
+				</button>
+				<button
+					type="button"
+					class:active={$strokeMode === 'cuboid'}
+					onclick={() => strokeMode.set('cuboid')}
+					title="First drag sets plane, next click sets depth"
+				>
+					Cuboid
 				</button>
 			</div>
 	</div>
@@ -159,6 +169,14 @@
 	<h2>Canvas</h2>
 	<UndoRedoButtons history={history} canUndo={canUndo} canRedo={canRedo} />
 	<button type="button" onclick={openNewGrid}>New grid</button>
+	<button
+		type="button"
+		onclick={() => exportVoxelsToGltf($voxels)}
+		disabled={$voxels.size === 0}
+		title="Save mesh as GLTF with colors"
+	>
+		Save as GLTF
+	</button>
 
 	{#if showNewGrid}
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
