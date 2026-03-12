@@ -96,4 +96,4 @@
   };
 </script>
 
-<canvas bind:this={canvasRef} {height} {width} />
+<canvas bind:this={canvasRef} {height} {width}></canvas>

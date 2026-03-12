@@ -9,4 +9,10 @@ declare global {
   }
 }
 
+declare module 'svelte/elements' {
+  export interface HTMLAttributes<T> {
+    anchor?: string;
+  }
+}
+
 export {};

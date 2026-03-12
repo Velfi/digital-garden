@@ -136,7 +136,7 @@
   };
 </script>
 
-<canvas bind:this={canvasRef} height={tileWidth + 2} width={tileWidth + 2} />
+<canvas bind:this={canvasRef} height={tileWidth + 2} width={tileWidth + 2}></canvas>
 
 <style>
   canvas {

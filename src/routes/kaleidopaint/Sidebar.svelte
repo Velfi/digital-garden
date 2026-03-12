@@ -626,6 +626,7 @@
         class="modal-overlay"
         role="dialog"
         aria-modal="true"
+        tabindex="-1"
         on:click={(e) => e.target === e.currentTarget && (showNewCanvas = false)}
         on:keydown={(e) => e.key === 'Escape' && (showNewCanvas = false)}
       >
