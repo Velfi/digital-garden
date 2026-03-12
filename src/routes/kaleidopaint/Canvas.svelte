@@ -162,7 +162,7 @@
   $: w = Math.max(1, Math.min(2000, width));
   $: h = Math.max(1, Math.min(2000, height));
 
-  function getCanvasCoords(e: MouseEvent): [number, number] {
+  function getCanvasCoords(e: { clientX: number; clientY: number }): [number, number] {
     if (!viewport) return [0, 0];
     const rect = viewport.getBoundingClientRect();
     const vx = e.clientX - rect.left;
@@ -211,7 +211,7 @@
     scale = newScale;
   }
 
-  function startPan(e: MouseEvent) {
+  function startPan(e: { clientX: number; clientY: number }) {
     isPanning = true;
     panStartX = e.clientX;
     panStartY = e.clientY;
@@ -245,13 +245,18 @@
     };
   }
 
-  function handleMouseDown(e: MouseEvent) {
-    if (!canvas || !ctx) return;
+  function handlePointerDown(e: PointerEvent) {
+    if (!canvas || !ctx || !viewport) return;
+    if (e.pointerType === 'touch') {
+      if (!e.isPrimary) return;
+      e.preventDefault();
+    }
     if (e.button === 1 || spaceHeld) {
       startPan(e);
       return;
     }
     if (e.button !== 0) return;
+    viewport.setPointerCapture(e.pointerId);
     const [x, y] = getCanvasCoords(e);
     const [cx, cy] = getCenter();
     if ($tool === 'origin') {
@@ -497,7 +502,7 @@
     }
   }
 
-  function handleMouseMove(e: MouseEvent) {
+  function handlePointerMove(e: PointerEvent) {
     if (!canvas) return;
     if (isPanning) {
       panX = panStartOffsetX + e.clientX - panStartX;
@@ -613,10 +618,10 @@
     }
   }
 
-  function handleMouseUp(e: MouseEvent) {
+  function handlePointerUp(e: PointerEvent) {
     if (e.button === 1 || isPanning) {
       isPanning = false;
-    } else if (e.button === 0) {
+    } else if (e.button === 0 || e.button === -1) {
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
         rafId = null;
@@ -628,7 +633,7 @@
     }
   }
 
-  function handleMouseLeave() {
+  function handlePointerLeave() {
     isPanning = false;
     isRotating = false;
     if (rafId !== null) {
@@ -859,8 +864,8 @@
 </script>
 
 <svelte:window
-  on:mouseup={handleMouseUp}
-  on:mouseleave={handleMouseLeave}
+  on:pointerup={handlePointerUp}
+  on:pointerleave={handlePointerLeave}
   on:keydown={(e) => {
     const target = document.activeElement;
     const isInput =
@@ -894,15 +899,17 @@
   class:panning={isPanning}
   class:space-pan={spaceHeld && !isPanning}
   on:wheel={handleWheel}
-  on:mousedown={handleMouseDown}
-  on:mousemove={handleMouseMove}
-  on:mouseup={handleMouseUp}
-  on:mouseleave={handleMouseLeave}
+  on:pointerdown={handlePointerDown}
+  on:pointermove={handlePointerMove}
+  on:pointerup={handlePointerUp}
+  on:pointerleave={handlePointerLeave}
+  on:pointercancel={handlePointerUp}
   tabindex="0"
+  style="touch-action: none;"
 >
   <div
     class="zoom-controls"
-    on:mousedown|stopPropagation
+    on:pointerdown|stopPropagation
     role="toolbar"
     aria-label="Zoom controls"
     tabindex="0"
