@@ -220,6 +220,173 @@ export function getSymmetricAngleDeltas(
   return [0];
 }
 
+/**
+ * Returns the section index that contains the point (px, py).
+ * Section indices match the wedge ordering used by clipToSymmetrySection.
+ */
+function getSectionIndexForPoint(
+  px: number,
+  py: number,
+  centerX: number,
+  centerY: number,
+  mode: SymmetryMode,
+  folds: number,
+  rotationDeg: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  mosaicTypeVal?: MosaicType
+): { sectionIndex: number; cellCenterX: number; cellCenterY: number; cellFolds: number; localFold?: number } | null {
+  const rotRad = (rotationDeg * Math.PI) / 180;
+
+  if (mode === 'none' || folds < 1) return null;
+
+  if (mode === 'polar' || mode === 'linear') {
+    const angle = Math.atan2(py - centerY, px - centerX);
+    let u = (angle - rotRad + 2 * Math.PI * 2) % (2 * Math.PI);
+    const n = folds;
+    const wedgeAngle = (2 * Math.PI) / n;
+    const sectionIndex = Math.floor(u / wedgeAngle) % n;
+    return {
+      sectionIndex,
+      cellCenterX: centerX,
+      cellCenterY: centerY,
+      cellFolds: n
+    };
+  }
+
+  if (mode === 'mosaic' && mosaicTypeVal) {
+    const cells = getMosaicTileCenters(
+      centerX,
+      centerY,
+      mosaicTypeVal,
+      canvasWidth,
+      canvasHeight
+    );
+    let nearest: { cell: MosaicCell; dist: number } | null = null;
+    for (const cell of cells) {
+      const dx = px - cell.x;
+      const dy = py - cell.y;
+      const dist = Math.hypot(dx, dy);
+      if (!nearest || dist < nearest.dist) nearest = { cell, dist };
+    }
+    if (nearest) {
+      const { cell } = nearest;
+      const dx = px - cell.x;
+      const dy = py - cell.y;
+      const angle = Math.atan2(dy, dx);
+      let u = (angle - rotRad + 2 * Math.PI * 2) % (2 * Math.PI);
+      const wedgeAngle = (2 * Math.PI) / cell.folds;
+      const localFold = Math.floor(u / wedgeAngle) % cell.folds;
+      return {
+        sectionIndex: localFold,
+        cellCenterX: cell.x,
+        cellCenterY: cell.y,
+        cellFolds: cell.folds,
+        localFold
+      };
+    }
+    const cell = cells[0];
+    return {
+      sectionIndex: 0,
+      cellCenterX: cell?.x ?? centerX,
+      cellCenterY: cell?.y ?? centerY,
+      cellFolds: cell?.folds ?? 6
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Applies the symmetry section clip path to the given context.
+ * Uses pointPosition to determine which section contains the drawn point (clipping to wrong section hides the image).
+ */
+export function clipToSymmetrySection(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  pointPx: number,
+  pointPy: number,
+  mode: SymmetryMode,
+  folds: number,
+  rotationDeg: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  mosaicTypeVal?: MosaicType
+): void {
+  const rotRad = (rotationDeg * Math.PI) / 180;
+  const R = 2 * Math.max(canvasWidth, canvasHeight);
+
+  ctx.beginPath();
+
+  if (mode === 'none' || folds < 1) {
+    ctx.rect(0, 0, canvasWidth, canvasHeight);
+    ctx.clip();
+    return;
+  }
+
+  const section = getSectionIndexForPoint(
+    pointPx,
+    pointPy,
+    centerX,
+    centerY,
+    mode,
+    folds,
+    rotationDeg,
+    canvasWidth,
+    canvasHeight,
+    mosaicTypeVal
+  );
+
+  if (!section) {
+    ctx.rect(0, 0, canvasWidth, canvasHeight);
+    ctx.clip();
+    return;
+  }
+
+  if (mode === 'polar' || mode === 'linear') {
+    const n = section.cellFolds;
+    const wedgeAngle = (2 * Math.PI) / n;
+    const a1 = section.sectionIndex * wedgeAngle + rotRad;
+    const a2 = (section.sectionIndex + 1) * wedgeAngle + rotRad;
+    ctx.moveTo(section.cellCenterX, section.cellCenterY);
+    ctx.lineTo(
+      section.cellCenterX + R * Math.cos(a1),
+      section.cellCenterY + R * Math.sin(a1)
+    );
+    ctx.lineTo(
+      section.cellCenterX + R * Math.cos(a2),
+      section.cellCenterY + R * Math.sin(a2)
+    );
+    ctx.closePath();
+    ctx.clip();
+    return;
+  }
+
+  if (mode === 'mosaic') {
+    const wedgeAngle = (2 * Math.PI) / section.cellFolds;
+    const localFold = section.localFold ?? section.sectionIndex % section.cellFolds;
+    const a1 = localFold * wedgeAngle + rotRad;
+    const a2 = (localFold + 1) * wedgeAngle + rotRad;
+    const cellR = Math.max(R, 200);
+    ctx.moveTo(section.cellCenterX, section.cellCenterY);
+    ctx.lineTo(
+      section.cellCenterX + cellR * Math.cos(a1),
+      section.cellCenterY + cellR * Math.sin(a1)
+    );
+    ctx.lineTo(
+      section.cellCenterX + cellR * Math.cos(a2),
+      section.cellCenterY + cellR * Math.sin(a2)
+    );
+    ctx.closePath();
+    ctx.clip();
+    return;
+  }
+
+  ctx.rect(0, 0, canvasWidth, canvasHeight);
+  ctx.clip();
+}
+
 function rotatePoint(
   px: number,
   py: number,

@@ -39,6 +39,10 @@
     canRedo,
     sidebarOpen,
     mosaicType,
+    loadedImage,
+    imageStampSize,
+    imageRotateWithSymmetry,
+    imageConstrainToSection,
     type Tool
   } from './store';
   import { onMount, tick } from 'svelte';
@@ -170,6 +174,24 @@
     loadPaletteBySlug(lospecSlug);
   }
 
+  let imageFileInput: HTMLInputElement | undefined;
+
+  function handleImageFileChange() {
+    const input = imageFileInput;
+    if (!input?.files?.length) return;
+    const file = input.files[0];
+    if (!file?.type.startsWith('image/')) return;
+    const img = new Image();
+    img.onload = () => {
+      loadedImage.set(img);
+    };
+    img.onerror = () => {
+      loadedImage.set(null);
+    };
+    img.src = URL.createObjectURL(file);
+    input.value = '';
+  }
+
   let showNewCanvas = false;
   let newWidth = 800;
   let newHeight = 600;
@@ -263,7 +285,69 @@
         >
           Eyedropper
         </button>
+        <button
+          type="button"
+          class="tool"
+          class:active={$tool === 'image'}
+          on:click={() => tool.set('image')}
+          title="Stamp loaded image with symmetry"
+        >
+          Image
+        </button>
       </div>
+
+      {#if $tool === 'image'}
+        <h2>Image</h2>
+        {#if $loadedImage}
+          <div class="image-loaded">
+            <span class="image-loaded-label">Image loaded</span>
+            <button type="button" on:click={() => loadedImage.set(null)}>Clear</button>
+          </div>
+        {:else}
+          <p class="image-hint">Load an image to stamp.</p>
+        {/if}
+        <input
+          type="file"
+          accept="image/*"
+          style="display: none"
+          bind:this={imageFileInput}
+          on:change={handleImageFileChange}
+        />
+        <button type="button" on:click={() => imageFileInput?.click()}>
+          {#if $loadedImage}
+            Replace image
+          {:else}
+            Load image
+          {/if}
+        </button>
+        {#if $loadedImage}
+          <label class="brush-param">
+            <ParamLabel
+              label="Stamp size"
+              tip="Maximum dimension of the stamped image in pixels."
+              id="tip-image-stamp-size"
+            />
+            <input type="range" min="50" max="400" bind:value={$imageStampSize} />
+            <span class="value">{$imageStampSize}px</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" bind:checked={$imageRotateWithSymmetry} />
+            <ParamLabel
+              label="Rotate with symmetry"
+              tip="Rotate each copy to match the symmetry (e.g. polar mandala effect)."
+              id="tip-image-rotate"
+            />
+          </label>
+          <label class="toggle">
+            <input type="checkbox" bind:checked={$imageConstrainToSection} />
+            <ParamLabel
+              label="Constrain to section"
+              tip="Clip the image to the symmetry section (wedge) boundary."
+              id="tip-image-constrain"
+            />
+          </label>
+        {/if}
+      {/if}
 
       {#if $tool === 'paint'}
         <h2>Brush</h2>
@@ -816,6 +900,23 @@
 
   input[type='range'] {
     width: 100%;
+  }
+
+  .image-loaded {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+
+    .image-loaded-label {
+      font-size: 0.85rem;
+    }
+  }
+
+  .image-hint {
+    font-size: 0.8rem;
+    margin: 0;
+    color: var(--text-color-muted, #666);
   }
 
   .lospec-hint {

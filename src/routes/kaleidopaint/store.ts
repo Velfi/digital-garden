@@ -2,7 +2,7 @@ import { writable } from 'svelte/store';
 import type { SymmetryMode, MosaicType } from './symmetry';
 import type { BrushShape, RotationMode, ColorSource } from './brushEngine';
 
-export type Tool = 'paint' | 'fill' | 'origin' | 'rotate' | 'eyedropper';
+export type Tool = 'paint' | 'fill' | 'origin' | 'rotate' | 'eyedropper' | 'image';
 
 export const tool = writable<Tool>('paint');
 export const symmetryEnabled = writable<boolean>(true);
@@ -40,6 +40,10 @@ export const canvasKey = writable<number>(0);
 export const showSymmetryPreview = writable<boolean>(true);
 export const brushRotateWithSymmetry = writable<boolean>(true);
 export const sidebarOpen = writable<boolean>(true);
+export const loadedImage = writable<HTMLImageElement | null>(null);
+export const imageStampSize = writable<number>(150);
+export const imageRotateWithSymmetry = writable<boolean>(true);
+export const imageConstrainToSection = writable<boolean>(true);
 
 const canUndoStore = writable(false);
 const canRedoStore = writable(false);

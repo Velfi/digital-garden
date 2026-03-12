@@ -33,9 +33,18 @@
     showSymmetryPreview,
     brushRotateWithSymmetry,
     history,
-    mosaicType
+    mosaicType,
+    loadedImage,
+    imageStampSize,
+    imageRotateWithSymmetry,
+    imageConstrainToSection
   } from './store';
-  import { getSymmetricPoints, getSymmetricAngleDeltas, drawMosaicPreview } from './symmetry';
+  import {
+    getSymmetricPoints,
+    getSymmetricAngleDeltas,
+    clipToSymmetrySection,
+    drawMosaicPreview
+  } from './symmetry';
   import {
     interpolateDabs,
     drawDab,
@@ -342,7 +351,142 @@
     } else if ($tool === 'fill') {
       pushUndo();
       floodFill(x, y);
+    } else if ($tool === 'image') {
+      const img = $loadedImage;
+      if (img && img.complete && img.naturalWidth > 0) {
+        pushUndo();
+        stampImage(ctx, x, y, img);
+      }
     }
+  }
+
+  function stampImage(
+    targetCtx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    img: HTMLImageElement
+  ) {
+    if (!canvas) return;
+    const [cx, cy] = getCenter();
+    const points = getSymmetricPoints(
+      x,
+      y,
+      cx,
+      cy,
+      effectiveMode(),
+      $symmetryFolds,
+      $symmetryRotation,
+      canvas.width,
+      canvas.height,
+      $mosaicType
+    );
+    const baseAngleRad = 0;
+    const angleDeltas = $imageRotateWithSymmetry
+      ? getSymmetricAngleDeltas(
+          cx,
+          cy,
+          effectiveMode(),
+          $symmetryFolds,
+          $symmetryRotation,
+          baseAngleRad,
+          canvas.width,
+          canvas.height,
+          $mosaicType
+        )
+      : points.map(() => 0);
+
+    const maxDim = Math.max(img.naturalWidth, img.naturalHeight);
+    const scale = $imageStampSize / maxDim;
+    const w = img.naturalWidth * scale;
+    const h = img.naturalHeight * scale;
+
+    for (let i = 0; i < points.length; i++) {
+      const [px, py] = points[i];
+      const delta = angleDeltas[i] ?? 0;
+      targetCtx.save();
+      if ($imageConstrainToSection) {
+        clipToSymmetrySection(
+          targetCtx,
+          cx,
+          cy,
+          px,
+          py,
+          effectiveMode(),
+          $symmetryFolds,
+          $symmetryRotation,
+          canvas.width,
+          canvas.height,
+          $mosaicType
+        );
+      }
+      targetCtx.translate(px, py);
+      targetCtx.rotate(delta);
+      targetCtx.drawImage(img, -w / 2, -h / 2, w, h);
+      targetCtx.restore();
+    }
+  }
+
+  function drawImagePreview(pCtx: CanvasRenderingContext2D, x: number, y: number, img: HTMLImageElement) {
+    if (!canvas) return;
+    const [cx, cy] = getCenter();
+    const points = getSymmetricPoints(
+      x,
+      y,
+      cx,
+      cy,
+      effectiveMode(),
+      $symmetryFolds,
+      $symmetryRotation,
+      canvas.width,
+      canvas.height,
+      $mosaicType
+    );
+    const baseAngleRad = 0;
+    const angleDeltas = $imageRotateWithSymmetry
+      ? getSymmetricAngleDeltas(
+          cx,
+          cy,
+          effectiveMode(),
+          $symmetryFolds,
+          $symmetryRotation,
+          baseAngleRad,
+          canvas.width,
+          canvas.height,
+          $mosaicType
+        )
+      : points.map(() => 0);
+
+    const maxDim = Math.max(img.naturalWidth, img.naturalHeight);
+    const scale = $imageStampSize / maxDim;
+    const w = img.naturalWidth * scale;
+    const h = img.naturalHeight * scale;
+
+    pCtx.globalAlpha = 0.35;
+    for (let i = 0; i < points.length; i++) {
+      const [px, py] = points[i];
+      const delta = angleDeltas[i] ?? 0;
+      pCtx.save();
+      if ($imageConstrainToSection) {
+        clipToSymmetrySection(
+          pCtx,
+          cx,
+          cy,
+          px,
+          py,
+          effectiveMode(),
+          $symmetryFolds,
+          $symmetryRotation,
+          canvas.width,
+          canvas.height,
+          $mosaicType
+        );
+      }
+      pCtx.translate(px, py);
+      pCtx.rotate(delta);
+      pCtx.drawImage(img, -w / 2, -h / 2, w, h);
+      pCtx.restore();
+    }
+    pCtx.globalAlpha = 1;
   }
 
   function drawPreview() {
@@ -417,6 +561,11 @@
         if (paintBucketImg?.complete && paintBucketImg.naturalWidth > 0) {
           const size = 24;
           pCtx.drawImage(paintBucketImg, hoverX - size / 2, hoverY - size / 2, size, size);
+        }
+      } else if ($tool === 'image') {
+        const img = $loadedImage;
+        if (img?.complete && img.naturalWidth > 0) {
+          drawImagePreview(pCtx, hoverX, hoverY, img);
         }
       } else if ($tool !== 'origin' && $tool !== 'rotate' && $tool !== 'eyedropper') {
         // Brush shape preview in paint mode
@@ -817,6 +966,10 @@
     $brushAngle,
     $brushRatio,
     $mosaicType,
+    $loadedImage,
+    $imageStampSize,
+    $imageRotateWithSymmetry,
+    $imageConstrainToSection,
     tick().then(drawPreview));
 
   onMount(() => {
