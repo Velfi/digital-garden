@@ -2,7 +2,7 @@
 	import { browser } from '$app/environment';
 	import * as THREE from 'three';
 	import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-	import { FlyControls } from 'three/addons/controls/FlyControls.js';
+	import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 	import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 	import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 	import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
@@ -47,7 +47,7 @@
 	let composer: EffectComposer;
 	let ssaoPass: SSAOPass;
 	let orbitControls: OrbitControls;
-	let flyControls: InstanceType<typeof FlyControls> | null = null;
+	let flyControls: InstanceType<typeof PointerLockControls> | null = null;
 	let lastFrameTime = 0;
 	let raycaster: THREE.Raycaster;
 	let pointer: THREE.Vector2;
@@ -100,6 +100,8 @@
 	const ZOOM_FACTOR_OUT = 1.2;
 	const MIN_DISTANCE = 5;
 	const MAX_DISTANCE = 5000;
+	const FLY_MOVE_SPEED = 120;
+	const FLY_POINTER_SPEED = 1.2;
 
 	// 35mm equivalent: sensor height 24mm; FOV = 2 * atan(12 / focalLength)
 	function focalLengthToFov(mm: number): number {
@@ -108,6 +110,14 @@
 
 	const pointerHelper = new THREE.Vector3();
 	const fitHelperBox = new THREE.Box3();
+	const flyMoveState = {
+		forward: 0,
+		back: 0,
+		left: 0,
+		right: 0,
+		up: 0,
+		down: 0
+	};
 	const fitHelperSphere = new THREE.Sphere();
 	const worldQuaternion = new THREE.Quaternion();
 
@@ -663,10 +673,15 @@
 	function handlePointerDown(event: PointerEvent) {
 		if ((event.target as Element)?.closest?.('.cuboid-done-btn, .zoom-controls, .depth-slider-container')) return;
 		if ($tool === 'fly') {
-			// Capture pointer so drag-to-look keeps receiving events when cursor leaves canvas
 			if (event.button === 0 || event.button === 2) {
-				container.setPointerCapture(event.pointerId);
+				if (flyControls?.isLocked) {
+					flyControls.unlock();
+				} else {
+					flyControls?.lock(true); // unadjustedMovement for raw mouse input
+				}
+				event.preventDefault();
 			}
+			event.stopPropagation();
 			return;
 		}
 		if (event.button === 2) {
@@ -744,7 +759,7 @@
 	}
 
 	function handlePointerMove(event?: PointerEvent) {
-		if ($tool === 'fly') return;
+		if ($tool === 'fly') return; // PointerLockControls handles mouse look
 		// Stamp drag: re-raycast so stamp follows cursor onto any surface
 		if (isStampDrag && $selection.size > 0) {
 			const hit = getIntersection();
@@ -867,6 +882,10 @@
 	}
 
 	function onPointerUp(event: PointerEvent) {
+		if ($tool === 'fly') {
+			event.stopPropagation();
+			return;
+		}
 		if (depthAdjustPointerId === event.pointerId) {
 			try {
 				container.releasePointerCapture(event.pointerId);
@@ -942,7 +961,42 @@
 	}
 
 	function onContextMenu(event: Event) {
-		if (isVoxelDrag) event.preventDefault();
+		if (isVoxelDrag || $tool === 'fly') event.preventDefault();
+	}
+
+	// Block pointer events from reaching FlyControls when in fly mode (we handle them ourselves)
+	function onFlyPointerCapture(e: PointerEvent) {
+		if ($tool === 'fly') e.stopPropagation();
+	}
+
+	// Noclip: WASD + Q/E movement
+	function onFlyKeyDown(e: KeyboardEvent) {
+		if (e.altKey || !flyControls?.enabled) return;
+		switch (e.code) {
+			case 'KeyW': flyMoveState.forward = 1; break;
+			case 'KeyS': flyMoveState.back = 1; break;
+			case 'KeyA': flyMoveState.left = 1; break;
+			case 'KeyD': flyMoveState.right = 1; break;
+			case 'KeyE': flyMoveState.up = 1; break;
+			case 'KeyQ': flyMoveState.down = 1; break;
+			default: return;
+		}
+		e.preventDefault();
+		e.stopImmediatePropagation();
+	}
+	function onFlyKeyUp(e: KeyboardEvent) {
+		if (!flyControls?.enabled) return;
+		switch (e.code) {
+			case 'KeyW': flyMoveState.forward = 0; break;
+			case 'KeyS': flyMoveState.back = 0; break;
+			case 'KeyA': flyMoveState.left = 0; break;
+			case 'KeyD': flyMoveState.right = 0; break;
+			case 'KeyE': flyMoveState.up = 0; break;
+			case 'KeyQ': flyMoveState.down = 0; break;
+			default: return;
+		}
+		e.preventDefault();
+		e.stopImmediatePropagation();
 	}
 
 	function onWheel(event: WheelEvent) {
@@ -986,8 +1040,17 @@
 		const t = now ?? performance.now();
 		const delta = lastFrameTime ? (t - lastFrameTime) / 1000 : 0;
 		lastFrameTime = t;
-		if (flyControls?.enabled) {
-			flyControls.update(delta);
+		if (flyControls?.enabled && camera) {
+			const dist = FLY_MOVE_SPEED * delta;
+			const fwd = flyMoveState.forward - flyMoveState.back;
+			const right = flyMoveState.right - flyMoveState.left;
+			const up = flyMoveState.up - flyMoveState.down;
+			if (fwd !== 0) {
+				const look = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+				camera.position.addScaledVector(look, fwd * dist);
+			}
+			if (right !== 0) flyControls.moveRight(right * dist);
+			if (up !== 0) camera.position.y += up * dist;
 		} else {
 			orbitControls?.update();
 		}
@@ -1125,11 +1188,12 @@
 		orbitControls.dampingFactor = 0.05;
 		orbitControls.addEventListener('change', updateZoomPercent);
 
-		flyControls = new FlyControls(camera, container);
-		flyControls.dragToLook = true;
-		flyControls.movementSpeed = sz * 2;
-		flyControls.rollSpeed = 0.1;
+		flyControls = new PointerLockControls(camera, container);
+		flyControls.pointerSpeed = FLY_POINTER_SPEED;
 		flyControls.enabled = false;
+
+		window.addEventListener('keydown', onFlyKeyDown, true);
+		window.addEventListener('keyup', onFlyKeyUp, true);
 
 		updateZoomPercent();
 
@@ -1138,7 +1202,9 @@
 
 		container.addEventListener('pointermove', onPointerMove);
 		container.addEventListener('pointerdown', onPointerDown, true);
+		container.addEventListener('pointerup', onFlyPointerCapture, true);
 		container.addEventListener('pointerup', onPointerUp);
+		container.addEventListener('pointercancel', onFlyPointerCapture, true);
 		container.addEventListener('pointercancel', onPointerCancel);
 		container.addEventListener('contextmenu', onContextMenu);
 		container.addEventListener('wheel', onWheel, { passive: false, capture: true });
@@ -1190,10 +1256,13 @@
 		orbitControls.enabled = !isFly;
 		flyControls.enabled = isFly;
 		if (isFly && cuboidPhase) {
-			document.exitPointerLock();
+			flyControls.unlock();
 			cancelDrag();
 		}
 		if (!isFly && prevTool === 'fly' && camera) {
+			flyControls.unlock();
+			flyMoveState.forward = flyMoveState.back = flyMoveState.left = flyMoveState.right =
+				flyMoveState.up = flyMoveState.down = 0;
 			// Sync orbit target when exiting fly mode so orbit feels natural
 			const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
 			orbitControls.target.copy(camera.position).add(dir.multiplyScalar(50));
@@ -1208,11 +1277,15 @@
 		cancelAnimationFrame(animationFrameId);
 		container?.removeEventListener('pointermove', onPointerMove);
 		container?.removeEventListener('pointerdown', onPointerDown, true);
+		container?.removeEventListener('pointerup', onFlyPointerCapture, true);
 		container?.removeEventListener('pointerup', onPointerUp);
+		container?.removeEventListener('pointercancel', onFlyPointerCapture, true);
 		container?.removeEventListener('pointercancel', onPointerCancel);
 		container?.removeEventListener?.('contextmenu', onContextMenu);
 		container?.removeEventListener('wheel', onWheel, true);
 		window.removeEventListener('resize', onWindowResize);
+		window.removeEventListener('keydown', onFlyKeyDown, true);
+		window.removeEventListener('keyup', onFlyKeyUp, true);
 		orbitControls?.removeEventListener?.('change', updateZoomPercent);
 		orbitControls?.dispose();
 		flyControls?.dispose();
@@ -1296,7 +1369,7 @@
 	{/if}
 	{#if $tool === 'fly'}
 		<div class="fly-hint" role="status" aria-live="polite">
-			WASD move · R/F up/down · Click+drag look · Q/E roll
+			Click to capture · WASD move · E/Q up/down · Move mouse to look
 		</div>
 	{:else}
 		<div
