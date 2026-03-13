@@ -20,11 +20,11 @@
 
 <div class="page">
 	<h1>Voxelle</h1>
-
 	<div class="app">
 		<Sidebar />
 		<VoxelCanvas />
 	</div>
+	<p>For my brother Otto</p>
 </div>
 
 <svelte:window

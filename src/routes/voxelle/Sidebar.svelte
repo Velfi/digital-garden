@@ -4,19 +4,24 @@
 		tool,
 		color,
 		palette,
+		selection,
 		strokeMode,
 		lightAngle,
 		lightColor,
 		backgroundColor,
 		showGrid,
 		showSSAO,
+		focalLength,
+		roughness,
+		metalness,
+		envMapIntensity,
 		sidebarOpen,
 		history,
 		canUndo,
 		canRedo,
 		resetCanvas,
 		voxels,
-		type GridSize
+		type StartShape,
 	} from './store';
 	import { exportVoxelsToGltf } from './exportGltf';
 	import ArtSidebar from '$lib/components/ArtSidebar.svelte';
@@ -24,7 +29,8 @@
 	import UndoRedoButtons from '$lib/components/UndoRedoButtons.svelte';
 
 	let showNewGrid = $state(false);
-	let newGridSize = $state<GridSize>(32);
+	let newGridSize = $state<number>(32);
+	let newGridShape = $state<StartShape>('cube');
 
 	function openNewGrid() {
 		newGridSize = $gridSize;
@@ -32,9 +38,9 @@
 	}
 
 	function createGrid() {
-		const size = newGridSize === 64 ? 64 : 32;
+		const size = Math.max(1, Math.floor(newGridSize));
 		gridSize.set(size);
-		resetCanvas(size);
+		resetCanvas(size, newGridShape);
 		newGridSize = size;
 		showNewGrid = false;
 	}
@@ -67,7 +73,37 @@
 			>
 				Paint
 			</button>
+			<button
+				type="button"
+				class:active={$tool === 'select'}
+				onclick={() => tool.set('select')}
+				title="Select voxels for stamping"
+			>
+				Select
+			</button>
+			<button
+				type="button"
+				class:active={$tool === 'stamp'}
+				onclick={() => tool.set('stamp')}
+				title="Place a copy of the selection"
+				disabled={$selection.size === 0}
+			>
+				Stamp
+			</button>
+			<button
+				type="button"
+				class:active={$tool === 'fly'}
+				onclick={() => tool.set('fly')}
+				title="Fly camera (WASD, click+drag to look)"
+			>
+				Fly
+			</button>
 	</div>
+	{#if $selection.size > 0}
+		<button type="button" class="clear-selection" onclick={() => selection.set(new Map())} title="Clear selection">
+			Clear selection ({$selection.size})
+		</button>
+	{/if}
 
 	<div class="stroke-mode" role="group" aria-labelledby="stroke-label">
 			<span id="stroke-label" class="stroke-label">Stroke</span>
@@ -92,7 +128,7 @@
 					type="button"
 					class:active={$strokeMode === 'cuboid'}
 					onclick={() => strokeMode.set('cuboid')}
-					title="First drag sets plane, next click sets depth"
+					title="Drag to set plane, scroll to set depth, click or Done to apply"
 				>
 					Cuboid
 				</button>
@@ -117,6 +153,22 @@
 				/>
 		</div>
 		<LospecPalette color={color} palette={palette} disabled={$tool === 'remove'} defaultSlug="resurrect-64" />
+	</div>
+
+	<h2>Camera</h2>
+	<div class="light-control">
+		<label for="focal-length">Focal length</label>
+		<div class="slider-row">
+			<input
+				id="focal-length"
+				type="range"
+				min="15"
+				max="200"
+				value={$focalLength}
+				oninput={(e) => focalLength.set(Number((e.target as HTMLInputElement).value))}
+			/>
+			<span class="slider-value">{$focalLength} mm</span>
+		</div>
 	</div>
 
 	<h2>Scene</h2>
@@ -166,6 +218,53 @@
 		</div>
 	</div>
 
+	<h2>Material (PBR)</h2>
+	<div class="light-control">
+		<label for="roughness">Roughness</label>
+		<div class="slider-row">
+			<input
+				id="roughness"
+				type="range"
+				min="0"
+				max="1"
+				step="0.05"
+				value={$roughness}
+				oninput={(e) => roughness.set(Number((e.target as HTMLInputElement).value))}
+			/>
+			<span class="slider-value">{$roughness.toFixed(2)}</span>
+		</div>
+	</div>
+	<div class="light-control">
+		<label for="metalness">Metalness</label>
+		<div class="slider-row">
+			<input
+				id="metalness"
+				type="range"
+				min="0"
+				max="1"
+				step="0.05"
+				value={$metalness}
+				oninput={(e) => metalness.set(Number((e.target as HTMLInputElement).value))}
+			/>
+			<span class="slider-value">{$metalness.toFixed(2)}</span>
+		</div>
+	</div>
+	<div class="light-control">
+		<label for="env-map-intensity">Env reflections</label>
+		<div class="slider-row">
+			<input
+				id="env-map-intensity"
+				type="range"
+				min="0"
+				max="1"
+				step="0.1"
+				value={$envMapIntensity}
+				oninput={(e) => envMapIntensity.set(Number((e.target as HTMLInputElement).value))}
+			/>
+			<span class="slider-value">{$envMapIntensity.toFixed(1)}</span>
+		</div>
+	</div>
+
 	<h2>Canvas</h2>
 	<UndoRedoButtons history={history} canUndo={canUndo} canRedo={canRedo} />
 	<button type="button" onclick={openNewGrid}>New grid</button>
@@ -191,10 +290,23 @@
 			<div class="modal">
 				<h3>New grid</h3>
 				<label>
-					Grid size
-					<select bind:value={newGridSize}>
-						<option value={32}>32×32×32</option>
-						<option value={64}>64×64×64</option>
+					Grid size (1–256)
+					<input
+						type="number"
+						min="1"
+						max="256"
+						step="1"
+						bind:value={newGridSize}
+					/>
+				</label>
+				<label>
+					Starting shape
+					<select bind:value={newGridShape}>
+						<option value="cube">Cube</option>
+						<option value="orb">Orb</option>
+						<option value="cylinder">Cylinder</option>
+						<option value="hollowCube">Hollow cube</option>
+						<option value="empty">Empty</option>
 					</select>
 				</label>
 				<div class="modal-buttons">
@@ -214,16 +326,6 @@
 	label {
 		font-size: 0.85rem;
 		font-weight: 600;
-	}
-
-	select {
-		padding: 0.35rem 0.5rem;
-		font-size: 0.9rem;
-		border: 1px solid var(--border-color);
-		border-radius: 4px;
-		background: var(--bg-color);
-		color: var(--text-color);
-		margin-bottom: 0.5rem;
 	}
 
 	.tool-buttons {
@@ -253,6 +355,21 @@
 		background: var(--link-color);
 		color: var(--bg-color);
 		border-color: var(--link-color);
+	}
+
+	.clear-selection {
+		margin-bottom: 0.5rem;
+		padding: 0.4rem 0.5rem;
+		font-size: 0.85rem;
+		border: 1px solid var(--border-color);
+		border-radius: 4px;
+		background: var(--bg-color);
+		color: var(--text-color);
+		cursor: pointer;
+	}
+
+	.clear-selection:hover {
+		background: var(--block-quote-bg-color);
 	}
 
 	.stroke-mode {
@@ -395,9 +512,16 @@
 		gap: 0.25rem;
 	}
 
+	.modal input[type='number'],
 	.modal select {
 		width: 100%;
 		margin-bottom: 0;
+		padding: 0.35rem 0.5rem;
+		font-size: 0.9rem;
+		border: 1px solid var(--border-color);
+		border-radius: 4px;
+		background: var(--bg-color);
+		color: var(--text-color);
 	}
 
 	.modal-buttons {

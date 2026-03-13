@@ -2,6 +2,7 @@
 	import { browser } from '$app/environment';
 	import * as THREE from 'three';
 	import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+	import { FlyControls } from 'three/addons/controls/FlyControls.js';
 	import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 	import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 	import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
@@ -16,9 +17,14 @@
 		tool,
 		color,
 		strokeMode,
+		selection,
 		lightAngle,
 		lightColor,
 		backgroundColor,
+		focalLength,
+		roughness,
+		metalness,
+		envMapIntensity,
 		updateVoxels,
 		updateVoxelsInStroke,
 		beginStroke,
@@ -28,7 +34,10 @@
 		saveToStorage,
 		coordKey,
 		parseCoordKey,
-		hexToInt
+		hexToInt,
+		getSelectionAnchor,
+		ensureGridFitsPositions,
+		type Tool
 	} from './store';
 
 	let container: HTMLDivElement;
@@ -37,7 +46,9 @@
 	let renderer: THREE.WebGLRenderer;
 	let composer: EffectComposer;
 	let ssaoPass: SSAOPass;
-	let controls: OrbitControls;
+	let orbitControls: OrbitControls;
+	let flyControls: InstanceType<typeof FlyControls> | null = null;
+	let lastFrameTime = 0;
 	let raycaster: THREE.Raycaster;
 	let pointer: THREE.Vector2;
 	let voxelGroup: THREE.Group;
@@ -49,24 +60,38 @@
 		new Map();
 	let animationFrameId: number;
 	let isVoxelDrag = false;
+	let isStampDrag = false;
+	let lastStampPos: [number, number, number] | null = null;
+	/** During stamp drag: re-raycast each frame so stamp follows cursor across surfaces */
 	let dragStartPos: [number, number, number] | null = null;
 	let dragFaceNormal: THREE.Vector3 | null = null; // plane stays aligned to initial face
 	let dragPointerId: number | null = null;
 	let pendingStrokePositions: [number, number, number][] = [];
 
-	// Cuboid two-phase: first drag = plane, second click = depth
-	let cuboidPhase: 'plane' | 'depth' | null = null;
+	// Cuboid two-phase: first drag = plane, then scroll/drag = depth
+	let cuboidPhase = $state<'plane' | 'depth' | null>(null);
 	let cuboidPlane:
 		| { a: [number, number, number]; b: [number, number, number]; normal: THREE.Vector3 }
 		| null = null;
-	let cuboidDepth = 0; // voxel layers, set during depth phase from pointer move
+	let cuboidDepth = $state(1); // voxel layers; scroll, slider, or touch-drag to adjust
+	let depthAdjustPointerId: number | null = null;
+	let lastDepthPhaseClientY = 0;
+	let depthSliderPointerId: number | null = null;
+	let depthSliderStartY = 0;
+	let depthSliderStartDepth = 0;
 
 	let previewMesh: THREE.InstancedMesh | null = null;
 	let previewMaterial: THREE.MeshBasicMaterial | null = null;
 	const PREVIEW_MAX = 4096;
 
+	let selectionGroup: THREE.Group | null = null;
+	let selectionMesh: THREE.InstancedMesh | null = null;
+	let selectionMaterial: THREE.MeshBasicMaterial | null = null;
+	const SELECTION_MAX = 8192;
+
 	let gridGroup: THREE.Group | null = null;
 	let gridLineMaterial: THREE.LineBasicMaterial | null = null;
+	let envMap: THREE.CubeTexture | null = null;
 
 	let zoomPercent = $state(100);
 	let deltaDisplay = $state<{ dx: number; dy: number; dz: number } | null>(null);
@@ -76,10 +101,37 @@
 	const MIN_DISTANCE = 5;
 	const MAX_DISTANCE = 5000;
 
+	// 35mm equivalent: sensor height 24mm; FOV = 2 * atan(12 / focalLength)
+	function focalLengthToFov(mm: number): number {
+		return (2 * Math.atan(12 / mm) * 180) / Math.PI;
+	}
+
 	const pointerHelper = new THREE.Vector3();
 	const fitHelperBox = new THREE.Box3();
 	const fitHelperSphere = new THREE.Sphere();
 	const worldQuaternion = new THREE.Quaternion();
+
+	function createEnvMap(): THREE.CubeTexture {
+		const size = 32;
+		const canvases: HTMLCanvasElement[] = [];
+		for (let i = 0; i < 6; i++) {
+			const canvas = document.createElement('canvas');
+			canvas.width = size;
+			canvas.height = size;
+			const ctx = canvas.getContext('2d')!;
+			const gradient = ctx.createRadialGradient(
+				size / 2, size / 2, 0, size / 2, size / 2, size / 2
+			);
+			gradient.addColorStop(0, '#ffffff');
+			gradient.addColorStop(1, '#888888');
+			ctx.fillStyle = gradient;
+			ctx.fillRect(0, 0, size, size);
+			canvases.push(canvas);
+		}
+		const envMap = new THREE.CubeTexture(canvases);
+		envMap.colorSpace = THREE.SRGBColorSpace;
+		return envMap;
+	}
 
 	function getHalf(size: number) {
 		return size / 2;
@@ -109,13 +161,21 @@
 
 		if (!boxGeometry) boxGeometry = new THREE.BoxGeometry(1, 1, 1);
 
+		const envMap = scene?.environment ?? null;
+		const r = $roughness;
+		const m = $metalness;
+		const envInt = $envMapIntensity;
+
 		for (const [col, positions] of byColor) {
 			const count = positions.length;
-			const mesh = new THREE.InstancedMesh(
-				boxGeometry,
-				new THREE.MeshLambertMaterial({ color: col }),
-				count
-			);
+			const mat = new THREE.MeshStandardMaterial({
+				color: col,
+				roughness: r,
+				metalness: m,
+				envMap: envMap,
+				envMapIntensity: envInt
+			});
+			const mesh = new THREE.InstancedMesh(boxGeometry, mat, count);
 			mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
 			const matrix = new THREE.Matrix4();
@@ -129,6 +189,56 @@
 			voxelGroup.add(mesh);
 			meshesByColor.set(col, { mesh, positions });
 		}
+	}
+
+	function rebuildSelectionOverlay(sel: Map<string, number>) {
+		if (!selectionGroup || !scene) return;
+		if (selectionMesh) {
+			selectionGroup.remove(selectionMesh);
+			selectionMaterial?.dispose();
+			selectionMesh = null;
+			selectionMaterial = null;
+		}
+		if (sel.size === 0) return;
+		const positions: [number, number, number][] = [];
+		for (const key of sel.keys()) {
+			positions.push(parseCoordKey(key));
+		}
+		const count = Math.min(positions.length, SELECTION_MAX);
+		if (count === 0) return;
+		if (!boxGeometry) boxGeometry = new THREE.BoxGeometry(1, 1, 1);
+		selectionMaterial = new THREE.MeshBasicMaterial({
+			color: 0x3399ff,
+			opacity: 0.35,
+			transparent: true,
+			depthTest: true,
+			depthWrite: false
+		});
+		selectionMesh = new THREE.InstancedMesh(boxGeometry, selectionMaterial, count);
+		selectionMesh.raycast = () => {}; // don't block voxel raycasting
+		const matrix = new THREE.Matrix4();
+		for (let i = 0; i < count; i++) {
+			const [x, y, z] = positions[i];
+			matrix.setPosition(x, y, z);
+			selectionMesh.setMatrixAt(i, matrix);
+		}
+		selectionMesh.instanceMatrix.needsUpdate = true;
+		selectionGroup.add(selectionMesh);
+	}
+
+	function getStampPositions(anchor: [number, number, number], placeAt: [number, number, number]): [number, number, number][] {
+		const sel = $selection;
+		const [ax, ay, az] = anchor;
+		const [px, py, pz] = placeAt;
+		const dx = px - ax;
+		const dy = py - ay;
+		const dz = pz - az;
+		const out: [number, number, number][] = [];
+		for (const key of sel.keys()) {
+			const [x, y, z] = parseCoordKey(key);
+			out.push([x + dx, y + dy, z + dz]);
+		}
+		return out;
 	}
 
 	function getRaycastTargets(): THREE.Object3D[] {
@@ -309,22 +419,22 @@
 	}
 
 	function getCameraDistance(): number {
-		if (!camera || !controls) return 100;
-		return camera.position.distanceTo(controls.target);
+		if (!camera || !orbitControls) return 100;
+		return camera.position.distanceTo(orbitControls.target);
 	}
 
 	function setCameraDistance(distance: number) {
-		if (!camera || !controls) return;
+		if (!camera || !orbitControls) return;
 		const d = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, distance));
 		const dir = new THREE.Vector3()
-			.subVectors(camera.position, controls.target)
+			.subVectors(camera.position, orbitControls.target)
 			.normalize();
-		camera.position.copy(controls.target).add(dir.multiplyScalar(d));
+		camera.position.copy(orbitControls.target).add(dir.multiplyScalar(d));
 		updateZoomPercent();
 	}
 
 	function updateZoomPercent() {
-		if (!camera || !controls) return;
+		if (!camera || !orbitControls) return;
 		const dist = getCameraDistance();
 		const baseDist = $gridSize * 2.5;
 		zoomPercent = Math.round((baseDist / dist) * 100);
@@ -341,7 +451,7 @@
 	}
 
 	function fitToView() {
-		if (!camera || !controls || !container) return;
+		if (!camera || !orbitControls || !container) return;
 		const v = $voxels;
 		const sz = $gridSize;
 		const half = sz / 2;
@@ -383,7 +493,8 @@
 		if (!hit.face) return null;
 		hit.object.getWorldQuaternion(worldQuaternion);
 		const worldNormal = hit.face.normal.clone().applyQuaternion(worldQuaternion);
-		pointerHelper.copy(hit.point).add(worldNormal);
+		// Add 0.5 * normal to reach adjacent cell center (hit.point is on face, full normal overshoots)
+		pointerHelper.copy(hit.point).addScaledVector(worldNormal, 0.5);
 		return snapToGrid(pointerHelper);
 	}
 
@@ -395,6 +506,7 @@
 	}
 
 	function applyLineStroke(positions: [number, number, number][]) {
+		ensureGridFitsPositions(positions);
 		const sz = $gridSize;
 		const col = hexToInt($color);
 		updateVoxelsInStroke((v) => {
@@ -412,11 +524,54 @@
 		});
 	}
 
+	function applySelectStroke(positions: [number, number, number][]) {
+		const v = $voxels;
+		const sz = $gridSize;
+		const next = new Map<string, number>();
+		for (const [x, y, z] of positions) {
+			if (!inBounds(x, y, z, sz)) continue;
+			const key = coordKey(x, y, z);
+			const col = v.get(key);
+			if (col !== undefined) next.set(key, col);
+		}
+		selection.set(next);
+	}
+
+	function placeStamp(placeAt: [number, number, number]) {
+		const anchor = getSelectionAnchor($selection);
+		if (!anchor) return;
+		const sel = $selection;
+		const [ax, ay, az] = anchor;
+		const [px, py, pz] = placeAt;
+		const dx = px - ax;
+		const dy = py - ay;
+		const dz = pz - az;
+		const stampPositions: [number, number, number][] = [];
+		for (const [key, col] of sel) {
+			const [sx, sy, sz] = parseCoordKey(key);
+			stampPositions.push([sx + dx, sy + dy, sz + dz]);
+		}
+		ensureGridFitsPositions(stampPositions);
+		beginStroke();
+		updateVoxelsInStroke((v) => {
+			for (const [key, col] of sel) {
+				const [sx, sy, sz] = parseCoordKey(key);
+				const x = sx + dx;
+				const y = sy + dy;
+				const z = sz + dz;
+				if (!inBounds(x, y, z, $gridSize)) continue;
+				v.set(coordKey(x, y, z), col);
+			}
+		});
+	}
+
 	function updatePreviewMesh(positions: [number, number, number][]) {
 		if (!previewMesh || !previewMaterial) return;
 		const count = Math.min(positions.length, PREVIEW_MAX);
 		previewMesh.count = count;
-		previewMaterial.color.setHex($tool === 'remove' ? 0xff4444 : hexToInt($color));
+		const hex =
+			$tool === 'remove' ? 0xff4444 : $tool === 'stamp' ? 0x33aaff : hexToInt($color);
+		previewMaterial.color.setHex(hex);
 		const matrix = new THREE.Matrix4();
 		for (let i = 0; i < count; i++) {
 			const [x, y, z] = positions[i];
@@ -427,12 +582,66 @@
 		previewMesh.visible = count > 0;
 	}
 
+	function updateCuboidFromDepth() {
+		if (!cuboidPlane) return;
+		const ax = Math.abs(cuboidPlane.normal.x);
+		const ay = Math.abs(cuboidPlane.normal.y);
+		const az = Math.abs(cuboidPlane.normal.z);
+		const axis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+		const d: [number, number, number] = [0, 0, 0];
+		d[axis] = cuboidDepth;
+		deltaDisplay = { dx: d[0], dy: d[1], dz: d[2] };
+		pendingStrokePositions = getAxisAlignedCuboid(
+			cuboidPlane.a,
+			cuboidPlane.b,
+			cuboidPlane.normal,
+			cuboidDepth
+		);
+		updatePreviewMesh(pendingStrokePositions);
+		render();
+	}
+
+	function commitCuboid() {
+		if (!cuboidPlane) return;
+		const positions = getAxisAlignedCuboid(
+			cuboidPlane.a,
+			cuboidPlane.b,
+			cuboidPlane.normal,
+			cuboidDepth
+		);
+		if (positions.length > 0) {
+			if ($tool === 'select') {
+				applySelectStroke(positions);
+			} else {
+				beginStroke();
+				applyLineStroke(positions);
+			}
+		}
+		deltaDisplay = null;
+		cuboidPhase = null;
+		cuboidPlane = null;
+		pendingStrokePositions = [];
+		updatePreviewMesh([]);
+		render();
+	}
+
 	function cancelDrag() {
 		deltaDisplay = null;
 		if (cuboidPhase) {
+			if (depthAdjustPointerId !== null) {
+				try {
+					container.releasePointerCapture(depthAdjustPointerId);
+				} catch (_) {}
+				depthAdjustPointerId = null;
+			}
 			cuboidPhase = null;
 			cuboidPlane = null;
 			pendingStrokePositions = [];
+			updatePreviewMesh([]);
+		}
+		if (isStampDrag) {
+			isStampDrag = false;
+			lastStampPos = null;
 			updatePreviewMesh([]);
 		}
 		if (isVoxelDrag) {
@@ -451,18 +660,15 @@
 		}
 	}
 
-	function computeCuboidDepthFromPoint(point: [number, number, number]): number {
-		if (!cuboidPlane) return 0;
-		const { a, normal } = cuboidPlane;
-		const ax = Math.abs(normal.x);
-		const ay = Math.abs(normal.y);
-		const az = Math.abs(normal.z);
-		const axis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
-		const sign = normal.getComponent(axis) > 0 ? 1 : -1;
-		return (point[axis] - a[axis]) * sign;
-	}
-
 	function handlePointerDown(event: PointerEvent) {
+		if ((event.target as Element)?.closest?.('.cuboid-done-btn, .zoom-controls, .depth-slider-container')) return;
+		if ($tool === 'fly') {
+			// Capture pointer so drag-to-look keeps receiving events when cursor leaves canvas
+			if (event.button === 0 || event.button === 2) {
+				container.setPointerCapture(event.pointerId);
+			}
+			return;
+		}
 		if (event.button === 2) {
 			if (isVoxelDrag || cuboidPhase) {
 				event.preventDefault();
@@ -473,7 +679,7 @@
 		}
 		if (event.button !== 0) return;
 
-		// Cuboid depth phase: second click commits the cuboid
+		// Cuboid depth phase: click commits; touch drag adjusts depth (mouse uses scroll wheel)
 		if (
 			get(strokeMode) === 'cuboid' &&
 			cuboidPhase === 'depth' &&
@@ -481,22 +687,13 @@
 		) {
 			event.preventDefault();
 			event.stopPropagation();
-			const positions = getAxisAlignedCuboid(
-				cuboidPlane.a,
-				cuboidPlane.b,
-				cuboidPlane.normal,
-				cuboidDepth
-			);
-			if (positions.length > 0) {
-				beginStroke();
-				applyLineStroke(positions);
+			if (event.pointerType === 'touch') {
+				depthAdjustPointerId = event.pointerId;
+				lastDepthPhaseClientY = event.clientY;
+				container.setPointerCapture(event.pointerId);
+			} else {
+				commitCuboid();
 			}
-			deltaDisplay = null;
-			cuboidPhase = null;
-			cuboidPlane = null;
-			pendingStrokePositions = [];
-			updatePreviewMesh([]);
-			render();
 			return;
 		}
 
@@ -510,8 +707,21 @@
 		event.stopPropagation();
 		container.setPointerCapture(event.pointerId);
 		dragPointerId = event.pointerId;
-		isVoxelDrag = true;
 
+		// Stamp tool: start drag; stamp will follow cursor by re-raycasting each frame
+		if ($tool === 'stamp' && $selection.size > 0) {
+			const placePos = getAddPosition(hit);
+			if (placePos) {
+				isStampDrag = true;
+				lastStampPos = placePos;
+				const anchor = getSelectionAnchor($selection)!;
+				updatePreviewMesh(getStampPositions(anchor, placePos));
+			}
+			requestAnimationFrame(() => render());
+			return;
+		}
+
+		isVoxelDrag = true;
 		let startPos: [number, number, number] | null = null;
 		if ($tool === 'add') {
 			startPos = getAddPosition(hit);
@@ -519,12 +729,6 @@
 			startPos = getVoxelPosition(hit);
 		}
 		if (!startPos) {
-			isVoxelDrag = false;
-			dragPointerId = null;
-			container.releasePointerCapture(event.pointerId);
-			return;
-		}
-		if (!inBounds(startPos[0], startPos[1], startPos[2], $gridSize)) {
 			isVoxelDrag = false;
 			dragPointerId = null;
 			container.releasePointerCapture(event.pointerId);
@@ -539,32 +743,28 @@
 		requestAnimationFrame(() => render());
 	}
 
-	function handlePointerMove() {
-		// Cuboid depth phase: update depth from pointer, show full cuboid preview
-		if (cuboidPhase === 'depth' && cuboidPlane) {
+	function handlePointerMove(event?: PointerEvent) {
+		if ($tool === 'fly') return;
+		// Stamp drag: re-raycast so stamp follows cursor onto any surface
+		if (isStampDrag && $selection.size > 0) {
 			const hit = getIntersection();
 			if (hit) {
-				const pos =
-					$tool === 'add' ? getAddPosition(hit) : getVoxelPosition(hit);
-				if (pos && inBounds(pos[0], pos[1], pos[2], $gridSize)) {
-					cuboidDepth = computeCuboidDepthFromPoint(pos);
+				const placePos = getAddPosition(hit);
+				if (placePos) {
+					lastStampPos = placePos;
+					const anchor = getSelectionAnchor($selection)!;
+					updatePreviewMesh(getStampPositions(anchor, placePos));
 				}
 			}
-			const ax = Math.abs(cuboidPlane.normal.x);
-			const ay = Math.abs(cuboidPlane.normal.y);
-			const az = Math.abs(cuboidPlane.normal.z);
-			const axis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
-			const delta: [number, number, number] = [0, 0, 0];
-			delta[axis] = cuboidDepth;
-			deltaDisplay = { dx: delta[0], dy: delta[1], dz: delta[2] };
-			pendingStrokePositions = getAxisAlignedCuboid(
-				cuboidPlane.a,
-				cuboidPlane.b,
-				cuboidPlane.normal,
-				cuboidDepth
-			);
-			updatePreviewMesh(pendingStrokePositions);
 			render();
+			return;
+		}
+		// Cuboid depth phase: depth from touch drag on canvas (mouse uses wheel or slider)
+		if (cuboidPhase === 'depth' && cuboidPlane && event && depthAdjustPointerId === event.pointerId) {
+			const dy = lastDepthPhaseClientY - event.clientY;
+			cuboidDepth += Math.round(dy / 5);
+			lastDepthPhaseClientY = event.clientY;
+			updateCuboidFromDepth();
 			return;
 		}
 		if (isVoxelDrag && dragStartPos) {
@@ -575,7 +775,7 @@
 				currentPos =
 					$tool === 'add' ? getAddPosition(hit) : getVoxelPosition(hit);
 			}
-			if (currentPos && inBounds(currentPos[0], currentPos[1], currentPos[2], $gridSize)) {
+			if (currentPos) {
 				const mode = get(strokeMode);
 				pendingStrokePositions =
 					(mode === 'plane' || mode === 'cuboid') && dragFaceNormal
@@ -594,8 +794,29 @@
 			return;
 		}
 		deltaDisplay = null;
+		// Stamp hover preview
+		if ($tool === 'stamp' && $selection.size > 0 && !isStampDrag) {
+			const hit = getIntersection();
+			if (hit) {
+				const placePos = getAddPosition(hit);
+				if (placePos) {
+					const anchor = getSelectionAnchor($selection)!;
+					updatePreviewMesh(getStampPositions(anchor, placePos));
+					rollOverMesh.visible = false;
+				} else {
+					updatePreviewMesh([]);
+					rollOverMesh.visible = false;
+				}
+			} else {
+				updatePreviewMesh([]);
+				rollOverMesh.visible = false;
+			}
+			render();
+			return;
+		}
 		if ($tool !== 'add') {
 			rollOverMesh.visible = false;
+			updatePreviewMesh([]);
 			render();
 			return;
 		}
@@ -606,7 +827,7 @@
 			return;
 		}
 		const addPos = getAddPosition(hit);
-		if (addPos && inBounds(addPos[0], addPos[1], addPos[2], $gridSize) && !$voxels.has(coordKey(addPos[0], addPos[1], addPos[2]))) {
+		if (addPos && !$voxels.has(coordKey(addPos[0], addPos[1], addPos[2]))) {
 			rollOverMesh.position.set(addPos[0], addPos[1], addPos[2]);
 			rollOverMesh.visible = true;
 		} else {
@@ -615,16 +836,29 @@
 		render();
 	}
 
+	const TOOLTIP_OFFSET = 12;
+	const TOOLTIP_MARGIN = 8;
+	const TOOLTIP_ESTIMATE = { w: 100, h: 24 };
+
 	function updatePointerFromEvent(event: PointerEvent) {
 		const rect = renderer.domElement.getBoundingClientRect();
 		pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
 		pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-		pointerScreen = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+		const rawX = event.clientX - rect.left;
+		const rawY = event.clientY - rect.top;
+		const desiredX = rawX + TOOLTIP_OFFSET;
+		const desiredY = rawY + TOOLTIP_OFFSET;
+		const maxX = rect.width - TOOLTIP_ESTIMATE.w - TOOLTIP_MARGIN;
+		const maxY = rect.height - TOOLTIP_ESTIMATE.h - TOOLTIP_MARGIN;
+		pointerScreen = {
+			x: Math.max(TOOLTIP_MARGIN, Math.min(maxX, desiredX)),
+			y: Math.max(TOOLTIP_MARGIN, Math.min(maxY, desiredY))
+		};
 	}
 
 	function onPointerMove(event: PointerEvent) {
 		updatePointerFromEvent(event);
-		handlePointerMove();
+		handlePointerMove(event);
 	}
 
 	function onPointerDown(event: PointerEvent) {
@@ -633,19 +867,33 @@
 	}
 
 	function onPointerUp(event: PointerEvent) {
+		if (depthAdjustPointerId === event.pointerId) {
+			try {
+				container.releasePointerCapture(event.pointerId);
+			} catch (_) {}
+			depthAdjustPointerId = null;
+		}
 		if (event.button === 2 && (isVoxelDrag || cuboidPhase)) {
 			cancelDrag();
+		}
+		if (event.button === 0 && isStampDrag) {
+			if (lastStampPos) {
+				placeStamp(lastStampPos);
+			}
+			isStampDrag = false;
+			lastStampPos = null;
+			updatePreviewMesh([]);
 		}
 		if (event.button === 0 && isVoxelDrag) {
 			updatePointerFromEvent(event);
 			const mode = get(strokeMode);
 			if (mode === 'cuboid' && dragStartPos && dragFaceNormal) {
-				// Enter depth phase instead of committing
+				// Enter depth phase: drag plane, then scroll for depth
 				let cornerB = dragStartPos;
 				const hit = getIntersection();
 				if (hit) {
 					const pos = $tool === 'add' ? getAddPosition(hit) : getVoxelPosition(hit);
-					if (pos && inBounds(pos[0], pos[1], pos[2], $gridSize)) cornerB = pos;
+					if (pos) cornerB = pos;
 				}
 				cuboidPhase = 'depth';
 				cuboidPlane = {
@@ -653,18 +901,23 @@
 					b: cornerB,
 					normal: dragFaceNormal
 				};
-				cuboidDepth = 0;
-				pendingStrokePositions = getAxisAlignedPlaneFromNormal(
+				cuboidDepth = 1;
+				pendingStrokePositions = getAxisAlignedCuboid(
 					cuboidPlane.a,
 					cuboidPlane.b,
-					cuboidPlane.normal
+					cuboidPlane.normal,
+					cuboidDepth
 				);
 				updatePreviewMesh(pendingStrokePositions);
 			} else {
 				// Apply the stroke on release (line/plane)
 				if (pendingStrokePositions.length > 0) {
-					beginStroke();
-					applyLineStroke(pendingStrokePositions);
+					if ($tool === 'select') {
+						applySelectStroke(pendingStrokePositions);
+					} else {
+						beginStroke();
+						applyLineStroke(pendingStrokePositions);
+					}
 				}
 				pendingStrokePositions = [];
 				updatePreviewMesh([]);
@@ -679,6 +932,9 @@
 	}
 
 	function onPointerCancel(event: PointerEvent) {
+		if (depthAdjustPointerId === event.pointerId) {
+			depthAdjustPointerId = null;
+		}
 		if (isVoxelDrag) {
 			cancelDrag();
 		}
@@ -687,6 +943,14 @@
 
 	function onContextMenu(event: Event) {
 		if (isVoxelDrag) event.preventDefault();
+	}
+
+	function onWheel(event: WheelEvent) {
+		if (cuboidPhase !== 'depth' || !cuboidPlane) return;
+		event.preventDefault();
+		event.stopPropagation();
+		cuboidDepth += Math.sign(-event.deltaY);
+		updateCuboidFromDepth();
 	}
 
 	function onWindowResize() {
@@ -703,13 +967,30 @@
 
 	function render() {
 		if (composer && scene && camera) {
+			scene.updateMatrixWorld(true);
+			if (ssaoPass?.enabled) {
+				ssaoPass.camera.updateMatrixWorld(true);
+				ssaoPass.ssaoMaterial.uniforms['cameraProjectionMatrix'].value.copy(
+					ssaoPass.camera.projectionMatrix
+				);
+				ssaoPass.ssaoMaterial.uniforms['cameraInverseProjectionMatrix'].value.copy(
+					ssaoPass.camera.projectionMatrixInverse
+				);
+			}
 			composer.render();
 		}
 	}
 
-	function animate() {
+	function animate(now?: number) {
 		animationFrameId = requestAnimationFrame(animate);
-		controls?.update();
+		const t = now ?? performance.now();
+		const delta = lastFrameTime ? (t - lastFrameTime) / 1000 : 0;
+		lastFrameTime = t;
+		if (flyControls?.enabled) {
+			flyControls.update(delta);
+		} else {
+			orbitControls?.update();
+		}
 		render();
 	}
 
@@ -724,9 +1005,39 @@
 	});
 
 	$effect(() => {
+		if (orbitControls) {
+			orbitControls.enableZoom = cuboidPhase !== 'depth';
+		}
+	});
+
+	$effect(() => {
 		const v = $voxels;
 		const sz = $gridSize;
 		rebuildVoxelMeshes(v, sz);
+		// Force SSAO pass to refresh when geometry changes (depth/normal buffers can be stale)
+		if (ssaoPass && container && renderer) {
+			const ratio = renderer.getPixelRatio();
+			ssaoPass.setSize(container.clientWidth * ratio, container.clientHeight * ratio);
+		}
+		render();
+	});
+
+	$effect(() => {
+		const sel = $selection;
+		rebuildSelectionOverlay(sel);
+		render();
+	});
+
+	$effect(() => {
+		const r = $roughness;
+		const m = $metalness;
+		const envInt = $envMapIntensity;
+		for (const { mesh } of meshesByColor.values()) {
+			const mat = mesh.material as THREE.MeshStandardMaterial;
+			mat.roughness = r;
+			mat.metalness = m;
+			mat.envMapIntensity = envInt;
+		}
 		render();
 	});
 
@@ -736,8 +1047,15 @@
 
 		scene = new THREE.Scene();
 		scene.background = new THREE.Color(hexToInt($backgroundColor));
+		envMap = createEnvMap();
+		scene.environment = envMap;
 
-		camera = new THREE.PerspectiveCamera(45, 1, 1, 10000);
+		camera = new THREE.PerspectiveCamera(
+			focalLengthToFov(get(focalLength)),
+			1,
+			1,
+			10000
+		);
 		const dist = sz * 2.5;
 		camera.position.set(dist * 0.6, dist * 0.8, dist);
 		camera.lookAt(0, 0, 0);
@@ -754,6 +1072,9 @@
 
 		voxelGroup = new THREE.Group();
 		scene.add(voxelGroup);
+
+		selectionGroup = new THREE.Group();
+		scene.add(selectionGroup);
 
 		previewMaterial = new THREE.MeshBasicMaterial({
 			color: 0xff4444,
@@ -799,10 +1120,16 @@
 		composer.addPass(ssaoPass);
 		composer.addPass(new OutputPass());
 
-		controls = new OrbitControls(camera, renderer.domElement);
-		controls.enableDamping = true;
-		controls.dampingFactor = 0.05;
-		controls.addEventListener('change', updateZoomPercent);
+		orbitControls = new OrbitControls(camera, renderer.domElement);
+		orbitControls.enableDamping = true;
+		orbitControls.dampingFactor = 0.05;
+		orbitControls.addEventListener('change', updateZoomPercent);
+
+		flyControls = new FlyControls(camera, container);
+		flyControls.dragToLook = true;
+		flyControls.movementSpeed = sz * 2;
+		flyControls.rollSpeed = 0.1;
+		flyControls.enabled = false;
 
 		updateZoomPercent();
 
@@ -814,6 +1141,7 @@
 		container.addEventListener('pointerup', onPointerUp);
 		container.addEventListener('pointercancel', onPointerCancel);
 		container.addEventListener('contextmenu', onContextMenu);
+		container.addEventListener('wheel', onWheel, { passive: false, capture: true });
 		window.addEventListener('resize', onWindowResize);
 
 		rebuildVoxelMeshes($voxels, sz);
@@ -845,6 +1173,35 @@
 		render();
 	});
 
+	$effect(() => {
+		const fl = $focalLength;
+		if (camera) {
+			camera.fov = focalLengthToFov(fl);
+			camera.updateProjectionMatrix();
+			render();
+		}
+	});
+
+	let prevTool = $state<Tool | null>(null);
+	$effect(() => {
+		const t = $tool;
+		if (!orbitControls || !flyControls) return;
+		const isFly = t === 'fly';
+		orbitControls.enabled = !isFly;
+		flyControls.enabled = isFly;
+		if (isFly && cuboidPhase) {
+			document.exitPointerLock();
+			cancelDrag();
+		}
+		if (!isFly && prevTool === 'fly' && camera) {
+			// Sync orbit target when exiting fly mode so orbit feels natural
+			const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+			orbitControls.target.copy(camera.position).add(dir.multiplyScalar(50));
+		}
+		prevTool = t;
+		render();
+	});
+
 	onDestroy(() => {
 		if (!browser) return;
 		saveToStorage();
@@ -854,12 +1211,15 @@
 		container?.removeEventListener('pointerup', onPointerUp);
 		container?.removeEventListener('pointercancel', onPointerCancel);
 		container?.removeEventListener?.('contextmenu', onContextMenu);
+		container?.removeEventListener('wheel', onWheel, true);
 		window.removeEventListener('resize', onWindowResize);
-		controls?.removeEventListener?.('change', updateZoomPercent);
-		controls?.dispose();
+		orbitControls?.removeEventListener?.('change', updateZoomPercent);
+		orbitControls?.dispose();
+		flyControls?.dispose();
 		ssaoPass?.dispose();
 		composer?.dispose();
 		renderer?.dispose();
+		envMap?.dispose();
 		for (const { mesh } of meshesByColor.values()) {
 			mesh.geometry.dispose();
 			(mesh.material as THREE.Material).dispose();
@@ -867,6 +1227,7 @@
 		boxGeometry?.dispose();
 		rollOverMaterial?.dispose();
 		previewMaterial?.dispose();
+		selectionMaterial?.dispose();
 		gridGroup?.traverse((obj) => {
 			if (obj instanceof THREE.LineSegments && obj.geometry) obj.geometry.dispose();
 		});
@@ -875,27 +1236,82 @@
 </script>
 
 <div class="canvas-container" bind:this={container} role="application" aria-label="Voxel sculpting canvas">
+	{#if cuboidPhase === 'depth'}
+		<div
+			class="depth-slider-container"
+			role="slider"
+			aria-label="Cuboid depth"
+			aria-valuemin="-20"
+			aria-valuemax="20"
+			aria-valuenow={cuboidDepth}
+			tabindex="0"
+			onpointerdown={(e) => {
+				e.stopPropagation();
+				depthSliderPointerId = e.pointerId;
+				depthSliderStartY = e.clientY;
+				depthSliderStartDepth = cuboidDepth;
+				(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+			}}
+			onpointermove={(e) => {
+				if (depthSliderPointerId !== e.pointerId) return;
+				const dy = depthSliderStartY - e.clientY;
+				cuboidDepth = depthSliderStartDepth + Math.round(dy / 6);
+				updateCuboidFromDepth();
+			}}
+			onpointerup={(e) => {
+				if (depthSliderPointerId === e.pointerId) {
+					depthSliderPointerId = null;
+				}
+			}}
+			onpointercancel={(e) => {
+				if (depthSliderPointerId === e.pointerId) {
+					depthSliderPointerId = null;
+				}
+			}}
+		>
+			<div class="depth-slider-track">
+				<div class="depth-slider-thumb" style="bottom: {Math.min(100, Math.max(0, 50 + cuboidDepth * 2.5))}%"></div>
+			</div>
+			<span class="depth-slider-label">Depth: {cuboidDepth}</span>
+		</div>
+		<button
+			type="button"
+			class="cuboid-done-btn"
+			onpointerdown={(e) => e.stopPropagation()}
+			onclick={() => commitCuboid()}
+			title="Tap Done to apply"
+			aria-label="Apply cuboid selection"
+		>
+			Done
+		</button>
+	{/if}
 	{#if deltaDisplay}
 		<div
 			class="delta-display"
 			aria-live="polite"
-			style="left: {pointerScreen.x + 12}px; top: {pointerScreen.y + 12}px;"
+			style="left: {pointerScreen.x}px; top: {pointerScreen.y}px;"
 		>
 			Δ {deltaDisplay.dx}, {deltaDisplay.dy}, {deltaDisplay.dz}
 		</div>
 	{/if}
-	<div
-		class="zoom-controls"
-		role="toolbar"
-		aria-label="Zoom controls"
-		tabindex="0"
-		onpointerdown={(e) => e.stopPropagation()}
-	>
-		<button type="button" onclick={zoomOut} title="Zoom out" aria-label="Zoom out">−</button>
-		<span class="zoom-percent">{zoomPercent}%</span>
-		<button type="button" onclick={zoomIn} title="Zoom in" aria-label="Zoom in">+</button>
-		<button type="button" class="fit-btn" onclick={fitToView} title="Fit to view" aria-label="Fit sculpture to view">Fit</button>
-	</div>
+	{#if $tool === 'fly'}
+		<div class="fly-hint" role="status" aria-live="polite">
+			WASD move · R/F up/down · Click+drag look · Q/E roll
+		</div>
+	{:else}
+		<div
+			class="zoom-controls"
+			role="toolbar"
+			aria-label="Zoom controls"
+			tabindex="0"
+			onpointerdown={(e) => e.stopPropagation()}
+		>
+			<button type="button" onclick={zoomOut} title="Zoom out" aria-label="Zoom out">−</button>
+			<span class="zoom-percent">{zoomPercent}%</span>
+			<button type="button" onclick={zoomIn} title="Zoom in" aria-label="Zoom in">+</button>
+			<button type="button" class="fit-btn" onclick={fitToView} title="Fit to view" aria-label="Fit sculpture to view">Fit</button>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -909,6 +1325,73 @@
 		display: block;
 		width: 100%;
 		height: 100%;
+	}
+
+	.cuboid-done-btn {
+		position: absolute;
+		top: 0.5rem;
+		left: 50%;
+		transform: translateX(-50%);
+		min-width: 2.75rem;
+		min-height: 2.75rem;
+		padding: 0.5rem 1rem;
+		background: rgba(0, 0, 0, 0.75);
+		border: 1px solid rgba(255, 255, 255, 0.4);
+		border-radius: 4px;
+		color: #fff;
+		font-size: 0.9rem;
+		cursor: pointer;
+		pointer-events: auto;
+		z-index: 1;
+	}
+
+	.cuboid-done-btn:hover {
+		background: rgba(0, 0, 0, 0.85);
+	}
+
+	.cuboid-done-btn:active {
+		background: rgba(255, 255, 255, 0.2);
+	}
+
+	.depth-slider-container {
+		position: absolute;
+		left: 0.5rem;
+		top: 50%;
+		transform: translateY(-50%);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.5rem;
+		background: rgba(0, 0, 0, 0.75);
+		border: 1px solid rgba(255, 255, 255, 0.4);
+		border-radius: 4px;
+		pointer-events: auto;
+		z-index: 1;
+		touch-action: none;
+	}
+
+	.depth-slider-track {
+		position: relative;
+		width: 1rem;
+		height: 6rem;
+		background: rgba(255, 255, 255, 0.2);
+		border-radius: 4px;
+	}
+
+	.depth-slider-thumb {
+		position: absolute;
+		left: -2px;
+		right: -2px;
+		height: 0.75rem;
+		background: rgba(255, 255, 255, 0.9);
+		border-radius: 2px;
+		pointer-events: none;
+	}
+
+	.depth-slider-label {
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.9);
 	}
 
 	.zoom-controls {
@@ -951,6 +1434,18 @@
 		min-width: 3ch;
 		font-size: 0.85rem;
 		color: rgba(255, 255, 255, 0.9);
+	}
+
+	.fly-hint {
+		position: absolute;
+		bottom: 0.5rem;
+		right: 0.5rem;
+		padding: 0.25rem 0.5rem;
+		background: rgba(0, 0, 0, 0.6);
+		border-radius: 4px;
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.9);
+		pointer-events: none;
 	}
 
 	.delta-display {
