@@ -49,7 +49,7 @@ Central state in writable stores. Voxels and selection are `Map<string, number>`
 - **Coords**: Integer voxel positions. Grid centered at origin; `gridSize` defines `[-size/2, size/2)` per axis.
 - **Colors**: 24-bit hex stored as `number`; `hexToInt('#ff5733')`, `intToHex(n)` for conversions.
 - **Faces**: `FaceNormal` = `[nx, ny, nz]` (1, 0, or -1).
-- **Shapes**: `cube`, `orb`, `cylinder`, `hollowCube`, `empty`. Rotation in quarter-turns (0–3) per axis.
+- **Shapes**: `cube`, `orb`, `cylinder`, `hollowCube`, `plane`, `empty`. Rotation in quarter-turns (0–3) per axis.
 
 ## Guidelines for Changes
 

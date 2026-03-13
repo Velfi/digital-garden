@@ -172,7 +172,7 @@ export function getStampOffsetForFace(
   return [dx, dy, dz];
 }
 
-export type StartShape = 'cube' | 'orb' | 'cylinder' | 'hollowCube' | 'empty';
+export type StartShape = 'cube' | 'orb' | 'cylinder' | 'hollowCube' | 'plane' | 'empty';
 
 function getBounds(size: number) {
   const lo = -Math.floor(size / 2);
@@ -207,6 +207,8 @@ export function initShape(
         } else if (shape === 'hollowCube') {
           const onFace = x === lo || x === hi || y === lo || y === hi || z === lo || z === hi;
           include = onFace;
+        } else if (shape === 'plane') {
+          include = y === 0; // horizontal XZ plane; rotation handles orientation
         }
         if (include) map.set(coordKey(x, y, z), color);
       }
@@ -487,6 +489,7 @@ export const backgroundColor = writable<string>('#f0f0f0');
 export const enableSky = writable<boolean>(true); // procedural sky + horizon
 export const roughness = writable<number>(0.6); // 0–1, PBR
 export const metalness = writable<number>(0); // 0–1, PBR
+export const voxelRenderMode = writable<'blocky' | 'smooth'>('blocky');
 export const envMapIntensity = writable<number>(0.5); // environment reflections, 0 to disable
 export const focalLength = writable<number>(29); // mm (35mm equivalent); ~45° FOV
 export const orthographic = writable<boolean>(false); // orthographic vs perspective projection

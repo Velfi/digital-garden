@@ -106,6 +106,7 @@
         <option value="orb">Orb</option>
         <option value="cylinder">Cylinder</option>
         <option value="hollowCube">Hollow cube</option>
+        <option value="plane">Plane</option>
       </select>
     </div>
     <div class="add-panel-row">

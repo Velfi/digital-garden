@@ -23,6 +23,7 @@
     roughness,
     metalness,
     envMapIntensity,
+    voxelRenderMode,
     sidebarOpen,
     resetCanvas,
     voxels,
@@ -423,6 +424,26 @@
     </label>
   </div>
 
+  <h2>Render</h2>
+  <div class="tool-buttons">
+    <button
+      type="button"
+      class:active={$voxelRenderMode === 'blocky'}
+      onclick={() => voxelRenderMode.set('blocky')}
+      title="Blocky voxel faces"
+    >
+      Blocky
+    </button>
+    <button
+      type="button"
+      class:active={$voxelRenderMode === 'smooth'}
+      onclick={() => voxelRenderMode.set('smooth')}
+      title="Smooth organic shapes"
+    >
+      Smooth
+    </button>
+  </div>
+
   <h2>Material (PBR)</h2>
   <div class="light-control">
     <label for="roughness">Roughness</label>
@@ -553,6 +574,7 @@
             <option value="orb">Orb</option>
             <option value="cylinder">Cylinder</option>
             <option value="hollowCube">Hollow cube</option>
+            <option value="plane">Plane</option>
             <option value="empty">Empty</option>
           </select>
         </label>
