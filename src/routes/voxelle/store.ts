@@ -5,7 +5,7 @@ const VOXELLE_STORAGE_KEY = 'voxelle';
 
 export type GridSize = number; // any positive integer
 export type Tool =
-  | 'add'
+  | 'voxel'
   | 'remove'
   | 'paint'
   | 'select'
@@ -682,6 +682,41 @@ export function getFillSelectionAt(
     if (col === undefined) continue;
     if (respectsColor && col !== targetColor) continue;
     next.set(ck, col);
+    for (const [dx, dy, dz] of adj) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      const nz = cz + dz;
+      if (inBounds(nx, ny, nz, sz)) {
+        const nk = coordKey(nx, ny, nz);
+        if (!visited.has(nk)) stack.push([nx, ny, nz]);
+      }
+    }
+  }
+  return next;
+}
+
+/** Flood-fill from (x,y,z) through empty voxels; returns set of empty coord keys. */
+export function getFillEmptyAt(
+  x: number,
+  y: number,
+  z: number,
+  diagonals: boolean
+): Set<string> {
+  const v = get(voxels);
+  const sz = get(gridSize);
+  const k0 = coordKey(x, y, z);
+  if (v.has(k0)) return new Set();
+  const adj = diagonals ? ADJ_26 : ADJ_6;
+  const visited = new Set<string>();
+  const stack: [number, number, number][] = [[x, y, z]];
+  const next = new Set<string>();
+  while (stack.length > 0) {
+    const [cx, cy, cz] = stack.pop()!;
+    const ck = coordKey(cx, cy, cz);
+    if (visited.has(ck)) continue;
+    visited.add(ck);
+    if (v.has(ck)) continue;
+    next.add(ck);
     for (const [dx, dy, dz] of adj) {
       const nx = cx + dx;
       const ny = cy + dy;

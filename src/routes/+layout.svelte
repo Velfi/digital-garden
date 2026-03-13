@@ -55,6 +55,7 @@
   {/if}
 </svelte:head>
 
+<svelte:body class:light-mode={mode === lightMode} />
 <Header />
 <slot />
 

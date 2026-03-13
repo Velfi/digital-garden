@@ -120,8 +120,8 @@
     </button>
     <button
       type="button"
-      class:active={$tool === 'add'}
-      onclick={() => tool.set('add')}
+      class:active={$tool === 'voxel'}
+      onclick={() => tool.set('voxel')}
       title="Place voxels"
     >
       Voxel
@@ -207,7 +207,7 @@
         type="button"
         class:active={$strokeMode === 'fill'}
         onclick={() => strokeMode.set('fill')}
-        title="Click voxel to select (Select) or flood-fill paint (Paint) connected same-color region"
+        title="Click to flood-fill: Voxel (empty space), Remove/Paint (voxels), Select/SelectByColor (selection)"
       >
         Fill
       </button>
@@ -228,7 +228,7 @@
             checked={$fillRespectsColor}
             onchange={(e) => fillRespectsColor.set((e.target as HTMLInputElement).checked)}
           />
-          Same color only
+          Respect color
         </label>
       </div>
     {/if}
@@ -600,7 +600,18 @@
 
   .tool-buttons button.active {
     background: var(--link-color);
-    color: var(--bg-color);
+    border-color: var(--link-color);
+  }
+
+  :global(body:not(.light-mode)) .tool-buttons button.active {
+    color: white;
+    background: color-mix(in srgb, var(--link-color) 70%, black);
+    border-color: color-mix(in srgb, var(--link-color) 70%, black);
+  }
+
+  :global(body.light-mode) .tool-buttons button.active {
+    color: var(--text-color);
+    background: color-mix(in srgb, var(--link-color) 20%, var(--bg-color));
     border-color: var(--link-color);
   }
 
@@ -758,7 +769,18 @@
 
   .stroke-buttons button.active {
     background: var(--link-color);
-    color: var(--bg-color);
+    border-color: var(--link-color);
+  }
+
+  :global(body:not(.light-mode)) .stroke-buttons button.active {
+    color: white;
+    background: color-mix(in srgb, var(--link-color) 70%, black);
+    border-color: color-mix(in srgb, var(--link-color) 70%, black);
+  }
+
+  :global(body.light-mode) .stroke-buttons button.active {
+    color: var(--text-color);
+    background: color-mix(in srgb, var(--link-color) 20%, var(--bg-color));
     border-color: var(--link-color);
   }
 

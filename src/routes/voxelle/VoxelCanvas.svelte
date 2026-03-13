@@ -48,12 +48,16 @@
     fillSelectDiagonals,
     fillRespectsColor,
     getFillSelectionAt,
+    getFillEmptyAt,
     getShapePositionsAt,
     addPanelStore,
     type Tool,
     type FaceNormal
   } from './store';
   import { ConvexHull } from 'three/addons/math/ConvexHull.js';
+  import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+  import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+  import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
   import { Sky } from 'three/addons/objects/Sky.js';
   import { buildGreedyMesh } from './greedyMesh';
   import OrbitGizmo from './OrbitGizmo.svelte';
@@ -129,7 +133,7 @@
   let selectionMaterial: THREE.MeshBasicMaterial | null = null;
 
   let gridGroup: THREE.Group | null = null;
-  let gridLineMaterial: THREE.LineBasicMaterial | null = null;
+  let gridLineMaterial: InstanceType<typeof LineMaterial> | null = null;
   let envMap: THREE.CubeTexture | null = null;
 
   let zoomPercent = $state(100);
@@ -574,9 +578,8 @@
     while (gridGroup.children.length > 0) {
       const child = gridGroup.children[0];
       gridGroup.remove(child);
-      if (child instanceof THREE.LineSegments && child.geometry) {
-        child.geometry.dispose();
-      }
+      const geom = (child as { geometry?: THREE.BufferGeometry }).geometry;
+      if (geom) geom.dispose();
     }
     if (v.size === 0) return;
     const positions: number[] = [];
@@ -600,10 +603,10 @@
       }
     }
     if (positions.length === 0) return;
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geom.computeBoundingSphere();
-    const lines = new THREE.LineSegments(geom, gridLineMaterial);
+    const geom = new LineSegmentsGeometry();
+    geom.setPositions(positions);
+    const lines = new LineSegments2(geom, gridLineMaterial);
+    lines.raycast = () => {};
     gridGroup.add(lines);
   }
 
@@ -748,7 +751,7 @@
         const key = coordKey(x, y, z);
         if ($tool === 'remove') {
           v.delete(key);
-        } else if ($tool === 'add') {
+        } else if ($tool === 'voxel') {
           if (!v.has(key)) v.set(key, col);
         } else if ($tool === 'paint') {
           if (v.has(key)) v.set(key, col);
@@ -1041,7 +1044,7 @@
           updatePreviewMesh(fillPositions);
         }
       } else {
-        const pos = $tool === 'add' ? getAddPosition(hit) : getVoxelPosition(hit);
+        const pos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
         if (pos) {
           polygonPhase = 'placing';
           polygonPoints = [...polygonPoints, pos];
@@ -1107,16 +1110,73 @@
       return;
     }
 
-    // Select by color: click voxel to select all of that color
+    // Voxel tool + fill method: click face to flood-fill connected empty space with voxels
+    if ($tool === 'voxel' && get(strokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
+      const pos = getAddPosition(hit);
+      if (pos && !$voxels.has(coordKey(pos[0], pos[1], pos[2]))) {
+        const emptyRegion = getFillEmptyAt(pos[0], pos[1], pos[2], get(fillSelectDiagonals));
+        if (emptyRegion.size > 0) {
+          const col = hexToInt($color);
+          const positions = [...emptyRegion].map((k) => parseCoordKey(k));
+          ensureGridFitsPositions(positions);
+          beginStroke();
+          updateVoxelsInStroke((v) => {
+            for (const key of emptyRegion) {
+              v.set(key, col);
+            }
+          });
+        }
+      }
+      requestAnimationFrame(() => render());
+      return;
+    }
+
+    // Remove tool + fill method: click voxel to flood-remove connected region
+    if ($tool === 'remove' && get(strokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
+      const pos = getVoxelPosition(hit);
+      if (pos) {
+        const fillRegion = getFillSelectionAt(
+          pos[0],
+          pos[1],
+          pos[2],
+          get(fillSelectDiagonals),
+          get(fillRespectsColor)
+        );
+        if (fillRegion.size > 0) {
+          beginStroke();
+          updateVoxelsInStroke((v) => {
+            for (const key of fillRegion.keys()) {
+              v.delete(key);
+            }
+          });
+        }
+      }
+      requestAnimationFrame(() => render());
+      return;
+    }
+
+    // Select by color: when fill mode, flood-fill select; else select all of that color globally
     if ($tool === 'selectByColor' && hit.object !== polygonPointsMesh) {
       const pos = getVoxelPosition(hit);
       if (pos) {
         const targetColor = $voxels.get(coordKey(pos[0], pos[1], pos[2]));
         if (targetColor !== undefined) {
-          const incoming = new Map<string, number>();
-          for (const [key, col] of $voxels) {
-            if (col === targetColor) incoming.set(key, col);
-          }
+          const incoming =
+            get(strokeMode) === 'fill'
+              ? getFillSelectionAt(
+                  pos[0],
+                  pos[1],
+                  pos[2],
+                  get(fillSelectDiagonals),
+                  get(fillRespectsColor)
+                )
+              : (() => {
+                  const m = new Map<string, number>();
+                  for (const [key, col] of $voxels) {
+                    if (col === targetColor) m.set(key, col);
+                  }
+                  return m;
+                })();
           const next = mergeSelection($selection, incoming, get(selectionMode));
           selection.set(next);
         }
@@ -1154,7 +1214,7 @@
 
     isVoxelDrag = true;
     let startPos: [number, number, number] | null = null;
-    if ($tool === 'add') {
+    if ($tool === 'voxel') {
       startPos = getAddPosition(hit);
     } else {
       startPos = getVoxelPosition(hit);
@@ -1215,7 +1275,7 @@
       const hit = getIntersection();
       let currentPos: [number, number, number] | null = null;
       if (hit) {
-        currentPos = $tool === 'add' ? getAddPosition(hit) : getVoxelPosition(hit);
+        currentPos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
       }
       if (currentPos) {
         const mode = get(strokeMode);
@@ -1246,7 +1306,7 @@
     if (polygonPhase) {
       const hit = getIntersection();
       if (hit && hit.object !== polygonPointsMesh) {
-        const pos = $tool === 'add' ? getAddPosition(hit) : getVoxelPosition(hit);
+        const pos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
         if (pos) {
           rollOverMesh.position.set(pos[0], pos[1], pos[2]);
           rollOverMesh.visible = true;
@@ -1279,7 +1339,7 @@
       render();
       return;
     }
-    if ($tool !== 'add') {
+    if ($tool !== 'voxel') {
       rollOverMesh.visible = false;
       updatePreviewMesh([]);
       render();
@@ -1363,7 +1423,7 @@
         let cornerB = dragStartPos;
         const hit = getIntersection();
         if (hit) {
-          const pos = $tool === 'add' ? getAddPosition(hit) : getVoxelPosition(hit);
+          const pos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
           if (pos) cornerB = pos;
         }
         cuboidPhase = 'depth';
@@ -1516,7 +1576,7 @@
       dragPlaneAxisOverride = next;
       const hit = getIntersection();
       const currentPos = hit
-        ? $tool === 'add'
+        ? $tool === 'voxel'
           ? getAddPosition(hit)
           : getVoxelPosition(hit)
         : null;
@@ -1784,12 +1844,15 @@
     groundPlane.renderOrder = -1;
     scene.add(groundPlane);
 
-    gridLineMaterial = new THREE.LineBasicMaterial({
+    gridLineMaterial = new LineMaterial({
       color: 0x333333,
       opacity: 0.5,
       transparent: true,
       depthTest: true,
-      depthWrite: false
+      depthWrite: false,
+      linewidth: 1.5,
+      worldUnits: false,
+      alphaToCoverage: true
     });
     gridGroup = new THREE.Group();
     gridGroup.renderOrder = 1;
@@ -2013,7 +2076,8 @@
     addPreviewMaterial?.dispose();
     selectionMaterial?.dispose();
     gridGroup?.traverse((obj) => {
-      if (obj instanceof THREE.LineSegments && obj.geometry) obj.geometry.dispose();
+      const geom = (obj as { geometry?: THREE.BufferGeometry }).geometry;
+      if (geom) geom.dispose();
     });
     gridLineMaterial?.dispose();
     polygonLineSegments?.geometry?.dispose();
