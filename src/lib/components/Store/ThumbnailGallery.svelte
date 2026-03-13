@@ -25,9 +25,17 @@
 
 <div class="gallery">
   <img alt="a product thumbnail" src={images[imageIndex]} />
-  <button class="index-button left" on:click={previousImageIndex} aria-label="Previous image"> &#706; </button>
-  <button class="new-tab-button" on:click={() => window.open(images[imageIndex])} aria-label="Open in new tab"></button>
-  <button class="index-button right" on:click={nextImageIndex} aria-label="Next image"> &#707; </button>
+  <button class="index-button left" on:click={previousImageIndex} aria-label="Previous image">
+    &#706;
+  </button>
+  <button
+    class="new-tab-button"
+    on:click={() => window.open(images[imageIndex])}
+    aria-label="Open in new tab"
+  ></button>
+  <button class="index-button right" on:click={nextImageIndex} aria-label="Next image">
+    &#707;
+  </button>
 </div>
 
 <style>

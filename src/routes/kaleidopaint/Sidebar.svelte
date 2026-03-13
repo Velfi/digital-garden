@@ -191,438 +191,430 @@
 </script>
 
 <ArtSidebar open={sidebarOpen}>
-      <h2>Tools</h2>
-      <div class="tool-group">
-        <button
-          type="button"
-          class="tool"
-          class:active={$tool === 'paint'}
-          on:click={() => tool.set('paint')}
-          title="Paint"
-        >
-          Brush
-        </button>
-        <button
-          type="button"
-          class="tool"
-          class:active={$tool === 'fill'}
-          on:click={() => tool.set('fill')}
-          title="Fill"
-        >
-          Fill
-        </button>
-        <button
-          type="button"
-          class="tool"
-          class:active={$tool === 'origin'}
-          on:click={() => tool.set('origin')}
-          title="Set symmetry origin"
-        >
-          Origin
-        </button>
-        <button
-          type="button"
-          class="tool"
-          class:active={$tool === 'rotate'}
-          on:click={() => tool.set('rotate')}
-          title="Rotate symmetry"
-        >
-          Rotate
-        </button>
-        <button
-          type="button"
-          class="tool"
-          class:active={$tool === 'eyedropper'}
-          on:click={() => tool.set('eyedropper')}
-          title="Pick color from canvas"
-        >
-          Eyedropper
-        </button>
-        <button
-          type="button"
-          class="tool"
-          class:active={$tool === 'image'}
-          on:click={() => tool.set('image')}
-          title="Stamp loaded image with symmetry"
-        >
-          Image
-        </button>
-      </div>
+  <h2>Tools</h2>
+  <div class="tool-group">
+    <button
+      type="button"
+      class="tool"
+      class:active={$tool === 'paint'}
+      on:click={() => tool.set('paint')}
+      title="Paint"
+    >
+      Brush
+    </button>
+    <button
+      type="button"
+      class="tool"
+      class:active={$tool === 'fill'}
+      on:click={() => tool.set('fill')}
+      title="Fill"
+    >
+      Fill
+    </button>
+    <button
+      type="button"
+      class="tool"
+      class:active={$tool === 'origin'}
+      on:click={() => tool.set('origin')}
+      title="Set symmetry origin"
+    >
+      Origin
+    </button>
+    <button
+      type="button"
+      class="tool"
+      class:active={$tool === 'rotate'}
+      on:click={() => tool.set('rotate')}
+      title="Rotate symmetry"
+    >
+      Rotate
+    </button>
+    <button
+      type="button"
+      class="tool"
+      class:active={$tool === 'eyedropper'}
+      on:click={() => tool.set('eyedropper')}
+      title="Pick color from canvas"
+    >
+      Eyedropper
+    </button>
+    <button
+      type="button"
+      class="tool"
+      class:active={$tool === 'image'}
+      on:click={() => tool.set('image')}
+      title="Stamp loaded image with symmetry"
+    >
+      Image
+    </button>
+  </div>
 
-      {#if $tool === 'image'}
-        <h2>Image</h2>
-        {#if $loadedImage}
-          <div class="image-loaded">
-            <span class="image-loaded-label">Image loaded</span>
-            <button type="button" on:click={() => loadedImage.set(null)}>Clear</button>
-          </div>
-        {:else}
-          <p class="image-hint">Load an image to stamp.</p>
-        {/if}
-        <input
-          type="file"
-          accept="image/*"
-          style="display: none"
-          bind:this={imageFileInput}
-          on:change={handleImageFileChange}
+  {#if $tool === 'image'}
+    <h2>Image</h2>
+    {#if $loadedImage}
+      <div class="image-loaded">
+        <span class="image-loaded-label">Image loaded</span>
+        <button type="button" on:click={() => loadedImage.set(null)}>Clear</button>
+      </div>
+    {:else}
+      <p class="image-hint">Load an image to stamp.</p>
+    {/if}
+    <input
+      type="file"
+      accept="image/*"
+      style="display: none"
+      bind:this={imageFileInput}
+      on:change={handleImageFileChange}
+    />
+    <button type="button" on:click={() => imageFileInput?.click()}>
+      {#if $loadedImage}
+        Replace image
+      {:else}
+        Load image
+      {/if}
+    </button>
+    {#if $loadedImage}
+      <label class="brush-param">
+        <ParamLabel
+          label="Stamp size"
+          tip="Maximum dimension of the stamped image in pixels."
+          id="tip-image-stamp-size"
         />
-        <button type="button" on:click={() => imageFileInput?.click()}>
-          {#if $loadedImage}
-            Replace image
-          {:else}
-            Load image
-          {/if}
-        </button>
-        {#if $loadedImage}
-          <label class="brush-param">
-            <ParamLabel
-              label="Stamp size"
-              tip="Maximum dimension of the stamped image in pixels."
-              id="tip-image-stamp-size"
-            />
-            <input type="range" min="50" max="400" bind:value={$imageStampSize} />
-            <span class="value">{$imageStampSize}px</span>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" bind:checked={$imageRotateWithSymmetry} />
-            <ParamLabel
-              label="Rotate with symmetry"
-              tip="Rotate each copy to match the symmetry (e.g. polar mandala effect)."
-              id="tip-image-rotate"
-            />
-          </label>
-          <label class="toggle">
-            <input type="checkbox" bind:checked={$imageConstrainToSection} />
-            <ParamLabel
-              label="Constrain to section"
-              tip="Clip the image to the symmetry section (wedge) boundary."
-              id="tip-image-constrain"
-            />
-          </label>
-        {/if}
+        <input type="range" min="50" max="400" bind:value={$imageStampSize} />
+        <span class="value">{$imageStampSize}px</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" bind:checked={$imageRotateWithSymmetry} />
+        <ParamLabel
+          label="Rotate with symmetry"
+          tip="Rotate each copy to match the symmetry (e.g. polar mandala effect)."
+          id="tip-image-rotate"
+        />
+      </label>
+      <label class="toggle">
+        <input type="checkbox" bind:checked={$imageConstrainToSection} />
+        <ParamLabel
+          label="Constrain to section"
+          tip="Clip the image to the symmetry section (wedge) boundary."
+          id="tip-image-constrain"
+        />
+      </label>
+    {/if}
+  {/if}
+
+  {#if $tool === 'paint'}
+    <h2>Brush</h2>
+    <label class="brush-param">
+      <span>Shape</span>
+      <select bind:value={$brushShape}>
+        {#each BRUSH_SHAPES as s}
+          <option value={s.value}>{s.label}</option>
+        {/each}
+      </select>
+    </label>
+    <div class="brush-preview">
+      <canvas bind:this={brushPreviewCanvas} width={60} height={60} aria-hidden="true"></canvas>
+    </div>
+    <div class="brush-params-grid">
+      <label class="brush-param">
+        <ParamLabel label="Size" tip={BRUSH_TIPS.size} id="tip-size" />
+        <input type="range" min="1" max="50" bind:value={$brushSize} />
+        <span class="value">{$brushSize}px</span>
+      </label>
+      <label class="brush-param">
+        <ParamLabel label="Spacing" tip={BRUSH_TIPS.spacing} id="tip-spacing" />
+        <input
+          type="range"
+          min="10"
+          max="500"
+          value={$brushSpacing * 100}
+          on:input={(e) => brushSpacing.set(Number((e.target as HTMLInputElement).value) / 100)}
+        />
+        <span class="value">{Math.round($brushSpacing * 100)}%</span>
+      </label>
+      {#if $brushShape === 'ellipse' || $brushShape === 'rectangle'}
+        <label class="brush-param">
+          <ParamLabel label="Angle" tip={BRUSH_TIPS['angle-ellipse']} id="tip-angle-ellipse" />
+          <input type="range" min="0" max="360" bind:value={$brushAngle} />
+          <span class="value">{$brushAngle}°</span>
+        </label>
+        <label class="brush-param">
+          <ParamLabel label="Ratio" tip={BRUSH_TIPS.ratio} id="tip-ratio" />
+          <input
+            type="range"
+            min="10"
+            max="100"
+            value={$brushRatio * 100}
+            on:input={(e) => brushRatio.set(Number((e.target as HTMLInputElement).value) / 100)}
+          />
+          <span class="value">{Math.round($brushRatio * 100)}%</span>
+        </label>
       {/if}
 
-      {#if $tool === 'paint'}
-        <h2>Brush</h2>
+      <label class="brush-param">
+        <ParamLabel label="Opacity" tip={BRUSH_TIPS.opacity} id="tip-opacity" />
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={$brushOpacity * 100}
+          on:input={(e) => brushOpacity.set(Number((e.target as HTMLInputElement).value) / 100)}
+        />
+        <span class="value">{Math.round($brushOpacity * 100)}%</span>
+      </label>
+      <label class="brush-param">
+        <ParamLabel label="Flow" tip={BRUSH_TIPS.flow} id="tip-flow" />
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={$brushFlow * 100}
+          on:input={(e) => brushFlow.set(Number((e.target as HTMLInputElement).value) / 100)}
+        />
+        <span class="value">{Math.round($brushFlow * 100)}%</span>
+      </label>
+      <label class="brush-param">
+        <ParamLabel label="Softness" tip={BRUSH_TIPS.softness} id="tip-softness" />
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={$brushSoftness * 100}
+          on:input={(e) => brushSoftness.set(Number((e.target as HTMLInputElement).value) / 100)}
+        />
+        <span class="value">{Math.round($brushSoftness * 100)}%</span>
+      </label>
+      <label class="brush-param">
+        <ParamLabel label="Sharpness" tip={BRUSH_TIPS.sharpness} id="tip-sharpness" />
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={$brushSharpness * 100}
+          on:input={(e) => brushSharpness.set(Number((e.target as HTMLInputElement).value) / 100)}
+        />
+        <span class="value">{Math.round($brushSharpness * 100)}%</span>
+      </label>
+    </div>
+
+    <div class="scatter-mirror-row">
+      <div class="scatter-section">
+        <h3 class="brush-sub">Scatter</h3>
         <label class="brush-param">
-          <span>Shape</span>
-          <select bind:value={$brushShape}>
-            {#each BRUSH_SHAPES as s}
-              <option value={s.value}>{s.label}</option>
-            {/each}
-          </select>
-        </label>
-        <div class="brush-preview">
-          <canvas bind:this={brushPreviewCanvas} width={60} height={60} aria-hidden="true"></canvas>
-        </div>
-        <div class="brush-params-grid">
-          <label class="brush-param">
-            <ParamLabel label="Size" tip={BRUSH_TIPS.size} id="tip-size" />
-            <input type="range" min="1" max="50" bind:value={$brushSize} />
-            <span class="value">{$brushSize}px</span>
-          </label>
-          <label class="brush-param">
-            <ParamLabel label="Spacing" tip={BRUSH_TIPS.spacing} id="tip-spacing" />
-            <input
-              type="range"
-              min="10"
-              max="500"
-              value={$brushSpacing * 100}
-              on:input={(e) => brushSpacing.set(Number((e.target as HTMLInputElement).value) / 100)}
-            />
-            <span class="value">{Math.round($brushSpacing * 100)}%</span>
-          </label>
-          {#if $brushShape === 'ellipse' || $brushShape === 'rectangle'}
-            <label class="brush-param">
-              <ParamLabel label="Angle" tip={BRUSH_TIPS['angle-ellipse']} id="tip-angle-ellipse" />
-              <input type="range" min="0" max="360" bind:value={$brushAngle} />
-              <span class="value">{$brushAngle}°</span>
-            </label>
-            <label class="brush-param">
-              <ParamLabel label="Ratio" tip={BRUSH_TIPS.ratio} id="tip-ratio" />
-              <input
-                type="range"
-                min="10"
-                max="100"
-                value={$brushRatio * 100}
-                on:input={(e) => brushRatio.set(Number((e.target as HTMLInputElement).value) / 100)}
-              />
-              <span class="value">{Math.round($brushRatio * 100)}%</span>
-            </label>
-          {/if}
-
-          <label class="brush-param">
-            <ParamLabel label="Opacity" tip={BRUSH_TIPS.opacity} id="tip-opacity" />
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={$brushOpacity * 100}
-              on:input={(e) => brushOpacity.set(Number((e.target as HTMLInputElement).value) / 100)}
-            />
-            <span class="value">{Math.round($brushOpacity * 100)}%</span>
-          </label>
-          <label class="brush-param">
-            <ParamLabel label="Flow" tip={BRUSH_TIPS.flow} id="tip-flow" />
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={$brushFlow * 100}
-              on:input={(e) => brushFlow.set(Number((e.target as HTMLInputElement).value) / 100)}
-            />
-            <span class="value">{Math.round($brushFlow * 100)}%</span>
-          </label>
-          <label class="brush-param">
-            <ParamLabel label="Softness" tip={BRUSH_TIPS.softness} id="tip-softness" />
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={$brushSoftness * 100}
-              on:input={(e) =>
-                brushSoftness.set(Number((e.target as HTMLInputElement).value) / 100)}
-            />
-            <span class="value">{Math.round($brushSoftness * 100)}%</span>
-          </label>
-          <label class="brush-param">
-            <ParamLabel label="Sharpness" tip={BRUSH_TIPS.sharpness} id="tip-sharpness" />
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={$brushSharpness * 100}
-              on:input={(e) =>
-                brushSharpness.set(Number((e.target as HTMLInputElement).value) / 100)}
-            />
-            <span class="value">{Math.round($brushSharpness * 100)}%</span>
-          </label>
-        </div>
-
-        <div class="scatter-mirror-row">
-          <div class="scatter-section">
-            <h3 class="brush-sub">Scatter</h3>
-            <label class="brush-param">
-              <ParamLabel label="X" tip={BRUSH_TIPS['scatter-x']} id="tip-scatter-x" />
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={$brushScatterX * 100}
-                on:input={(e) =>
-                  brushScatterX.set(Number((e.target as HTMLInputElement).value) / 100)}
-              />
-            </label>
-            <label class="brush-param">
-              <ParamLabel label="Y" tip={BRUSH_TIPS['scatter-y']} id="tip-scatter-y" />
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={$brushScatterY * 100}
-                on:input={(e) =>
-                  brushScatterY.set(Number((e.target as HTMLInputElement).value) / 100)}
-              />
-            </label>
-          </div>
-          <div class="mirror-section">
-            <h3 class="brush-sub">Mirror</h3>
-            <div class="brush-toggles">
-              <label class="toggle">
-                <input type="checkbox" bind:checked={$brushMirrorH} />
-                <ParamLabel label="H" tip={BRUSH_TIPS['mirror-h']} id="tip-mirror-h" />
-              </label>
-              <label class="toggle">
-                <input type="checkbox" bind:checked={$brushMirrorV} />
-                <ParamLabel label="V" tip={BRUSH_TIPS['mirror-v']} id="tip-mirror-v" />
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <h3 class="brush-sub">Rotation</h3>
-        <label class="brush-param">
-          <ParamLabel label="Mode" tip={BRUSH_TIPS.rotation} id="tip-rotation" />
-          <select bind:value={$brushRotationMode}>
-            <option value="fixed">Fixed</option>
-            <option value="origin">Around origin</option>
-            <option value="drawing">Drawing direction</option>
-          </select>
-        </label>
-        {#if $brushRotationMode === 'fixed'}
-          <label class="brush-param">
-            <ParamLabel label="Angle" tip={BRUSH_TIPS['angle-rotation']} id="tip-angle-rotation" />
-            <input type="range" min="0" max="360" bind:value={$brushRotationAngle} />
-            <span class="value">{$brushRotationAngle}°</span>
-          </label>
-        {/if}
-
-        <label class="toggle">
-          <input type="checkbox" bind:checked={$brushIsotropicSpacing} />
-          <ParamLabel
-            label="Isotropic spacing"
-            tip={BRUSH_TIPS['isotropic-spacing']}
-            id="tip-isotropic"
+          <ParamLabel label="X" tip={BRUSH_TIPS['scatter-x']} id="tip-scatter-x" />
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={$brushScatterX * 100}
+            on:input={(e) => brushScatterX.set(Number((e.target as HTMLInputElement).value) / 100)}
           />
         </label>
-
-        <h3 class="brush-sub">Source</h3>
-        <div class="brush-params-grid">
-          <label class="brush-param">
-            <ParamLabel label="Color source" tip={BRUSH_TIPS.source} id="tip-source" />
-            <select bind:value={$brushSource}>
-              <option value="plain">Plain color</option>
-              <option value="uniformRandom">Uniform random</option>
-            </select>
-          </label>
-          {#if $brushSource === 'plain'}
-            <label class="brush-param">
-              <ParamLabel label="Mix (fg↔bg)" tip={BRUSH_TIPS.mix} id="tip-mix" />
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={$brushMix * 100}
-                on:input={(e) => brushMix.set(Number((e.target as HTMLInputElement).value) / 100)}
-              />
-              <span class="value">{Math.round($brushMix * 100)}%</span>
-            </label>
-          {/if}
-        </div>
-      {/if}
-
-      <h2>Color</h2>
-      <div class="brush-params-grid">
         <label class="brush-param">
-          <ParamLabel label="Foreground" tip={BRUSH_TIPS.foreground} id="tip-foreground" />
-          <input type="color" bind:value={$color} />
-        </label>
-        <label class="brush-param">
-          <ParamLabel
-            label="Background (for mix)"
-            tip={BRUSH_TIPS.background}
-            id="tip-background"
+          <ParamLabel label="Y" tip={BRUSH_TIPS['scatter-y']} id="tip-scatter-y" />
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={$brushScatterY * 100}
+            on:input={(e) => brushScatterY.set(Number((e.target as HTMLInputElement).value) / 100)}
           />
-          <input type="color" bind:value={$secondaryColor} />
         </label>
       </div>
+      <div class="mirror-section">
+        <h3 class="brush-sub">Mirror</h3>
+        <div class="brush-toggles">
+          <label class="toggle">
+            <input type="checkbox" bind:checked={$brushMirrorH} />
+            <ParamLabel label="H" tip={BRUSH_TIPS['mirror-h']} id="tip-mirror-h" />
+          </label>
+          <label class="toggle">
+            <input type="checkbox" bind:checked={$brushMirrorV} />
+            <ParamLabel label="V" tip={BRUSH_TIPS['mirror-v']} id="tip-mirror-v" />
+          </label>
+        </div>
+      </div>
+    </div>
 
-      <LospecPalette color={color} palette={palette} defaultSlug="resurrect-64" />
+    <h3 class="brush-sub">Rotation</h3>
+    <label class="brush-param">
+      <ParamLabel label="Mode" tip={BRUSH_TIPS.rotation} id="tip-rotation" />
+      <select bind:value={$brushRotationMode}>
+        <option value="fixed">Fixed</option>
+        <option value="origin">Around origin</option>
+        <option value="drawing">Drawing direction</option>
+      </select>
+    </label>
+    {#if $brushRotationMode === 'fixed'}
+      <label class="brush-param">
+        <ParamLabel label="Angle" tip={BRUSH_TIPS['angle-rotation']} id="tip-angle-rotation" />
+        <input type="range" min="0" max="360" bind:value={$brushRotationAngle} />
+        <span class="value">{$brushRotationAngle}°</span>
+      </label>
+    {/if}
 
-      <h2>Symmetry</h2>
-      <div class="symmetry-section">
-        <label class="toggle">
-          <input type="checkbox" bind:checked={$symmetryEnabled} />
-          Symmetry on
-          <select bind:value={$symmetryMode} disabled={!$symmetryEnabled}>
-            <option value="linear">Linear</option>
-            <option value="polar">Polar</option>
-            <option value="mosaic">Mosaic</option>
-          </select>
+    <label class="toggle">
+      <input type="checkbox" bind:checked={$brushIsotropicSpacing} />
+      <ParamLabel
+        label="Isotropic spacing"
+        tip={BRUSH_TIPS['isotropic-spacing']}
+        id="tip-isotropic"
+      />
+    </label>
+
+    <h3 class="brush-sub">Source</h3>
+    <div class="brush-params-grid">
+      <label class="brush-param">
+        <ParamLabel label="Color source" tip={BRUSH_TIPS.source} id="tip-source" />
+        <select bind:value={$brushSource}>
+          <option value="plain">Plain color</option>
+          <option value="uniformRandom">Uniform random</option>
+        </select>
+      </label>
+      {#if $brushSource === 'plain'}
+        <label class="brush-param">
+          <ParamLabel label="Mix (fg↔bg)" tip={BRUSH_TIPS.mix} id="tip-mix" />
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={$brushMix * 100}
+            on:input={(e) => brushMix.set(Number((e.target as HTMLInputElement).value) / 100)}
+          />
+          <span class="value">{Math.round($brushMix * 100)}%</span>
         </label>
+      {/if}
+    </div>
+  {/if}
 
-        {#if $symmetryEnabled && $symmetryMode === 'linear'}
-          <div class="folds">
-            {#each linearFolds as n}
-              <button
-                type="button"
-                class="fold"
-                class:active={$symmetryFolds === n}
-                on:click={() => symmetryFolds.set(n)}
-              >
-                {n}-fold
-              </button>
-            {/each}
-          </div>
-        {/if}
-        {#if $symmetryEnabled && $symmetryMode === 'polar'}
-          <div class="folds">
-            {#each polarFolds as n}
-              <button
-                type="button"
-                class="fold"
-                class:active={$symmetryFolds === n}
-                on:click={() => symmetryFolds.set(n)}
-              >
-                {n}-fold
-              </button>
-            {/each}
-          </div>
-        {/if}
-        {#if $symmetryEnabled && $symmetryMode === 'mosaic'}
-          <label class="brush-param">
-            <span class="label">Pattern</span>
-            <select bind:value={$mosaicType}>
-              {#each MOSAIC_TYPES as { value, label }}
-                <option {value}>{label}</option>
-              {/each}
-            </select>
-          </label>
-        {/if}
-        {#if $symmetryEnabled && ($symmetryMode === 'linear' || $symmetryMode === 'polar' || $symmetryMode === 'mosaic')}
-          <label class="brush-param">
-            <ParamLabel
-              label="Rotation"
-              tip="Angle of the symmetry axis (linear) or first fold (polar)."
-              id="tip-symmetry-rotation"
-            />
-            <input type="range" min="0" max="360" bind:value={$symmetryRotation} />
-            <span class="value">{$symmetryRotation}°</span>
-          </label>
+  <h2>Color</h2>
+  <div class="brush-params-grid">
+    <label class="brush-param">
+      <ParamLabel label="Foreground" tip={BRUSH_TIPS.foreground} id="tip-foreground" />
+      <input type="color" bind:value={$color} />
+    </label>
+    <label class="brush-param">
+      <ParamLabel label="Background (for mix)" tip={BRUSH_TIPS.background} id="tip-background" />
+      <input type="color" bind:value={$secondaryColor} />
+    </label>
+  </div>
+
+  <LospecPalette {color} {palette} defaultSlug="resurrect-64" />
+
+  <h2>Symmetry</h2>
+  <div class="symmetry-section">
+    <label class="toggle">
+      <input type="checkbox" bind:checked={$symmetryEnabled} />
+      Symmetry on
+      <select bind:value={$symmetryMode} disabled={!$symmetryEnabled}>
+        <option value="linear">Linear</option>
+        <option value="polar">Polar</option>
+        <option value="mosaic">Mosaic</option>
+      </select>
+    </label>
+
+    {#if $symmetryEnabled && $symmetryMode === 'linear'}
+      <div class="folds">
+        {#each linearFolds as n}
           <button
             type="button"
-            on:click={() => {
-              symmetryOriginX.set(0.5);
-              symmetryOriginY.set(0.5);
-            }}
-            title="Reset symmetry origin to center"
+            class="fold"
+            class:active={$symmetryFolds === n}
+            on:click={() => symmetryFolds.set(n)}
           >
-            Center origin
+            {n}-fold
           </button>
-        {/if}
-
-        <label class="toggle">
-          <input type="checkbox" bind:checked={$showSymmetryPreview} />
-          Show symmetry preview
-        </label>
-        {#if $symmetryEnabled && ($symmetryMode === 'linear' || $symmetryMode === 'polar' || $symmetryMode === 'mosaic')}
-          <label class="toggle">
-            <input type="checkbox" bind:checked={$brushRotateWithSymmetry} />
-            Rotate brush with symmetry
-          </label>
-        {/if}
-      </div>
-
-      <h2>Canvas</h2>
-      <UndoRedoButtons history={history} canUndo={canUndo} canRedo={canRedo} />
-      <button type="button" on:click={openNewCanvas}>New canvas</button>
-      <button type="button" on:click={exportCanvas}>Export PNG</button>
-
-  {#if showNewCanvas}
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-      <div
-        class="modal-overlay"
-        role="dialog"
-        aria-modal="true"
-        tabindex="-1"
-        on:click={(e) => e.target === e.currentTarget && (showNewCanvas = false)}
-        on:keydown={(e) => e.key === 'Escape' && (showNewCanvas = false)}
-      >
-        <div class="modal">
-          <h3>New canvas</h3>
-          <label>
-            Width
-            <input type="number" min="100" max="2000" bind:value={newWidth} />
-          </label>
-          <label>
-            Height
-            <input type="number" min="100" max="2000" bind:value={newHeight} />
-          </label>
-          <button type="button" on:click={createCanvas}>Create</button>
-          <button type="button" on:click={() => (showNewCanvas = false)}>Cancel</button>
-        </div>
+        {/each}
       </div>
     {/if}
+    {#if $symmetryEnabled && $symmetryMode === 'polar'}
+      <div class="folds">
+        {#each polarFolds as n}
+          <button
+            type="button"
+            class="fold"
+            class:active={$symmetryFolds === n}
+            on:click={() => symmetryFolds.set(n)}
+          >
+            {n}-fold
+          </button>
+        {/each}
+      </div>
+    {/if}
+    {#if $symmetryEnabled && $symmetryMode === 'mosaic'}
+      <label class="brush-param">
+        <span class="label">Pattern</span>
+        <select bind:value={$mosaicType}>
+          {#each MOSAIC_TYPES as { value, label }}
+            <option {value}>{label}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
+    {#if $symmetryEnabled && ($symmetryMode === 'linear' || $symmetryMode === 'polar' || $symmetryMode === 'mosaic')}
+      <label class="brush-param">
+        <ParamLabel
+          label="Rotation"
+          tip="Angle of the symmetry axis (linear) or first fold (polar)."
+          id="tip-symmetry-rotation"
+        />
+        <input type="range" min="0" max="360" bind:value={$symmetryRotation} />
+        <span class="value">{$symmetryRotation}°</span>
+      </label>
+      <button
+        type="button"
+        on:click={() => {
+          symmetryOriginX.set(0.5);
+          symmetryOriginY.set(0.5);
+        }}
+        title="Reset symmetry origin to center"
+      >
+        Center origin
+      </button>
+    {/if}
+
+    <label class="toggle">
+      <input type="checkbox" bind:checked={$showSymmetryPreview} />
+      Show symmetry preview
+    </label>
+    {#if $symmetryEnabled && ($symmetryMode === 'linear' || $symmetryMode === 'polar' || $symmetryMode === 'mosaic')}
+      <label class="toggle">
+        <input type="checkbox" bind:checked={$brushRotateWithSymmetry} />
+        Rotate brush with symmetry
+      </label>
+    {/if}
+  </div>
+
+  <h2>Canvas</h2>
+  <UndoRedoButtons {history} {canUndo} {canRedo} />
+  <button type="button" on:click={openNewCanvas}>New canvas</button>
+  <button type="button" on:click={exportCanvas}>Export PNG</button>
+
+  {#if showNewCanvas}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      class="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      tabindex="-1"
+      on:click={(e) => e.target === e.currentTarget && (showNewCanvas = false)}
+      on:keydown={(e) => e.key === 'Escape' && (showNewCanvas = false)}
+    >
+      <div class="modal">
+        <h3>New canvas</h3>
+        <label>
+          Width
+          <input type="number" min="100" max="2000" bind:value={newWidth} />
+        </label>
+        <label>
+          Height
+          <input type="number" min="100" max="2000" bind:value={newHeight} />
+        </label>
+        <button type="button" on:click={createCanvas}>Create</button>
+        <button type="button" on:click={() => (showNewCanvas = false)}>Cancel</button>
+      </div>
+    </div>
+  {/if}
 </ArtSidebar>
 
 <style lang="scss">

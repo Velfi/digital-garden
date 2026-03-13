@@ -429,7 +429,12 @@
     }
   }
 
-  function drawImagePreview(pCtx: CanvasRenderingContext2D, x: number, y: number, img: HTMLImageElement) {
+  function drawImagePreview(
+    pCtx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    img: HTMLImageElement
+  ) {
     if (!canvas) return;
     const [cx, cy] = getCenter();
     const points = getSymmetricPoints(

@@ -1,183 +1,183 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import type { Writable } from 'svelte/store';
+  import { onMount } from 'svelte';
+  import type { Writable } from 'svelte/store';
 
-	interface Props {
-		color: Writable<string>;
-		palette: Writable<string[]>;
-		disabled?: boolean;
-		defaultSlug?: string;
-	}
+  interface Props {
+    color: Writable<string>;
+    palette: Writable<string[]>;
+    disabled?: boolean;
+    defaultSlug?: string;
+  }
 
-	let { color, palette, disabled = false, defaultSlug }: Props = $props();
+  let { color, palette, disabled = false, defaultSlug }: Props = $props();
 
-	onMount(() => {
-		if (defaultSlug) loadPaletteBySlug(defaultSlug);
-	});
+  onMount(() => {
+    if (defaultSlug) loadPaletteBySlug(defaultSlug);
+  });
 
-	const POPULAR_PALETTES: { name: string; slug: string }[] = [
-		{ name: 'Resurrect 64', slug: 'resurrect-64' },
-		{ name: 'Apollo', slug: 'apollo' },
-		{ name: 'Lospec500', slug: 'lospec500' },
-		{ name: 'CC-29', slug: 'cc-29' },
-		{ name: 'SLSO8', slug: 'slso8' }
-	];
+  const POPULAR_PALETTES: { name: string; slug: string }[] = [
+    { name: 'Resurrect 64', slug: 'resurrect-64' },
+    { name: 'Apollo', slug: 'apollo' },
+    { name: 'Lospec500', slug: 'lospec500' },
+    { name: 'CC-29', slug: 'cc-29' },
+    { name: 'SLSO8', slug: 'slso8' }
+  ];
 
-	let lospecSlug = $state('');
-	let loading = $state(false);
-	let loadError = $state('');
+  let lospecSlug = $state('');
+  let loading = $state(false);
+  let loadError = $state('');
 
-	async function loadPaletteBySlug(slug: string) {
-		const normalized = slug.trim().toLowerCase();
-		if (!normalized) return;
-		loading = true;
-		loadError = '';
-		try {
-			const res = await fetch(`/api/lospec/${encodeURIComponent(normalized)}`);
-			const data = await res.json();
-			if (!res.ok) {
-				loadError =
-					(data as { message?: string; error?: string }).message ??
-					(data as { message?: string; error?: string }).error ??
-					'Failed to load palette';
-				return;
-			}
-			const hexColors = ((data as { colors?: string[] }).colors ?? []).map((c: string) =>
-				c.startsWith('#') ? c : `#${c}`
-			);
-			palette.set(hexColors);
-			if (hexColors.length) color.set(hexColors[0]);
-		} catch (e) {
-			loadError = e instanceof Error ? e.message : 'Failed to load palette';
-		} finally {
-			loading = false;
-		}
-	}
+  async function loadPaletteBySlug(slug: string) {
+    const normalized = slug.trim().toLowerCase();
+    if (!normalized) return;
+    loading = true;
+    loadError = '';
+    try {
+      const res = await fetch(`/api/lospec/${encodeURIComponent(normalized)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        loadError =
+          (data as { message?: string; error?: string }).message ??
+          (data as { message?: string; error?: string }).error ??
+          'Failed to load palette';
+        return;
+      }
+      const hexColors = ((data as { colors?: string[] }).colors ?? []).map((c: string) =>
+        c.startsWith('#') ? c : `#${c}`
+      );
+      palette.set(hexColors);
+      if (hexColors.length) color.set(hexColors[0]);
+    } catch (e) {
+      loadError = e instanceof Error ? e.message : 'Failed to load palette';
+    } finally {
+      loading = false;
+    }
+  }
 
-	function loadLospecPalette() {
-		loadPaletteBySlug(lospecSlug);
-	}
+  function loadLospecPalette() {
+    loadPaletteBySlug(lospecSlug);
+  }
 </script>
 
 <h2>Lospec palette</h2>
 <p class="lospec-hint">
-	<a href="https://lospec.com/palette-list" target="_blank" rel="noopener">Browse palettes</a> and
-	enter a slug (e.g. greyt-bit, apollo)
+  <a href="https://lospec.com/palette-list" target="_blank" rel="noopener">Browse palettes</a> and enter
+  a slug (e.g. greyt-bit, apollo)
 </p>
 <div class="popular-palettes">
-	{#each POPULAR_PALETTES as p}
-		<a
-			href="https://lospec.com/palette-list/{p.slug}"
-			class="palette-link"
-			onclick={(e) => {
-				e.preventDefault();
-				loadPaletteBySlug(p.slug);
-			}}
-		>
-			{p.name}
-		</a>
-	{/each}
+  {#each POPULAR_PALETTES as p}
+    <a
+      href="https://lospec.com/palette-list/{p.slug}"
+      class="palette-link"
+      onclick={(e) => {
+        e.preventDefault();
+        loadPaletteBySlug(p.slug);
+      }}
+    >
+      {p.name}
+    </a>
+  {/each}
 </div>
 <div class="lospec-loader">
-	<input
-		type="text"
-		placeholder="e.g. greyt-bit"
-		bind:value={lospecSlug}
-		onkeydown={(e) => e.key === 'Enter' && loadLospecPalette()}
-		disabled={loading}
-	/>
-	<button type="button" onclick={loadLospecPalette} disabled={loading}>
-		{loading ? 'Loading…' : 'Load'}
-	</button>
+  <input
+    type="text"
+    placeholder="e.g. greyt-bit"
+    bind:value={lospecSlug}
+    onkeydown={(e) => e.key === 'Enter' && loadLospecPalette()}
+    disabled={loading}
+  />
+  <button type="button" onclick={loadLospecPalette} disabled={loading}>
+    {loading ? 'Loading…' : 'Load'}
+  </button>
 </div>
 {#if loadError}
-	<span class="load-error">{loadError}</span>
+  <span class="load-error">{loadError}</span>
 {/if}
 {#if $palette.length > 0}
-	<div class="palette-swatches">
-		{#each $palette as swatch}
-			<button
-				type="button"
-				class="swatch"
-				class:active={swatch === $color}
-				style="background-color: {swatch}"
-				title={swatch}
-				aria-label="Select color {swatch}"
-				onclick={() => color.set(swatch)}
-				disabled={disabled}
-			></button>
-		{/each}
-	</div>
+  <div class="palette-swatches">
+    {#each $palette as swatch}
+      <button
+        type="button"
+        class="swatch"
+        class:active={swatch === $color}
+        style="background-color: {swatch}"
+        title={swatch}
+        aria-label="Select color {swatch}"
+        onclick={() => color.set(swatch)}
+        {disabled}
+      ></button>
+    {/each}
+  </div>
 {/if}
 
 <style>
-	.lospec-hint {
-		font-size: 0.8rem;
-		margin: 0;
-		color: var(--text-color-muted, #666);
-	}
-	.lospec-hint a {
-		color: var(--link-color);
-	}
+  .lospec-hint {
+    font-size: 0.8rem;
+    margin: 0;
+    color: var(--text-color-muted, #666);
+  }
+  .lospec-hint a {
+    color: var(--link-color);
+  }
 
-	.popular-palettes {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.25rem 0.5rem;
-		margin-bottom: 0.25rem;
-	}
+  .popular-palettes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+    margin-bottom: 0.25rem;
+  }
 
-	.palette-link {
-		font-size: 0.85rem;
-		color: var(--link-color);
-	}
-	.palette-link:hover {
-		text-decoration: underline;
-	}
+  .palette-link {
+    font-size: 0.85rem;
+    color: var(--link-color);
+  }
+  .palette-link:hover {
+    text-decoration: underline;
+  }
 
-	.lospec-loader {
-		display: flex;
-		gap: 0.25rem;
-	}
-	.lospec-loader input {
-		flex: 1;
-		padding: 0.25rem 0.5rem;
-		font-size: 0.9rem;
-		border: 1px solid var(--border-color);
-		border-radius: 4px;
-		background: var(--bg-color);
-		color: var(--text-color);
-	}
+  .lospec-loader {
+    display: flex;
+    gap: 0.25rem;
+  }
+  .lospec-loader input {
+    flex: 1;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.9rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-color);
+    color: var(--text-color);
+  }
 
-	.load-error {
-		font-size: 0.8rem;
-		color: #c44;
-	}
+  .load-error {
+    font-size: 0.8rem;
+    color: #c44;
+  }
 
-	.palette-swatches {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 2px;
-		margin-top: 0.25rem;
-	}
+  .palette-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    margin-top: 0.25rem;
+  }
 
-	.swatch {
-		width: 20px;
-		height: 20px;
-		padding: 0;
-		border: 1px solid rgba(0, 0, 0, 0.2);
-		border-radius: 2px;
-		cursor: pointer;
-	}
-	.swatch:hover:not(:disabled) {
-		transform: scale(1.1);
-	}
-	.swatch.active {
-		outline: 2px solid var(--text-color);
-		outline-offset: 1px;
-	}
-	.swatch:disabled {
-		cursor: not-allowed;
-		opacity: 0.5;
-	}
+  .swatch {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  .swatch:hover:not(:disabled) {
+    transform: scale(1.1);
+  }
+  .swatch.active {
+    outline: 2px solid var(--text-color);
+    outline-offset: 1px;
+  }
+  .swatch:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
 </style>

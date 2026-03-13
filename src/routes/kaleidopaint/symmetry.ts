@@ -235,7 +235,13 @@ function getSectionIndexForPoint(
   canvasWidth: number,
   canvasHeight: number,
   mosaicTypeVal?: MosaicType
-): { sectionIndex: number; cellCenterX: number; cellCenterY: number; cellFolds: number; localFold?: number } | null {
+): {
+  sectionIndex: number;
+  cellCenterX: number;
+  cellCenterY: number;
+  cellFolds: number;
+  localFold?: number;
+} | null {
   const rotRad = (rotationDeg * Math.PI) / 180;
 
   if (mode === 'none' || folds < 1) return null;
@@ -255,13 +261,7 @@ function getSectionIndexForPoint(
   }
 
   if (mode === 'mosaic' && mosaicTypeVal) {
-    const cells = getMosaicTileCenters(
-      centerX,
-      centerY,
-      mosaicTypeVal,
-      canvasWidth,
-      canvasHeight
-    );
+    const cells = getMosaicTileCenters(centerX, centerY, mosaicTypeVal, canvasWidth, canvasHeight);
     let nearest: { cell: MosaicCell; dist: number } | null = null;
     for (const cell of cells) {
       const dx = px - cell.x;
@@ -350,14 +350,8 @@ export function clipToSymmetrySection(
     const a1 = section.sectionIndex * wedgeAngle + rotRad;
     const a2 = (section.sectionIndex + 1) * wedgeAngle + rotRad;
     ctx.moveTo(section.cellCenterX, section.cellCenterY);
-    ctx.lineTo(
-      section.cellCenterX + R * Math.cos(a1),
-      section.cellCenterY + R * Math.sin(a1)
-    );
-    ctx.lineTo(
-      section.cellCenterX + R * Math.cos(a2),
-      section.cellCenterY + R * Math.sin(a2)
-    );
+    ctx.lineTo(section.cellCenterX + R * Math.cos(a1), section.cellCenterY + R * Math.sin(a1));
+    ctx.lineTo(section.cellCenterX + R * Math.cos(a2), section.cellCenterY + R * Math.sin(a2));
     ctx.closePath();
     ctx.clip();
     return;
