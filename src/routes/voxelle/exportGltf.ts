@@ -45,6 +45,7 @@ export async function exportVoxelsToGltf(
     vertexColors: true
   });
   const mesh = new THREE.Mesh(merged, material);
+  mesh.rotation.x = Math.PI;
   const scene = new THREE.Scene();
   scene.add(mesh);
 

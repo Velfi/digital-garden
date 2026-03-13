@@ -21,7 +21,9 @@
     copySelection,
     cutSelection,
     pasteFromClipboard,
-    hollowOut
+    hollowOut,
+    saveToFile,
+    loadFromFile
   } from './store';
   import { exportVoxelsToGltf } from './exportGltf';
   import type { SelectionMode } from './store';
@@ -34,6 +36,7 @@
   let fileMenuRef: HTMLDivElement;
   let editMenuRef: HTMLDivElement;
   let addMenuRef: HTMLDivElement;
+  let fileInputRef: HTMLInputElement;
 
   function closeMenus() {
     fileOpen = false;
@@ -109,6 +112,25 @@
   function handleNewGrid() {
     modalRequest.set('newGrid');
     closeMenus();
+  }
+
+  function handleOpen() {
+    fileInputRef?.click();
+    closeMenus();
+  }
+
+  async function handleSave() {
+    await saveToFile('voxelle.voxelle');
+    closeMenus();
+  }
+
+  async function handleFileChange(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file) {
+      await loadFromFile(file);
+      input.value = '';
+    }
   }
 
   function handleAddShape() {
@@ -189,6 +211,16 @@
 
 <svelte:window on:click={handleClickOutside} />
 
+<input
+  type="file"
+  accept=".voxelle"
+  class="hidden-input"
+  bind:this={fileInputRef}
+  onchange={handleFileChange}
+  aria-hidden="true"
+  tabindex="-1"
+/>
+
 <div class="menubar" role="menubar" tabindex="0">
   <div class="menu-item" role="none" bind:this={fileMenuRef}>
     <button
@@ -203,6 +235,11 @@
     </button>
     {#if fileOpen}
       <div class="dropdown" role="menu">
+        <button type="button" role="menuitem" onclick={handleOpen}> Open… </button>
+        <button type="button" role="menuitem" onclick={handleSave} disabled={$voxels.size === 0}>
+          Save .voxelle
+        </button>
+        <div class="menu-separator" role="separator"></div>
         <button type="button" role="menuitem" onclick={handleNewGrid}> New grid </button>
         <button type="button" role="menuitem" onclick={handleShare} disabled={$voxels.size === 0}>
           Share link
@@ -499,5 +536,13 @@
     letter-spacing: 0.05em;
     color: var(--text-color);
     opacity: 0.7;
+  }
+
+  .hidden-input {
+    position: absolute;
+    width: 0;
+    height: 0;
+    opacity: 0;
+    pointer-events: none;
   }
 </style>

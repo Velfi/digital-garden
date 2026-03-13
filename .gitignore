@@ -13,3 +13,5 @@ vite.config.ts.timestamp-*
 # amplify
 .amplify
 amplifyconfiguration*
+.vercel
+.env*.local

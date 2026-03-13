@@ -16,13 +16,34 @@
 
 ## Architecture
 
-### State (`store.ts`)
+### State (`store/`)
 
-Central state in writable stores. Voxels and selection are `Map<string, number>`: key = `"x,y,z"` (from `coordKey`), value = hex color. Use `coordKey(x,y,z)` / `parseCoordKey(key)` for conversions.
+Central state in writable stores. Import from `'./store'` (resolves to `store/index.ts`). Voxels and selection are `Map<string, number>`: key = `"x,y,z"` (from `coordKey`), value = hex color.
 
-- `voxels`, `selection`, `gridSize`, `tool`, `color`, `strokeMode`, `planeAxis`, etc.
-- Undo/redo via `history.undo()`, `history.redo()`; mutations go through `updateVoxels` or `updateVoxelsInStroke` (during drag).
-- `pushUndo()` before mutating voxels or selection.
+- `store/core.ts` – voxels, selection, gridSize, tool, color, updateVoxels, updateVoxelsInStroke, etc.
+- `store/selection.ts` – growSelection, shrinkSelection, mergeSelection, getFillSelectionAt, etc.
+- `store/shapes.ts` – initShape, getShapePositionsAt
+- `store/undo.ts` – pushUndo, history
+- `store/url.ts` – encodeModelForUrl (delegate to voxelleFile encodeForTransport)
+- `shareStorage.ts` – IndexedDB storage for localhost shares (storeShareInIndexedDB, getShareFromIndexedDB)
+- `api/voxelle/share` (POST) – stores model in Vercel Blob, returns short id
+- `api/voxelle/model/[id]` (GET) – fetches stored model by id
+- `store/clipboard.ts` – copySelection, cutSelection, pasteFromClipboard
+- `store/storage.ts` – loadFromStorage, saveToStorage
+- `store/voxelleFile.ts` – saveToFile, loadFromFile, .voxelle format (BSON + gzip; full key names for versioning)
+- `VOXELLE_FORMAT.md` – .voxelle file format specification
+- Undo/redo via `history.undo()`, `history.redo()`; call `pushUndo()` before mutating voxels or selection.
+
+### Utilities
+
+| File | Role |
+|------|------|
+| `coordUtils.ts` | coordKey, parseCoordKey, inBounds, getSelectionBounds, getVoxelBounds, etc. |
+| `strokeGeometry.ts` | getAxisAlignedLine, getAxisAlignedPlaneFromNormal, getAxisAlignedCuboid, getPolygonVoxels |
+| `gridLines.ts` | buildGridPositions, CUBE_EDGES, EDGE_NEIGHBORS |
+| `flyControls.ts` | createFlyMoveState, createFlyKeyHandlers, applyFlyMovement |
+| `greedyMesh.ts` | Culled meshing, vertex AO, `buildGreedyMesh()` |
+| `exportGltf.ts` | Export voxels to `.glb` |
 
 ### Components
 
@@ -30,11 +51,19 @@ Central state in writable stores. Voxels and selection are `Map<string, number>`
 |------|------|
 | `+page.svelte` | Layout, global shortcuts (Ctrl+Z/Y/A) |
 | `VoxelCanvas.svelte` | Three.js scene, raycasting, tools, greedy mesh, orbit/fly controls |
-| `Sidebar.svelte` | Tool picker, stroke modes, color, light/sky settings, New Grid, Share |
+| `Sidebar.svelte` | Shell; composes sidebar panel components |
+| `sidebar/ToolPicker.svelte` | Tool buttons |
+| `sidebar/StrokeModePicker.svelte` | Stroke mode + fill options + plane axis |
+| `sidebar/ColorSection.svelte` | Color picker + LospecPalette |
+| `sidebar/CameraSection.svelte` | Ortho, focal length |
+| `sidebar/SceneSection.svelte` | Grid, sky, background |
+| `sidebar/LightSection.svelte` | Ambient, color, angle, elevation, shadows, AO |
+| `sidebar/MaterialSection.svelte` | PBR (roughness, metalness, env) |
+| `sidebar/OriginSection.svelte` | Center controls, shift inputs |
+| `sidebar/ShareModal.svelte` | Share URL modal |
+| `sidebar/NewGridModal.svelte` | New grid size/shape modal |
 | `AddPanel.svelte` | Add shape modal (position, rotation, shape type, size) |
 | `OrbitGizmo.svelte` | View orientation widget |
-| `greedyMesh.ts` | Culled meshing, vertex AO, `buildGreedyMesh()` |
-| `exportGltf.ts` | Export voxels to `.glb` |
 
 ### Tools
 

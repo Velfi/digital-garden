@@ -33,7 +33,7 @@
     history,
     initCanvas,
     loadFromStorage,
-    loadFromUrlHash,
+    loadFromBytes,
     saveToStorage,
     coordKey,
     parseCoordKey,
@@ -43,6 +43,10 @@
     getSelectionBounds,
     getStampOffsetForFace,
     ensureGridFitsPositions,
+    stampRotation,
+    getBoundsFromPositions,
+    rotatePositionAroundOrigin,
+    getSelectionCenter,
     selectionMode,
     mergeSelection,
     fillSelectDiagonals,
@@ -54,13 +58,30 @@
     type Tool,
     type FaceNormal
   } from './store';
-  import { ConvexHull } from 'three/addons/math/ConvexHull.js';
+  import { getShareFromIndexedDB } from './shareStorage';
+  import { inBounds } from './coordUtils';
+  import {
+    getAxisAlignedLine,
+    getAxisAlignedPlaneFromNormal,
+    getAxisAlignedCuboid,
+    getPolygonVoxels
+  } from './strokeGeometry';
+  import { buildGridPositions } from './gridLines';
+  import {
+    FLY_MOVE_SPEED,
+    FLY_POINTER_SPEED,
+    createFlyMoveState,
+    createFlyKeyHandlers,
+    resetFlyMoveState,
+    applyFlyMovement
+  } from './flyControls';
   import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
   import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
   import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
   import { Sky } from 'three/addons/objects/Sky.js';
   import { buildGreedyMesh } from './greedyMesh';
   import OrbitGizmo from './OrbitGizmo.svelte';
+  import StampPanel from './StampPanel.svelte';
 
   let container: HTMLDivElement;
   let gizmoRef = $state<ReturnType<typeof OrbitGizmo>>();
@@ -143,8 +164,6 @@
   const ZOOM_FACTOR_OUT = 1.2;
   const MIN_DISTANCE = 5;
   const MAX_DISTANCE = 5000;
-  const FLY_MOVE_SPEED = 120;
-  const FLY_POINTER_SPEED = 1.2;
 
   // 35mm equivalent: sensor height 24mm; FOV = 2 * atan(12 / focalLength)
   function focalLengthToFov(mm: number): number {
@@ -153,15 +172,10 @@
 
   const pointerHelper = new THREE.Vector3();
   const fitHelperBox = new THREE.Box3();
-  const flyMoveState = {
-    forward: 0,
-    back: 0,
-    left: 0,
-    right: 0,
-    up: 0,
-    down: 0,
-    shift: 0
-  };
+  const flyMoveState = createFlyMoveState();
+  const { onKeyDown: onFlyKeyDown, onKeyUp: onFlyKeyUp } = createFlyKeyHandlers(flyMoveState, {
+    isEnabled: () => !!flyControls?.enabled
+  });
   const fitHelperSphere = new THREE.Sphere();
   const worldQuaternion = new THREE.Quaternion();
 
@@ -190,15 +204,6 @@
     const envMap = new THREE.CubeTexture(canvases);
     envMap.colorSpace = THREE.SRGBColorSpace;
     return envMap;
-  }
-
-  function getHalf(size: number) {
-    return size / 2;
-  }
-
-  function inBounds(x: number, y: number, z: number, size: number): boolean {
-    const h = getHalf(size);
-    return x >= -h && x < h && y >= -h && y < h && z >= -h && z < h;
   }
 
   function rebuildVoxelMeshes(v: Map<string, number>, size: number) {
@@ -267,15 +272,21 @@
     normal: FaceNormal
   ): [number, number, number][] {
     const sel = $selection;
-    const bounds = getSelectionBounds(sel);
-    if (!bounds) return [];
-    const [dx, dy, dz] = getStampOffsetForFace(target, normal, bounds);
-    const out: [number, number, number][] = [];
+    const center = getSelectionCenter(sel);
+    if (!center) return [];
+    const [cx, cy, cz] = center;
+    const { rotX, rotY, rotZ } = $stampRotation;
+    const rotated: [number, number, number][] = [];
     for (const key of sel.keys()) {
       const [x, y, z] = parseCoordKey(key);
-      out.push([x + dx, y + dy, z + dz]);
+      const centered: [number, number, number] = [x - cx, y - cy, z - cz];
+      const r = rotatePositionAroundOrigin(centered, [rotX, rotY, rotZ]);
+      rotated.push([r[0] + cx, r[1] + cy, r[2] + cz]);
     }
-    return out;
+    const bounds = getBoundsFromPositions(rotated);
+    if (!bounds) return [];
+    const [dx, dy, dz] = getStampOffsetForFace(target, normal, bounds);
+    return rotated.map(([x, y, z]) => [x + dx, y + dy, z + dz]);
   }
 
   function getFaceNormalFromHit(hit: THREE.Intersection): FaceNormal | null {
@@ -313,30 +324,6 @@
   }
 
   /** Returns voxel positions along axis-aligned line from a to b (dominant axis). */
-  function getAxisAlignedLine(
-    a: [number, number, number],
-    b: [number, number, number]
-  ): [number, number, number][] {
-    const dx = Math.abs(b[0] - a[0]);
-    const dy = Math.abs(b[1] - a[1]);
-    const dz = Math.abs(b[2] - a[2]);
-    const positions: [number, number, number][] = [];
-    if (dx >= dy && dx >= dz) {
-      const x0 = Math.min(a[0], b[0]);
-      const x1 = Math.max(a[0], b[0]);
-      for (let x = x0; x <= x1; x++) positions.push([x, a[1], a[2]]);
-    } else if (dy >= dx && dy >= dz) {
-      const y0 = Math.min(a[1], b[1]);
-      const y1 = Math.max(a[1], b[1]);
-      for (let y = y0; y <= y1; y++) positions.push([a[0], y, a[2]]);
-    } else {
-      const z0 = Math.min(a[2], b[2]);
-      const z1 = Math.max(a[2], b[2]);
-      for (let z = z0; z <= z1; z++) positions.push([a[0], a[1], z]);
-    }
-    return positions;
-  }
-
   function axisVector(axis: 0 | 1 | 2): THREE.Vector3 {
     const v = new THREE.Vector3(0, 0, 0);
     v.setComponent(axis, 1);
@@ -352,256 +339,15 @@
     return dragFaceNormal;
   }
 
-  /** Returns all voxel positions in the axis-aligned plane. Plane normal = face normal (fixed axis from start). */
-  function getAxisAlignedPlaneFromNormal(
-    a: [number, number, number],
-    b: [number, number, number],
-    faceNormal: THREE.Vector3
-  ): [number, number, number][] {
-    // Fixed axis = axis of plane normal (largest |component|)
-    const ax = Math.abs(faceNormal.x);
-    const ay = Math.abs(faceNormal.y);
-    const az = Math.abs(faceNormal.z);
-    const fixedAxis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
-    const positions: [number, number, number][] = [];
-    if (fixedAxis === 0) {
-      const x = a[0];
-      const y0 = Math.min(a[1], b[1]);
-      const y1 = Math.max(a[1], b[1]);
-      const z0 = Math.min(a[2], b[2]);
-      const z1 = Math.max(a[2], b[2]);
-      for (let py = y0; py <= y1; py++)
-        for (let pz = z0; pz <= z1; pz++) positions.push([x, py, pz]);
-    } else if (fixedAxis === 1) {
-      const y = a[1];
-      const x0 = Math.min(a[0], b[0]);
-      const x1 = Math.max(a[0], b[0]);
-      const z0 = Math.min(a[2], b[2]);
-      const z1 = Math.max(a[2], b[2]);
-      for (let px = x0; px <= x1; px++)
-        for (let pz = z0; pz <= z1; pz++) positions.push([px, y, pz]);
-    } else {
-      const z = a[2];
-      const x0 = Math.min(a[0], b[0]);
-      const x1 = Math.max(a[0], b[0]);
-      const y0 = Math.min(a[1], b[1]);
-      const y1 = Math.max(a[1], b[1]);
-      for (let px = x0; px <= x1; px++)
-        for (let py = y0; py <= y1; py++) positions.push([px, py, z]);
-    }
-    return positions;
-  }
-
-  /** Returns all voxel positions in axis-aligned cuboid. Plane from a to b, extruded along faceNormal by depth voxels. */
-  function getAxisAlignedCuboid(
-    a: [number, number, number],
-    b: [number, number, number],
-    faceNormal: THREE.Vector3,
-    depth: number
-  ): [number, number, number][] {
-    const planePositions = getAxisAlignedPlaneFromNormal(a, b, faceNormal);
-    if (depth === 0) return planePositions;
-    const positions: [number, number, number][] = [...planePositions];
-    const ax = Math.abs(faceNormal.x);
-    const ay = Math.abs(faceNormal.y);
-    const az = Math.abs(faceNormal.z);
-    const axis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
-    const step = faceNormal.getComponent(axis) > 0 ? 1 : -1;
-    const layers = Math.abs(depth);
-    const dir = depth > 0 ? step : -step;
-    for (let k = 1; k <= layers; k++) {
-      const dk = dir * k;
-      for (const [px, py, pz] of planePositions) {
-        const pos: [number, number, number] = [px, py, pz];
-        pos[axis] += dk;
-        positions.push(pos);
-      }
-    }
-    return positions;
-  }
-
-  /** Returns voxels inside the convex hull of the given points. */
-  function getPolygonVoxels(points: [number, number, number][]): [number, number, number][] {
-    if (points.length === 0) return [];
-    if (points.length === 1) return [points[0]];
-    if (points.length === 2) return getAxisAlignedLine(points[0], points[1]);
-    if (points.length === 3) {
-      // Point-in-triangle: project to 2D, use barycentric test for each voxel center
-      const [a, b, c] = points;
-      const ab = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
-      const ac = new THREE.Vector3(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
-      const normal = new THREE.Vector3().crossVectors(ab, ac);
-      const ax = Math.abs(normal.x);
-      const ay = Math.abs(normal.y);
-      const az = Math.abs(normal.z);
-      const dropAxis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
-      const uAxis = dropAxis === 0 ? 1 : 0;
-      const vAxis = dropAxis === 2 ? 1 : 2;
-      const to2D = (p: [number, number, number]) => [p[uAxis], p[vAxis]] as [number, number];
-      const a2 = to2D(a);
-      const b2 = to2D(b);
-      const c2 = to2D(c);
-      const v0x = b2[0] - a2[0];
-      const v0y = b2[1] - a2[1];
-      const v1x = c2[0] - a2[0];
-      const v1y = c2[1] - a2[1];
-      const denom = v0x * v1y - v0y * v1x;
-      if (Math.abs(denom) < 1e-9) return getAxisAlignedLine(a, b); // collinear fallback
-      const minX = Math.floor(Math.min(a[0], b[0], c[0]));
-      const maxX = Math.ceil(Math.max(a[0], b[0], c[0]));
-      const minY = Math.floor(Math.min(a[1], b[1], c[1]));
-      const maxY = Math.ceil(Math.max(a[1], b[1], c[1]));
-      const minZ = Math.floor(Math.min(a[2], b[2], c[2]));
-      const maxZ = Math.ceil(Math.max(a[2], b[2], c[2]));
-      const positions: [number, number, number][] = [];
-      for (let x = minX; x <= maxX; x++) {
-        for (let y = minY; y <= maxY; y++) {
-          for (let z = minZ; z <= maxZ; z++) {
-            const cx = x + 0.5;
-            const cy = y + 0.5;
-            const cz = z + 0.5;
-            const p2: [number, number] = [0, 0];
-            p2[0] = [cx, cy, cz][uAxis];
-            p2[1] = [cx, cy, cz][vAxis];
-            const px = p2[0] - a2[0];
-            const py = p2[1] - a2[1];
-            const s = (px * v1y - py * v1x) / denom;
-            const t = (py * v0x - px * v0y) / denom;
-            if (s >= -1e-6 && t >= -1e-6 && s + t <= 1 + 1e-6) {
-              positions.push([x, y, z]);
-            }
-          }
-        }
-      }
-      return positions;
-    }
-    // 4+ points: convex hull
-    const vecs = points.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
-    const hull = new ConvexHull();
-    hull.setFromPoints(vecs);
-    let minX = Infinity,
-      maxX = -Infinity;
-    let minY = Infinity,
-      maxY = -Infinity;
-    let minZ = Infinity,
-      maxZ = -Infinity;
-    for (const p of points) {
-      minX = Math.min(minX, p[0]);
-      maxX = Math.max(maxX, p[0]);
-      minY = Math.min(minY, p[1]);
-      maxY = Math.max(maxY, p[1]);
-      minZ = Math.min(minZ, p[2]);
-      maxZ = Math.max(maxZ, p[2]);
-    }
-    const positions: [number, number, number][] = [];
-    const test = new THREE.Vector3();
-    for (let x = Math.floor(minX); x <= Math.ceil(maxX); x++) {
-      for (let y = Math.floor(minY); y <= Math.ceil(maxY); y++) {
-        for (let z = Math.floor(minZ); z <= Math.ceil(maxZ); z++) {
-          test.set(x, y, z);
-          if (hull.containsPoint(test)) positions.push([x, y, z]);
-        }
-      }
-    }
-    return positions;
-  }
-
-  const CUBE_EDGES: number[][] = [
-    [-0.5, -0.5, -0.5, 0.5, -0.5, -0.5],
-    [-0.5, -0.5, -0.5, -0.5, 0.5, -0.5],
-    [-0.5, -0.5, -0.5, -0.5, -0.5, 0.5],
-    [0.5, -0.5, -0.5, 0.5, 0.5, -0.5],
-    [0.5, -0.5, -0.5, 0.5, -0.5, 0.5],
-    [-0.5, 0.5, -0.5, 0.5, 0.5, -0.5],
-    [-0.5, 0.5, -0.5, -0.5, 0.5, 0.5],
-    [-0.5, -0.5, 0.5, 0.5, -0.5, 0.5],
-    [-0.5, -0.5, 0.5, -0.5, 0.5, 0.5],
-    [0.5, 0.5, -0.5, 0.5, 0.5, 0.5],
-    [0.5, -0.5, 0.5, 0.5, 0.5, 0.5],
-    [-0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
-  ];
-  // For each edge: the 2 neighbor offsets; edge is visible if either neighbor is empty
-  const EDGE_NEIGHBORS: [number, number, number][][] = [
-    [
-      [0, -1, 0],
-      [0, 0, -1]
-    ],
-    [
-      [-1, 0, 0],
-      [0, 0, -1]
-    ],
-    [
-      [-1, 0, 0],
-      [0, -1, 0]
-    ],
-    [
-      [1, 0, 0],
-      [0, 0, -1]
-    ],
-    [
-      [1, 0, 0],
-      [0, -1, 0]
-    ],
-    [
-      [0, 1, 0],
-      [0, 0, -1]
-    ],
-    [
-      [-1, 0, 0],
-      [0, 1, 0]
-    ],
-    [
-      [0, -1, 0],
-      [0, 0, 1]
-    ],
-    [
-      [-1, 0, 0],
-      [0, 0, 1]
-    ],
-    [
-      [1, 0, 0],
-      [0, 1, 0]
-    ],
-    [
-      [1, 0, 0],
-      [0, 0, 1]
-    ],
-    [
-      [0, 1, 0],
-      [0, 0, 1]
-    ]
-  ];
-
   function buildGrid(_size: number, v: Map<string, number>) {
     if (!gridGroup || !gridLineMaterial || !scene) return;
-    // Remove existing grid lines
     while (gridGroup.children.length > 0) {
       const child = gridGroup.children[0];
       gridGroup.remove(child);
       const geom = (child as { geometry?: THREE.BufferGeometry }).geometry;
       if (geom) geom.dispose();
     }
-    if (v.size === 0) return;
-    const positions: number[] = [];
-    const has = (x: number, y: number, z: number) => v.has(coordKey(x, y, z));
-    for (const key of v.keys()) {
-      const [x, y, z] = parseCoordKey(key);
-      for (let i = 0; i < CUBE_EDGES.length; i++) {
-        const [[dx1, dy1, dz1], [dx2, dy2, dz2]] = EDGE_NEIGHBORS[i];
-        const n1 = has(x + dx1, y + dy1, z + dz1);
-        const n2 = has(x + dx2, y + dy2, z + dz2);
-        if (n1 && n2) continue; // both neighbors exist, edge is interior
-        const edge = CUBE_EDGES[i];
-        positions.push(
-          x + edge[0],
-          y + edge[1],
-          z + edge[2],
-          x + edge[3],
-          y + edge[4],
-          z + edge[5]
-        );
-      }
-    }
+    const positions = buildGridPositions(v);
     if (positions.length === 0) return;
     const geom = new LineSegmentsGeometry();
     geom.setPositions(positions);
@@ -777,25 +523,32 @@
 
   function placeStamp(target: [number, number, number], normal: FaceNormal) {
     const sel = $selection;
-    const bounds = getSelectionBounds(sel);
+    const center = getSelectionCenter(sel);
+    if (!center) return;
+    const [cx, cy, cz] = center;
+    const { rotX, rotY, rotZ } = $stampRotation;
+    const rotated: [number, number, number][] = [];
+    const colors: number[] = [];
+    for (const [key, col] of sel) {
+      const [x, y, z] = parseCoordKey(key);
+      const centered: [number, number, number] = [x - cx, y - cy, z - cz];
+      const r = rotatePositionAroundOrigin(centered, [rotX, rotY, rotZ]);
+      rotated.push([r[0] + cx, r[1] + cy, r[2] + cz]);
+      colors.push(col);
+    }
+    const bounds = getBoundsFromPositions(rotated);
     if (!bounds) return;
     const [dx, dy, dz] = getStampOffsetForFace(target, normal, bounds);
-    const stampPositions: [number, number, number][] = [];
-    for (const [key, col] of sel) {
-      const [sx, sy, sz] = parseCoordKey(key);
-      stampPositions.push([sx + dx, sy + dy, sz + dz]);
-    }
+    const stampPositions = rotated.map(
+      ([x, y, z]) => [x + dx, y + dy, z + dz] as [number, number, number]
+    );
     ensureGridFitsPositions(stampPositions);
     beginStroke();
     updateVoxelsInStroke((v) => {
-      for (const [key, col] of sel) {
-        const [sx, sy, sz] = parseCoordKey(key);
-        const x = sx + dx;
-        const y = sy + dy;
-        const z = sz + dz;
-        if (!inBounds(x, y, z, $gridSize)) continue;
-        v.set(coordKey(x, y, z), col);
-      }
+      stampPositions.forEach(([x, y, z], i) => {
+        if (!inBounds(x, y, z, $gridSize)) return;
+        v.set(coordKey(x, y, z), colors[i]);
+      });
     });
   }
 
@@ -1490,70 +1243,6 @@
     if ($tool === 'fly') e.stopPropagation();
   }
 
-  // Noclip: WASD + Q/E movement
-  function onFlyKeyDown(e: KeyboardEvent) {
-    if (e.altKey || !flyControls?.enabled) return;
-    switch (e.code) {
-      case 'KeyW':
-        flyMoveState.forward = 1;
-        break;
-      case 'KeyS':
-        flyMoveState.back = 1;
-        break;
-      case 'KeyA':
-        flyMoveState.left = 1;
-        break;
-      case 'KeyD':
-        flyMoveState.right = 1;
-        break;
-      case 'KeyE':
-        flyMoveState.up = 1;
-        break;
-      case 'KeyQ':
-        flyMoveState.down = 1;
-        break;
-      case 'ShiftLeft':
-      case 'ShiftRight':
-        flyMoveState.shift = 1;
-        break;
-      default:
-        return;
-    }
-    e.preventDefault();
-    e.stopImmediatePropagation();
-  }
-  function onFlyKeyUp(e: KeyboardEvent) {
-    if (!flyControls?.enabled) return;
-    switch (e.code) {
-      case 'KeyW':
-        flyMoveState.forward = 0;
-        break;
-      case 'KeyS':
-        flyMoveState.back = 0;
-        break;
-      case 'KeyA':
-        flyMoveState.left = 0;
-        break;
-      case 'KeyD':
-        flyMoveState.right = 0;
-        break;
-      case 'KeyE':
-        flyMoveState.up = 0;
-        break;
-      case 'KeyQ':
-        flyMoveState.down = 0;
-        break;
-      case 'ShiftLeft':
-      case 'ShiftRight':
-        flyMoveState.shift = 0;
-        break;
-      default:
-        return;
-    }
-    e.preventDefault();
-    e.stopImmediatePropagation();
-  }
-
   function onWheel(event: WheelEvent) {
     // Alt+scroll during plane/cuboid drag: cycle plane orientation (X/Y/Z)
     const mode = get(strokeMode);
@@ -1635,17 +1324,7 @@
     const delta = lastFrameTime ? (t - lastFrameTime) / 1000 : 0;
     lastFrameTime = t;
     if (flyControls?.enabled && camera) {
-      const speedMult = flyMoveState.shift ? 1 / 8 : 1;
-      const dist = FLY_MOVE_SPEED * delta * speedMult;
-      const fwd = flyMoveState.forward - flyMoveState.back;
-      const right = flyMoveState.right - flyMoveState.left;
-      const up = flyMoveState.up - flyMoveState.down;
-      if (fwd !== 0) {
-        const look = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-        camera.position.addScaledVector(look, fwd * dist);
-      }
-      if (right !== 0) flyControls.moveRight(right * dist);
-      if (up !== 0) camera.position.y += up * dist;
+      applyFlyMovement(camera, flyControls, flyMoveState, delta, { moveSpeed: FLY_MOVE_SPEED });
     } else {
       orbitControls?.update();
     }
@@ -1704,9 +1383,38 @@
   });
 
   onMount(async () => {
-    const hash = typeof window !== 'undefined' ? window.location.hash : '';
-    const m = hash ? hash.slice(1).match(/^m=(.+)$/) : null;
-    const fromUrl = m ? await loadFromUrlHash(m[1]) : false;
+    let fromUrl = false;
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('m');
+      if (id) {
+        const isLocalhost = window.location.hostname === 'localhost';
+        if (isLocalhost) {
+          try {
+            const modelBase64 = await getShareFromIndexedDB(id);
+            if (modelBase64) {
+              const binary = atob(modelBase64);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+              fromUrl = await loadFromBytes(bytes);
+            }
+          } catch {
+            // ignore
+          }
+        }
+        if (!fromUrl) {
+          try {
+            const res = await fetch(`/api/voxelle/model/${id}`);
+            if (res.ok) {
+              const bytes = new Uint8Array(await res.arrayBuffer());
+              fromUrl = await loadFromBytes(bytes);
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
     if (!fromUrl && !loadFromStorage()) initCanvas(get(gridSize));
     const sz = get(gridSize);
 
@@ -1863,7 +1571,7 @@
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = $enableShadows;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1993,14 +1701,7 @@
     }
     if (!isFly && prevTool === 'fly' && camera) {
       flyControls.unlock();
-      flyMoveState.forward =
-        flyMoveState.back =
-        flyMoveState.left =
-        flyMoveState.right =
-        flyMoveState.up =
-        flyMoveState.down =
-        flyMoveState.shift =
-          0;
+      resetFlyMoveState(flyMoveState);
       // Sync orbit target when exiting fly mode so orbit feels natural
       const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
       orbitControls.target.copy(camera.position).add(dir.multiplyScalar(50));
@@ -2195,6 +1896,7 @@
       Δ {deltaDisplay.dx}, {deltaDisplay.dy}, {deltaDisplay.dz}
     </div>
   {/if}
+  <StampPanel />
   {#if $tool === 'fly'}
     <div class="fly-hint" role="status" aria-live="polite">
       Click to capture · WASD move · E/Q up/down · Shift 1/8 speed · Move mouse to look

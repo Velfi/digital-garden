@@ -1,0 +1,119 @@
+<script lang="ts">
+  import { strokeMode, fillSelectDiagonals, fillRespectsColor, planeAxis } from '../store';
+</script>
+
+<div class="stroke-mode" role="group" aria-labelledby="stroke-label">
+  <span id="stroke-label" class="stroke-label">Selection method</span>
+  <div class="stroke-buttons">
+    <button
+      type="button"
+      class:active={$strokeMode === 'line'}
+      onclick={() => strokeMode.set('line')}
+      title="Draw lines (axis-aligned)"
+    >
+      Line
+    </button>
+    <button
+      type="button"
+      class:active={$strokeMode === 'plane'}
+      onclick={() => strokeMode.set('plane')}
+      title="Fill whole plane (Alt+scroll to cycle orientation)"
+    >
+      Plane
+    </button>
+    <button
+      type="button"
+      class:active={$strokeMode === 'cuboid'}
+      onclick={() => strokeMode.set('cuboid')}
+      title="Drag to set plane (Alt+scroll to cycle), scroll for depth, click or Done to apply"
+    >
+      Cuboid
+    </button>
+    <button
+      type="button"
+      class:active={$strokeMode === 'polygon'}
+      onclick={() => strokeMode.set('polygon')}
+      title="Click to place points, Done to fill convex hull"
+    >
+      Polygon
+    </button>
+    <button
+      type="button"
+      class:active={$strokeMode === 'fill'}
+      onclick={() => strokeMode.set('fill')}
+      title="Click to flood-fill: Voxel (empty space), Remove/Paint (voxels), Select/SelectByColor (selection)"
+    >
+      Fill
+    </button>
+  </div>
+  {#if $strokeMode === 'fill'}
+    <div class="stroke-buttons" role="group" aria-label="Fill options">
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          checked={$fillSelectDiagonals}
+          onchange={(e) => fillSelectDiagonals.set((e.target as HTMLInputElement).checked)}
+        />
+        Include diagonals
+      </label>
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          checked={$fillRespectsColor}
+          onchange={(e) => fillRespectsColor.set((e.target as HTMLInputElement).checked)}
+        />
+        Respect color
+      </label>
+    </div>
+  {/if}
+  {#if $strokeMode === 'plane' || $strokeMode === 'cuboid'}
+    <div class="stroke-buttons plane-axis" role="group" aria-label="Plane axis">
+      <button
+        type="button"
+        class:active={$planeAxis === 'auto'}
+        onclick={() => planeAxis.set('auto')}
+        title="Auto: use clicked face"
+      >
+        Auto
+      </button>
+      <button
+        type="button"
+        class:active={$planeAxis === 0}
+        onclick={() => planeAxis.set(0)}
+        title="Vertical plane (YZ)"
+      >
+        X
+      </button>
+      <button
+        type="button"
+        class:active={$planeAxis === 1}
+        onclick={() => planeAxis.set(1)}
+        title="Horizontal plane (XZ)"
+      >
+        Y
+      </button>
+      <button
+        type="button"
+        class:active={$planeAxis === 2}
+        onclick={() => planeAxis.set(2)}
+        title="Vertical plane (XY)"
+      >
+        Z
+      </button>
+    </div>
+  {/if}
+</div>
+
+<style>
+
+  .stroke-mode {
+    margin-bottom: 0.5rem;
+  }
+
+  .stroke-label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+</style>
