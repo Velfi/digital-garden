@@ -116,7 +116,8 @@
 		left: 0,
 		right: 0,
 		up: 0,
-		down: 0
+		down: 0,
+		shift: 0
 	};
 	const fitHelperSphere = new THREE.Sphere();
 	const worldQuaternion = new THREE.Quaternion();
@@ -979,6 +980,8 @@
 			case 'KeyD': flyMoveState.right = 1; break;
 			case 'KeyE': flyMoveState.up = 1; break;
 			case 'KeyQ': flyMoveState.down = 1; break;
+			case 'ShiftLeft':
+			case 'ShiftRight': flyMoveState.shift = 1; break;
 			default: return;
 		}
 		e.preventDefault();
@@ -993,6 +996,8 @@
 			case 'KeyD': flyMoveState.right = 0; break;
 			case 'KeyE': flyMoveState.up = 0; break;
 			case 'KeyQ': flyMoveState.down = 0; break;
+			case 'ShiftLeft':
+			case 'ShiftRight': flyMoveState.shift = 0; break;
 			default: return;
 		}
 		e.preventDefault();
@@ -1041,7 +1046,8 @@
 		const delta = lastFrameTime ? (t - lastFrameTime) / 1000 : 0;
 		lastFrameTime = t;
 		if (flyControls?.enabled && camera) {
-			const dist = FLY_MOVE_SPEED * delta;
+			const speedMult = flyMoveState.shift ? 1 / 8 : 1;
+			const dist = FLY_MOVE_SPEED * delta * speedMult;
 			const fwd = flyMoveState.forward - flyMoveState.back;
 			const right = flyMoveState.right - flyMoveState.left;
 			const up = flyMoveState.up - flyMoveState.down;
@@ -1262,7 +1268,7 @@
 		if (!isFly && prevTool === 'fly' && camera) {
 			flyControls.unlock();
 			flyMoveState.forward = flyMoveState.back = flyMoveState.left = flyMoveState.right =
-				flyMoveState.up = flyMoveState.down = 0;
+				flyMoveState.up = flyMoveState.down = flyMoveState.shift = 0;
 			// Sync orbit target when exiting fly mode so orbit feels natural
 			const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
 			orbitControls.target.copy(camera.position).add(dir.multiplyScalar(50));
@@ -1369,7 +1375,7 @@
 	{/if}
 	{#if $tool === 'fly'}
 		<div class="fly-hint" role="status" aria-live="polite">
-			Click to capture · WASD move · E/Q up/down · Move mouse to look
+			Click to capture · WASD move · E/Q up/down · Shift 1/8 speed · Move mouse to look
 		</div>
 	{:else}
 		<div
