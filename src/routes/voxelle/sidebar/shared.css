@@ -2,19 +2,28 @@
   opacity: 0.6;
 }
 
-.sidebar-label {
+.sidebar-label,
+.stroke-label {
+  display: block;
+  margin-bottom: 0.25rem;
   font-size: 0.85rem;
   font-weight: 600;
 }
 
-.tool-buttons {
+/* Shared for tool-buttons, stroke-buttons, tab-bar, origin-buttons */
+.tool-buttons,
+.stroke-buttons {
   display: flex;
-  gap: 0.25rem;
   flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.tool-buttons {
   margin-bottom: 0.5rem;
 }
 
-.tool-buttons button {
+.tool-buttons button,
+.stroke-buttons button {
   flex: 1;
   min-width: 4rem;
   padding: 0.4rem 0.5rem;
@@ -26,22 +35,26 @@
   cursor: pointer;
 }
 
-.tool-buttons button:hover:not(:disabled) {
+.tool-buttons button:hover:not(:disabled),
+.stroke-buttons button:hover:not(:disabled) {
   background: var(--block-quote-bg-color);
 }
 
-.tool-buttons button.active {
-  background: var(--link-color);
+.tool-buttons button.active,
+.stroke-buttons button.active {
+  background: var(--link-visited-color);
   border-color: var(--link-color);
 }
 
-:global(body:not(.light-mode)) .tool-buttons button.active {
-  color: white;
-  background: color-mix(in srgb, var(--link-color) 70%, black);
-  border-color: color-mix(in srgb, var(--link-color) 70%, black);
+:global(body:not(.light-mode)) .tool-buttons button.active,
+:global(body:not(.light-mode)) .stroke-buttons button.active {
+  color: #fff;
+  background: color-mix(in srgb, var(--link-color) 40%, black);
+  border-color: color-mix(in srgb, var(--link-color) 40%, black);
 }
 
-:global(body.light-mode) .tool-buttons button.active {
+:global(body.light-mode) .tool-buttons button.active,
+:global(body.light-mode) .stroke-buttons button.active {
   color: var(--text-color);
   background: color-mix(in srgb, var(--link-color) 20%, var(--bg-color));
   border-color: var(--link-color);
@@ -61,6 +74,10 @@
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
+}
+
+.checkbox-label input[type='checkbox'] {
+  accent-color: var(--link-color);
 }
 
 .light-control input[type='color'] {
@@ -90,16 +107,110 @@
   min-width: 2.5rem;
 }
 
-.stroke-buttons {
+/* Modal base */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--bg-color);
+  color: var(--text-color);
+  padding: 1.5rem;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.modal label {
+  display: flex;
+  flex-direction: column;
   gap: 0.25rem;
 }
 
-.stroke-buttons button {
+.modal-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Add-panel / Stamp / Branch panel base */
+.add-panel {
+  position: fixed;
+  bottom: 1rem;
+  left: calc(1.5rem + 1rem);
+  z-index: 100;
+  background: var(--bg-color);
+  color: var(--text-color);
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 12rem;
+  max-width: 16rem;
+}
+
+.add-panel.sidebar-open {
+  left: calc(360px + 1rem);
+}
+
+.add-panel h3 {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.95rem;
+}
+
+.add-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.add-panel-label {
+  flex-shrink: 0;
+  width: 2.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.add-panel-row input[type='number'],
+.add-panel-row input[type='range'],
+.add-panel-row select {
   flex: 1;
-  min-width: 4rem;
-  padding: 0.4rem 0.5rem;
+  min-width: 0;
+  padding: 0.25rem 0.35rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+  color: var(--text-color);
+}
+
+.add-panel-row input[type='number'] {
+  width: 3rem;
+}
+
+.add-panel-row input[type='range'] {
+  accent-color: var(--link-color);
+  padding: 0;
+}
+
+.add-panel-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.add-panel-buttons button {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
   font-size: 0.85rem;
   border: 1px solid var(--border-color);
   border-radius: 4px;
@@ -108,23 +219,6 @@
   cursor: pointer;
 }
 
-.stroke-buttons button:hover:not(:disabled) {
+.add-panel-buttons button:hover {
   background: var(--block-quote-bg-color);
-}
-
-.stroke-buttons button.active {
-  background: var(--link-color);
-  border-color: var(--link-color);
-}
-
-:global(body:not(.light-mode)) .stroke-buttons button.active {
-  color: white;
-  background: color-mix(in srgb, var(--link-color) 70%, black);
-  border-color: color-mix(in srgb, var(--link-color) 70%, black);
-}
-
-:global(body.light-mode) .stroke-buttons button.active {
-  color: var(--text-color);
-  background: color-mix(in srgb, var(--link-color) 20%, var(--bg-color));
-  border-color: var(--link-color);
 }

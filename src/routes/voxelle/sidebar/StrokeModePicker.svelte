@@ -204,16 +204,7 @@
     margin-bottom: 0.5rem;
   }
 
-  .stroke-label {
-    display: block;
-    margin-bottom: 0.25rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-  }
-
   .airbrush-options {
-    display: flex;
-    flex-direction: column;
     margin-top: 0.5rem;
   }
 </style>

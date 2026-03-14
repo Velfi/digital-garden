@@ -59,46 +59,14 @@
 {/if}
 
 <style>
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
-
-  .modal {
-    background: var(--bg-color);
-    color: var(--text-color);
-    padding: 1.5rem;
-    border-radius: 4px;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .modal label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
   .modal input[type='number'],
   .modal select {
     width: 100%;
-    margin-bottom: 0;
     padding: 0.35rem 0.5rem;
     font-size: 0.9rem;
     border: 1px solid var(--border-color);
     border-radius: 4px;
     background: var(--bg-color);
     color: var(--text-color);
-  }
-
-  .modal-buttons {
-    display: flex;
-    gap: 0.5rem;
   }
 </style>

@@ -43,51 +43,6 @@
 {/if}
 
 <style>
-  .add-panel {
-    position: fixed;
-    bottom: 1rem;
-    left: calc(1.5rem + 1rem);
-    z-index: 100;
-    background: var(--bg-color);
-    color: var(--text-color);
-    padding: 0.75rem 1rem;
-    border-radius: 4px;
-    border: 1px solid var(--border-color);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    min-width: 12rem;
-    max-width: 16rem;
-  }
-
-  .add-panel.sidebar-open {
-    left: calc(360px + 1rem);
-  }
-
-  .add-panel h3 {
-    margin: 0 0 0.25rem 0;
-    font-size: 0.95rem;
-  }
-
-  .add-panel-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .add-panel-label {
-    flex-shrink: 0;
-    width: 2.5rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-  }
-
-  .add-panel-row input[type='range'] {
-    flex: 1;
-    accent-color: var(--link-color);
-  }
-
   .add-panel-value {
     font-size: 0.85rem;
     opacity: 0.8;

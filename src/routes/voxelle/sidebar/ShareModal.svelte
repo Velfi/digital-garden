@@ -31,34 +31,8 @@
 {/if}
 
 <style>
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
-
-  .modal {
-    background: var(--bg-color);
-    color: var(--text-color);
-    padding: 1.5rem;
-    border-radius: 4px;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
   .modal--share {
     min-width: min(90vw, 36rem);
-  }
-
-  .modal label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
   }
 
   .share-url-input {
@@ -70,10 +44,5 @@
     border-radius: 4px;
     background: var(--bg-color);
     color: var(--text-color);
-  }
-
-  .modal-buttons {
-    display: flex;
-    gap: 0.5rem;
   }
 </style>
