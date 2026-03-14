@@ -150,8 +150,11 @@
   let branchPointerDownX = 0;
   let branchPointerDownY = 0;
 
-  /** Shown when greedy meshing takes >2s to avoid perceived freeze */
+  /** Shown while worker is computing (main voxel mesh rebuild) */
   let greedyMeshLoading = $state(false);
+
+  let meshWorker: Worker | null = null;
+  let meshRebuildGen = 0;
 
   // Cuboid two-phase: first drag = plane, then scroll/drag = depth
   let cuboidPhase = $state<'plane' | 'depth' | null>(null);
@@ -239,12 +242,19 @@
     return envMap;
   }
 
-  function rebuildVoxelMeshes(v: Map<string, number>, size: number) {
+  function applyVoxelMeshResults(
+    results: Array<{
+      color: number;
+      positions: Float32Array;
+      normals: Float32Array;
+      colors: Float32Array;
+      indices: Uint32Array;
+    }>
+  ) {
     if (!voxelGroup) return;
     for (const { mesh } of meshesByColor.values()) {
       voxelGroup.remove(mesh);
       (mesh.material as THREE.Material).dispose();
-      // Greedy mesh has its own geometry
       if (mesh instanceof THREE.Mesh && mesh.geometry) mesh.geometry.dispose();
     }
     meshesByColor.clear();
@@ -254,8 +264,14 @@
     const m = $metalness;
     const envInt = $envMapIntensity;
 
-    const geoByColor = buildGreedyMesh(v, { aoEnabled: $enableAO });
-    for (const [col, geo] of geoByColor) {
+    for (const { color: col, positions, normals, colors, indices } of results) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geo.setIndex(new THREE.BufferAttribute(indices, 1));
+      geo.computeBoundingSphere();
+
       const mat = new THREE.MeshStandardMaterial({
         vertexColors: true,
         roughness: r,
@@ -269,6 +285,31 @@
       voxelGroup.add(mesh);
       meshesByColor.set(col, { mesh, positions: null });
     }
+  }
+
+  function requestRebuildVoxelMeshes(v: Map<string, number>, _size: number) {
+    if (!meshWorker || !voxelGroup) return;
+    const gen = ++meshRebuildGen;
+    greedyMeshLoading = true;
+    const voxelsArr: [string, number][] = [...v];
+    meshWorker.postMessage({
+      voxels: voxelsArr,
+      options: { aoEnabled: $enableAO },
+      gen
+    });
+  }
+
+  function setupMeshWorker() {
+    if (!browser) return;
+    meshWorker = new Worker(new URL('./greedyMeshWorker.ts', import.meta.url), {
+      type: 'module'
+    });
+    meshWorker.onmessage = (e: MessageEvent<{ results: unknown[]; gen?: number }>) => {
+      if (e.data.gen !== meshRebuildGen) return;
+      greedyMeshLoading = false;
+      applyVoxelMeshResults(e.data.results as Parameters<typeof applyVoxelMeshResults>[0]);
+      render();
+    };
   }
 
   function rebuildSelectionOverlay(sel: Map<string, number>) {
@@ -1673,14 +1714,8 @@
     const v = $voxels;
     const sz = $gridSize;
     const _ao = $enableAO;
-    const spinnerTimeout = setTimeout(() => {
-      greedyMeshLoading = true;
-    }, 2000);
-    rebuildVoxelMeshes(v, sz);
-    clearTimeout(spinnerTimeout);
-    greedyMeshLoading = false;
+    requestRebuildVoxelMeshes(v, sz);
     render();
-    return () => clearTimeout(spinnerTimeout);
   });
 
   $effect(() => {
@@ -1792,6 +1827,8 @@
 
     voxelGroup = new THREE.Group();
     scene.add(voxelGroup);
+
+    setupMeshWorker();
 
     selectionGroup = new THREE.Group();
     scene.add(selectionGroup);
@@ -1936,7 +1973,7 @@
     container.addEventListener('wheel', onWheel, { passive: false, capture: true });
     window.addEventListener('resize', onWindowResize);
 
-    rebuildVoxelMeshes($voxels, sz);
+    requestRebuildVoxelMeshes($voxels, sz);
     onWindowResize();
     animate();
   });
@@ -2081,6 +2118,8 @@
     if (!browser) return;
     saveToStorage();
     cancelAnimationFrame(animationFrameId);
+    meshWorker?.terminate();
+    meshWorker = null;
     container?.removeEventListener('pointermove', onPointerMove);
     container?.removeEventListener('pointerdown', onPointerDown, true);
     container?.removeEventListener('pointerup', onFlyPointerCapture, true);
