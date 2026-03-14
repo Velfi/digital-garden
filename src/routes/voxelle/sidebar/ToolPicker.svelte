@@ -71,17 +71,6 @@
   >
     Eyedropper
   </button>
-  <button
-    type="button"
-    class:active={$tool === 'fly'}
-    onclick={() => {
-      tool.set('fly');
-      lastDrawTool.set('fly');
-    }}
-    title="Fly camera (WASD, click+drag to look)"
-  >
-    Fly
-  </button>
 </div>
 
 <style>

@@ -55,7 +55,6 @@ export {
   enableSky,
   roughness,
   metalness,
-  envMapIntensity,
   focalLength,
   orthographic,
   pushUndo,

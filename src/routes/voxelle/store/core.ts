@@ -70,8 +70,8 @@ const defaultAddPanel: AddPanelState = {
   size: 8
 };
 
-/** Draw vs Clay tab pane. Draw = voxel/remove/paint/etc + stroke mode; Clay = clay tool + clay modes. */
-export type ToolPane = 'draw' | 'clay';
+/** Draw vs Clay vs Fly tab pane. Draw = voxel/remove/paint/etc + stroke mode; Clay = clay tool + clay modes; Fly = first-person camera. */
+export type ToolPane = 'draw' | 'clay' | 'fly';
 
 // Stores
 export const gridSize = writable<GridSize>(32);
@@ -133,7 +133,6 @@ export const backgroundColor = writable<string>('#f0f0f0');
 export const enableSky = writable<boolean>(true);
 export const roughness = writable<number>(0.6);
 export const metalness = writable<number>(0);
-export const envMapIntensity = writable<number>(0.5);
 export const focalLength = writable<number>(29);
 export const orthographic = writable<boolean>(false);
 

@@ -40,7 +40,6 @@
     orthographic,
     roughness,
     metalness,
-    envMapIntensity,
     updateVoxels,
     updateVoxelsInStroke,
     beginStroke,
@@ -262,7 +261,6 @@
     const envMap = scene?.environment ?? null;
     const r = $roughness;
     const m = $metalness;
-    const envInt = $envMapIntensity;
 
     for (const { color: col, positions, normals, colors, indices } of results) {
       const geo = new THREE.BufferGeometry();
@@ -276,8 +274,7 @@
         vertexColors: true,
         roughness: r,
         metalness: m,
-        envMap: envMap,
-        envMapIntensity: envInt
+        envMap: envMap
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = $enableShadows;
@@ -1738,12 +1735,10 @@
   $effect(() => {
     const r = $roughness;
     const m = $metalness;
-    const envInt = $envMapIntensity;
     for (const { mesh } of meshesByColor.values()) {
       const mat = mesh.material as THREE.MeshStandardMaterial;
       mat.roughness = r;
       mat.metalness = m;
-      mat.envMapIntensity = envInt;
     }
     render();
   });

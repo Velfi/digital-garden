@@ -113,7 +113,7 @@
         aria-selected={$toolPane === 'draw'}
         onclick={() => {
           toolPane.set('draw');
-          tool.set($lastDrawTool);
+          tool.set($lastDrawTool === 'fly' || $lastDrawTool === 'clay' ? 'remove' : $lastDrawTool);
         }}
       >
         Draw
@@ -130,15 +130,31 @@
       >
         Clay
       </button>
+      <button
+        type="button"
+        role="tab"
+        class:active={$toolPane === 'fly'}
+        aria-selected={$toolPane === 'fly'}
+        onclick={() => {
+          toolPane.set('fly');
+          tool.set('fly');
+        }}
+      >
+        Fly
+      </button>
     </div>
     {#if $toolPane === 'draw'}
       <div role="tabpanel">
         <ToolPicker />
         <StrokeModePicker />
       </div>
-    {:else}
+    {:else if $toolPane === 'clay'}
       <div role="tabpanel">
         <ClayModePicker />
+      </div>
+    {:else}
+      <div role="tabpanel" class="fly-tab">
+        <p class="fly-hint">Click the canvas to capture the pointer, then WASD to move, E/Q up/down, Shift for 1/8 speed. Move mouse to look. Escape to exit.</p>
       </div>
     {/if}
   </div>
@@ -161,6 +177,18 @@
 <style>
   .tool-panes {
     margin-bottom: 0.5rem;
+  }
+
+  .fly-tab {
+    margin-top: 0.25rem;
+  }
+
+  .fly-hint {
+    font-size: 0.85rem;
+    color: var(--text-color);
+    opacity: 0.85;
+    margin: 0;
+    line-height: 1.4;
   }
 
   .tab-bar {

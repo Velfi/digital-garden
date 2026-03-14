@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { tool, color, palette, selectedColors } from '../store';
+  import { color, palette, selectedColors } from '../store';
   import LospecPalette from '$lib/components/LospecPalette.svelte';
 </script>
 
-<div class:dimmed={$tool === 'remove'}>
+<div>
   <h2>Color</h2>
   <div class="color-row">
     <input
@@ -15,7 +15,6 @@
         color.set(v);
         selectedColors.set([v]);
       }}
-      disabled={$tool === 'remove'}
     />
     <input
       type="text"
@@ -28,7 +27,7 @@
       }}
     />
   </div>
-  <LospecPalette {color} {palette} {selectedColors} disabled={$tool === 'remove'} defaultSlug="resurrect-64" />
+  <LospecPalette {color} {palette} {selectedColors} defaultSlug="resurrect-64" />
 </div>
 
 <style>
@@ -48,11 +47,6 @@
     border-radius: 4px;
     cursor: pointer;
     background: transparent;
-  }
-
-  #color-picker:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
   }
 
   .color-hex {
