@@ -4,6 +4,7 @@
     modalRequest,
     addPanelStore,
     voxels,
+    tool,
     encodeModelForUrl
   } from './store';
   import { nanoid } from 'nanoid';
@@ -11,6 +12,7 @@
   import ArtSidebar from '$lib/components/ArtSidebar.svelte';
   import ToolPicker from './sidebar/ToolPicker.svelte';
   import StrokeModePicker from './sidebar/StrokeModePicker.svelte';
+  import ClayModePicker from './sidebar/ClayModePicker.svelte';
   import ColorSection from './sidebar/ColorSection.svelte';
   import CameraSection from './sidebar/CameraSection.svelte';
   import SceneSection from './sidebar/SceneSection.svelte';
@@ -87,7 +89,11 @@
 
 <ArtSidebar open={sidebarOpen}>
   <ToolPicker />
-  <StrokeModePicker />
+  {#if $tool === 'clay'}
+    <ClayModePicker />
+  {:else}
+    <StrokeModePicker />
+  {/if}
   <ColorSection />
   <CameraSection />
   <SceneSection />

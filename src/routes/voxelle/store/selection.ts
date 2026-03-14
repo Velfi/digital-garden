@@ -106,6 +106,13 @@ export function mergeSelection(
     for (const k of incoming.keys()) next.delete(k);
     return next;
   }
+  if (mode === 'toggle') {
+    for (const [k, c] of incoming) {
+      if (next.has(k)) next.delete(k);
+      else next.set(k, c);
+    }
+    return next;
+  }
   const out = new Map<string, number>();
   for (const [k, c] of incoming) {
     if (current.has(k)) out.set(k, c);

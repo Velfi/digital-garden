@@ -3,6 +3,58 @@ import { ConvexHull } from 'three/addons/math/ConvexHull.js';
 
 export type Vec3Like = { x: number; y: number; z: number };
 
+/** Expands each path point into a cube of radius r (Chebyshev). Radius 0 = single voxel. */
+export function thickenPath(
+  positions: [number, number, number][],
+  radius: number
+): [number, number, number][] {
+  if (radius <= 0) return positions;
+  const seen = new Set<string>();
+  const result: [number, number, number][] = [];
+  for (const [px, py, pz] of positions) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dz = -radius; dz <= radius; dz++) {
+          const x = px + dx;
+          const y = py + dy;
+          const z = pz + dz;
+          const k = `${x},${y},${z}`;
+          if (!seen.has(k)) {
+            seen.add(k);
+            result.push([x, y, z]);
+          }
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/** Returns all voxels along a 3D line between a and b (6-connected path). */
+export function getBresenham3DLine(
+  a: [number, number, number],
+  b: [number, number, number]
+): [number, number, number][] {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const dz = b[2] - a[2];
+  const steps = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz), 1);
+  const positions: [number, number, number][] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = Math.round(a[0] + t * dx);
+    const y = Math.round(a[1] + t * dy);
+    const z = Math.round(a[2] + t * dz);
+    const k = `${x},${y},${z}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      positions.push([x, y, z]);
+    }
+  }
+  return positions;
+}
+
 export function getAxisAlignedLine(
   a: [number, number, number],
   b: [number, number, number]

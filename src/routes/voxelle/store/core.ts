@@ -30,7 +30,10 @@ export type Tool =
   | 'selectByColor'
   | 'stamp'
   | 'fly'
-  | 'eyedropper';
+  | 'eyedropper'
+  | 'clay';
+
+export type ClayMode = 'bulk';
 
 const DEFAULT_COLOR = 0x888888;
 const MAX_GRID_SIZE = 256;
@@ -77,6 +80,9 @@ export const fillSelectDiagonals = writable<boolean>(false);
 export const fillRespectsColor = writable<boolean>(true);
 export const strokeMode = writable<StrokeMode>('line');
 export const planeAxis = writable<PlaneAxis>(1);
+export const clayMode = writable<ClayMode>('bulk');
+/** Brush radius for clay bulk (0=single voxel, 1=3³ tube, 2=5³). Like Blender F key. */
+export const clayBrushRadius = writable<number>(1);
 export const color = writable<string>('#ff5733');
 const DEFAULT_PALETTE = [
   '#888888', '#ff5733', '#33ff57', '#3357ff', '#ff33f5', '#f5ff33', '#33fff5', '#000000', '#ffffff'

@@ -22,6 +22,14 @@
   </button>
   <button
     type="button"
+    class:active={$tool === 'clay'}
+    onclick={() => tool.set('clay')}
+    title="Clay sculpting (bulk, etc.)"
+  >
+    Clay
+  </button>
+  <button
+    type="button"
     class:active={$tool === 'paint'}
     onclick={() => tool.set('paint')}
     title="Paint voxels"
