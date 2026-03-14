@@ -235,12 +235,12 @@
     </button>
     {#if fileOpen}
       <div class="dropdown" role="menu">
+        <button type="button" role="menuitem" onclick={handleNewGrid}> New project </button>
         <button type="button" role="menuitem" onclick={handleOpen}> Open… </button>
         <button type="button" role="menuitem" onclick={handleSave} disabled={$voxels.size === 0}>
           Save .voxelle
         </button>
         <div class="menu-separator" role="separator"></div>
-        <button type="button" role="menuitem" onclick={handleNewGrid}> New grid </button>
         <button type="button" role="menuitem" onclick={handleShare} disabled={$voxels.size === 0}>
           Share link
         </button>
