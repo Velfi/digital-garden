@@ -138,7 +138,7 @@ export const focalLength = writable<number>(29);
 export const orthographic = writable<boolean>(false);
 
 // Undo system
-const undo = createUndo(voxels);
+const undo = createUndo(voxels, selection);
 export const pushUndo = undo.pushUndo;
 export const resetUndo = undo.reset;
 export const history = undo.history;
@@ -183,6 +183,34 @@ export function shiftVoxelsAndSelection(dx: number, dy: number, dz: number): voi
   const positions = [...newVoxels.keys()].map((k) => parseCoordKey(k));
   ensureGridFitsPositions(positions);
   voxels.set(newVoxels);
+  selection.set(newSel);
+}
+
+/** Shift only the selected voxels (and the selection). Call when selection is active. */
+export function shiftSelection(dx: number, dy: number, dz: number): void {
+  const v = get(voxels);
+  const sel = get(selection);
+  if (sel.size === 0) return;
+  const nx = Math.round(dx);
+  const ny = Math.round(dy);
+  const nz = Math.round(dz);
+  if (nx === 0 && ny === 0 && nz === 0) return;
+  pushUndo();
+  const nextVoxels = cloneVoxelsImpl(v);
+  const newSel = new Map<string, number>();
+  for (const [key, selCol] of sel) {
+    const [x, y, z] = parseCoordKey(key);
+    const newKey = coordKey(x + nx, y + ny, z + nz);
+    newSel.set(newKey, selCol);
+    const col = v.get(key);
+    if (col !== undefined) {
+      nextVoxels.delete(key);
+      nextVoxels.set(newKey, col);
+    }
+  }
+  const positions = [...newSel.keys()].map((k) => parseCoordKey(k));
+  ensureGridFitsPositions(positions);
+  voxels.set(nextVoxels);
   selection.set(newSel);
 }
 

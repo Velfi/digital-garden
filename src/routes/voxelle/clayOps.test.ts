@@ -15,7 +15,7 @@ describe('applySmooth', () => {
     v.set(coordKey(0, 1, 1), 0x888888);
     // (1,1,1) is empty with 3 neighbors; need 4+ to fill. Add (2,1,1)
     v.set(coordKey(2, 1, 1), 0x888888);
-    const brush = [[1, 1, 1]];
+    const brush: [number, number, number][] = [[1, 1, 1]];
     const { toAdd, toRemove } = applySmooth(v, brush, 8);
     expect(toAdd.has(coordKey(1, 1, 1))).toBe(true);
   });
@@ -25,14 +25,14 @@ describe('applySmooth', () => {
     v.set(coordKey(0, 0, 0), 0x888888);
     v.set(coordKey(1, 0, 0), 0x888888);
     // (0,0,0) has 1 neighbor - should be removed
-    const brush = [[0, 0, 0]];
+    const brush: [number, number, number][] = [[0, 0, 0]];
     const { toAdd, toRemove } = applySmooth(v, brush, 8);
     expect(toRemove.has(coordKey(0, 0, 0))).toBe(true);
   });
 
   it('returns empty when brush outside grid', () => {
     const v = new Map([[coordKey(0, 0, 0), 0x888888]]);
-    const brush = [[100, 100, 100]];
+    const brush: [number, number, number][] = [[100, 100, 100]];
     const { toAdd, toRemove } = applySmooth(v, brush, 8);
     expect(toAdd.size).toBe(0);
     expect(toRemove.size).toBe(0);
@@ -62,7 +62,7 @@ describe('applyLevel', () => {
 
   it('does not add where voxel already exists', () => {
     const v = new Map([[coordKey(0, 4, 0), 0x888888]]);
-    const brush = [[0, 5, 0]];
+    const brush: [number, number, number][] = [[0, 5, 0]];
     const { toAdd } = applyLevel(v, brush, 4, () => 0xff0000, 8);
     expect(toAdd.has(coordKey(0, 4, 0))).toBe(false);
   });

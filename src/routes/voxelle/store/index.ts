@@ -64,6 +64,7 @@ export {
   canRedoStore,
   ensureGridFitsPositions,
   shiftVoxelsAndSelection,
+  shiftSelection,
   centerOriginOnObject,
   centerOriginOnSelection,
   getStampOffsetForFace,
@@ -141,4 +142,7 @@ export {
   serializeToVoxelleFormat,
   VOXELLE_FILE_VERSION
 } from './voxelleFile';
+
+// Import
+export { importImageFromFile } from './importImage';
 export type { VoxelleFileFormat } from './voxelleFile';

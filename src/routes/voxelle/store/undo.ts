@@ -4,16 +4,23 @@ import { serializeVoxels, deserializeVoxels } from './serialization';
 
 const MAX_UNDO = 50;
 
-export function createUndo(voxels: Writable<Map<string, number>>) {
+type UndoSnapshot = { v: string; s: string };
+
+export function createUndo(
+  voxels: Writable<Map<string, number>>,
+  selection: Writable<Map<string, number>>
+) {
   const canUndoStore = writable(false);
   const canRedoStore = writable(false);
-  const undoStack: string[] = [];
-  const redoStack: string[] = [];
+  const undoStack: UndoSnapshot[] = [];
+  const redoStack: UndoSnapshot[] = [];
 
   function pushUndo() {
-    const v = get(voxels);
     redoStack.length = 0;
-    undoStack.push(serializeVoxels(v));
+    undoStack.push({
+      v: serializeVoxels(get(voxels)),
+      s: serializeVoxels(get(selection))
+    });
     if (undoStack.length > MAX_UNDO) undoStack.shift();
     canUndoStore.set(undoStack.length > 0);
     canRedoStore.set(false);
@@ -21,20 +28,26 @@ export function createUndo(voxels: Writable<Map<string, number>>) {
 
   function doUndo() {
     if (undoStack.length === 0) return;
-    const current = serializeVoxels(get(voxels));
-    redoStack.push(current);
+    redoStack.push({
+      v: serializeVoxels(get(voxels)),
+      s: serializeVoxels(get(selection))
+    });
     const snapshot = undoStack.pop()!;
-    voxels.set(deserializeVoxels(snapshot));
+    voxels.set(deserializeVoxels(snapshot.v));
+    selection.set(deserializeVoxels(snapshot.s));
     canUndoStore.set(undoStack.length > 0);
     canRedoStore.set(redoStack.length > 0);
   }
 
   function doRedo() {
     if (redoStack.length === 0) return;
-    const current = serializeVoxels(get(voxels));
-    undoStack.push(current);
+    undoStack.push({
+      v: serializeVoxels(get(voxels)),
+      s: serializeVoxels(get(selection))
+    });
     const snapshot = redoStack.pop()!;
-    voxels.set(deserializeVoxels(snapshot));
+    voxels.set(deserializeVoxels(snapshot.v));
+    selection.set(deserializeVoxels(snapshot.s));
     canUndoStore.set(undoStack.length > 0);
     canRedoStore.set(redoStack.length > 0);
   }

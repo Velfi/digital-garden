@@ -23,7 +23,8 @@
     pasteFromClipboard,
     hollowOut,
     saveToFile,
-    loadFromFile
+    loadFromFile,
+    importImageFromFile
   } from './store';
   import { exportVoxelsToGltf } from './exportGltf';
   import type { SelectionMode } from './store';
@@ -37,6 +38,7 @@
   let editMenuRef: HTMLDivElement;
   let addMenuRef: HTMLDivElement;
   let fileInputRef: HTMLInputElement;
+  let imageInputRef: HTMLInputElement;
 
   function closeMenus() {
     fileOpen = false;
@@ -133,6 +135,20 @@
     }
   }
 
+  function handleImportImage() {
+    imageInputRef?.click();
+    closeMenus();
+  }
+
+  async function handleImageChange(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file) {
+      await importImageFromFile(file);
+      input.value = '';
+    }
+  }
+
   function handleAddShape() {
     modalRequest.set('add');
     closeMenus();
@@ -222,6 +238,15 @@
   aria-hidden="true"
   tabindex="-1"
 />
+<input
+  type="file"
+  accept="image/*"
+  class="hidden-input"
+  bind:this={imageInputRef}
+  onchange={handleImageChange}
+  aria-hidden="true"
+  tabindex="-1"
+/>
 
 <div class="menubar" role="menubar" tabindex="0">
   <div class="menu-item" role="none" bind:this={fileMenuRef}>
@@ -243,6 +268,10 @@
           Save .voxelle
         </button>
         <div class="menu-separator" role="separator"></div>
+        <span class="menu-label">Import / Export</span>
+        <button type="button" role="menuitem" onclick={handleImportImage}>
+          Import image…
+        </button>
         <button type="button" role="menuitem" onclick={handleShare} disabled={$voxels.size === 0}>
           Share link
         </button>

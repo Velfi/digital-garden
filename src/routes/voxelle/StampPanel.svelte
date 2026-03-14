@@ -19,10 +19,9 @@
     onpointerdown={(e) => e.stopPropagation()}
     onpointerup={(e) => e.stopPropagation()}
     aria-modal="false"
-    aria-labelledby="stamp-panel-title"
+    aria-label="Stamp rotation"
     tabindex="-1"
   >
-    <h3 id="stamp-panel-title">Stamp rotation</h3>
     <div class="add-panel-row">
       <span class="add-panel-label">Rot</span>
       <input

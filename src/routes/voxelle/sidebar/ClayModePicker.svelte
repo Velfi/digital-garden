@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { get } from 'svelte/store';
-  import { clayMode, clayBrushRadius, puffRadius, puffRadiusRange, puffRadiusMin, puffRadiusMax, puffScatter } from '../store';
+  import { clayMode } from '../store';
 </script>
 
 <div class="clay-mode" role="group" aria-labelledby="clay-label">
@@ -63,116 +62,10 @@
       Melt
     </button>
   </div>
-  {#if $clayMode === 'bulk' || $clayMode === 'smooth' || $clayMode === 'level' || $clayMode === 'gouge' || $clayMode === 'branch' || $clayMode === 'melt'}
-    <div class="light-control">
-      <label for="clay-brush-size">Brush size</label>
-      <div class="slider-row">
-        <input
-          id="clay-brush-size"
-          type="range"
-          min="0"
-          max="2"
-          step="1"
-          value={$clayBrushRadius}
-          oninput={(e) => clayBrushRadius.set(Number((e.target as HTMLInputElement).value))}
-        />
-        <span class="slider-value">{$clayBrushRadius}</span>
-      </div>
-    </div>
-  {/if}
-  {#if $clayMode === 'puffy'}
-    <div class="light-control">
-      <label class="checkbox-label">
-        <input
-          type="checkbox"
-          checked={$puffRadiusRange}
-          onchange={(e) => puffRadiusRange.set((e.target as HTMLInputElement).checked)}
-          title="Vary sphere size per stamp"
-        />
-        Size range
-      </label>
-    </div>
-    {#if $puffRadiusRange}
-      <div class="light-control">
-        <label for="puff-radius-min">Min</label>
-        <div class="slider-row">
-          <input
-            id="puff-radius-min"
-            type="range"
-            min="0"
-            max="5"
-            step="1"
-            value={$puffRadiusMin}
-            oninput={(e) => {
-              const v = Number((e.target as HTMLInputElement).value);
-              puffRadiusMin.set(v);
-              if (v > get(puffRadiusMax)) puffRadiusMax.set(v);
-            }}
-          />
-          <span class="slider-value">{$puffRadiusMin}</span>
-        </div>
-      </div>
-      <div class="light-control">
-        <label for="puff-radius-max">Max</label>
-        <div class="slider-row">
-          <input
-            id="puff-radius-max"
-            type="range"
-            min="0"
-            max="5"
-            step="1"
-            value={$puffRadiusMax}
-            oninput={(e) => {
-              const v = Number((e.target as HTMLInputElement).value);
-              puffRadiusMax.set(v);
-              if (v < get(puffRadiusMin)) puffRadiusMin.set(v);
-            }}
-          />
-          <span class="slider-value">{$puffRadiusMax}</span>
-        </div>
-      </div>
-    {:else}
-      <div class="light-control">
-        <label for="puff-sphere-size">Sphere size</label>
-        <div class="slider-row">
-          <input
-            id="puff-sphere-size"
-            type="range"
-            min="0"
-            max="5"
-            step="1"
-            value={$puffRadius}
-            oninput={(e) => puffRadius.set(Number((e.target as HTMLInputElement).value))}
-          />
-          <span class="slider-value">{$puffRadius}</span>
-        </div>
-      </div>
-    {/if}
-    <div class="light-control">
-      <label for="puff-scatter">Scatter</label>
-      <div class="slider-row">
-        <input
-          id="puff-scatter"
-          type="range"
-          min="0"
-          max="4"
-          step="1"
-          value={$puffScatter}
-          oninput={(e) => puffScatter.set(Number((e.target as HTMLInputElement).value))}
-        />
-        <span class="slider-value">{$puffScatter}</span>
-      </div>
-    </div>
-  {/if}
 </div>
 
 <style>
   .clay-mode {
     margin-bottom: 0.5rem;
-  }
-
-  .clay-mode .light-control {
-    margin-top: 0.5rem;
-    margin-bottom: 0.25rem;
   }
 </style>

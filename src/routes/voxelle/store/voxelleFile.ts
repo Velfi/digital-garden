@@ -1,4 +1,3 @@
-import { serialize as bsonSerialize, deserialize as bsonDeserialize } from 'bson';
 import { get } from 'svelte/store';
 import { coordKey, parseCoordKey } from '../coordUtils';
 import {
@@ -22,26 +21,56 @@ export type VoxelleFileFormat = {
   };
 };
 
-function parseFullFormat(raw: unknown): VoxelleFileFormat | null {
-  const data = raw as VoxelleFileFormat;
-  if (!data || typeof data.version !== 'number' || typeof data.gridSize !== 'number') return null;
-  const sz = data.gridSize;
-  if (sz < 1 || !Number.isInteger(sz)) return null;
-  if (!Array.isArray(data.voxels)) return null;
-  const voxelsArr: [number, number, number, number][] = [];
-  for (const e of data.voxels) {
-    if (!Array.isArray(e) || e.length !== 4) continue;
-    const [x, y, z, col] = e;
-    if (
-      typeof x !== 'number' ||
-      typeof y !== 'number' ||
-      typeof z !== 'number' ||
-      typeof col !== 'number'
-    )
-      continue;
-    voxelsArr.push([Math.floor(x), Math.floor(y), Math.floor(z), col >>> 0]);
-  }
-  return { version: data.version, gridSize: sz, voxels: voxelsArr, scene: data.scene };
+function createFileWorker(): Worker {
+  return new Worker(new URL('./voxelleFile.worker.ts', import.meta.url), { type: 'module' });
+}
+
+let workerNextId = 0;
+
+function parsePayloadInWorker(bytes: Uint8Array): Promise<VoxelleFileFormat | null> {
+  return new Promise((resolve, reject) => {
+    const id = ++workerNextId;
+    const worker = createFileWorker();
+    const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const handler = (e: MessageEvent) => {
+      if (e.data?.id !== id) return;
+      worker.removeEventListener('message', handler);
+      worker.terminate();
+      if (e.data.type === 'parsed') resolve(e.data.data ?? null);
+      else resolve(null);
+    };
+    worker.addEventListener('message', handler);
+    worker.onerror = () => {
+      worker.removeEventListener('message', handler);
+      worker.terminate();
+      reject(new Error('Worker failed'));
+    };
+    worker.postMessage({ type: 'parse', id, bytes: buf }, [buf]);
+  });
+}
+
+function serializeInWorker(data: VoxelleFileFormat): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const id = ++workerNextId;
+    const worker = createFileWorker();
+    const handler = (e: MessageEvent) => {
+      if (e.data?.id !== id) return;
+      worker.removeEventListener('message', handler);
+      worker.terminate();
+      if (e.data.type === 'serialized' && e.data.bytes) {
+        resolve(new Uint8Array(e.data.bytes));
+      } else {
+        reject(new Error('Worker failed'));
+      }
+    };
+    worker.addEventListener('message', handler);
+    worker.onerror = () => {
+      worker.removeEventListener('message', handler);
+      worker.terminate();
+      reject(new Error('Worker failed'));
+    };
+    worker.postMessage({ type: 'serialize', id, data });
+  });
 }
 
 export function serializeToVoxelleFormat(): VoxelleFileFormat {
@@ -61,18 +90,6 @@ export function serializeToVoxelleFormat(): VoxelleFileFormat {
   };
 }
 
-function parsePayload(bytes: Uint8Array): VoxelleFileFormat | null {
-  const isJson = bytes[0] === 0x7b; // '{'
-  try {
-    if (isJson) {
-      return parseFullFormat(JSON.parse(new TextDecoder().decode(bytes)));
-    }
-    return parseFullFormat(bsonDeserialize(bytes));
-  } catch {
-    return null;
-  }
-}
-
 async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
   const slice = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
   const blob = new Blob([slice]);
@@ -90,23 +107,6 @@ async function gzipDecompress(bytes: Uint8Array): Promise<Uint8Array> {
 
 function isGzipped(bytes: Uint8Array): boolean {
   return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
-}
-
-export async function saveToFile(filename = 'voxelle.voxelle'): Promise<void> {
-  const data = serializeToVoxelleFormat();
-  const bsonBytes = bsonSerialize(data);
-  const compressed = await gzipCompress(bsonBytes);
-  const slice = compressed.buffer.slice(
-    compressed.byteOffset,
-    compressed.byteOffset + compressed.byteLength
-  ) as ArrayBuffer;
-  const blob = new Blob([slice], { type: 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function applyModelData(data: VoxelleFileFormat): void {
@@ -131,13 +131,30 @@ function applyModelData(data: VoxelleFileFormat): void {
   }
 }
 
+export async function saveToFile(filename = 'voxelle.voxelle'): Promise<void> {
+  const data = serializeToVoxelleFormat();
+  const bsonBytes = await serializeInWorker(data);
+  const compressed = await gzipCompress(bsonBytes);
+  const slice = compressed.buffer.slice(
+    compressed.byteOffset,
+    compressed.byteOffset + compressed.byteLength
+  ) as ArrayBuffer;
+  const blob = new Blob([slice], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /** Decode bytes (gzipped or raw) and apply to store. Used by file load and share. */
 export async function loadFromBytes(bytes: Uint8Array): Promise<boolean> {
   let payload = bytes;
   if (isGzipped(bytes)) {
     payload = await gzipDecompress(bytes);
   }
-  const data = parsePayload(payload);
+  const data = await parsePayloadInWorker(payload);
   if (!data) return false;
   applyModelData(data);
   return true;
@@ -151,9 +168,9 @@ export async function loadFromFile(file: File): Promise<boolean> {
 /** Encode model as base64(gzip(BSON)) for share URL or blob storage. */
 export async function encodeForTransport(): Promise<string> {
   const data = serializeToVoxelleFormat();
-  const bsonBytes = bsonSerialize(data);
+  const bsonBytes = await serializeInWorker(data);
   const compressed = await gzipCompress(bsonBytes);
   let binary = '';
-  for (let i = 0; i < compressed.length; i++) binary += String.fromCharCode(compressed[i]);
+  for (let i = 0; i < compressed.length; i++) binary += String.fromCharCode(compressed[i]!);
   return btoa(binary);
 }

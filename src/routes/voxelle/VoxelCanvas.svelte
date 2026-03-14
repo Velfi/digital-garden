@@ -44,6 +44,7 @@
     updateVoxels,
     updateVoxelsInStroke,
     beginStroke,
+    pushUndo,
     history,
     initCanvas,
     loadFromStorage,
@@ -101,7 +102,10 @@
   import { buildGreedyMesh } from './greedyMesh';
   import OrbitGizmo from './OrbitGizmo.svelte';
   import StampPanel from './StampPanel.svelte';
-  import BranchPanel from './BranchPanel.svelte';
+  import ClayModePanel from './ClayModePanel.svelte';
+  import PlaneAxisPanel from './PlaneAxisPanel.svelte';
+  import AirbrushOptionsPanel from './AirbrushOptionsPanel.svelte';
+  import FillOptionsPanel from './FillOptionsPanel.svelte';
   import SelectionCountPanel from './SelectionCountPanel.svelte';
 
   let container: HTMLDivElement;
@@ -145,6 +149,9 @@
   /** Branch: pointer down position for view-plane direction and length */
   let branchPointerDownX = 0;
   let branchPointerDownY = 0;
+
+  /** Shown when greedy meshing takes >2s to avoid perceived freeze */
+  let greedyMeshLoading = $state(false);
 
   // Cuboid two-phase: first drag = plane, then scroll/drag = depth
   let cuboidPhase = $state<'plane' | 'depth' | null>(null);
@@ -602,6 +609,7 @@
   }
 
   function applySelectStroke(positions: [number, number, number][]) {
+    pushUndo();
     const v = $voxels;
     const sz = $gridSize;
     const mode = get(selectionMode);
@@ -994,6 +1002,7 @@
           get(fillRespectsColor)
         );
         if (incoming.size > 0) {
+          pushUndo();
           const next = mergeSelection($selection, incoming, get(selectionMode));
           selection.set(next);
         }
@@ -1080,6 +1089,7 @@
       if (pos) {
         const targetColor = $voxels.get(coordKey(pos[0], pos[1], pos[2]));
         if (targetColor !== undefined) {
+          pushUndo();
           const incoming =
             get(strokeMode) === 'fill'
               ? getFillSelectionAt(
@@ -1663,8 +1673,14 @@
     const v = $voxels;
     const sz = $gridSize;
     const _ao = $enableAO;
+    const spinnerTimeout = setTimeout(() => {
+      greedyMeshLoading = true;
+    }, 2000);
     rebuildVoxelMeshes(v, sz);
+    clearTimeout(spinnerTimeout);
+    greedyMeshLoading = false;
     render();
+    return () => clearTimeout(spinnerTimeout);
   });
 
   $effect(() => {
@@ -2109,6 +2125,12 @@
   role="application"
   aria-label="Voxel sculpting canvas"
 >
+  {#if greedyMeshLoading}
+    <div class="greedy-mesh-spinner" role="status" aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <span>Building mesh…</span>
+    </div>
+  {/if}
   {#if cuboidPhase === 'depth'}
     <div class="depth-slider-container">
       <div
@@ -2213,7 +2235,10 @@
     </div>
   {/if}
   <StampPanel />
-  <BranchPanel />
+  <ClayModePanel />
+  <PlaneAxisPanel />
+  <AirbrushOptionsPanel />
+  <FillOptionsPanel />
   <SelectionCountPanel />
   {#if $tool === 'fly'}
     <div class="fly-hint" role="status" aria-live="polite">
@@ -2261,6 +2286,36 @@
     display: block;
     width: 100%;
     height: 100%;
+  }
+
+  .greedy-mesh-spinner {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-size: 0.9rem;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .greedy-mesh-spinner .spinner {
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: greedy-mesh-spin 0.8s linear infinite;
+  }
+
+  @keyframes greedy-mesh-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .cuboid-done-btn {

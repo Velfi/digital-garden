@@ -121,6 +121,7 @@ export function mergeSelection(
 }
 
 export function selectAll() {
+  pushUndo();
   const v = get(voxels);
   const next = new Map<string, number>();
   for (const [key, col] of v) next.set(key, col);
@@ -128,10 +129,12 @@ export function selectAll() {
 }
 
 export function deselectAll() {
+  pushUndo();
   selection.set(new Map());
 }
 
 export function deselectVoxels() {
+  pushUndo();
   const v = get(voxels);
   const sel = get(selection);
   const next = new Map<string, number>();
@@ -142,6 +145,7 @@ export function deselectVoxels() {
 }
 
 export function deselectEmptySpaces() {
+  pushUndo();
   const v = get(voxels);
   const sel = get(selection);
   const next = new Map<string, number>();
@@ -152,6 +156,7 @@ export function deselectEmptySpaces() {
 }
 
 export function invertSelection() {
+  pushUndo();
   const v = get(voxels);
   const sel = get(selection);
   const next = new Map<string, number>();
@@ -162,6 +167,7 @@ export function invertSelection() {
 }
 
 export function growSelection() {
+  pushUndo();
   const v = get(voxels);
   const sz = get(gridSize);
   const sel = get(selection);
@@ -183,6 +189,7 @@ export function growSelection() {
 }
 
 export function shrinkSelection() {
+  pushUndo();
   const v = get(voxels);
   const sz = get(gridSize);
   const sel = get(selection);
@@ -248,6 +255,7 @@ export function selectConnected() {
   const sz = get(gridSize);
   const sel = get(selection);
   if (sel.size === 0) return;
+  pushUndo();
   const firstKey = sel.keys().next().value;
   if (!firstKey) return;
   const targetColor = sel.get(firstKey)!;
