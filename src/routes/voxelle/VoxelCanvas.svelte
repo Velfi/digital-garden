@@ -151,6 +151,9 @@
 
   /** Shown while worker is computing (main voxel mesh rebuild) */
   let greedyMeshLoading = $state(false);
+  /** Only show spinner after build has taken >2s */
+  let showGreedyMeshSpinner = $state(false);
+  let greedyMeshSpinnerTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   let meshWorker: Worker | null = null;
   let meshRebuildGen = 0;
@@ -288,6 +291,12 @@
     if (!meshWorker || !voxelGroup) return;
     const gen = ++meshRebuildGen;
     greedyMeshLoading = true;
+    showGreedyMeshSpinner = false;
+    if (greedyMeshSpinnerTimeoutId) clearTimeout(greedyMeshSpinnerTimeoutId);
+    greedyMeshSpinnerTimeoutId = setTimeout(() => {
+      greedyMeshSpinnerTimeoutId = null;
+      if (greedyMeshLoading) showGreedyMeshSpinner = true;
+    }, 2000);
     const voxelsArr: [string, number][] = [...v];
     meshWorker.postMessage({
       voxels: voxelsArr,
@@ -304,6 +313,11 @@
     meshWorker.onmessage = (e: MessageEvent<{ results: unknown[]; gen?: number }>) => {
       if (e.data.gen !== meshRebuildGen) return;
       greedyMeshLoading = false;
+      showGreedyMeshSpinner = false;
+      if (greedyMeshSpinnerTimeoutId) {
+        clearTimeout(greedyMeshSpinnerTimeoutId);
+        greedyMeshSpinnerTimeoutId = null;
+      }
       applyVoxelMeshResults(e.data.results as Parameters<typeof applyVoxelMeshResults>[0]);
       render();
     };
@@ -2159,7 +2173,7 @@
   role="application"
   aria-label="Voxel sculpting canvas"
 >
-  {#if greedyMeshLoading}
+  {#if showGreedyMeshSpinner}
     <div class="greedy-mesh-spinner" role="status" aria-live="polite">
       <div class="spinner" aria-hidden="true"></div>
       <span>Building mesh…</span>
