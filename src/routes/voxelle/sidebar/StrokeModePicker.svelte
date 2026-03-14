@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { strokeMode, fillSelectDiagonals, fillRespectsColor, planeAxis } from '../store';
+  import { strokeMode, fillSelectDiagonals, fillRespectsColor, planeAxis, airbrushRadius } from '../store';
 </script>
 
 <div class="stroke-mode" role="group" aria-labelledby="stroke-label">
@@ -45,6 +45,14 @@
     >
       Fill
     </button>
+    <button
+      type="button"
+      class:active={$strokeMode === 'airbrush'}
+      onclick={() => strokeMode.set('airbrush')}
+      title="Drag to paint a soft spherical brush along the path"
+    >
+      Airbrush
+    </button>
   </div>
   {#if $strokeMode === 'fill'}
     <div class="stroke-buttons" role="group" aria-label="Fill options">
@@ -64,6 +72,25 @@
         />
         Respect color
       </label>
+    </div>
+  {/if}
+  {#if $strokeMode === 'airbrush'}
+    <div class="stroke-buttons" role="group" aria-label="Airbrush options">
+      <div class="light-control">
+        <label for="airbrush-radius">Brush size</label>
+        <div class="slider-row">
+          <input
+            type="range"
+            id="airbrush-radius"
+            min="0"
+            max="5"
+            step="1"
+            value={$airbrushRadius}
+            oninput={(e) => airbrushRadius.set(Number((e.target as HTMLInputElement).value))}
+          />
+          <span class="slider-value">{$airbrushRadius}</span>
+        </div>
+      </div>
     </div>
   {/if}
   {#if $strokeMode === 'plane' || $strokeMode === 'cuboid'}

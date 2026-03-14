@@ -4,6 +4,8 @@
     selection,
     selectionMode,
     tool,
+    toolPane,
+    lastDrawTool,
     selectAll,
     deselectAll,
     invertSelection,
@@ -173,6 +175,8 @@
 
   function handleSelectByColor() {
     tool.set('selectByColor');
+    toolPane.set('draw');
+    lastDrawTool.set('selectByColor');
     closeMenus();
   }
 

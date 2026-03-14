@@ -33,12 +33,12 @@ export type Tool =
   | 'eyedropper'
   | 'clay';
 
-export type ClayMode = 'bulk';
+export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt';
 
 const DEFAULT_COLOR = 0x888888;
 const MAX_GRID_SIZE = 256;
 
-export type StrokeMode = 'line' | 'plane' | 'cuboid' | 'polygon' | 'fill';
+export type StrokeMode = 'line' | 'plane' | 'cuboid' | 'polygon' | 'fill' | 'airbrush';
 
 export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect';
 
@@ -70,10 +70,16 @@ const defaultAddPanel: AddPanelState = {
   size: 8
 };
 
+/** Draw vs Clay tab pane. Draw = voxel/remove/paint/etc + stroke mode; Clay = clay tool + clay modes. */
+export type ToolPane = 'draw' | 'clay';
+
 // Stores
 export const gridSize = writable<GridSize>(32);
 export const voxels = writable<Map<string, number>>(new Map());
 export const tool = writable<Tool>('remove');
+export const toolPane = writable<ToolPane>('draw');
+/** Last selected draw tool, restored when switching from Clay back to Draw pane. */
+export const lastDrawTool = writable<Tool>('remove');
 export const selection = writable<Map<string, number>>(new Map());
 export const selectionMode = writable<SelectionMode>('replace');
 export const fillSelectDiagonals = writable<boolean>(false);
@@ -83,6 +89,20 @@ export const planeAxis = writable<PlaneAxis>(1);
 export const clayMode = writable<ClayMode>('bulk');
 /** Brush radius for clay bulk (0=single voxel, 1=3³ tube, 2=5³). Like Blender F key. */
 export const clayBrushRadius = writable<number>(1);
+/** Branch mode: taper from thick base to thin tip. */
+export const branchTaper = writable<boolean>(false);
+/** Puffy mode: sphere radius (0=single voxel, 1=3³, 2=5³, 3=7³, 4=9³, 5=11³). */
+export const puffRadius = writable<number>(1);
+/** Puffy mode: when true, radius varies between puffRadiusMin and puffRadiusMax per sphere. */
+export const puffRadiusRange = writable<boolean>(false);
+/** Puffy mode: min sphere radius when range enabled. */
+export const puffRadiusMin = writable<number>(0);
+/** Puffy mode: max sphere radius when range enabled. */
+export const puffRadiusMax = writable<number>(2);
+/** Puffy mode: max voxel offset for sphere centers (0=none, 1–4=scatter range). */
+export const puffScatter = writable<number>(0);
+/** Airbrush stroke mode: sphere radius (0=single voxel, 1=3³, 2=5³, 3=7³, 4=9³, 5=11³). */
+export const airbrushRadius = writable<number>(1);
 export const color = writable<string>('#ff5733');
 const DEFAULT_PALETTE = [
   '#888888', '#ff5733', '#33ff57', '#3357ff', '#ff33f5', '#f5ff33', '#33fff5', '#000000', '#ffffff'

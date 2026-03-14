@@ -67,7 +67,7 @@ Central state in writable stores. Import from `'./store'` (resolves to `store/in
 
 ### Tools
 
-`voxel`, `remove`, `paint`, `select`, `selectByColor`, `stamp`, `fly`, `eyedropper`, `clay`. Stroke modes: `line`, `plane`, `cuboid`, `polygon`, `fill`. Clay modes: `bulk` (Blender Snake Hook–style: pull from surface, path-following, brush radius).
+`voxel`, `remove`, `paint`, `select`, `selectByColor`, `stamp`, `fly`, `eyedropper`, `clay`. Stroke modes: `line`, `plane`, `cuboid`, `polygon`, `fill`, `airbrush`. Clay modes: `bulk` (Blender Snake Hook–style: pull from surface, path-following, brush radius).
 
 ### Greedy Meshing
 

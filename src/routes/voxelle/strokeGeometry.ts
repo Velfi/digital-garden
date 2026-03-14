@@ -3,6 +3,118 @@ import { ConvexHull } from 'three/addons/math/ConvexHull.js';
 
 export type Vec3Like = { x: number; y: number; z: number };
 
+/** Path from origin stepping along direction for length voxel steps. Direction is normalized. */
+export function getRayDirectionPath(
+  origin: [number, number, number],
+  direction: Vec3Like,
+  length: number
+): [number, number, number][] {
+  if (length <= 0) return [origin];
+  const dx = direction.x;
+  const dy = direction.y;
+  const dz = direction.z;
+  const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (len < 1e-9) return [origin];
+  const ndx = dx / len;
+  const ndy = dy / len;
+  const ndz = dz / len;
+  const positions: [number, number, number][] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i <= length; i++) {
+    const x = Math.round(origin[0] + i * ndx);
+    const y = Math.round(origin[1] + i * ndy);
+    const z = Math.round(origin[2] + i * ndz);
+    const k = `${x},${y},${z}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      positions.push([x, y, z]);
+    }
+  }
+  return positions;
+}
+
+/** Map continuous radius to discrete size (0=1x1, 0.5=2x2, 1=3x3, 2=5x5...) so taper hits 3→2→1. */
+function taperRadiusToSize(c: number): number {
+  if (c <= 0) return 0;
+  if (c < 0.5) return 0;
+  if (c < 1) return 0.5; // 2x2
+  if (c < 2) return 1;
+  if (c < 3) return 2;
+  return 3;
+}
+
+/** Add voxels for a single path point with given size. Size 0=1x1, 0.5=2x2, 1+=cube radius. */
+function addThickenPoint(
+  px: number,
+  py: number,
+  pz: number,
+  size: number,
+  seen: Set<string>,
+  result: [number, number, number][]
+): void {
+  if (size === 0) {
+    const k = `${px},${py},${pz}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      result.push([px, py, pz]);
+    }
+    return;
+  }
+  if (size === 0.5) {
+    for (let i = 0; i <= 1; i++) {
+      for (let j = 0; j <= 1; j++) {
+        for (let k = 0; k <= 1; k++) {
+          const x = px + i;
+          const y = py + j;
+          const z = pz + k;
+          const key = `${x},${y},${z}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            result.push([x, y, z]);
+          }
+        }
+      }
+    }
+    return;
+  }
+  const radius = Math.floor(size);
+  for (let dx = -radius; dx <= radius; dx++) {
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dz = -radius; dz <= radius; dz++) {
+        const x = px + dx;
+        const y = py + dy;
+        const z = pz + dz;
+        const key = `${x},${y},${z}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          result.push([x, y, z]);
+        }
+      }
+    }
+  }
+}
+
+/** Like thickenPath but radius interpolates from baseRadius (start) to tipRadius (end). Uses discrete steps 3→2→1. */
+export function thickenPathTapered(
+  positions: [number, number, number][],
+  baseRadius: number,
+  tipRadius: number
+): [number, number, number][] {
+  if (positions.length === 0) return [];
+  if (baseRadius <= 0 && tipRadius <= 0) return positions;
+  const seen = new Set<string>();
+  const result: [number, number, number][] = [];
+  const n = positions.length;
+  for (let idx = 0; idx < n; idx++) {
+    const t = n === 1 ? 0 : idx / (n - 1);
+    const c = baseRadius + t * (tipRadius - baseRadius);
+    const size = taperRadiusToSize(Math.max(0, c));
+    const [px, py, pz] = positions[idx];
+    addThickenPoint(px, py, pz, size, seen, result);
+  }
+  return result;
+}
+
 /** Expands each path point into a cube of radius r (Chebyshev). Radius 0 = single voxel. */
 export function thickenPath(
   positions: [number, number, number][],
@@ -28,6 +140,118 @@ export function thickenPath(
     }
   }
   return result;
+}
+
+/** Sphere: x²+y²+z² <= r² (Euclidean). r=0 → single voxel, r=1 → 3³ sphere (~14 voxels), r=2 → 5³ sphere. */
+function getSphereVoxels(
+  cx: number,
+  cy: number,
+  cz: number,
+  r: number
+): [number, number, number][] {
+  if (r <= 0) return [[Math.round(cx), Math.round(cy), Math.round(cz)]];
+  const ri = Math.floor(r);
+  const rSq = ri * ri;
+  const positions: [number, number, number][] = [];
+  for (let dx = -ri; dx <= ri; dx++) {
+    for (let dy = -ri; dy <= ri; dy++) {
+      for (let dz = -ri; dz <= ri; dz++) {
+        if (dx * dx + dy * dy + dz * dz <= rSq) {
+          positions.push([cx + dx, cy + dy, cz + dz]);
+        }
+      }
+    }
+  }
+  return positions;
+}
+
+/** Expands each path point into a sphere. Radius 0=single voxel, 1=3³, 2=5³, 3=7³, 4=9³, 5=11³. Scatter: max voxel offset for sphere centers (0=none). When radiusMin/radiusMax provided and radiusMax > radiusMin, picks random radius per sphere. */
+export function puffPath(
+  positions: [number, number, number][],
+  radius: number,
+  scatter: number = 0,
+  radiusMin?: number,
+  radiusMax?: number
+): [number, number, number][] {
+  if (positions.length === 0) return [];
+  const useRange =
+    radiusMin !== undefined &&
+    radiusMax !== undefined &&
+    Math.floor(radiusMax) > Math.floor(radiusMin);
+  const rMin = useRange ? Math.max(0, Math.floor(radiusMin!)) : Math.max(0, Math.floor(radius));
+  const rMax = useRange ? Math.max(0, Math.floor(radiusMax!)) : rMin;
+  const s = Math.max(0, Math.floor(scatter));
+  const seen = new Set<string>();
+  const result: [number, number, number][] = [];
+  for (const [px, py, pz] of positions) {
+    const ox = s > 0 ? Math.round((Math.random() * 2 - 1) * s) : 0;
+    const oy = s > 0 ? Math.round((Math.random() * 2 - 1) * s) : 0;
+    const oz = s > 0 ? Math.round((Math.random() * 2 - 1) * s) : 0;
+    const r = useRange ? rMin + Math.floor(Math.random() * (rMax - rMin + 1)) : rMin;
+    const voxels = getSphereVoxels(px + ox, py + oy, pz + oz, r);
+    for (const [x, y, z] of voxels) {
+      const xi = Math.round(x);
+      const yi = Math.round(y);
+      const zi = Math.round(z);
+      const k = `${xi},${yi},${zi}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        result.push([xi, yi, zi]);
+      }
+    }
+  }
+  return result;
+}
+
+/** Params for path thickening; used by both preview and apply to avoid divergence. */
+export interface PathThickenParams {
+  strokeMode: string;
+  clayMode?: string;
+  clayBrushRadius: number;
+  branchTaper: boolean;
+  puffRadius: number;
+  puffScatter: number;
+  puffRadiusRange: boolean;
+  puffRadiusMin: number;
+  puffRadiusMax: number;
+  airbrushRadius: number;
+}
+
+const CLAY_PATH_MODES = ['bulk', 'smooth', 'level', 'gouge', 'branch', 'puffy', 'melt'] as const;
+
+/**
+ * Thickens a path according to stroke/clay mode. Single source of truth for preview and apply.
+ * Priority: clay puffy > airbrush > clay branch+taper > clay thicken > raw.
+ */
+export function thickenPathForStroke(
+  positions: [number, number, number][],
+  params: PathThickenParams
+): [number, number, number][] {
+  if (positions.length === 0) return [];
+  const isClayPath =
+    params.clayMode !== undefined && CLAY_PATH_MODES.includes(params.clayMode as (typeof CLAY_PATH_MODES)[number]);
+
+  // Clay modes take precedence; stroke mode (e.g. airbrush) only applies to Draw tools
+  if (isClayPath && params.clayMode === 'puffy') {
+    return puffPath(
+      positions,
+      params.puffRadius,
+      params.puffScatter,
+      params.puffRadiusRange ? params.puffRadiusMin : undefined,
+      params.puffRadiusRange ? params.puffRadiusMax : undefined
+    );
+  }
+  if (isClayPath && params.clayMode === 'branch' && params.branchTaper) {
+    return thickenPathTapered(positions, params.clayBrushRadius, 0);
+  }
+  if (isClayPath && params.clayBrushRadius > 0) {
+    return thickenPath(positions, params.clayBrushRadius);
+  }
+  if (isClayPath) return positions;
+  if (params.strokeMode === 'airbrush') {
+    return puffPath(positions, params.airbrushRadius, 0);
+  }
+  return positions;
 }
 
 /** Returns all voxels along a 3D line between a and b (6-connected path). */

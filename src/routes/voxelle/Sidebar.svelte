@@ -5,6 +5,8 @@
     addPanelStore,
     voxels,
     tool,
+    toolPane,
+    lastDrawTool,
     encodeModelForUrl
   } from './store';
   import { nanoid } from 'nanoid';
@@ -88,12 +90,44 @@
 </script>
 
 <ArtSidebar open={sidebarOpen}>
-  <ToolPicker />
-  {#if $tool === 'clay'}
-    <ClayModePicker />
-  {:else}
-    <StrokeModePicker />
-  {/if}
+  <div class="tool-panes">
+    <div class="tab-bar" role="tablist">
+      <button
+        type="button"
+        role="tab"
+        class:active={$toolPane === 'draw'}
+        aria-selected={$toolPane === 'draw'}
+        onclick={() => {
+          toolPane.set('draw');
+          tool.set($lastDrawTool);
+        }}
+      >
+        Draw
+      </button>
+      <button
+        type="button"
+        role="tab"
+        class:active={$toolPane === 'clay'}
+        aria-selected={$toolPane === 'clay'}
+        onclick={() => {
+          toolPane.set('clay');
+          tool.set('clay');
+        }}
+      >
+        Clay
+      </button>
+    </div>
+    {#if $toolPane === 'draw'}
+      <div role="tabpanel">
+        <ToolPicker />
+        <StrokeModePicker />
+      </div>
+    {:else}
+      <div role="tabpanel">
+        <ClayModePicker />
+      </div>
+    {/if}
+  </div>
   <ColorSection />
   <CameraSection />
   <SceneSection />
@@ -104,3 +138,48 @@
   <ShareModal bind:open={showShareModal} {shareUrl} />
   <NewGridModal bind:open={showNewGridModal} />
 </ArtSidebar>
+
+<style>
+  .tool-panes {
+    margin-bottom: 0.5rem;
+  }
+
+  .tab-bar {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .tab-bar button {
+    flex: 1;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-color);
+    color: var(--text-color);
+    cursor: pointer;
+  }
+
+  .tab-bar button:hover:not(.active) {
+    background: var(--block-quote-bg-color);
+  }
+
+  .tab-bar button.active {
+    background: var(--link-color);
+    border-color: var(--link-color);
+  }
+
+  :global(body:not(.light-mode)) .tab-bar button.active {
+    color: white;
+    background: color-mix(in srgb, var(--link-color) 70%, black);
+    border-color: color-mix(in srgb, var(--link-color) 70%, black);
+  }
+
+  :global(body.light-mode) .tab-bar button.active {
+    color: var(--text-color);
+    background: color-mix(in srgb, var(--link-color) 20%, var(--bg-color));
+    border-color: var(--link-color);
+  }
+</style>

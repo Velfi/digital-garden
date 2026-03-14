@@ -15,6 +15,13 @@
     planeAxis,
     clayMode,
     clayBrushRadius,
+    branchTaper,
+    puffRadius,
+    puffRadiusRange,
+    puffRadiusMin,
+    puffRadiusMax,
+    puffScatter,
+    airbrushRadius,
     selection,
     lightAngle,
     lightElevation,
@@ -68,8 +75,10 @@
     getAxisAlignedCuboid,
     getPolygonVoxels,
     getBresenham3DLine,
-    thickenPath
+    getRayDirectionPath,
+    thickenPathForStroke
   } from './strokeGeometry';
+  import { applySmooth, applyLevel, applyMelt } from './clayOps';
   import { buildGridPositions } from './gridLines';
   import {
     FLY_MOVE_SPEED,
@@ -86,6 +95,7 @@
   import { buildGreedyMesh } from './greedyMesh';
   import OrbitGizmo from './OrbitGizmo.svelte';
   import StampPanel from './StampPanel.svelte';
+  import BranchPanel from './BranchPanel.svelte';
   import SelectionCountPanel from './SelectionCountPanel.svelte';
 
   let container: HTMLDivElement;
@@ -126,6 +136,9 @@
   let pendingStrokePositions: [number, number, number][] = [];
   /** Clay bulk: last sampled position for path accumulation */
   let lastBulkPos: [number, number, number] | null = null;
+  /** Branch: pointer down position for view-plane direction and length */
+  let branchPointerDownX = 0;
+  let branchPointerDownY = 0;
 
   // Cuboid two-phase: first drag = plane, then scroll/drag = depth
   let cuboidPhase = $state<'plane' | 'depth' | null>(null);
@@ -513,6 +526,59 @@
     });
   }
 
+  function applyClayStroke(
+    positions: [number, number, number][],
+    clayModeVal: 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt',
+    levelY: number
+  ) {
+    ensureGridFitsPositions(positions);
+    const sz = $gridSize;
+    const col = hexToInt($color);
+    const v = $voxels;
+    if (clayModeVal === 'melt') {
+      const { toAdd, toRemove } = applyMelt(v, positions, sz);
+      updateVoxelsInStroke((next) => {
+        for (const key of toRemove) next.delete(key);
+        for (const [key, c] of toAdd) next.set(key, c);
+      });
+      return;
+    }
+    if (clayModeVal === 'gouge') {
+      updateVoxelsInStroke((next) => {
+        for (const [x, y, z] of positions) {
+          if (!inBounds(x, y, z, sz)) continue;
+          next.delete(coordKey(x, y, z));
+        }
+      });
+      return;
+    }
+    if (clayModeVal === 'bulk' || clayModeVal === 'branch' || clayModeVal === 'puffy') {
+      updateVoxelsInStroke((next) => {
+        for (const [x, y, z] of positions) {
+          if (!inBounds(x, y, z, sz)) continue;
+          const key = coordKey(x, y, z);
+          if (!next.has(key)) next.set(key, col);
+        }
+      });
+      return;
+    }
+    if (clayModeVal === 'smooth') {
+      const { toAdd, toRemove } = applySmooth(v, positions, sz);
+      updateVoxelsInStroke((next) => {
+        for (const key of toRemove) next.delete(key);
+        for (const [key, c] of toAdd) next.set(key, c);
+      });
+      return;
+    }
+    if (clayModeVal === 'level') {
+      const { toAdd, toRemove } = applyLevel(v, positions, levelY, col, sz);
+      updateVoxelsInStroke((next) => {
+        for (const key of toRemove) next.delete(key);
+        for (const [key, c] of toAdd) next.set(key, c);
+      });
+    }
+  }
+
   function applySelectStroke(positions: [number, number, number][]) {
     const v = $voxels;
     const sz = $gridSize;
@@ -824,8 +890,9 @@
     container.setPointerCapture(event.pointerId);
     dragPointerId = event.pointerId;
 
-    // Clay tool + bulk mode: start path-following drag (Blender Snake Hook - pull from surface)
-    if ($tool === 'clay' && get(clayMode) === 'bulk') {
+    // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/puffy/melt)
+    const mode = get(clayMode);
+    if ($tool === 'clay' && (mode === 'bulk' || mode === 'smooth' || mode === 'level' || mode === 'gouge' || mode === 'puffy' || mode === 'melt')) {
       // Start on voxel (grab surface) or face of voxel (extend outward)
       const pos = getVoxelPosition(hit) ?? getAddPosition(hit);
       if (pos) {
@@ -833,8 +900,50 @@
         dragStartPos = pos;
         lastBulkPos = pos;
         pendingStrokePositions = [pos];
-        const r = get(clayBrushRadius) as number;
-        updatePreviewMesh(r > 0 ? thickenPath(pendingStrokePositions, r) : pendingStrokePositions);
+        updatePreviewMesh(
+          thickenPathForStroke(pendingStrokePositions, {
+            strokeMode: get(strokeMode),
+            clayMode: mode,
+            clayBrushRadius: get(clayBrushRadius) as number,
+            branchTaper: get(branchTaper),
+            puffRadius: get(puffRadius),
+            puffScatter: get(puffScatter),
+            puffRadiusRange: get(puffRadiusRange),
+            puffRadiusMin: get(puffRadiusMin),
+            puffRadiusMax: get(puffRadiusMax),
+            airbrushRadius: get(airbrushRadius) as number
+          })
+        );
+      } else {
+        dragPointerId = null;
+        container.releasePointerCapture(event.pointerId);
+      }
+      requestAnimationFrame(() => render());
+      return;
+    }
+    // Clay tool + branch mode: start drag (extrude into empty space)
+    if ($tool === 'clay' && mode === 'branch') {
+      const pos = getAddPosition(hit) ?? getVoxelPosition(hit);
+      if (pos) {
+        isVoxelDrag = true;
+        dragStartPos = pos;
+        branchPointerDownX = event.clientX;
+        branchPointerDownY = event.clientY;
+        pendingStrokePositions = [pos];
+        updatePreviewMesh(
+          thickenPathForStroke(pendingStrokePositions, {
+            strokeMode: get(strokeMode),
+            clayMode: 'branch',
+            clayBrushRadius: get(clayBrushRadius) as number,
+            branchTaper: get(branchTaper),
+            puffRadius: get(puffRadius),
+            puffScatter: get(puffScatter),
+            puffRadiusRange: get(puffRadiusRange),
+            puffRadiusMin: get(puffRadiusMin),
+            puffRadiusMax: get(puffRadiusMax),
+            airbrushRadius: get(airbrushRadius) as number
+          })
+        );
       } else {
         dragPointerId = null;
         container.releasePointerCapture(event.pointerId);
@@ -1013,7 +1122,24 @@
     dragFaceNormal = pa === 'auto' ? faceNormal : axisVector(pa);
     dragPlaneAxisOverride = null;
     pendingStrokePositions = [startPos];
-    updatePreviewMesh(pendingStrokePositions);
+    if (get(strokeMode) === 'airbrush') {
+      lastBulkPos = startPos;
+      updatePreviewMesh(
+        thickenPathForStroke(pendingStrokePositions, {
+          strokeMode: 'airbrush',
+          clayBrushRadius: get(clayBrushRadius) as number,
+          branchTaper: get(branchTaper),
+          puffRadius: get(puffRadius),
+          puffScatter: get(puffScatter),
+          puffRadiusRange: get(puffRadiusRange),
+          puffRadiusMin: get(puffRadiusMin),
+          puffRadiusMax: get(puffRadiusMax),
+          airbrushRadius: get(airbrushRadius) as number
+        })
+      );
+    } else {
+      updatePreviewMesh(pendingStrokePositions);
+    }
     requestAnimationFrame(() => render());
   }
 
@@ -1051,46 +1177,118 @@
       return;
     }
     if (isVoxelDrag && dragStartPos) {
-      const hit = getIntersection();
-      let currentPos: [number, number, number] | null = null;
-      if (hit) {
-        currentPos = $tool === 'voxel' || $tool === 'clay' ? getAddPosition(hit) : getVoxelPosition(hit);
-      }
-      if (currentPos) {
-        if ($tool === 'clay' && get(clayMode) === 'bulk' && lastBulkPos) {
-          // Bulk: accumulate path with 3D line segments
-          const segment = getBresenham3DLine(lastBulkPos, currentPos);
-          const seen = new Set(pendingStrokePositions.map((p) => `${p[0]},${p[1]},${p[2]}`));
-          for (const p of segment) {
-            const k = `${p[0]},${p[1]},${p[2]}`;
-            if (!seen.has(k)) {
-              seen.add(k);
-              pendingStrokePositions.push(p);
-            }
+      const clayPathMode = get(clayMode);
+      if ($tool === 'clay' && clayPathMode === 'branch') {
+      // Branch: view-plane direction (drag up = grow up on screen, not into scene)
+        const currX = event?.clientX ?? branchPointerDownX;
+        const currY = event?.clientY ?? branchPointerDownY;
+        const dx = currX - branchPointerDownX;
+        const dy = branchPointerDownY - currY; // screen up = positive
+        const length = Math.max(0, Math.round(Math.sqrt(dx * dx + dy * dy) / 12));
+        let dir = { x: 0, y: 0, z: 0 };
+        if (length > 0 && camera) {
+          camera.updateMatrixWorld(true);
+          const viewDir = new THREE.Vector3();
+          camera.getWorldDirection(viewDir);
+          const right = new THREE.Vector3().crossVectors(viewDir, camera.up).normalize();
+          const up = new THREE.Vector3().crossVectors(right, viewDir).normalize();
+          dir = {
+            x: right.x * dx + up.x * dy,
+            y: right.y * dx + up.y * dy,
+            z: right.z * dx + up.z * dy
+          };
+          const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+          if (len > 1e-6) {
+            dir = { x: dir.x / len, y: dir.y / len, z: dir.z / len };
+          } else {
+            dir = { x: up.x, y: up.y, z: up.z };
           }
-          lastBulkPos = currentPos;
-        } else {
-          const mode = get(strokeMode);
-          const normal = getEffectivePlaneNormal();
-          pendingStrokePositions =
-            (mode === 'plane' || mode === 'cuboid') && normal
-              ? getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, normal)
-              : getAxisAlignedLine(dragStartPos, currentPos);
+        } else if (length > 0) {
+          dir = { x: 0, y: 1, z: 0 };
         }
-        // Clay bulk: show thickened preview (brush radius)
-        if ($tool === 'clay' && get(clayMode) === 'bulk') {
-          const r = get(clayBrushRadius) as number;
-          updatePreviewMesh(r > 0 ? thickenPath(pendingStrokePositions, r) : pendingStrokePositions);
-        } else {
-          updatePreviewMesh(pendingStrokePositions);
-        }
-        deltaDisplay = {
-          dx: currentPos[0] - dragStartPos[0],
-          dy: currentPos[1] - dragStartPos[1],
-          dz: currentPos[2] - dragStartPos[2]
-        };
+        pendingStrokePositions = getRayDirectionPath(dragStartPos, dir, length);
+        updatePreviewMesh(
+          thickenPathForStroke(pendingStrokePositions, {
+            strokeMode: get(strokeMode),
+            clayMode: 'branch',
+            clayBrushRadius: get(clayBrushRadius) as number,
+            branchTaper: get(branchTaper),
+            puffRadius: get(puffRadius),
+            puffScatter: get(puffScatter),
+            puffRadiusRange: get(puffRadiusRange),
+            puffRadiusMin: get(puffRadiusMin),
+            puffRadiusMax: get(puffRadiusMax),
+            airbrushRadius: get(airbrushRadius) as number
+          })
+        );
+        deltaDisplay =
+          pendingStrokePositions.length > 0
+            ? {
+                dx: pendingStrokePositions[pendingStrokePositions.length - 1][0] - dragStartPos[0],
+                dy: pendingStrokePositions[pendingStrokePositions.length - 1][1] - dragStartPos[1],
+                dz: pendingStrokePositions[pendingStrokePositions.length - 1][2] - dragStartPos[2]
+              }
+            : null;
       } else {
-        deltaDisplay = null;
+        const hit = getIntersection();
+        let currentPos: [number, number, number] | null = null;
+        if (hit) {
+          currentPos = $tool === 'voxel' || $tool === 'clay' ? getAddPosition(hit) : getVoxelPosition(hit);
+        }
+        if (currentPos) {
+          const strokeModeVal = get(strokeMode);
+          const isAirbrushPath = strokeModeVal === 'airbrush' && lastBulkPos;
+          const isClayPathFollow =
+            $tool === 'clay' &&
+            (clayPathMode === 'bulk' ||
+              clayPathMode === 'smooth' ||
+              clayPathMode === 'level' ||
+              clayPathMode === 'gouge' ||
+              clayPathMode === 'puffy' ||
+              clayPathMode === 'melt') &&
+            lastBulkPos;
+          if (isClayPathFollow || isAirbrushPath) {
+            // Path-following: accumulate with 3D line segments
+            const segment = getBresenham3DLine(lastBulkPos!, currentPos);
+            const seen = new Set(pendingStrokePositions.map((p) => `${p[0]},${p[1]},${p[2]}`));
+            for (const p of segment) {
+              const k = `${p[0]},${p[1]},${p[2]}`;
+              if (!seen.has(k)) {
+                seen.add(k);
+                pendingStrokePositions.push(p);
+              }
+            }
+            lastBulkPos = currentPos;
+          } else {
+            const normal = getEffectivePlaneNormal();
+            pendingStrokePositions =
+              (strokeModeVal === 'plane' || strokeModeVal === 'cuboid') && normal
+                ? getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, normal)
+                : getAxisAlignedLine(dragStartPos, currentPos);
+          }
+          // Clay path modes: show thickened preview (brush radius or puff); airbrush: sphere preview
+          updatePreviewMesh(
+            thickenPathForStroke(pendingStrokePositions, {
+              strokeMode: (isAirbrushPath && !isClayPathFollow ? 'airbrush' : strokeModeVal) as string,
+              clayMode: isClayPathFollow ? clayPathMode : undefined,
+              clayBrushRadius: get(clayBrushRadius) as number,
+              branchTaper: get(branchTaper),
+              puffRadius: get(puffRadius),
+              puffScatter: get(puffScatter),
+              puffRadiusRange: get(puffRadiusRange),
+              puffRadiusMin: get(puffRadiusMin),
+              puffRadiusMax: get(puffRadiusMax),
+              airbrushRadius: get(airbrushRadius) as number
+            })
+          );
+          deltaDisplay = {
+            dx: currentPos[0] - dragStartPos[0],
+            dy: currentPos[1] - dragStartPos[1],
+            dz: currentPos[2] - dragStartPos[2]
+          };
+        } else {
+          deltaDisplay = null;
+        }
       }
       render();
       return;
@@ -1216,8 +1414,12 @@
     if (event.button === 0 && isVoxelDrag) {
       updatePointerFromEvent(event);
       const mode = get(strokeMode);
+      const clayModeVal = get(clayMode);
+      const isClayPath =
+        $tool === 'clay' &&
+        (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'melt');
       const normal = getEffectivePlaneNormal();
-      if (mode === 'cuboid' && dragStartPos && normal) {
+      if (mode === 'cuboid' && dragStartPos && normal && !isClayPath) {
         // Enter depth phase: drag plane, then scroll for depth
         let cornerB = dragStartPos;
         const hit = getIntersection();
@@ -1240,14 +1442,28 @@
         );
         updatePreviewMesh(pendingStrokePositions);
       } else {
-        // Apply the stroke on release (line/plane / clay bulk)
+        // Apply the stroke on release (line/plane / clay modes)
         if (pendingStrokePositions.length > 0) {
-          const toApply =
-            $tool === 'clay' && get(clayMode) === 'bulk'
-              ? thickenPath(pendingStrokePositions, get(clayBrushRadius) as number)
-              : pendingStrokePositions;
+          const isClayPath =
+            $tool === 'clay' &&
+            (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'melt');
+          const toApply = thickenPathForStroke(pendingStrokePositions, {
+            strokeMode: mode as string,
+            clayMode: isClayPath ? clayModeVal : undefined,
+            clayBrushRadius: get(clayBrushRadius) as number,
+            branchTaper: get(branchTaper),
+            puffRadius: get(puffRadius),
+            puffScatter: get(puffScatter),
+            puffRadiusRange: get(puffRadiusRange),
+            puffRadiusMin: get(puffRadiusMin),
+            puffRadiusMax: get(puffRadiusMax),
+            airbrushRadius: get(airbrushRadius) as number
+          });
           if ($tool === 'select') {
             applySelectStroke(toApply);
+          } else if (isClayPath) {
+            beginStroke();
+            applyClayStroke(toApply, clayModeVal, dragStartPos?.[1] ?? 0);
           } else {
             beginStroke();
             applyLineStroke(toApply);
@@ -1948,6 +2164,7 @@
     </div>
   {/if}
   <StampPanel />
+  <BranchPanel />
   <SelectionCountPanel />
   {#if $tool === 'fly'}
     <div class="fly-hint" role="status" aria-live="polite">

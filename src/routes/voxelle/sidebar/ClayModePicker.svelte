@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { clayMode, clayBrushRadius } from '../store';
+  import { get } from 'svelte/store';
+  import { clayMode, clayBrushRadius, puffRadius, puffRadiusRange, puffRadiusMin, puffRadiusMax, puffScatter } from '../store';
 </script>
 
 <div class="clay-mode" role="group" aria-labelledby="clay-label">
@@ -13,8 +14,56 @@
     >
       Bulk
     </button>
+    <button
+      type="button"
+      class:active={$clayMode === 'smooth'}
+      onclick={() => clayMode.set('smooth')}
+      title="Smooth: soften edges, fill small gaps"
+    >
+      Smooth
+    </button>
+    <button
+      type="button"
+      class:active={$clayMode === 'level'}
+      onclick={() => clayMode.set('level')}
+      title="Level: flatten surface to clicked height"
+    >
+      Level
+    </button>
+    <button
+      type="button"
+      class:active={$clayMode === 'gouge'}
+      onclick={() => clayMode.set('gouge')}
+      title="Gouge: carve trench along path"
+    >
+      Gouge
+    </button>
+    <button
+      type="button"
+      class:active={$clayMode === 'branch'}
+      onclick={() => clayMode.set('branch')}
+      title="Branch: extrude limbs/horns into empty space (follows cursor direction)"
+    >
+      Branch
+    </button>
+    <button
+      type="button"
+      class:active={$clayMode === 'puffy'}
+      onclick={() => clayMode.set('puffy')}
+      title="Puffy: organic spheres for clouds"
+    >
+      Puffy
+    </button>
+    <button
+      type="button"
+      class:active={$clayMode === 'melt'}
+      onclick={() => clayMode.set('melt')}
+      title="Melt: spread voxels downhill, highest first"
+    >
+      Melt
+    </button>
   </div>
-  {#if $clayMode === 'bulk'}
+  {#if $clayMode === 'bulk' || $clayMode === 'smooth' || $clayMode === 'level' || $clayMode === 'gouge' || $clayMode === 'branch' || $clayMode === 'melt'}
     <div class="light-control">
       <label for="clay-brush-size">Brush size</label>
       <div class="slider-row">
@@ -28,6 +77,90 @@
           oninput={(e) => clayBrushRadius.set(Number((e.target as HTMLInputElement).value))}
         />
         <span class="slider-value">{$clayBrushRadius}</span>
+      </div>
+    </div>
+  {/if}
+  {#if $clayMode === 'puffy'}
+    <div class="light-control">
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          checked={$puffRadiusRange}
+          onchange={(e) => puffRadiusRange.set((e.target as HTMLInputElement).checked)}
+          title="Vary sphere size per stamp"
+        />
+        Size range
+      </label>
+    </div>
+    {#if $puffRadiusRange}
+      <div class="light-control">
+        <label for="puff-radius-min">Min</label>
+        <div class="slider-row">
+          <input
+            id="puff-radius-min"
+            type="range"
+            min="0"
+            max="5"
+            step="1"
+            value={$puffRadiusMin}
+            oninput={(e) => {
+              const v = Number((e.target as HTMLInputElement).value);
+              puffRadiusMin.set(v);
+              if (v > get(puffRadiusMax)) puffRadiusMax.set(v);
+            }}
+          />
+          <span class="slider-value">{$puffRadiusMin}</span>
+        </div>
+      </div>
+      <div class="light-control">
+        <label for="puff-radius-max">Max</label>
+        <div class="slider-row">
+          <input
+            id="puff-radius-max"
+            type="range"
+            min="0"
+            max="5"
+            step="1"
+            value={$puffRadiusMax}
+            oninput={(e) => {
+              const v = Number((e.target as HTMLInputElement).value);
+              puffRadiusMax.set(v);
+              if (v < get(puffRadiusMin)) puffRadiusMin.set(v);
+            }}
+          />
+          <span class="slider-value">{$puffRadiusMax}</span>
+        </div>
+      </div>
+    {:else}
+      <div class="light-control">
+        <label for="puff-sphere-size">Sphere size</label>
+        <div class="slider-row">
+          <input
+            id="puff-sphere-size"
+            type="range"
+            min="0"
+            max="5"
+            step="1"
+            value={$puffRadius}
+            oninput={(e) => puffRadius.set(Number((e.target as HTMLInputElement).value))}
+          />
+          <span class="slider-value">{$puffRadius}</span>
+        </div>
+      </div>
+    {/if}
+    <div class="light-control">
+      <label for="puff-scatter">Scatter</label>
+      <div class="slider-row">
+        <input
+          id="puff-scatter"
+          type="range"
+          min="0"
+          max="4"
+          step="1"
+          value={$puffScatter}
+          oninput={(e) => puffScatter.set(Number((e.target as HTMLInputElement).value))}
+        />
+        <span class="slider-value">{$puffScatter}</span>
       </div>
     </div>
   {/if}
@@ -110,5 +243,17 @@
     font-size: 0.85rem;
     opacity: 0.8;
     min-width: 2.5rem;
+  }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .checkbox-label input[type='checkbox'] {
+    accent-color: var(--link-color);
   }
 </style>
