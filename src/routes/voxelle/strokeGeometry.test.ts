@@ -10,7 +10,11 @@ const defaultParams = {
   puffRadiusRange: false,
   puffRadiusMin: 0,
   puffRadiusMax: 2,
-  airbrushRadius: 1
+  airbrushRadius: 1,
+  airbrushScatter: 0,
+  airbrushRadiusRange: false,
+  airbrushRadiusMin: 0,
+  airbrushRadiusMax: 2
 };
 
 describe('thickenPathForStroke', () => {

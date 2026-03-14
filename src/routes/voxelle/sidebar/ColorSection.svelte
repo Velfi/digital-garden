@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tool, color, palette } from '../store';
+  import { tool, color, palette, selectedColors } from '../store';
   import LospecPalette from '$lib/components/LospecPalette.svelte';
 </script>
 
@@ -10,17 +10,25 @@
       id="color-picker"
       type="color"
       value={$color}
-      oninput={(e) => color.set((e.target as HTMLInputElement).value)}
+      oninput={(e) => {
+        const v = (e.target as HTMLInputElement).value;
+        color.set(v);
+        selectedColors.set([v]);
+      }}
       disabled={$tool === 'remove'}
     />
     <input
       type="text"
       class="color-hex"
       value={$color}
-      oninput={(e) => color.set((e.target as HTMLInputElement).value)}
+      oninput={(e) => {
+        const v = (e.target as HTMLInputElement).value;
+        color.set(v);
+        selectedColors.set([v]);
+      }}
     />
   </div>
-  <LospecPalette {color} {palette} disabled={$tool === 'remove'} defaultSlug="resurrect-64" />
+  <LospecPalette {color} {palette} {selectedColors} disabled={$tool === 'remove'} defaultSlug="resurrect-64" />
 </div>
 
 <style>

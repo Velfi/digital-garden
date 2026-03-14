@@ -81,7 +81,7 @@ export type AddShapeParams = {
   rotation: [number, number, number];
   shape: StartShape;
   size: number;
-  color: number;
+  getColor: () => number;
 };
 
 /** Rotate position by quarter-turns (0–3) around origin. Order: X, Y, Z. */
@@ -97,7 +97,7 @@ export function rotatePositionAroundOrigin(
 }
 
 export function getShapePositionsAt(
-  params: Omit<AddShapeParams, 'color'>
+  params: Omit<AddShapeParams, 'getColor'>
 ): [number, number, number][] {
   const { position, rotation, shape, size } = params;
   if (shape === 'empty' || size < 1) return [];

@@ -2,8 +2,7 @@
   import {
     addPanelStore,
     addShapeAt,
-    hexToInt,
-    color,
+    getPaintColorResolver,
     sidebarOpen,
     type StartShape
   } from './store';
@@ -19,7 +18,7 @@
       rotation: [rx, ry, rz],
       shape: s.shape,
       size,
-      color: hexToInt($color)
+      getColor: getPaintColorResolver()
     });
     addPanelStore.update((x) => ({ ...x, open: false }));
   }

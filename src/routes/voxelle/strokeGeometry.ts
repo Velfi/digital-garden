@@ -215,6 +215,10 @@ export interface PathThickenParams {
   puffRadiusMin: number;
   puffRadiusMax: number;
   airbrushRadius: number;
+  airbrushScatter: number;
+  airbrushRadiusRange: boolean;
+  airbrushRadiusMin: number;
+  airbrushRadiusMax: number;
 }
 
 const CLAY_PATH_MODES = ['bulk', 'smooth', 'level', 'gouge', 'branch', 'puffy', 'melt'] as const;
@@ -249,7 +253,13 @@ export function thickenPathForStroke(
   }
   if (isClayPath) return positions;
   if (params.strokeMode === 'airbrush') {
-    return puffPath(positions, params.airbrushRadius, 0);
+    return puffPath(
+      positions,
+      params.airbrushRadius,
+      params.airbrushScatter,
+      params.airbrushRadiusRange ? params.airbrushRadiusMin : undefined,
+      params.airbrushRadiusRange ? params.airbrushRadiusMax : undefined
+    );
   }
   return positions;
 }

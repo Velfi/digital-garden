@@ -33,7 +33,12 @@ export {
   puffRadiusMax,
   puffScatter,
   airbrushRadius,
+  airbrushScatter,
+  airbrushRadiusRange,
+  airbrushRadiusMin,
+  airbrushRadiusMax,
   color,
+  selectedColors,
   palette,
   sidebarOpen,
   modalRequest,
@@ -75,7 +80,8 @@ export {
   getShapePositionsAt,
   rotatePositionAroundOrigin,
   hexToInt,
-  intToHex
+  intToHex,
+  getPaintColorResolver
 } from './core';
 
 export type {

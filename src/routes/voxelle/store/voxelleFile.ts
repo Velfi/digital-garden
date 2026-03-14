@@ -74,14 +74,16 @@ function parsePayload(bytes: Uint8Array): VoxelleFileFormat | null {
 }
 
 async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
-  const blob = new Blob([data]);
+  const slice = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  const blob = new Blob([slice]);
   const stream = blob.stream().pipeThrough(new CompressionStream('gzip'));
   const buf = await new Response(stream).arrayBuffer();
   return new Uint8Array(buf);
 }
 
 async function gzipDecompress(bytes: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  const slice = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const stream = new Blob([slice]).stream().pipeThrough(new DecompressionStream('gzip'));
   const buf = await new Response(stream).arrayBuffer();
   return new Uint8Array(buf);
 }
@@ -94,7 +96,11 @@ export async function saveToFile(filename = 'voxelle.voxelle'): Promise<void> {
   const data = serializeToVoxelleFormat();
   const bsonBytes = bsonSerialize(data);
   const compressed = await gzipCompress(bsonBytes);
-  const blob = new Blob([compressed], { type: 'application/octet-stream' });
+  const slice = compressed.buffer.slice(
+    compressed.byteOffset,
+    compressed.byteOffset + compressed.byteLength
+  ) as ArrayBuffer;
+  const blob = new Blob([slice], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

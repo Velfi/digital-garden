@@ -1,15 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { Writable } from 'svelte/store';
+  import { get, type Writable } from 'svelte/store';
 
   interface Props {
     color: Writable<string>;
     palette: Writable<string[]>;
+    selectedColors?: Writable<string[]>;
     disabled?: boolean;
     defaultSlug?: string;
   }
 
-  let { color, palette, disabled = false, defaultSlug }: Props = $props();
+  let { color, palette, selectedColors, disabled = false, defaultSlug }: Props = $props();
 
   onMount(() => {
     if (defaultSlug) loadPaletteBySlug(defaultSlug);
@@ -46,7 +47,10 @@
         c.startsWith('#') ? c : `#${c}`
       );
       palette.set(hexColors);
-      if (hexColors.length) color.set(hexColors[0]);
+      if (hexColors.length) {
+        color.set(hexColors[0]);
+        if (selectedColors) selectedColors.set([hexColors[0]]);
+      }
     } catch (e) {
       loadError = e instanceof Error ? e.message : 'Failed to load palette';
     } finally {
@@ -56,6 +60,27 @@
 
   function loadLospecPalette() {
     loadPaletteBySlug(lospecSlug);
+  }
+
+  function handleSwatchClick(swatch: string, e: MouseEvent) {
+    if (selectedColors) {
+      const sel = [...get(selectedColors)];
+      if (e.shiftKey) {
+        const i = sel.indexOf(swatch);
+        if (i >= 0) {
+          sel.splice(i, 1);
+        } else {
+          sel.push(swatch);
+        }
+        selectedColors.set(sel);
+        if (sel.length > 0) color.set(sel[sel.length - 1]);
+      } else {
+        color.set(swatch);
+        selectedColors.set([swatch]);
+      }
+    } else {
+      color.set(swatch);
+    }
   }
 </script>
 
@@ -94,20 +119,29 @@
   <span class="load-error">{loadError}</span>
 {/if}
 {#if $palette.length > 0}
+  {@const sel = selectedColors ? ($selectedColors ?? []) : []}
   <div class="palette-swatches">
     {#each $palette as swatch}
       <button
         type="button"
         class="swatch"
-        class:active={swatch === $color}
+        class:active={selectedColors ? (sel.length > 0 ? sel.includes(swatch) : swatch === $color) : swatch === $color}
         style="background-color: {swatch}"
-        title={swatch}
+        title={`${swatch} — Shift+click to multi-select`}
         aria-label="Select color {swatch}"
-        onclick={() => color.set(swatch)}
+        onpointerdown={(e) => {
+          if (e.button !== 0 || disabled) return;
+          e.stopPropagation();
+          e.preventDefault();
+          handleSwatchClick(swatch, e);
+        }}
         {disabled}
       ></button>
     {/each}
   </div>
+  {#if selectedColors}
+    <p class="palette-hint">Shift+click to select multiple colors; painting will randomly use them.</p>
+  {/if}
 {/if}
 
 <style>
@@ -159,6 +193,12 @@
     flex-wrap: wrap;
     gap: 2px;
     margin-top: 0.25rem;
+  }
+
+  .palette-hint {
+    font-size: 0.8rem;
+    margin: 0.25rem 0 0;
+    color: var(--text-color-muted, #666);
   }
 
   .swatch {

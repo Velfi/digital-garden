@@ -1,11 +1,46 @@
 <script lang="ts">
   import { browser } from '$app/environment';
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
+  import { get } from 'svelte/store';
   import Sidebar from './Sidebar.svelte';
   import VoxelCanvas from './VoxelCanvas.svelte';
   import MenuBar from './MenuBar.svelte';
   import AddPanel from './AddPanel.svelte';
-  import { history, saveToStorage, selectAll } from './store';
+  import { history, saveToStorage, selectAll, color, selection, updateVoxels, hexToInt } from './store';
+
+  let colorChangeMounted = false;
+  $effect(() => {
+    const newColor = $color;
+    if (!colorChangeMounted) {
+      colorChangeMounted = true;
+      return;
+    }
+    const sel = untrack(() => get(selection));
+    if (sel.size === 0) return;
+    const colInt = hexToInt(newColor);
+    updateVoxels((v) => {
+      for (const key of sel.keys()) v.set(key, colInt);
+    });
+    selection.update((s) => {
+      const next = new Map(s);
+      for (const key of next.keys()) next.set(key, colInt);
+      return next;
+    });
+  });
+
+  function isWebGLSupported(): boolean {
+    if (!browser || typeof document === 'undefined') return true;
+    try {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl') ?? canvas.getContext('experimental-webgl');
+      return !!gl;
+    } catch {
+      return false;
+    }
+  }
+
+  let webglSupported = $state(true);
+  if (browser) webglSupported = isWebGLSupported();
 
   onMount(() => {
     if (browser) window.addEventListener('beforeunload', saveToStorage);
@@ -28,11 +63,19 @@
     <h1>Voxelle</h1>
     <MenuBar />
   </header>
-  <div class="app">
-    <Sidebar />
-    <VoxelCanvas />
-  </div>
-  <AddPanel />
+  {#if webglSupported}
+    <div class="app">
+      <Sidebar />
+      <VoxelCanvas />
+    </div>
+    <AddPanel />
+  {:else}
+    <div class="webgl-alert" role="alert">
+      <p><strong>Your browser doesn't support WebGL.</strong></p>
+      <p>WebGL lets websites draw 3D graphics. This app needs it to run.</p>
+      <p>Try updating your browser, or use another browser that supports WebGL.</p>
+    </div>
+  {/if}
   <p>For my brother Otto</p>
 </div>
 
@@ -86,6 +129,22 @@
     gap: 1rem;
     align-items: stretch;
     min-height: 0;
+  }
+
+  .webgl-alert {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1.5rem;
+    background: var(--color-surface-1, #f5f5f5);
+    border: 1px solid var(--color-border, #ddd);
+    border-radius: 0.5rem;
+    max-width: 32rem;
+  }
+
+  .webgl-alert p {
+    margin: 0;
   }
 
   @media screen and (max-width: 600px) {

@@ -40,7 +40,7 @@ const MAX_GRID_SIZE = 256;
 
 export type StrokeMode = 'line' | 'plane' | 'cuboid' | 'polygon' | 'fill' | 'airbrush';
 
-export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect';
+export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect' | 'toggle';
 
 export type PlaneAxis = 'auto' | 0 | 1 | 2;
 
@@ -103,7 +103,15 @@ export const puffRadiusMax = writable<number>(2);
 export const puffScatter = writable<number>(0);
 /** Airbrush stroke mode: sphere radius (0=single voxel, 1=3³, 2=5³, 3=7³, 4=9³, 5=11³). */
 export const airbrushRadius = writable<number>(1);
+/** Airbrush: max voxel offset for sphere centers (0=none, 1–4=scatter/spray). */
+export const airbrushScatter = writable<number>(0);
+/** Airbrush: when true, radius varies between airbrushRadiusMin and airbrushRadiusMax per sphere. */
+export const airbrushRadiusRange = writable<boolean>(false);
+export const airbrushRadiusMin = writable<number>(0);
+export const airbrushRadiusMax = writable<number>(2);
 export const color = writable<string>('#ff5733');
+/** Palette colors selected for painting (shift+click). Empty = use color. */
+export const selectedColors = writable<string[]>([]);
 const DEFAULT_PALETTE = [
   '#888888', '#ff5733', '#33ff57', '#3357ff', '#ff33f5', '#f5ff33', '#33fff5', '#000000', '#ffffff'
 ];
@@ -240,14 +248,23 @@ export function updateVoxelsInStroke(updater: (v: Map<string, number>) => void) 
   });
 }
 
+/** Returns a function that yields a paint color per voxel (random when multiple selected). */
+export function getPaintColorResolver(): () => number {
+  const sel = get(selectedColors);
+  const colors =
+    sel.length > 0 ? sel.map(hexToInt) : [hexToInt(get(color))];
+  if (colors.length === 1) return () => colors[0];
+  return () => colors[Math.floor(Math.random() * colors.length)];
+}
+
 export function addShapeAt(params: AddShapeParams): void {
-  const { position, rotation, shape, size, color: col } = params;
+  const { position, rotation, shape, size, getColor } = params;
   if (shape === 'empty' || size < 1) return;
   const positions = getShapePositionsAt({ position, rotation, shape, size });
   ensureGridFitsPositions(positions);
   updateVoxels((v) => {
     for (const [x, y, z] of positions) {
-      v.set(coordKey(x, y, z), col);
+      v.set(coordKey(x, y, z), getColor());
     }
   });
 }

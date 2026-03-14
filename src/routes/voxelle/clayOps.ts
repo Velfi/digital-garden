@@ -59,7 +59,7 @@ export function applyLevel(
   v: Map<string, number>,
   brushPositions: [number, number, number][],
   levelY: number,
-  color: number,
+  getColor: () => number,
   gridSize: number
 ): { toAdd: Map<string, number>; toRemove: Set<string> } {
   const toAdd = new Map<string, number>();
@@ -75,7 +75,7 @@ export function applyLevel(
     const [x, z] = xz.split(',').map(Number);
     const key = coordKey(x, levelY, z);
     if (!inBounds(x, levelY, z, gridSize)) continue;
-    if (!v.has(key)) toAdd.set(key, color);
+    if (!v.has(key)) toAdd.set(key, getColor());
   }
   return { toAdd, toRemove };
 }

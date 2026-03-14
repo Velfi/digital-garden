@@ -11,6 +11,7 @@
     showGrid,
     tool,
     color,
+    selectedColors,
     strokeMode,
     planeAxis,
     clayMode,
@@ -22,6 +23,10 @@
     puffRadiusMax,
     puffScatter,
     airbrushRadius,
+    airbrushScatter,
+    airbrushRadiusRange,
+    airbrushRadiusMin,
+    airbrushRadiusMax,
     selection,
     lightAngle,
     lightElevation,
@@ -48,6 +53,7 @@
     parseCoordKey,
     hexToInt,
     intToHex,
+    getPaintColorResolver,
     getSelectionAnchor,
     getSelectionBounds,
     getStampOffsetForFace,
@@ -422,6 +428,22 @@
     render();
   }
 
+  function resetCamera() {
+    if (!camera || !orbitControls) return;
+    const sz = $gridSize;
+    const dist = sz * 2.5;
+    orbitControls.target.set(0, 0, 0);
+    camera.position.set(dist * 0.6, dist * 0.8, dist);
+    camera.lookAt(0, 0, 0);
+    if (camera instanceof THREE.OrthographicCamera) {
+      camera.zoom = 1;
+      camera.updateProjectionMatrix();
+      updateOrthoFrustum();
+    }
+    updateZoomPercent();
+    render();
+  }
+
   function fitToView() {
     if (!camera || !orbitControls || !container) return;
     const v = $voxels;
@@ -510,7 +532,7 @@
         : positions;
     ensureGridFitsPositions(effective);
     const sz = $gridSize;
-    const col = hexToInt($color);
+    const getCol = getPaintColorResolver();
     updateVoxelsInStroke((v) => {
       for (const [x, y, z] of effective) {
         if (!inBounds(x, y, z, sz)) continue;
@@ -518,9 +540,9 @@
         if ($tool === 'remove') {
           v.delete(key);
         } else if ($tool === 'voxel' || $tool === 'clay') {
-          if (!v.has(key)) v.set(key, col);
+          if (!v.has(key)) v.set(key, getCol());
         } else if ($tool === 'paint') {
-          if (v.has(key)) v.set(key, col);
+          if (v.has(key)) v.set(key, getCol());
         }
       }
     });
@@ -533,7 +555,7 @@
   ) {
     ensureGridFitsPositions(positions);
     const sz = $gridSize;
-    const col = hexToInt($color);
+    const getCol = getPaintColorResolver();
     const v = $voxels;
     if (clayModeVal === 'melt') {
       const { toAdd, toRemove } = applyMelt(v, positions, sz);
@@ -557,7 +579,7 @@
         for (const [x, y, z] of positions) {
           if (!inBounds(x, y, z, sz)) continue;
           const key = coordKey(x, y, z);
-          if (!next.has(key)) next.set(key, col);
+          if (!next.has(key)) next.set(key, getCol());
         }
       });
       return;
@@ -571,7 +593,7 @@
       return;
     }
     if (clayModeVal === 'level') {
-      const { toAdd, toRemove } = applyLevel(v, positions, levelY, col, sz);
+      const { toAdd, toRemove } = applyLevel(v, positions, levelY, getCol, sz);
       updateVoxelsInStroke((next) => {
         for (const key of toRemove) next.delete(key);
         for (const [key, c] of toAdd) next.set(key, c);
@@ -911,7 +933,11 @@
             puffRadiusRange: get(puffRadiusRange),
             puffRadiusMin: get(puffRadiusMin),
             puffRadiusMax: get(puffRadiusMax),
-            airbrushRadius: get(airbrushRadius) as number
+            airbrushRadius: get(airbrushRadius) as number,
+            airbrushScatter: get(airbrushScatter),
+            airbrushRadiusRange: get(airbrushRadiusRange),
+            airbrushRadiusMin: get(airbrushRadiusMin),
+            airbrushRadiusMax: get(airbrushRadiusMax)
           })
         );
       } else {
@@ -941,7 +967,11 @@
             puffRadiusRange: get(puffRadiusRange),
             puffRadiusMin: get(puffRadiusMin),
             puffRadiusMax: get(puffRadiusMax),
-            airbrushRadius: get(airbrushRadius) as number
+            airbrushRadius: get(airbrushRadius) as number,
+            airbrushScatter: get(airbrushScatter),
+            airbrushRadiusRange: get(airbrushRadiusRange),
+            airbrushRadiusMin: get(airbrushRadiusMin),
+            airbrushRadiusMax: get(airbrushRadiusMax)
           })
         );
       } else {
@@ -984,13 +1014,13 @@
           get(fillRespectsColor)
         );
         if (fillRegion.size > 0) {
-          const col = hexToInt($color);
+          const getCol = getPaintColorResolver();
           const positions = [...fillRegion.keys()].map((k) => parseCoordKey(k));
           ensureGridFitsPositions(positions);
           beginStroke();
           updateVoxelsInStroke((v) => {
             for (const key of fillRegion.keys()) {
-              v.set(key, col);
+              v.set(key, getCol());
             }
           });
         }
@@ -1005,13 +1035,13 @@
       if (pos && !$voxels.has(coordKey(pos[0], pos[1], pos[2]))) {
         const emptyRegion = getFillEmptyAt(pos[0], pos[1], pos[2], get(fillSelectDiagonals));
         if (emptyRegion.size > 0) {
-          const col = hexToInt($color);
+          const getCol = getPaintColorResolver();
           const positions = [...emptyRegion].map((k) => parseCoordKey(k));
           ensureGridFitsPositions(positions);
           beginStroke();
           updateVoxelsInStroke((v) => {
             for (const key of emptyRegion) {
-              v.set(key, col);
+              v.set(key, getCol());
             }
           });
         }
@@ -1080,7 +1110,9 @@
       if (pos) {
         const col = $voxels.get(coordKey(pos[0], pos[1], pos[2]));
         if (col !== undefined) {
-          color.set(intToHex(col));
+          const hex = intToHex(col);
+          color.set(hex);
+          selectedColors.set([hex]);
         }
       }
       requestAnimationFrame(() => render());
@@ -1134,7 +1166,11 @@
           puffRadiusRange: get(puffRadiusRange),
           puffRadiusMin: get(puffRadiusMin),
           puffRadiusMax: get(puffRadiusMax),
-          airbrushRadius: get(airbrushRadius) as number
+          airbrushRadius: get(airbrushRadius) as number,
+          airbrushScatter: get(airbrushScatter),
+          airbrushRadiusRange: get(airbrushRadiusRange),
+          airbrushRadiusMin: get(airbrushRadiusMin),
+          airbrushRadiusMax: get(airbrushRadiusMax)
         })
       );
     } else {
@@ -1218,7 +1254,11 @@
             puffRadiusRange: get(puffRadiusRange),
             puffRadiusMin: get(puffRadiusMin),
             puffRadiusMax: get(puffRadiusMax),
-            airbrushRadius: get(airbrushRadius) as number
+            airbrushRadius: get(airbrushRadius) as number,
+            airbrushScatter: get(airbrushScatter),
+            airbrushRadiusRange: get(airbrushRadiusRange),
+            airbrushRadiusMin: get(airbrushRadiusMin),
+            airbrushRadiusMax: get(airbrushRadiusMax)
           })
         );
         deltaDisplay =
@@ -1278,7 +1318,11 @@
               puffRadiusRange: get(puffRadiusRange),
               puffRadiusMin: get(puffRadiusMin),
               puffRadiusMax: get(puffRadiusMax),
-              airbrushRadius: get(airbrushRadius) as number
+              airbrushRadius: get(airbrushRadius) as number,
+              airbrushScatter: get(airbrushScatter),
+              airbrushRadiusRange: get(airbrushRadiusRange),
+              airbrushRadiusMin: get(airbrushRadiusMin),
+              airbrushRadiusMax: get(airbrushRadiusMax)
             })
           );
           deltaDisplay = {
@@ -1457,7 +1501,11 @@
             puffRadiusRange: get(puffRadiusRange),
             puffRadiusMin: get(puffRadiusMin),
             puffRadiusMax: get(puffRadiusMax),
-            airbrushRadius: get(airbrushRadius) as number
+            airbrushRadius: get(airbrushRadius) as number,
+            airbrushScatter: get(airbrushScatter),
+            airbrushRadiusRange: get(airbrushRadiusRange),
+            airbrushRadiusMin: get(airbrushRadiusMin),
+            airbrushRadiusMax: get(airbrushRadiusMax)
           });
           if ($tool === 'select') {
             applySelectStroke(toApply);
@@ -1995,7 +2043,8 @@
       shape: s.shape,
       size: Math.max(1, Math.min(256, Math.floor(s.size)))
     });
-    const col = hexToInt($color);
+    const sel = $selectedColors;
+    const col = hexToInt(sel.length > 0 ? sel[0] : $color);
     const voxelMap = new Map<string, number>();
     for (const [x, y, z] of positions) {
       voxelMap.set(coordKey(x, y, z), col);
@@ -2189,7 +2238,13 @@
         class="fit-btn"
         onclick={fitToView}
         title="Fit to view"
-        aria-label="Fit sculpture to view">Fit</button
+        aria-label="Fit sculpture to view">Fit</button>
+      <button
+        type="button"
+        class="fit-btn"
+        onclick={resetCamera}
+        title="Reset camera"
+        aria-label="Reset camera to default view">Reset</button
       >
     </div>
   {/if}
