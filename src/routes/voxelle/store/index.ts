@@ -131,7 +131,7 @@ export {
 export type { VoxelleClipboard } from './clipboard';
 
 // Storage
-export { loadFromStorage, saveToStorage } from './storage';
+export { loadFromStorage, saveToStorage, getSkipStartup, setSkipStartup } from './storage';
 
 // Voxelle file format
 export {

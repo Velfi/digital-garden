@@ -23,9 +23,15 @@
   import OriginSection from './sidebar/OriginSection.svelte';
   import ShareModal from './sidebar/ShareModal.svelte';
   import NewGridModal from './sidebar/NewGridModal.svelte';
+  import StartupScreen from './StartupScreen.svelte';
+
+  const STARTUP_URL = '/voxelle/STARTUP.md';
+  const HELP_URL = '/voxelle/HELP.md';
 
   let showShareModal = $state(false);
   let showNewGridModal = $state(false);
+  let showStartupScreen = $state(false);
+  let startupContentUrl = $state(STARTUP_URL);
   let shareUrl = $state('');
 
   async function openShareModal() {
@@ -85,6 +91,14 @@
     } else if (req === 'add') {
       openAddPanel();
       modalRequest.set(null);
+    } else if (req === 'help') {
+      startupContentUrl = HELP_URL;
+      showStartupScreen = true;
+      modalRequest.set(null);
+    } else if (req === 'startup') {
+      startupContentUrl = STARTUP_URL;
+      showStartupScreen = true;
+      modalRequest.set(null);
     }
   });
 </script>
@@ -137,6 +151,11 @@
 
   <ShareModal bind:open={showShareModal} {shareUrl} />
   <NewGridModal bind:open={showNewGridModal} />
+  <StartupScreen
+    bind:open={showStartupScreen}
+    contentUrl={startupContentUrl}
+    showDontShowCheckbox={startupContentUrl === STARTUP_URL}
+  />
 </ArtSidebar>
 
 <style>

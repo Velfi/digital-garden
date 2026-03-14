@@ -11,6 +11,25 @@ import {
 } from './core';
 
 const VOXELLE_STORAGE_KEY = 'voxelle';
+const SKIP_STARTUP_KEY = 'voxelle-skip-startup';
+
+export function getSkipStartup(): boolean {
+  if (!browser) return false;
+  try {
+    return localStorage.getItem(SKIP_STARTUP_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setSkipStartup(value: boolean) {
+  if (!browser) return;
+  try {
+    localStorage.setItem(SKIP_STARTUP_KEY, value ? '1' : '0');
+  } catch {
+    // ignore
+  }
+}
 
 export function loadFromStorage(): boolean {
   if (!browser) return false;

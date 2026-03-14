@@ -6,7 +6,17 @@
   import VoxelCanvas from './VoxelCanvas.svelte';
   import MenuBar from './MenuBar.svelte';
   import AddPanel from './AddPanel.svelte';
-  import { history, saveToStorage, selectAll, color, selection, updateVoxels, hexToInt } from './store';
+  import {
+    history,
+    saveToStorage,
+    selectAll,
+    color,
+    selection,
+    updateVoxels,
+    hexToInt,
+    modalRequest,
+    getSkipStartup
+  } from './store';
 
   let colorChangeMounted = false;
   $effect(() => {
@@ -43,7 +53,12 @@
   if (browser) webglSupported = isWebGLSupported();
 
   onMount(() => {
-    if (browser) window.addEventListener('beforeunload', saveToStorage);
+    if (browser) {
+      window.addEventListener('beforeunload', saveToStorage);
+      if (!getSkipStartup() && webglSupported) {
+        modalRequest.set('startup');
+      }
+    }
   });
   onDestroy(() => {
     if (browser) window.removeEventListener('beforeunload', saveToStorage);

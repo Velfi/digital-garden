@@ -33,10 +33,12 @@
   let editOpen = $state(false);
   let addOpen = $state(false);
   let selectionOpen = $state(false);
+  let helpOpen = $state(false);
   let selectionMenuRef: HTMLDivElement;
   let fileMenuRef: HTMLDivElement;
   let editMenuRef: HTMLDivElement;
   let addMenuRef: HTMLDivElement;
+  let helpMenuRef: HTMLDivElement;
   let fileInputRef: HTMLInputElement;
   let imageInputRef: HTMLInputElement;
 
@@ -45,12 +47,14 @@
     editOpen = false;
     addOpen = false;
     selectionOpen = false;
+    helpOpen = false;
   }
 
   function toggleFile() {
     editOpen = false;
     addOpen = false;
     selectionOpen = false;
+    helpOpen = false;
     fileOpen = !fileOpen;
   }
 
@@ -58,6 +62,7 @@
     fileOpen = false;
     addOpen = false;
     selectionOpen = false;
+    helpOpen = false;
     editOpen = !editOpen;
   }
 
@@ -65,6 +70,7 @@
     fileOpen = false;
     editOpen = false;
     selectionOpen = false;
+    helpOpen = false;
     addOpen = !addOpen;
   }
 
@@ -72,7 +78,16 @@
     fileOpen = false;
     editOpen = false;
     addOpen = false;
+    helpOpen = false;
     selectionOpen = !selectionOpen;
+  }
+
+  function toggleHelp() {
+    fileOpen = false;
+    editOpen = false;
+    addOpen = false;
+    selectionOpen = false;
+    helpOpen = !helpOpen;
   }
 
   function handleUndo() {
@@ -210,6 +225,16 @@
     selectionMode.set(mode);
   }
 
+  function handleShowHelp() {
+    modalRequest.set('help');
+    closeMenus();
+  }
+
+  function handleShowStartupScreen() {
+    modalRequest.set('startup');
+    closeMenus();
+  }
+
   function handleClickOutside(e: MouseEvent) {
     const target = e.target as Node;
     if (
@@ -220,7 +245,9 @@
       editMenuRef &&
       !editMenuRef.contains(target) &&
       addMenuRef &&
-      !addMenuRef.contains(target)
+      !addMenuRef.contains(target) &&
+      helpMenuRef &&
+      !helpMenuRef.contains(target)
     ) {
       closeMenus();
     }
@@ -464,6 +491,27 @@
           onclick={() => setSelectionMode('intersect')}
         >
           Intersect with selection
+        </button>
+      </div>
+    {/if}
+  </div>
+
+  <div class="menu-item" role="none" bind:this={helpMenuRef}>
+    <button
+      type="button"
+      class="menu-trigger"
+      class:active={helpOpen}
+      onclick={toggleHelp}
+      aria-haspopup="menu"
+      aria-expanded={helpOpen}
+    >
+      Help
+    </button>
+    {#if helpOpen}
+      <div class="dropdown" role="menu">
+        <button type="button" role="menuitem" onclick={handleShowHelp}> Show help </button>
+        <button type="button" role="menuitem" onclick={handleShowStartupScreen}>
+          Show startup screen
         </button>
       </div>
     {/if}
