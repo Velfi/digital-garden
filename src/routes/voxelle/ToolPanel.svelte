@@ -27,10 +27,17 @@
     airbrushRadiusRange,
     airbrushRadiusMin,
     airbrushRadiusMax,
+    sprayDirection,
+    sprayStreakLength,
+    wallWidth,
+    wallHeight,
+    wallLockStartHeight,
     fillSelectDiagonals,
     fillRespectsColor,
+    fillConstrainToPlane,
     type DrawBrushShape,
-    type StampRotation
+    type StampRotation,
+    type SprayDirection
   } from './store';
 
   const STROKE_TOOLS = ['voxel', 'remove', 'paint', 'select', 'selectByColor'] as const;
@@ -68,6 +75,7 @@
   <div
     class="tool-panel"
     class:sidebar-open={$sidebarOpen}
+    data-voxelle-no-passthrough
     role="dialog"
     onpointerdown={(e) => e.stopPropagation()}
     onpointerup={(e) => e.stopPropagation()}
@@ -248,6 +256,16 @@
               onchange={(e) => fillRespectsColor.set((e.target as HTMLInputElement).checked)}
             />
             Respect color
+          </label>
+        </div>
+        <div class="tool-panel-row">
+          <label class="tool-panel-check">
+            <input
+              type="checkbox"
+              checked={$fillConstrainToPlane}
+              onchange={(e) => fillConstrainToPlane.set((e.target as HTMLInputElement).checked)}
+            />
+            Constrain to plane
           </label>
         </div>
       </section>
@@ -448,6 +466,60 @@
             />
             <span class="tool-panel-value">{$puffScatter}</span>
           </div>
+        {/if}
+        {#if $clayMode === 'wall'}
+          <div class="tool-panel-row">
+            <span class="tool-panel-label">Direction</span>
+            <select
+              value={$sprayDirection}
+              title="Auto = face normal; or pick axis (e.g. Y− for rain)"
+              onchange={(e) => sprayDirection.set((e.target as HTMLSelectElement).value as SprayDirection)}
+            >
+              <option value="auto">Auto</option>
+              <option value="none">None</option>
+              <option value="right">X+</option>
+              <option value="left">X−</option>
+              <option value="up">Y+</option>
+              <option value="down">Y−</option>
+              <option value="back">Z+</option>
+              <option value="forward">Z−</option>
+            </select>
+          </div>
+          <div class="tool-panel-row">
+            <span class="tool-panel-label">Width</span>
+            <input
+              type="range"
+              min="0"
+              max="5"
+              step="1"
+              value={$wallWidth}
+              oninput={(e) => wallWidth.set(Number((e.target as HTMLInputElement).value))}
+              title="Path thickness (0 = 1 voxel, 1 = 2 voxels, 2+ = thicker)"
+            />
+            <span class="tool-panel-value">{$wallWidth}</span>
+          </div>
+          <div class="tool-panel-row">
+            <span class="tool-panel-label">Height</span>
+            <input
+              type="range"
+              min="2"
+              max="20"
+              step="1"
+              value={$wallHeight}
+              oninput={(e) => wallHeight.set(Math.max(2, Number((e.target as HTMLInputElement).value)))}
+              title="Voxels to extend along direction (min 2)"
+            />
+            <span class="tool-panel-value">{$wallHeight}</span>
+          </div>
+          <label class="tool-panel-check">
+            <input
+              type="checkbox"
+              checked={$wallLockStartHeight}
+              onchange={(e) => wallLockStartHeight.set((e.target as HTMLInputElement).checked)}
+              title="Keep path on starting plane for enclosed loops"
+            />
+            Lock start height
+          </label>
         {/if}
         {#if $clayMode === 'rope'}
           <div class="tool-panel-row">

@@ -10,7 +10,8 @@ import {
   getPolygonVoxels,
   getRayDirectionPath,
   getRopeCurveVoxels,
-  applyBrushAlongPath
+  applyBrushAlongPath,
+  getSprayDirectionVector
 } from './strokeGeometry';
 
 const defaultParams = {
@@ -56,6 +57,110 @@ describe('thickenPathForStroke', () => {
     });
     // Airbrush uses puffPath (sphere); r=1 gives 7 voxels (center + 6 face neighbors)
     expect(airbrushResult.length).toBe(7);
+  });
+
+  it('clay wall with direction and wallHeight adds voxels along direction', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      strokeMode: 'line',
+      clayMode: 'wall',
+      clayBrushRadius: 0,
+      sprayDirection: 'down',
+      wallHeight: 3
+    });
+    // Path (0,0,0) + streak down: (0,-1,0), (0,-2,0), (0,-3,0) = 4 total
+    expect(result).toContainEqual([0, 0, 0]);
+    expect(result).toContainEqual([0, -1, 0]);
+    expect(result).toContainEqual([0, -2, 0]);
+    expect(result).toContainEqual([0, -3, 0]);
+    expect(result.length).toBe(4);
+  });
+
+  it('clay wall with direction auto uses wallFaceNormal', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      strokeMode: 'line',
+      clayMode: 'wall',
+      clayBrushRadius: 0,
+      sprayDirection: 'auto',
+      wallFaceNormal: { x: 0, y: -1, z: 0 },
+      wallHeight: 2
+    });
+    expect(result).toContainEqual([0, 0, 0]);
+    expect(result).toContainEqual([0, -1, 0]);
+    expect(result).toContainEqual([0, -2, 0]);
+    expect(result.length).toBe(3);
+  });
+
+  it('clay wall with spray direction none returns path only', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      strokeMode: 'line',
+      clayMode: 'wall',
+      clayBrushRadius: 0,
+      sprayDirection: 'none',
+      wallHeight: 5
+    });
+    expect(result).toEqual([[0, 0, 0]]);
+  });
+
+  it('clay wall with wallWidth 1 gives 2 voxels thick (path + perpendicular)', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      strokeMode: 'line',
+      clayMode: 'wall',
+      clayBrushRadius: 0,
+      sprayDirection: 'down',
+      wallWidth: 1,
+      wallHeight: 2
+    });
+    // Base = (0,0,0) + (1,0,0) perpendicular; each extends down 2 => 2*3 = 6 voxels
+    expect(result).toContainEqual([0, 0, 0]);
+    expect(result).toContainEqual([1, 0, 0]);
+    expect(result).toContainEqual([0, -1, 0]);
+    expect(result).toContainEqual([0, -2, 0]);
+    expect(result.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('clay wall with wallWidth 2 thickens in plane only (width does not affect height)', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      strokeMode: 'line',
+      clayMode: 'wall',
+      clayBrushRadius: 0,
+      sprayDirection: 'down',
+      wallWidth: 2,
+      wallHeight: 2
+    });
+    // Base = 3×3 in XZ plane (9 voxels), each extends down 2 → 9 * 3 = 27
+    expect(result.length).toBe(27);
+    expect(result).toContainEqual([0, 0, 0]);
+    expect(result).toContainEqual([0, -1, 0]);
+    expect(result).toContainEqual([0, -2, 0]);
+  });
+});
+
+describe('getSprayDirectionVector', () => {
+  it('returns null for none and auto without normal', () => {
+    expect(getSprayDirectionVector('none')).toBeNull();
+    expect(getSprayDirectionVector('auto')).toBeNull();
+  });
+  it('returns snapped axis for auto with face normal', () => {
+    expect(getSprayDirectionVector('auto', { x: 0, y: -1, z: 0 })).toEqual([0, -1, 0]);
+    expect(getSprayDirectionVector('auto', { x: 0.9, y: 0.1, z: 0 })).toEqual([1, 0, 0]);
+  });
+  it('returns world-axis vectors for named directions', () => {
+    expect(getSprayDirectionVector('down')).toEqual([0, -1, 0]);
+    expect(getSprayDirectionVector('up')).toEqual([0, 1, 0]);
+    expect(getSprayDirectionVector('forward')).toEqual([0, 0, -1]);
+    expect(getSprayDirectionVector('back')).toEqual([0, 0, 1]);
+    expect(getSprayDirectionVector('left')).toEqual([-1, 0, 0]);
+    expect(getSprayDirectionVector('right')).toEqual([1, 0, 0]);
   });
 });
 

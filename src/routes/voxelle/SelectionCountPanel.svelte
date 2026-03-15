@@ -7,6 +7,7 @@
   <div
     class="selection-panel"
     class:sidebar-open={$sidebarOpen}
+    data-voxelle-no-passthrough
     role="status"
     aria-live="polite"
     onpointerdown={(e) => e.stopPropagation()}

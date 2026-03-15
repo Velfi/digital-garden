@@ -1,7 +1,19 @@
 import { get } from 'svelte/store';
 import { coordKey, parseCoordKey, inBounds, getSelectionBounds } from '../coordUtils';
-import { voxels, selection, gridSize, pushUndo, updateVoxels } from './core';
+import { voxels, selection, gridSize, pushUndo, updateVoxels, planeAxis, fillConstrainToPlane } from './core';
 import type { SelectionMode } from './core';
+
+function getPlaneAxisNumber(): 0 | 1 | 2 {
+  const pa = get(planeAxis);
+  return pa === 'auto' ? 1 : pa;
+}
+
+function inPlane(nx: number, ny: number, nz: number, seedX: number, seedY: number, seedZ: number): boolean {
+  const axis = getPlaneAxisNumber();
+  if (axis === 0) return nx === seedX;
+  if (axis === 1) return ny === seedY;
+  return nz === seedZ;
+}
 
 const ADJ_6: [number, number, number][] = [
   [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]
@@ -49,6 +61,7 @@ export function getFillSelectionAt(
       const ny = cy + dy;
       const nz = cz + dz;
       if (inBounds(nx, ny, nz, sz)) {
+        if (get(fillConstrainToPlane) && !inPlane(nx, ny, nz, x, y, z)) continue;
         const nk = coordKey(nx, ny, nz);
         if (!visited.has(nk)) stack.push([nx, ny, nz]);
       }
@@ -83,6 +96,7 @@ export function getFillEmptyAt(
       const ny = cy + dy;
       const nz = cz + dz;
       if (inBounds(nx, ny, nz, sz)) {
+        if (get(fillConstrainToPlane) && !inPlane(nx, ny, nz, x, y, z)) continue;
         const nk = coordKey(nx, ny, nz);
         if (!visited.has(nk)) stack.push([nx, ny, nz]);
       }

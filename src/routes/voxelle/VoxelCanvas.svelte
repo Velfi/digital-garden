@@ -31,6 +31,11 @@
     airbrushRadiusRange,
     airbrushRadiusMin,
     airbrushRadiusMax,
+    sprayDirection,
+    sprayStreakLength,
+    wallWidth,
+    wallHeight,
+    wallLockStartHeight,
     drawBrushShape,
     drawBrushSize,
     drawBrushSnapToSurface,
@@ -91,7 +96,8 @@
     getRayDirectionPath,
     thickenPathForStroke,
     getRopeCurveVoxels,
-    applyBrushAlongPath
+    applyBrushAlongPath,
+    getSprayDirectionVector
   } from './strokeGeometry';
   import { applySmooth, applyLevel, applyMelt, applyInflate } from './clayOps';
   import { buildGridPositions } from './gridLines';
@@ -229,6 +235,32 @@
   const { onKeyDown: onFlyKeyDown, onKeyUp: onFlyKeyUp } = createFlyKeyHandlers(flyMoveState, {
     isEnabled: () => !!flyControls?.enabled
   });
+
+  const FLY_HINT_HIDE_MS = 4000;
+  let showFlyHint = $state(true);
+  let flyHintHideTimeout: ReturnType<typeof setTimeout> | null = null;
+  function pokeFlyHint() {
+    showFlyHint = true;
+    if (flyHintHideTimeout != null) clearTimeout(flyHintHideTimeout);
+    flyHintHideTimeout = setTimeout(() => {
+      showFlyHint = false;
+      flyHintHideTimeout = null;
+    }, FLY_HINT_HIDE_MS);
+  }
+  function onFlyPointerMove() {
+    if (flyControls?.enabled) pokeFlyHint();
+  }
+  function onPointerLockChange() {
+    if (document.pointerLockElement === container) pokeFlyHint();
+  }
+  function handleFlyKeyDown(e: KeyboardEvent) {
+    pokeFlyHint();
+    onFlyKeyDown(e);
+  }
+  function handleFlyKeyUp(e: KeyboardEvent) {
+    pokeFlyHint();
+    onFlyKeyUp(e);
+  }
   const fitHelperSphere = new THREE.Sphere();
   const worldQuaternion = new THREE.Quaternion();
 
@@ -426,6 +458,22 @@
     return [Math.round(point.x), Math.round(point.y), Math.round(point.z)];
   }
 
+  /** Intersect the current raycaster ray with the axis-aligned plane at lockedValue. Used when Lock start height is on and cursor is in empty space. */
+  function getIntersectionWithLockedPlane(
+    axis: 0 | 1 | 2,
+    lockedValue: number
+  ): [number, number, number] | null {
+    if (!camera || !raycaster) return null;
+    const normal = new THREE.Vector3(0, 0, 0).setComponent(axis, 1);
+    const point = new THREE.Vector3(0, 0, 0).setComponent(axis, lockedValue);
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, point);
+    const target = new THREE.Vector3();
+    const hit = raycaster.ray.intersectPlane(plane, target);
+    if (!hit) return null;
+    if (target.clone().sub(raycaster.ray.origin).dot(raycaster.ray.direction) < 0) return null;
+    return snapToGrid(target);
+  }
+
   /** Returns voxel positions along axis-aligned line from a to b (dominant axis). */
   function axisVector(axis: 0 | 1 | 2): THREE.Vector3 {
     const v = new THREE.Vector3(0, 0, 0);
@@ -600,6 +648,27 @@
     return snapToGrid(pointerHelper);
   }
 
+  /** Axis index (0=X, 1=Y, 2=Z) for wall extension direction; used for lock start height. */
+  function getWallDirectionAxis(): number | null {
+    const dir = get(sprayDirection);
+    if (dir === 'auto' && dragFaceNormal) {
+      const d = getSprayDirectionVector('auto', {
+        x: dragFaceNormal.x,
+        y: dragFaceNormal.y,
+        z: dragFaceNormal.z
+      });
+      if (d) {
+        if (d[0] !== 0) return 0;
+        if (d[1] !== 0) return 1;
+        return 2;
+      }
+    }
+    if (dir === 'left' || dir === 'right') return 0;
+    if (dir === 'down' || dir === 'up') return 1;
+    if (dir === 'forward' || dir === 'back') return 2;
+    return null;
+  }
+
   function applyLineStroke(positions: [number, number, number][]) {
     const sel = $selection;
     // When selection is active, paint/remove only affect selected voxels
@@ -627,7 +696,7 @@
 
   function applyClayStroke(
     positions: [number, number, number][],
-    clayModeVal: 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope' | 'inflate',
+    clayModeVal: 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope' | 'wall' | 'inflate',
     levelY: number
   ) {
     ensureGridFitsPositions(positions);
@@ -651,7 +720,7 @@
       });
       return;
     }
-    if (clayModeVal === 'bulk' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'rope') {
+    if (clayModeVal === 'bulk' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'rope' || clayModeVal === 'wall') {
       updateVoxelsInStroke((next) => {
         for (const [x, y, z] of positions) {
           if (!inBounds(x, y, z, sz)) continue;
@@ -973,12 +1042,7 @@
   }
 
   function handlePointerDown(event: PointerEvent) {
-    if (
-      (event.target as Element)?.closest?.(
-        '.cuboid-done-btn, .polygon-done-btn, .polygon-cancel-btn, .rope-done-btn, .rope-cancel-btn, .rope-tension-slider, .zoom-controls, .depth-slider-container, .orbit-gizmo'
-      )
-    )
-      return;
+    if ((event.target as Element)?.closest?.('[data-voxelle-no-passthrough]')) return;
     if ($tool === 'fly') {
       if (event.button === 0 || event.button === 2) {
         if (flyControls?.isLocked) {
@@ -1080,8 +1144,8 @@
       return;
     }
 
-    // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/puffy/melt)
-    if ($tool === 'clay' && (mode === 'bulk' || mode === 'smooth' || mode === 'level' || mode === 'gouge' || mode === 'puffy' || mode === 'melt' || mode === 'inflate')) {
+    // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/puffy/melt/wall)
+    if ($tool === 'clay' && (mode === 'bulk' || mode === 'smooth' || mode === 'level' || mode === 'gouge' || mode === 'puffy' || mode === 'melt' || mode === 'wall' || mode === 'inflate')) {
       // Start on voxel (grab surface) or face of voxel (extend outward)
       const pos = getVoxelPosition(hit) ?? getAddPosition(hit);
       if (pos) {
@@ -1089,6 +1153,10 @@
         dragStartPos = pos;
         lastBulkPos = pos;
         pendingStrokePositions = [pos];
+        if (mode === 'wall') {
+          const n = getFaceNormalFromHit(hit);
+          dragFaceNormal = n ? new THREE.Vector3(n[0], n[1], n[2]) : null;
+        }
         updatePreviewMesh(
           thickenPathForStroke(pendingStrokePositions, {
             strokeMode: get(strokeMode),
@@ -1105,6 +1173,11 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
             airbrushRadiusMax: get(airbrushRadiusMax),
+            sprayDirection: get(sprayDirection),
+            sprayStreakLength: get(sprayStreakLength),
+            wallWidth: get(wallWidth),
+            wallHeight: get(wallHeight),
+            wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize),
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
@@ -1143,6 +1216,11 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
             airbrushRadiusMax: get(airbrushRadiusMax),
+            sprayDirection: get(sprayDirection),
+            sprayStreakLength: get(sprayStreakLength),
+            wallWidth: get(wallWidth),
+            wallHeight: get(wallHeight),
+            wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize),
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
@@ -1348,6 +1426,8 @@
           airbrushRadiusRange: get(airbrushRadiusRange),
           airbrushRadiusMin: get(airbrushRadiusMin),
           airbrushRadiusMax: get(airbrushRadiusMax),
+          sprayDirection: get(sprayDirection),
+          sprayStreakLength: get(sprayStreakLength),
           drawBrushShape: get(drawBrushShape),
           drawBrushSize: get(drawBrushSize),
           drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
@@ -1369,6 +1449,11 @@
           airbrushRadiusRange: get(airbrushRadiusRange),
           airbrushRadiusMin: get(airbrushRadiusMin),
           airbrushRadiusMax: get(airbrushRadiusMax),
+          sprayDirection: get(sprayDirection),
+          sprayStreakLength: get(sprayStreakLength),
+          wallWidth: get(wallWidth),
+          wallHeight: get(wallHeight),
+          wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
           drawBrushShape: get(drawBrushShape),
           drawBrushSize: get(drawBrushSize),
           drawBrushSnapToSurface: get(drawBrushSnapToSurface),
@@ -1459,6 +1544,11 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
             airbrushRadiusMax: get(airbrushRadiusMax),
+            sprayDirection: get(sprayDirection),
+            sprayStreakLength: get(sprayStreakLength),
+            wallWidth: get(wallWidth),
+            wallHeight: get(wallHeight),
+            wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize),
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
@@ -1479,19 +1569,48 @@
         if (hit) {
           currentPos = $tool === 'voxel' || $tool === 'clay' ? getAddPosition(hit) : getVoxelPosition(hit);
         }
+        const strokeModeVal = get(strokeMode);
+        const clayPathMode = get(clayMode);
+        const isAirbrushPath = strokeModeVal === 'airbrush' && lastBulkPos;
+        const isClayPathFollow =
+          $tool === 'clay' &&
+          (clayPathMode === 'bulk' ||
+            clayPathMode === 'smooth' ||
+            clayPathMode === 'level' ||
+            clayPathMode === 'gouge' ||
+            clayPathMode === 'puffy' ||
+            clayPathMode === 'melt' ||
+            clayPathMode === 'wall' ||
+            clayPathMode === 'inflate') &&
+          lastBulkPos;
+        // Wall + lock start height: when cursor is in empty space, intersect ray with locked plane so path extends into thin air
+        if (
+          currentPos === null &&
+          isClayPathFollow &&
+          clayPathMode === 'wall' &&
+          get(wallLockStartHeight) &&
+          dragStartPos &&
+          camera
+        ) {
+          const axis = getWallDirectionAxis();
+          if (axis !== null && (axis === 0 || axis === 1 || axis === 2)) {
+            currentPos = getIntersectionWithLockedPlane(axis, dragStartPos[axis]);
+          }
+        }
         if (currentPos) {
-          const strokeModeVal = get(strokeMode);
-          const isAirbrushPath = strokeModeVal === 'airbrush' && lastBulkPos;
-          const isClayPathFollow =
-            $tool === 'clay' &&
-            (clayPathMode === 'bulk' ||
-              clayPathMode === 'smooth' ||
-              clayPathMode === 'level' ||
-              clayPathMode === 'gouge' ||
-              clayPathMode === 'puffy' ||
-              clayPathMode === 'melt' ||
-              clayPathMode === 'inflate') &&
-            lastBulkPos;
+          // Wall + lock start height: keep path on starting plane (for enclosed loops)
+          if (
+            isClayPathFollow &&
+            clayPathMode === 'wall' &&
+            get(wallLockStartHeight) &&
+            dragStartPos
+          ) {
+            const axis = getWallDirectionAxis();
+            if (axis !== null) {
+              currentPos = [currentPos[0], currentPos[1], currentPos[2]];
+              currentPos[axis] = dragStartPos[axis];
+            }
+          }
           if (isClayPathFollow || isAirbrushPath) {
             // Path-following: accumulate with 3D line segments
             const segment = getBresenham3DLine(lastBulkPos!, currentPos);
@@ -1528,6 +1647,11 @@
               airbrushRadiusRange: get(airbrushRadiusRange),
               airbrushRadiusMin: get(airbrushRadiusMin),
               airbrushRadiusMax: get(airbrushRadiusMax),
+              sprayDirection: get(sprayDirection),
+              sprayStreakLength: get(sprayStreakLength),
+              wallWidth: get(wallWidth),
+              wallHeight: get(wallHeight),
+              wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
               drawBrushShape: get(drawBrushShape),
               drawBrushSize: get(drawBrushSize),
               drawBrushSnapToSurface: get(drawBrushSnapToSurface),
@@ -1670,7 +1794,7 @@
       const clayModeVal = get(clayMode);
       const isClayPath =
         $tool === 'clay' &&
-        (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'melt' || clayModeVal === 'inflate');
+        (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'melt' || clayModeVal === 'wall' || clayModeVal === 'inflate');
       const normal = getEffectivePlaneNormal();
       if (mode === 'cuboid' && dragStartPos && normal && !isClayPath) {
         // Enter depth phase: drag plane, then scroll for depth
@@ -1699,7 +1823,7 @@
         if (pendingStrokePositions.length > 0) {
           const isClayPath =
             $tool === 'clay' &&
-            (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'melt' || clayModeVal === 'inflate');
+            (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'melt' || clayModeVal === 'wall' || clayModeVal === 'inflate');
           const toApply = thickenPathForStroke(pendingStrokePositions, {
             strokeMode: mode as string,
             clayMode: isClayPath ? clayModeVal : undefined,
@@ -1715,6 +1839,11 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
             airbrushRadiusMax: get(airbrushRadiusMax),
+            sprayDirection: get(sprayDirection),
+            sprayStreakLength: get(sprayStreakLength),
+            wallWidth: get(wallWidth),
+            wallHeight: get(wallHeight),
+            wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize),
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
@@ -2166,11 +2295,11 @@
     flyControls.pointerSpeed = FLY_POINTER_SPEED;
     flyControls.enabled = false;
 
-    window.addEventListener('keydown', onFlyKeyDown, true);
+    window.addEventListener('keydown', handleFlyKeyDown, true);
     window.addEventListener('keydown', onEscapeKeyDown, true);
     window.addEventListener('keydown', onFullscreenKey);
     window.addEventListener('fullscreenchange', onFullscreenChange);
-    window.addEventListener('keyup', onFlyKeyUp, true);
+    window.addEventListener('keyup', handleFlyKeyUp, true);
 
     updateZoomPercent();
 
@@ -2277,6 +2406,21 @@
     const isFly = t === 'fly';
     orbitControls.enabled = !isFly;
     flyControls.enabled = isFly;
+    document.removeEventListener('mousemove', onFlyPointerMove);
+    document.removeEventListener('pointerlockchange', onPointerLockChange);
+    if (isFly) {
+      showFlyHint = true;
+      if (flyHintHideTimeout != null) clearTimeout(flyHintHideTimeout);
+      flyHintHideTimeout = setTimeout(() => {
+        showFlyHint = false;
+        flyHintHideTimeout = null;
+      }, FLY_HINT_HIDE_MS);
+      document.addEventListener('mousemove', onFlyPointerMove);
+      document.addEventListener('pointerlockchange', onPointerLockChange);
+    } else {
+      if (flyHintHideTimeout != null) clearTimeout(flyHintHideTimeout);
+      flyHintHideTimeout = null;
+    }
     if (isFly && (cuboidPhase || polygonPhase)) {
       flyControls.unlock();
       cancelDrag();
@@ -2343,11 +2487,14 @@
     container?.removeEventListener?.('contextmenu', onContextMenu);
     container?.removeEventListener('wheel', onWheel, true);
     window.removeEventListener('resize', onWindowResize);
-    window.removeEventListener('keydown', onFlyKeyDown, true);
+    window.removeEventListener('keydown', handleFlyKeyDown, true);
     window.removeEventListener('keydown', onEscapeKeyDown, true);
     window.removeEventListener('keydown', onFullscreenKey);
     window.removeEventListener('fullscreenchange', onFullscreenChange);
-    window.removeEventListener('keyup', onFlyKeyUp, true);
+    window.removeEventListener('keyup', handleFlyKeyUp, true);
+    document.removeEventListener('mousemove', onFlyPointerMove);
+    document.removeEventListener('pointerlockchange', onPointerLockChange);
+    if (flyHintHideTimeout != null) clearTimeout(flyHintHideTimeout);
     orbitControls?.removeEventListener?.('change', updateZoomPercent);
     orbitControls?.dispose();
     flyControls?.dispose();
@@ -2388,7 +2535,7 @@
     </div>
   {/if}
   {#if cuboidPhase === 'depth'}
-    <div class="depth-slider-container">
+    <div class="depth-slider-container" data-voxelle-no-passthrough>
       <div
         class="depth-slider-track"
         role="slider"
@@ -2449,6 +2596,7 @@
     <button
       type="button"
       class="cuboid-done-btn"
+      data-voxelle-no-passthrough
       onpointerdown={(e) => e.stopPropagation()}
       onclick={() => commitCuboid()}
       title="Tap Done to apply"
@@ -2458,7 +2606,7 @@
     </button>
   {/if}
   {#if polygonPhase === 'placing' && polygonPoints.length >= 2}
-    <div class="polygon-actions">
+    <div class="polygon-actions" data-voxelle-no-passthrough>
       <button
         type="button"
         class="polygon-done-btn"
@@ -2482,7 +2630,7 @@
     </div>
   {/if}
   {#if ropePhase === 'tension'}
-    <div class="rope-tension-slider depth-slider-container">
+    <div class="rope-tension-slider depth-slider-container" data-voxelle-no-passthrough>
       <div
         class="depth-slider-track"
         role="slider"
@@ -2536,7 +2684,7 @@
         >
       </div>
     </div>
-    <div class="polygon-actions">
+    <div class="polygon-actions" data-voxelle-no-passthrough>
       <button
         type="button"
         class="rope-done-btn polygon-done-btn"
@@ -2570,7 +2718,7 @@
   {/if}
   <ToolPanel />
   <SelectionCountPanel />
-  {#if $tool === 'fly'}
+  {#if $tool === 'fly' && showFlyHint}
     <div class="fly-hint" role="status" aria-live="polite">
       Click to capture · WASD move · E/Q up/down · Shift 1/8 speed · Move mouse to look
     </div>
@@ -2580,6 +2728,7 @@
     {/if}
     <div
       class="zoom-controls"
+      data-voxelle-no-passthrough
       role="toolbar"
       aria-label="Zoom controls"
       tabindex="0"

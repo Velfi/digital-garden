@@ -72,7 +72,7 @@ describe('applyMelt', () => {
   it('moves voxels downward when space below is empty', () => {
     const v = new Map<string, number>();
     v.set(coordKey(0, 2, 0), 0x888888);
-    // (0,1,0) empty - (0,2,0) should fall one step to (0,1,0)
+    // (0,1,0) and (0,0,0) empty - (0,2,0) falls to bottom (0,0,0)
     const brush: [number, number, number][] = [
       [0, 0, 0],
       [0, 1, 0],
@@ -80,6 +80,26 @@ describe('applyMelt', () => {
     ];
     const { toAdd, toRemove } = applyMelt(v, brush, 8);
     expect(toRemove.has(coordKey(0, 2, 0))).toBe(true);
-    expect(toAdd.has(coordKey(0, 1, 0))).toBe(true);
+    expect(toAdd.has(coordKey(0, 0, 0))).toBe(true);
+    expect(toAdd.size).toBe(1);
+    expect(toRemove.size).toBe(1);
+  });
+
+  it('conserves blocks when voxel moves multiple steps (net delta)', () => {
+    const v = new Map<string, number>();
+    v.set(coordKey(0, 3, 0), 0x888888);
+    // Brush column: voxel at (0,3,0) falls to (0,0,0) over several passes
+    const brush: [number, number, number][] = [
+      [0, 0, 0],
+      [0, 1, 0],
+      [0, 2, 0],
+      [0, 3, 0]
+    ];
+    const { toAdd, toRemove } = applyMelt(v, brush, 8);
+    expect(toRemove.size).toBe(1);
+    expect(toAdd.size).toBe(1);
+    expect(toRemove.has(coordKey(0, 3, 0))).toBe(true);
+    expect(toAdd.has(coordKey(0, 0, 0))).toBe(true);
+    expect(toAdd.get(coordKey(0, 0, 0))).toBe(0x888888);
   });
 });

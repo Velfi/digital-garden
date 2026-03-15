@@ -23,6 +23,7 @@ A 3D voxel sculpting tool. Add or remove voxels to create sculptures.
    - **Polygon**: Click to place points, Done to fill convex hull.
    - **Fill**: Click to flood-fill: Voxel (empty space), Remove/Paint (voxels), Select/SelectByColor (selection).
    - **Airbrush**: Drag to paint a soft spherical brush along the path.
+   - **Wall** (Clay): Drag on a surface. Direction defaults to **Auto** (face normal). Set **Width**, **Height** (min 2), and **Lock start height** for enclosed loops.
 3. Click and drag in the 3D view to sculpt.
 4. **Undo**: Ctrl+Z. **Redo**: Ctrl+Shift+Z.
 5. **Save** your work via File → Save .voxelle, or **Share** to get a link.

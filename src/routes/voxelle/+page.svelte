@@ -102,6 +102,7 @@
     if (isInput) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
+      e.stopPropagation();
       if (e.shiftKey) {
         history.redo();
       } else {
@@ -109,9 +110,11 @@
       }
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
       e.preventDefault();
+      e.stopPropagation();
       history.redo();
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
       e.preventDefault();
+      e.stopPropagation();
       selectAll();
     }
   }}
@@ -121,7 +124,7 @@
   .page {
     display: flex;
     flex-direction: column;
-    min-height: calc(100vh - 6rem);
+    min-height: calc(100vh - 4rem);
     margin-top: 1rem;
   }
 

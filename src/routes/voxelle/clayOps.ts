@@ -105,14 +105,12 @@ export function applyLevel(
   return { toAdd, toRemove };
 }
 
-/** Melt: spread voxels downhill, highest first. Multi-pass: each pass lets voxels fall one step until no more move. */
+/** Melt: spread voxels downhill, highest first. Multi-pass: each pass lets voxels fall one step until no more move. Conserves blocks: returns net delta (initial vs final). */
 export function applyMelt(
   v: Map<string, number>,
   brushPositions: [number, number, number][],
   gridSize: number
 ): { toAdd: Map<string, number>; toRemove: Set<string> } {
-  const toAdd = new Map<string, number>();
-  const toRemove = new Set<string>();
   const brushSet = new Set(brushPositions.map(([x, y, z]) => coordKey(x, y, z)));
   const occupied = new Map(v);
   const maxPasses = gridSize; // tower height at most
@@ -149,8 +147,6 @@ export function applyMelt(
           curr[1] < best[1] ? curr : curr[1] > best[1] ? best : curr
         );
         const destKey = coordKey(dest[0], dest[1], dest[2]);
-        toRemove.add(key);
-        toAdd.set(destKey, color);
         occupied.set(destKey, color);
         moved = true;
       } else {
@@ -158,6 +154,16 @@ export function applyMelt(
       }
     }
     if (!moved) break;
+  }
+
+  // Net delta: cells that lost a voxel vs cells that gained one (conserves block count)
+  const toRemove = new Set<string>();
+  const toAdd = new Map<string, number>();
+  for (const key of v.keys()) {
+    if (!occupied.has(key)) toRemove.add(key);
+  }
+  for (const [key, color] of occupied) {
+    if (!v.has(key)) toAdd.set(key, color);
   }
   return { toAdd, toRemove };
 }

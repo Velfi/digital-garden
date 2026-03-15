@@ -31,7 +31,7 @@ export function createFlyKeyHandlers(
   options: { isEnabled: () => boolean }
 ) {
   function onKeyDown(e: KeyboardEvent) {
-    if (e.altKey || !options.isEnabled()) return;
+    if (e.ctrlKey || e.metaKey || e.altKey || !options.isEnabled()) return;
     switch (e.code) {
       case 'KeyW':
         state.forward = 1;

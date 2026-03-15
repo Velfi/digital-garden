@@ -77,6 +77,14 @@
     >
       Rope
     </button>
+    <button
+      type="button"
+      class:active={$clayMode === 'wall'}
+      onclick={() => clayMode.set('wall')}
+      title="Wall: extend voxels along an axis from the path (e.g. Y− for rain)"
+    >
+      Wall
+    </button>
   </div>
 </div>
 

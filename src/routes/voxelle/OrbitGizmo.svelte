@@ -301,6 +301,7 @@
 <canvas
   bind:this={canvasEl}
   class="orbit-gizmo"
+  data-voxelle-no-passthrough
   width={SIZE * DPR}
   height={SIZE * DPR}
   style="width:{SIZE}px;height:{SIZE}px"

@@ -35,7 +35,7 @@ export type Tool =
   | 'eyedropper'
   | 'clay';
 
-export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope' | 'inflate';
+export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope' | 'wall' | 'inflate';
 
 export type RopeBrushShape = 'sphere' | 'cube';
 
@@ -90,6 +90,8 @@ export const selection = writable<Map<string, number>>(new Map());
 export const selectionMode = writable<SelectionMode>('replace');
 export const fillSelectDiagonals = writable<boolean>(false);
 export const fillRespectsColor = writable<boolean>(true);
+/** When true, fill only expands within the plane through the seed (same coordinate on planeAxis). */
+export const fillConstrainToPlane = writable<boolean>(false);
 export const strokeMode = writable<StrokeMode>('line');
 export const planeAxis = writable<PlaneAxis>(1);
 export const clayMode = writable<ClayMode>('bulk');
@@ -123,6 +125,17 @@ export const airbrushScatter = writable<number>(0);
 export const airbrushRadiusRange = writable<boolean>(false);
 export const airbrushRadiusMin = writable<number>(0);
 export const airbrushRadiusMax = writable<number>(2);
+/** Wall (and legacy): direction to extend voxels. Auto = use face normal (wall only). */
+export type SprayDirection = 'none' | 'auto' | 'down' | 'up' | 'forward' | 'back' | 'left' | 'right';
+export const sprayDirection = writable<SprayDirection>('auto');
+/** Legacy: streak length. Wall uses wallHeight instead. */
+export const sprayStreakLength = writable<number>(0);
+/** Wall: path thickness (0 = 1 voxel, 1 = 3³, 2 = 5³). */
+export const wallWidth = writable<number>(0);
+/** Wall: voxels to extend along direction (min 2). */
+export const wallHeight = writable<number>(2);
+/** Wall: keep path on starting plane (for enclosed loops). */
+export const wallLockStartHeight = writable<boolean>(false);
 /** Draw tool brush shape (sphere, cube, pyramid). */
 export const drawBrushShape = writable<DrawBrushShape>('sphere');
 /** Draw tool brush size (0=single voxel, 1=3³, 2=5³, etc). */

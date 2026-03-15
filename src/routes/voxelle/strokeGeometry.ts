@@ -142,6 +142,51 @@ export function thickenPath(
   return result;
 }
 
+/** Thickens path only in the plane perpendicular to the given axis (0=X, 1=Y, 2=Z). Used for wall width so height is unaffected. */
+function thickenPathInPlane(
+  positions: [number, number, number][],
+  radius: number,
+  normalAxis: 0 | 1 | 2
+): [number, number, number][] {
+  if (radius <= 0) return positions;
+  const seen = new Set<string>(positions.map(([x, y, z]) => `${x},${y},${z}`));
+  const result: [number, number, number][] = [...positions];
+  for (const [px, py, pz] of positions) {
+    if (normalAxis === 0) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dz = -radius; dz <= radius; dz++) {
+          const k = `${px},${py + dy},${pz + dz}`;
+          if (!seen.has(k)) {
+            seen.add(k);
+            result.push([px, py + dy, pz + dz]);
+          }
+        }
+      }
+    } else if (normalAxis === 1) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        for (let dz = -radius; dz <= radius; dz++) {
+          const k = `${px + dx},${py},${pz + dz}`;
+          if (!seen.has(k)) {
+            seen.add(k);
+            result.push([px + dx, py, pz + dz]);
+          }
+        }
+      }
+    } else {
+      for (let dx = -radius; dx <= radius; dx++) {
+        for (let dy = -radius; dy <= radius; dy++) {
+          const k = `${px + dx},${py + dy},${pz}`;
+          if (!seen.has(k)) {
+            seen.add(k);
+            result.push([px + dx, py + dy, pz]);
+          }
+        }
+      }
+    }
+  }
+  return result;
+}
+
 /** Sphere: x²+y²+z² <= r² (Euclidean). r=0 → single voxel, r=1 → 3³ sphere (~14 voxels), r=2 → 5³ sphere. */
 function getSphereVoxels(
   cx: number,
@@ -203,6 +248,82 @@ export function puffPath(
   return result;
 }
 
+/** World-axis direction for wall/spray. 'auto' = use face normal (wall only). */
+export type SprayDirectionName = 'none' | 'auto' | 'down' | 'up' | 'forward' | 'back' | 'left' | 'right';
+
+/** Snap face normal to nearest principal axis (max |component|). */
+export function snapNormalToAxis(n: { x: number; y: number; z: number }): [number, number, number] {
+  const ax = Math.abs(n.x);
+  const ay = Math.abs(n.y);
+  const az = Math.abs(n.z);
+  if (ax >= ay && ax >= az) return [n.x >= 0 ? 1 : -1, 0, 0];
+  if (ay >= az) return [0, n.y >= 0 ? 1 : -1, 0];
+  return [0, 0, n.z >= 0 ? 1 : -1];
+}
+
+/** Returns [dx, dy, dz] for the given direction. When dir is 'auto', pass faceNormal to use it. */
+export function getSprayDirectionVector(
+  dir: SprayDirectionName,
+  faceNormal?: { x: number; y: number; z: number } | null
+): [number, number, number] | null {
+  if (dir === 'auto' && faceNormal) return snapNormalToAxis(faceNormal);
+  switch (dir) {
+    case 'none':
+    case 'auto':
+      return null;
+    case 'down':
+      return [0, -1, 0];
+    case 'up':
+      return [0, 1, 0];
+    case 'forward':
+      return [0, 0, -1];
+    case 'back':
+      return [0, 0, 1];
+    case 'left':
+      return [-1, 0, 0];
+    case 'right':
+      return [1, 0, 0];
+    default:
+      return null;
+  }
+}
+
+/** One voxel step perpendicular to direction (for 2-voxel wall width). */
+function perpendicularStep(dir: [number, number, number]): [number, number, number] {
+  const [dx, dy, dz] = dir;
+  if (dx !== 0) return [0, 1, 0];
+  if (dy !== 0) return [1, 0, 0];
+  return [0, 1, 0];
+}
+
+/** From each path point, add voxels at point + k*direction for k = 1..streakLength. Dedupes via seen set. */
+function directionalStreakFromPath(
+  positions: [number, number, number][],
+  direction: [number, number, number],
+  streakLength: number,
+  seen: Set<string>,
+  result: [number, number, number][]
+): void {
+  const len = Math.max(0, Math.floor(streakLength));
+  if (len === 0) return;
+  const [dx, dy, dz] = direction;
+  for (const [px, py, pz] of positions) {
+    const xi = Math.round(px);
+    const yi = Math.round(py);
+    const zi = Math.round(pz);
+    for (let k = 1; k <= len; k++) {
+      const x = xi + k * dx;
+      const y = yi + k * dy;
+      const z = zi + k * dz;
+      const key = `${x},${y},${z}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push([x, y, z]);
+      }
+    }
+  }
+}
+
 /** Params for path thickening; used by both preview and apply to avoid divergence. */
 export interface PathThickenParams {
   strokeMode: string;
@@ -219,6 +340,15 @@ export interface PathThickenParams {
   airbrushRadiusRange: boolean;
   airbrushRadiusMin: number;
   airbrushRadiusMax: number;
+  /** Wall/spray direction. 'auto' uses wallFaceNormal when present. */
+  sprayDirection?: SprayDirectionName;
+  sprayStreakLength?: number;
+  /** Wall: path thickness (0 = 1 voxel, 1+ = thickenPath radius). */
+  wallWidth?: number;
+  /** Wall: extension along direction (min 2). */
+  wallHeight?: number;
+  /** Wall: when direction is 'auto', use this face normal. */
+  wallFaceNormal?: { x: number; y: number; z: number } | null;
   drawBrushShape?: 'sphere' | 'cube' | 'pyramid';
   drawBrushSize?: number;
   /** When true and drawBrushFaceNormal set, offset brush by radius*normal so it sits on surface */
@@ -226,7 +356,7 @@ export interface PathThickenParams {
   drawBrushFaceNormal?: { x: number; y: number; z: number };
 }
 
-const CLAY_PATH_MODES = ['bulk', 'smooth', 'level', 'gouge', 'branch', 'puffy', 'melt', 'inflate'] as const;
+const CLAY_PATH_MODES = ['bulk', 'smooth', 'level', 'gouge', 'branch', 'puffy', 'melt', 'wall', 'inflate'] as const;
 
 /**
  * Thickens a path according to stroke/clay mode. Single source of truth for preview and apply.
@@ -249,6 +379,40 @@ export function thickenPathForStroke(
       params.puffRadiusRange ? params.puffRadiusMin : undefined,
       params.puffRadiusRange ? params.puffRadiusMax : undefined
     );
+  }
+  if (isClayPath && params.clayMode === 'wall') {
+    const dir = params.sprayDirection ?? 'auto';
+    const dirVec = getSprayDirectionVector(dir, params.wallFaceNormal ?? undefined);
+    if (!dirVec) return positions;
+    const width = Math.max(0, Math.floor(params.wallWidth ?? 0));
+    let basePositions: [number, number, number][];
+    if (width === 0) {
+      basePositions = positions;
+    } else if (width === 1) {
+      // 2 voxels thick: path + one step perpendicular to direction
+      const perp = perpendicularStep(dirVec);
+      const seen = new Set<string>(positions.map(([x, y, z]) => `${x},${y},${z}`));
+      basePositions = [...positions];
+      for (const [px, py, pz] of positions) {
+        const x = px + perp[0];
+        const y = py + perp[1];
+        const z = pz + perp[2];
+        const key = `${x},${y},${z}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          basePositions.push([x, y, z]);
+        }
+      }
+    } else {
+      // Thicken only in the plane perpendicular to wall direction so width does not affect height
+      const dirAxis = (dirVec[0] !== 0 ? 0 : dirVec[1] !== 0 ? 1 : 2) as 0 | 1 | 2;
+      basePositions = thickenPathInPlane(positions, width - 1, dirAxis);
+    }
+    const height = Math.max(2, Math.floor(params.wallHeight ?? params.sprayStreakLength ?? 2));
+    const seen = new Set<string>(basePositions.map(([x, y, z]) => `${x},${y},${z}`));
+    const result: [number, number, number][] = [...basePositions];
+    directionalStreakFromPath(basePositions, dirVec, height, seen, result);
+    return result;
   }
   if (isClayPath && params.clayMode === 'branch' && params.branchTaper) {
     return thickenPathTapered(positions, params.clayBrushRadius, 0);
@@ -540,6 +704,43 @@ export function getAxisAlignedCuboid(
   return positions;
 }
 
+/** Ray-casting point-in-polygon (2D). Point is inside if ray in +x crosses odd number of edges. */
+function pointInPolygon2D(px: number, py: number, polygon: [number, number][]): boolean {
+  const n = polygon.length;
+  let inside = false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    if (yi > py !== yj > py) {
+      const t = (py - yj) / (yi - yj);
+      const x = xj + t * (xi - xj);
+      if (px < x) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** True if all points lie on the plane through a,b,c (within tolerance). */
+function areCoplanar(
+  points: [number, number, number][],
+  a: [number, number, number],
+  b: [number, number, number],
+  c: [number, number, number],
+  tol = 1e-6
+): boolean {
+  const ab = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+  const ac = new THREE.Vector3(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
+  const normal = new THREE.Vector3().crossVectors(ab, ac);
+  if (normal.lengthSq() < tol * tol) return true; // degenerate, treat as coplanar
+  normal.normalize();
+  const d = -normal.x * a[0] - normal.y * a[1] - normal.z * a[2];
+  for (const p of points) {
+    const dist = Math.abs(normal.x * p[0] + normal.y * p[1] + normal.z * p[2] + d);
+    if (dist > tol) return false;
+  }
+  return true;
+}
+
 export function getPolygonVoxels(points: [number, number, number][]): [number, number, number][] {
   if (points.length === 0) return [];
   if (points.length === 1) return [points[0]];
@@ -593,6 +794,51 @@ export function getPolygonVoxels(points: [number, number, number][]): [number, n
     }
     return positions;
   }
+  // 4+ points: if coplanar, fill actual polygon with 2D point-in-polygon; else 3D convex hull
+  const [a, b, c] = points;
+  const ab = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+  const ac = new THREE.Vector3(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
+  const normal = new THREE.Vector3().crossVectors(ab, ac);
+  const ax = Math.abs(normal.x);
+  const ay = Math.abs(normal.y);
+  const az = Math.abs(normal.z);
+  const dropAxis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+  const uAxis = dropAxis === 0 ? 1 : 0;
+  const vAxis = dropAxis === 2 ? 1 : 2;
+  const to2D = (p: [number, number, number]) => [p[uAxis], p[vAxis]] as [number, number];
+  const polygon2D = points.map(to2D);
+  const normalLenSq = normal.lengthSq();
+
+  if (normalLenSq >= 1e-12 && areCoplanar(points, a, b, c)) {
+    const minU = Math.min(...polygon2D.map(([u]) => u));
+    const maxU = Math.max(...polygon2D.map(([u]) => u));
+    const minV = Math.min(...polygon2D.map(([, v]) => v));
+    const maxV = Math.max(...polygon2D.map(([, v]) => v));
+    const floorU = Math.floor(minU);
+    const ceilU = Math.ceil(maxU);
+    const floorV = Math.floor(minV);
+    const ceilV = Math.ceil(maxV);
+    const n = normal.clone().normalize();
+    const d = -n.x * a[0] - n.y * a[1] - n.z * a[2];
+    const positions: [number, number, number][] = [];
+    const coord = [0, 0, 0] as [number, number, number];
+    for (let u = floorU; u <= ceilU; u++) {
+      for (let v = floorV; v <= ceilV; v++) {
+        const cx = u + 0.5;
+        const cy = v + 0.5;
+        if (!pointInPolygon2D(cx, cy, polygon2D)) continue;
+        coord[uAxis] = u;
+        coord[vAxis] = v;
+        const nd = n.getComponent(dropAxis);
+        if (Math.abs(nd) < 1e-9) continue;
+        const third = -(d + n.getComponent(uAxis) * cx + n.getComponent(vAxis) * cy) / nd;
+        coord[dropAxis] = Math.round(third);
+        positions.push([...coord]);
+      }
+    }
+    return positions;
+  }
+
   const vecs = points.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
   const hull = new ConvexHull();
   hull.setFromPoints(vecs);

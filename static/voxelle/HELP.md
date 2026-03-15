@@ -62,6 +62,7 @@ The **Clay** tab holds fast, imprecise sculpting modes—opposite of the Draw to
 - **Puffy** – Organic spheres for clouds. Options: Size, Size range (min/max), Scatter.
 - **Melt** – Spread voxels downhill, highest first.
 - **Rope** – Draw a catenary curve between two points. Click to place the first point, click again for the second, then adjust tension (0=max sag, 1=taut) and click Done to apply. Options: Brush shape (sphere or cube), Brush radius (0–5).
+- **Wall** – Drag a path on a surface; voxels extend along a direction from each path point. **Direction**: Auto (face normal), None, or axis (X+, X−, Y+, Y−, Z+, Z−). **Width** (0–5): path thickness. **Height** (2–20): extension along direction. **Lock start height**: keep path on the starting plane for enclosed loops (e.g. walls around a building).
 
 Brush size (0–2) applies to Bulk, Smooth, Level, Gouge, Branch, and Melt.
 
