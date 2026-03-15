@@ -17,12 +17,19 @@ describe('processVoxelleFileMessage', () => {
   describe('parse', () => {
     it('parses BSON bytes and returns parsed result', () => {
       const bsonBytes = serializeFormatToBson(sampleData);
+      const bytes = bsonBytes.buffer.slice(
+        bsonBytes.byteOffset,
+        bsonBytes.byteOffset + bsonBytes.byteLength
+      ) as ArrayBuffer;
       const result = processVoxelleFileMessage({
         type: 'parse',
         id: 1,
-        bytes: bsonBytes.buffer
+        bytes
       });
       expect(result.type).toBe('parsed');
+      if (result.type !== 'parsed') {
+        throw new Error('Expected parsed result');
+      }
       expect(result.id).toBe(1);
       expect(result.data).not.toBeNull();
       expect(result.data!.version).toBe(sampleData.version);
@@ -37,6 +44,9 @@ describe('processVoxelleFileMessage', () => {
         bytes: new Uint8Array([1, 2, 3, 4, 5]).buffer
       });
       expect(result.type).toBe('parsed');
+      if (result.type !== 'parsed') {
+        throw new Error('Expected parsed result');
+      }
       expect(result.data).toBeNull();
     });
   });
@@ -49,6 +59,9 @@ describe('processVoxelleFileMessage', () => {
         data: sampleData
       });
       expect(result.type).toBe('serialized');
+      if (result.type !== 'serialized') {
+        throw new Error('Expected serialized result');
+      }
       expect(result.id).toBe(3);
       expect(result.bytes).toBeInstanceOf(ArrayBuffer);
       expect(result.bytes.byteLength).toBeGreaterThan(0);
@@ -61,12 +74,18 @@ describe('processVoxelleFileMessage', () => {
         data: sampleData
       });
       expect(serialized.type).toBe('serialized');
+      if (serialized.type !== 'serialized') {
+        throw new Error('Expected serialized result');
+      }
       const parsed = processVoxelleFileMessage({
         type: 'parse',
         id: 5,
         bytes: serialized.bytes
       });
       expect(parsed.type).toBe('parsed');
+      if (parsed.type !== 'parsed') {
+        throw new Error('Expected parsed result');
+      }
       expect(parsed.data).toEqual(sampleData);
     });
   });

@@ -51,6 +51,7 @@ export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect' | 'togg
 export type PlaneAxis = 'auto' | 0 | 1 | 2;
 
 export type FaceNormal = [number, number, number];
+export type RenderingMode = 'greedy' | 'marchingCubes';
 
 export type AddPanelState = {
   open: boolean;
@@ -156,6 +157,7 @@ export const addPanelStore = writable<AddPanelState>({ ...defaultAddPanel });
 export type StampRotation = { rotX: number; rotY: number; rotZ: number };
 export const stampRotation = writable<StampRotation>({ rotX: 0, rotY: 0, rotZ: 0 });
 export const showGrid = writable<boolean>(false);
+export const renderingMode = writable<RenderingMode>('greedy');
 export const lightAngle = writable<number>(45);
 export const lightElevation = writable<number>(40);
 export const lightColor = writable<string>('#ffffff');

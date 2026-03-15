@@ -87,6 +87,7 @@ Color picker, hex input, and Lospec palette.
 
 ### Scene
 
+- **Rendering** – Choose `Blocky (greedy mesh)` for crisp voxel faces or `Smooth (marching cubes)` for an isosurface look.
 - **Show borders** – Toggle the voxel gridlines.
 - **Sky & horizon** – Gradient sky with horizon.
 - **Background** – Solid color (when sky is off).

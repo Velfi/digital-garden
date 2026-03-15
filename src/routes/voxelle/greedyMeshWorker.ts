@@ -9,14 +9,14 @@ export type { GreedyMeshWorkerInput, GreedyMeshWorkerOutput };
 
 self.onmessage = (e: MessageEvent<GreedyMeshWorkerInput>) => {
   const output = processGreedyMeshMessage(e.data);
-  const transferables: ArrayBuffer[] = [];
+  const transferables: Transferable[] = [];
   for (const r of output.results) {
     transferables.push(
-      r.positions.buffer,
-      r.normals.buffer,
-      r.colors.buffer,
-      r.indices.buffer
+      r.positions.buffer as Transferable,
+      r.normals.buffer as Transferable,
+      r.colors.buffer as Transferable,
+      r.indices.buffer as Transferable
     );
   }
-  self.postMessage(output satisfies GreedyMeshWorkerOutput, transferables);
+  self.postMessage(output satisfies GreedyMeshWorkerOutput, { transfer: transferables });
 };

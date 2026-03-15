@@ -9,6 +9,7 @@
     voxels,
     gridSize,
     showGrid,
+    renderingMode,
     tool,
     color,
     selectedColors,
@@ -230,6 +231,7 @@
   }
 
   const pointerHelper = new THREE.Vector3();
+  const axisNormalHelper = new THREE.Vector3();
   const fitHelperBox = new THREE.Box3();
   const flyMoveState = createFlyMoveState();
   const { onKeyDown: onFlyKeyDown, onKeyUp: onFlyKeyUp } = createFlyKeyHandlers(flyMoveState, {
@@ -347,6 +349,7 @@
     const voxelsArr: [string, number][] = [...v];
     meshWorker.postMessage({
       voxels: voxelsArr,
+      mode: $renderingMode,
       options: { aoEnabled: $enableAO },
       gen
     });
@@ -354,7 +357,7 @@
 
   function setupMeshWorker() {
     if (!browser) return;
-    meshWorker = new Worker(new URL('./greedyMeshWorker.ts', import.meta.url), {
+    meshWorker = new Worker(new URL('./voxelMeshWorker.ts', import.meta.url), {
       type: 'module'
     });
     meshWorker.onmessage = (e: MessageEvent<{ results: unknown[]; gen?: number }>) => {
@@ -421,15 +424,20 @@
     return rotated.map(([x, y, z]) => [x + dx, y + dy, z + dz]);
   }
 
+  function dominantAxisNormal(n: THREE.Vector3): FaceNormal {
+    const ax = Math.abs(n.x);
+    const ay = Math.abs(n.y);
+    const az = Math.abs(n.z);
+    if (ax >= ay && ax >= az) return [Math.sign(n.x) || 1, 0, 0];
+    if (ay >= ax && ay >= az) return [0, Math.sign(n.y) || 1, 0];
+    return [0, 0, Math.sign(n.z) || 1];
+  }
+
   function getFaceNormalFromHit(hit: THREE.Intersection): FaceNormal | null {
     if (!hit.face) return null;
     hit.object.getWorldQuaternion(worldQuaternion);
     const n = hit.face.normal.clone().applyQuaternion(worldQuaternion);
-    return [
-      Math.round(n.x) as -1 | 0 | 1,
-      Math.round(n.y) as -1 | 0 | 1,
-      Math.round(n.z) as -1 | 0 | 1
-    ];
+    return dominantAxisNormal(n);
   }
 
   function getRaycastTargets(): THREE.Object3D[] {
@@ -629,8 +637,9 @@
     if (!hit.face) return null;
     hit.object.getWorldQuaternion(worldQuaternion);
     const worldNormal = hit.face.normal.clone().applyQuaternion(worldQuaternion);
+    const [nx, ny, nz] = dominantAxisNormal(worldNormal);
     // Add 0.5 * normal to reach adjacent cell center (hit.point is on face, full normal overshoots)
-    pointerHelper.copy(hit.point).addScaledVector(worldNormal, 0.5);
+    pointerHelper.copy(hit.point).addScaledVector(axisNormalHelper.set(nx, ny, nz), 0.5);
     return snapToGrid(pointerHelper);
   }
 
@@ -640,11 +649,12 @@
     if (positions && hit.instanceId != null) {
       return positions[hit.instanceId] ?? null;
     }
-    // Greedy mesh: derive from hit point and face normal
+    // Mesh raycast: derive from hit point and dominant face normal
     if (!hit.face) return null;
     mesh.getWorldQuaternion(worldQuaternion);
     const worldNormal = hit.face.normal.clone().applyQuaternion(worldQuaternion);
-    pointerHelper.copy(hit.point).addScaledVector(worldNormal, -0.5);
+    const [nx, ny, nz] = dominantAxisNormal(worldNormal);
+    pointerHelper.copy(hit.point).addScaledVector(axisNormalHelper.set(nx, ny, nz), -0.5);
     return snapToGrid(pointerHelper);
   }
 
@@ -2044,6 +2054,7 @@
     const v = $voxels;
     const sz = $gridSize;
     const _ao = $enableAO;
+    const _renderingMode = $renderingMode;
     requestRebuildVoxelMeshes(v, sz);
     render();
   });
