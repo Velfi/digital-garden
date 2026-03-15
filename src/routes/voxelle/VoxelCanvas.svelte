@@ -1756,6 +1756,25 @@
     }
   }
 
+  function onFullscreenKey(e: KeyboardEvent) {
+    const target = document.activeElement;
+    const isInput =
+      target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT';
+    if (isInput) return;
+    if (e.key.toLowerCase() !== 'f' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!container) return;
+    e.preventDefault();
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      container.requestFullscreen();
+    }
+  }
+
+  function onFullscreenChange() {
+    onWindowResize();
+  }
+
   // Block pointer events from reaching FlyControls when in fly mode (we handle them ourselves)
   function onFlyPointerCapture(e: PointerEvent) {
     if ($tool === 'fly') e.stopPropagation();
@@ -2139,6 +2158,8 @@
 
     window.addEventListener('keydown', onFlyKeyDown, true);
     window.addEventListener('keydown', onEscapeKeyDown, true);
+    window.addEventListener('keydown', onFullscreenKey);
+    window.addEventListener('fullscreenchange', onFullscreenChange);
     window.addEventListener('keyup', onFlyKeyUp, true);
 
     updateZoomPercent();
@@ -2314,6 +2335,8 @@
     window.removeEventListener('resize', onWindowResize);
     window.removeEventListener('keydown', onFlyKeyDown, true);
     window.removeEventListener('keydown', onEscapeKeyDown, true);
+    window.removeEventListener('keydown', onFullscreenKey);
+    window.removeEventListener('fullscreenchange', onFullscreenChange);
     window.removeEventListener('keyup', onFlyKeyUp, true);
     orbitControls?.removeEventListener?.('change', updateZoomPercent);
     orbitControls?.dispose();
@@ -2578,6 +2601,11 @@
     min-width: 0;
     min-height: 200px;
     position: relative;
+  }
+  .canvas-container:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    background: #000;
   }
   .canvas-container :global(canvas) {
     display: block;

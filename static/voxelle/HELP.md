@@ -116,6 +116,7 @@ Color picker, hex input, and Lospec palette.
 
 ## Keyboard Shortcuts
 
+- **F** – Fullscreen canvas (for screenshots); press F or Escape to exit
 - **Ctrl+Z** / Cmd+Z – Undo
 - **Ctrl+Shift+Z** / **Ctrl+Y** / Cmd+Y – Redo
 - **Ctrl+A** / Cmd+A – Select all

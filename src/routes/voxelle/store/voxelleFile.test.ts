@@ -123,6 +123,22 @@ describe('loadFromBytes / encodeForTransport with injected impls', () => {
     setWorkerImpls();
   });
 
+  it('loadFromBytes decodes raw (non-gzipped) BSON and applies to store', async () => {
+    const data: VoxelleFileFormat = {
+      version: 1,
+      gridSize: 8,
+      voxels: [[0, 0, 0, 0xff0000]],
+      scene: { focalLength: 35, orthographic: true }
+    };
+    const rawBson = serializeFormatToBson(data);
+    const result = await loadFromBytes(rawBson);
+    expect(result).toBe(true);
+    expect(get(gridSize)).toBe(8);
+    expect(get(voxels).get('0,0,0')).toBe(0xff0000);
+    expect(get(focalLength)).toBe(35);
+    expect(get(orthographic)).toBe(true);
+  });
+
   it('loadFromBytes decodes gzipped BSON and applies to store', async () => {
     const data: VoxelleFileFormat = {
       version: 1,
