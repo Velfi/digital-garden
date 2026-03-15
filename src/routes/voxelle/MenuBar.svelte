@@ -144,9 +144,15 @@
   async function handleFileChange(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
-    if (file) {
-      await loadFromFile(file);
-      input.value = '';
+    if (!file) return;
+    input.value = '';
+    try {
+      const ok = await loadFromFile(file);
+      if (!ok) {
+        alert('Could not load file. The file may be corrupted or not a valid .voxelle file.');
+      }
+    } catch (err) {
+      alert(`Failed to load file: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }
 

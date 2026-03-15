@@ -151,11 +151,19 @@ export async function saveToFile(filename = 'voxelle.voxelle'): Promise<void> {
 /** Decode bytes (gzipped or raw) and apply to store. Used by file load and share. */
 export async function loadFromBytes(bytes: Uint8Array): Promise<boolean> {
   let payload = bytes;
-  if (isGzipped(bytes)) {
-    payload = await gzipDecompress(bytes);
+  try {
+    if (isGzipped(bytes)) {
+      payload = await gzipDecompress(bytes);
+    }
+  } catch (e) {
+    console.error('[Voxelle] Decompression failed:', e);
+    return false;
   }
   const data = await parsePayloadInWorker(payload);
-  if (!data) return false;
+  if (!data) {
+    console.error('[Voxelle] Parse failed. Decompressed payload length:', payload.length);
+    return false;
+  }
   applyModelData(data);
   return true;
 }
