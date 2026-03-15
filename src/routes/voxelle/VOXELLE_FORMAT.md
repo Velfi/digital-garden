@@ -4,7 +4,7 @@ Binary format for Voxelle voxel models.
 
 ## Structure
 
-After decompression (if gzipped), the payload is either BSON or JSON. The logical structure is:
+After decompression (if gzipped), the payload is BSON. The logical structure is:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -21,9 +21,7 @@ After decompression (if gzipped), the payload is either BSON or JSON. The logica
 
 **Share / blob store:** Same format. The blob stores raw gzipped BSON (binary). Shares use `?m=<id>`; the id refers to the blob.
 
-**Detection:**
-- First 2 bytes `0x1f 0x8b` → gzip. Decompress, then interpret the result.
-- After decompression: first byte `0x7b` (`{`) → JSON; otherwise → BSON.
+**Detection:** First 2 bytes `0x1f 0x8b` → gzip. Decompress, then parse as BSON.
 
 ## Example (JSON representation)
 

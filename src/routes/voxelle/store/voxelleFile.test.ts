@@ -46,7 +46,7 @@ describe('voxelle file format round-trip', () => {
     expect(parsed!.scene?.orthographic).toBe(data.scene?.orthographic);
   });
 
-  it('parses large BSON file (avoids 0x7b JSON/BSON first-byte collision)', async () => {
+  it('round-trips large BSON file', async () => {
     const data: VoxelleFileFormat = {
       version: 1,
       gridSize: 32,

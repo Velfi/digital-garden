@@ -32,16 +32,9 @@ function parseFullFormat(raw: unknown): VoxelleFileFormat | null {
   return { version: data.version, gridSize: sz, voxels: voxelsArr, scene: data.scene };
 }
 
-/** Parse BSON or JSON payload to VoxelleFileFormat. Used by worker and tests. */
+/** Parse BSON payload to VoxelleFileFormat. Used by worker and tests. */
 export function parseFormatPayload(bytes: Uint8Array): VoxelleFileFormat | null {
-  // BSON starts with 4-byte little-endian size; 0x7b can be size's low byte, so check byte 2 too
-  const isJson =
-    bytes[0] === 0x7b && bytes[1] === 0x22; // '{' '"' — JSON keys start with quote
   try {
-    if (isJson) {
-      return parseFullFormat(JSON.parse(new TextDecoder().decode(bytes)));
-    }
-    // Allow buffer larger than BSON doc in case of streaming decompress padding
     return parseFullFormat(
       bsonDeserialize(bytes, { allowObjectSmallerThanBufferSize: true })
     );
