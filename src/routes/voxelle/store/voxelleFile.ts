@@ -8,6 +8,7 @@ import {
   resetUndo
 } from './core';
 import type { GridSize } from './core';
+import { parseFormatPayload, serializeFormatToBson } from './voxelleFormatCore';
 
 export const VOXELLE_FILE_VERSION = 1;
 
@@ -21,57 +22,77 @@ export type VoxelleFileFormat = {
   };
 };
 
+export type ParsePayloadImpl = (bytes: Uint8Array) => Promise<VoxelleFileFormat | null>;
+export type SerializeImpl = (data: VoxelleFileFormat) => Promise<Uint8Array>;
+
+let parsePayloadImpl: ParsePayloadImpl;
+let serializeImpl: SerializeImpl;
+
 function createFileWorker(): Worker {
   return new Worker(new URL('./voxelleFile.worker.ts', import.meta.url), { type: 'module' });
 }
 
 let workerNextId = 0;
 
-function parsePayloadInWorker(bytes: Uint8Array): Promise<VoxelleFileFormat | null> {
-  return new Promise((resolve, reject) => {
-    const id = ++workerNextId;
-    const worker = createFileWorker();
-    const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-    const handler = (e: MessageEvent) => {
-      if (e.data?.id !== id) return;
-      worker.removeEventListener('message', handler);
-      worker.terminate();
-      if (e.data.type === 'parsed') resolve(e.data.data ?? null);
-      else resolve(null);
-    };
-    worker.addEventListener('message', handler);
-    worker.onerror = () => {
-      worker.removeEventListener('message', handler);
-      worker.terminate();
-      reject(new Error('Worker failed'));
-    };
-    worker.postMessage({ type: 'parse', id, bytes: buf }, [buf]);
-  });
+function useWorker(): void {
+  parsePayloadImpl = (bytes: Uint8Array) =>
+    new Promise((resolve, reject) => {
+      const id = ++workerNextId;
+      const worker = createFileWorker();
+      const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      const handler = (e: MessageEvent) => {
+        if (e.data?.id !== id) return;
+        worker.removeEventListener('message', handler);
+        worker.terminate();
+        if (e.data.type === 'parsed') resolve(e.data.data ?? null);
+        else resolve(null);
+      };
+      worker.addEventListener('message', handler);
+      worker.onerror = () => {
+        worker.removeEventListener('message', handler);
+        worker.terminate();
+        reject(new Error('Worker failed'));
+      };
+      worker.postMessage({ type: 'parse', id, bytes: buf }, [buf]);
+    });
+  serializeImpl = (data: VoxelleFileFormat) =>
+    new Promise((resolve, reject) => {
+      const id = ++workerNextId;
+      const worker = createFileWorker();
+      const handler = (e: MessageEvent) => {
+        if (e.data?.id !== id) return;
+        worker.removeEventListener('message', handler);
+        worker.terminate();
+        if (e.data.type === 'serialized' && e.data.bytes) {
+          resolve(new Uint8Array(e.data.bytes));
+        } else {
+          reject(new Error('Worker failed'));
+        }
+      };
+      worker.addEventListener('message', handler);
+      worker.onerror = () => {
+        worker.removeEventListener('message', handler);
+        worker.terminate();
+        reject(new Error('Worker failed'));
+      };
+      worker.postMessage({ type: 'serialize', id, data });
+    });
 }
 
-function serializeInWorker(data: VoxelleFileFormat): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    const id = ++workerNextId;
-    const worker = createFileWorker();
-    const handler = (e: MessageEvent) => {
-      if (e.data?.id !== id) return;
-      worker.removeEventListener('message', handler);
-      worker.terminate();
-      if (e.data.type === 'serialized' && e.data.bytes) {
-        resolve(new Uint8Array(e.data.bytes));
-      } else {
-        reject(new Error('Worker failed'));
-      }
-    };
-    worker.addEventListener('message', handler);
-    worker.onerror = () => {
-      worker.removeEventListener('message', handler);
-      worker.terminate();
-      reject(new Error('Worker failed'));
-    };
-    worker.postMessage({ type: 'serialize', id, data });
-  });
+/** Override parse/serialize for tests. Call with no args to restore worker. */
+export function setWorkerImpls(
+  parse?: ParsePayloadImpl,
+  serialize?: SerializeImpl
+): void {
+  if (parse && serialize) {
+    parsePayloadImpl = parse;
+    serializeImpl = serialize;
+  } else {
+    useWorker();
+  }
 }
+
+useWorker();
 
 export function serializeToVoxelleFormat(): VoxelleFileFormat {
   const v = get(voxels);
@@ -133,7 +154,7 @@ function applyModelData(data: VoxelleFileFormat): void {
 
 export async function saveToFile(filename = 'voxelle.voxelle'): Promise<void> {
   const data = serializeToVoxelleFormat();
-  const bsonBytes = await serializeInWorker(data);
+  const bsonBytes = await serializeImpl(data);
   const compressed = await gzipCompress(bsonBytes);
   const slice = compressed.buffer.slice(
     compressed.byteOffset,
@@ -159,7 +180,7 @@ export async function loadFromBytes(bytes: Uint8Array): Promise<boolean> {
     console.error('[Voxelle] Decompression failed:', e);
     return false;
   }
-  const data = await parsePayloadInWorker(payload);
+  const data = await parsePayloadImpl(payload);
   if (!data) {
     console.error('[Voxelle] Parse failed. Decompressed payload length:', payload.length);
     return false;
@@ -176,7 +197,7 @@ export async function loadFromFile(file: File): Promise<boolean> {
 /** Encode model as base64(gzip(BSON)) for share URL or blob storage. */
 export async function encodeForTransport(): Promise<string> {
   const data = serializeToVoxelleFormat();
-  const bsonBytes = await serializeInWorker(data);
+  const bsonBytes = await serializeImpl(data);
   const compressed = await gzipCompress(bsonBytes);
   let binary = '';
   for (let i = 0; i < compressed.length; i++) binary += String.fromCharCode(compressed[i]!);

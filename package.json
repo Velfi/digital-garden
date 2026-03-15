@@ -8,6 +8,7 @@
     "@types/three": "^0.183.1",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
     "@typescript-eslint/parser": "^8.25.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "constructs": "^10.4.2",
     "dotenv": "^16.4.7",
     "eslint": "^9.21.0",
@@ -39,7 +40,9 @@
     "format": "prettier --plugin-search-dir . --write .",
     "lint": "prettier --plugin-search-dir . --check . && eslint .",
     "preview": "vite preview",
-    "test:unit": "vitest"
+    "test:unit": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:coverage:voxelle": "vitest run --coverage --coverage.include='src/routes/voxelle/**'"
   },
   "type": "module",
   "version": "0.0.1",

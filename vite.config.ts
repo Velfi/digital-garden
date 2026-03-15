@@ -11,6 +11,20 @@ export default defineConfig({
     }
   },
   test: {
-    include: ['src/**/*.{test,spec}.{js,ts}']
+    include: ['src/**/*.{test,spec}.{js,ts}'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov'],
+      include: ['src/**/*.{ts,js,svelte}'],
+      exclude: [
+        'node_modules/',
+        '.svelte-kit/',
+        '**/*.test.ts',
+        '**/*.spec.ts',
+        '**/*.d.ts',
+        '**/vite.config*',
+        '**/svelte.config*'
+      ]
+    }
   }
 });
