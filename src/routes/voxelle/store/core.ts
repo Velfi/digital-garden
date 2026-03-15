@@ -35,7 +35,7 @@ export type Tool =
   | 'eyedropper'
   | 'clay';
 
-export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope';
+export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope' | 'inflate';
 
 export type RopeBrushShape = 'sphere' | 'cube';
 
@@ -107,6 +107,8 @@ export const puffRadiusMin = writable<number>(0);
 export const puffRadiusMax = writable<number>(2);
 /** Puffy mode: max voxel offset for sphere centers (0=none, 1–4=scatter range). */
 export const puffScatter = writable<number>(0);
+/** Inflate mode: 0–1 probability of adding each empty face-neighbor (1=always). */
+export const inflateStrength = writable<number>(1);
 /** Rope mode: tension 0–1 (0=max sag, 1=taut). */
 export const ropeTension = writable<number>(0.5);
 /** Rope mode: brush shape (sphere or cube). */

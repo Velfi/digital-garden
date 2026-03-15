@@ -10,6 +10,7 @@
     stampRotation,
     clayMode,
     clayBrushRadius,
+    inflateStrength,
     branchTaper,
     puffRadius,
     puffRadiusRange,
@@ -333,7 +334,7 @@
 
     {#if clayVisible}
       <section class="tool-panel-section tool-panel-clay" aria-label="Clay">
-        {#if ['bulk', 'smooth', 'level', 'gouge', 'branch', 'melt'].includes($clayMode)}
+        {#if ['bulk', 'smooth', 'level', 'gouge', 'branch', 'melt', 'inflate'].includes($clayMode)}
           <div class="tool-panel-row">
             <span class="tool-panel-label">Brush</span>
             <input
@@ -358,6 +359,21 @@
                 />
                 Taper
               </label>
+            </div>
+          {/if}
+          {#if $clayMode === 'inflate'}
+            <div class="tool-panel-row">
+              <span class="tool-panel-label">Strength</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={$inflateStrength}
+                oninput={(e) => inflateStrength.set(Number((e.target as HTMLInputElement).value))}
+                title="Probability of adding each outward voxel (0–100%)"
+              />
+              <span class="tool-panel-value">{Math.round($inflateStrength * 100)}%</span>
             </div>
           {/if}
         {/if}

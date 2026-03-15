@@ -226,7 +226,7 @@ export interface PathThickenParams {
   drawBrushFaceNormal?: { x: number; y: number; z: number };
 }
 
-const CLAY_PATH_MODES = ['bulk', 'smooth', 'level', 'gouge', 'branch', 'puffy', 'melt'] as const;
+const CLAY_PATH_MODES = ['bulk', 'smooth', 'level', 'gouge', 'branch', 'puffy', 'melt', 'inflate'] as const;
 
 /**
  * Thickens a path according to stroke/clay mode. Single source of truth for preview and apply.

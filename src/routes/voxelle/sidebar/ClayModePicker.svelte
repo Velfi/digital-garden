@@ -23,6 +23,14 @@
     </button>
     <button
       type="button"
+      class:active={$clayMode === 'inflate'}
+      onclick={() => clayMode.set('inflate')}
+      title="Inflate: push surface outward along normals"
+    >
+      Inflate
+    </button>
+    <button
+      type="button"
       class:active={$clayMode === 'level'}
       onclick={() => clayMode.set('level')}
       title="Level: flatten surface to clicked height"

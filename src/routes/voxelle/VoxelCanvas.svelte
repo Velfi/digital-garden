@@ -16,6 +16,7 @@
     planeAxis,
     clayMode,
     clayBrushRadius,
+    inflateStrength,
     branchTaper,
     puffRadius,
     puffRadiusRange,
@@ -92,7 +93,7 @@
     getRopeCurveVoxels,
     applyBrushAlongPath
   } from './strokeGeometry';
-  import { applySmooth, applyLevel, applyMelt } from './clayOps';
+  import { applySmooth, applyLevel, applyMelt, applyInflate } from './clayOps';
   import { buildGridPositions } from './gridLines';
   import {
     FLY_MOVE_SPEED,
@@ -626,7 +627,7 @@
 
   function applyClayStroke(
     positions: [number, number, number][],
-    clayModeVal: 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope',
+    clayModeVal: 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope' | 'inflate',
     levelY: number
   ) {
     ensureGridFitsPositions(positions);
@@ -662,6 +663,14 @@
     }
     if (clayModeVal === 'smooth') {
       const { toAdd, toRemove } = applySmooth(v, positions, sz);
+      updateVoxelsInStroke((next) => {
+        for (const key of toRemove) next.delete(key);
+        for (const [key, c] of toAdd) next.set(key, c);
+      });
+      return;
+    }
+    if (clayModeVal === 'inflate') {
+      const { toAdd, toRemove } = applyInflate(v, positions, sz, get(inflateStrength));
       updateVoxelsInStroke((next) => {
         for (const key of toRemove) next.delete(key);
         for (const [key, c] of toAdd) next.set(key, c);
@@ -1072,7 +1081,7 @@
     }
 
     // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/puffy/melt)
-    if ($tool === 'clay' && (mode === 'bulk' || mode === 'smooth' || mode === 'level' || mode === 'gouge' || mode === 'puffy' || mode === 'melt')) {
+    if ($tool === 'clay' && (mode === 'bulk' || mode === 'smooth' || mode === 'level' || mode === 'gouge' || mode === 'puffy' || mode === 'melt' || mode === 'inflate')) {
       // Start on voxel (grab surface) or face of voxel (extend outward)
       const pos = getVoxelPosition(hit) ?? getAddPosition(hit);
       if (pos) {
@@ -1480,7 +1489,8 @@
               clayPathMode === 'level' ||
               clayPathMode === 'gouge' ||
               clayPathMode === 'puffy' ||
-              clayPathMode === 'melt') &&
+              clayPathMode === 'melt' ||
+              clayPathMode === 'inflate') &&
             lastBulkPos;
           if (isClayPathFollow || isAirbrushPath) {
             // Path-following: accumulate with 3D line segments
@@ -1660,7 +1670,7 @@
       const clayModeVal = get(clayMode);
       const isClayPath =
         $tool === 'clay' &&
-        (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'melt');
+        (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'melt' || clayModeVal === 'inflate');
       const normal = getEffectivePlaneNormal();
       if (mode === 'cuboid' && dragStartPos && normal && !isClayPath) {
         // Enter depth phase: drag plane, then scroll for depth
@@ -1689,7 +1699,7 @@
         if (pendingStrokePositions.length > 0) {
           const isClayPath =
             $tool === 'clay' &&
-            (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'melt');
+            (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'melt' || clayModeVal === 'inflate');
           const toApply = thickenPathForStroke(pendingStrokePositions, {
             strokeMode: mode as string,
             clayMode: isClayPath ? clayModeVal : undefined,

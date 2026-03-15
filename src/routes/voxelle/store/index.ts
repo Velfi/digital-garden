@@ -32,6 +32,7 @@ export {
   puffRadiusMin,
   puffRadiusMax,
   puffScatter,
+  inflateStrength,
   ropeTension,
   ropeBrushShape,
   ropeBrushRadius,

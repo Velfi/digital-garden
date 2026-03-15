@@ -54,6 +54,31 @@ export function applySmooth(
   return { toAdd, toRemove };
 }
 
+/** Inflate: push surface outward along face normals. For each filled brush voxel, add a voxel in each empty face-neighbor direction with probability strength (0–1). */
+export function applyInflate(
+  v: Map<string, number>,
+  brushPositions: [number, number, number][],
+  gridSize: number,
+  strength: number
+): { toAdd: Map<string, number>; toRemove: Set<string> } {
+  const toAdd = new Map<string, number>();
+  const toRemove = new Set<string>();
+
+  for (const [x, y, z] of brushPositions) {
+    if (!inBounds(x, y, z, gridSize)) continue;
+    const key = coordKey(x, y, z);
+    if (!v.has(key)) continue;
+    const color = v.get(key)!;
+    const neighbors = getFaceNeighbors(x, y, z);
+    for (const [nx, ny, nz] of neighbors) {
+      if (!inBounds(nx, ny, nz, gridSize)) continue;
+      const nk = coordKey(nx, ny, nz);
+      if (!v.has(nk) && (strength >= 1 || Math.random() < strength)) toAdd.set(nk, color);
+    }
+  }
+  return { toAdd, toRemove };
+}
+
 /** Level: add voxels at levelY to fill depressions. Only affects y <= levelY; never removes above. */
 export function applyLevel(
   v: Map<string, number>,
@@ -109,13 +134,20 @@ export function applyMelt(
       occupied.delete(key);
 
       const neighbors = getFaceNeighbors(x, y, z);
+      // Down or sideways into empty space (candle-style); only to positions inside brush so we only rearrange, never create
       const candidates = neighbors.filter(
         ([nx, ny, nz]) =>
-          inBounds(nx, ny, nz, gridSize) && ny < y && !occupied.has(coordKey(nx, ny, nz))
+          inBounds(nx, ny, nz, gridSize) &&
+          brushSet.has(coordKey(nx, ny, nz)) &&
+          !occupied.has(coordKey(nx, ny, nz)) &&
+          (ny < y || (ny === y && (nx !== x || nz !== z)))
       );
 
       if (candidates.length > 0) {
-        const dest = candidates.reduce((lowest, curr) => (curr[1] < lowest[1] ? curr : lowest));
+        // Prefer downward; if multiple at same Y (horizontal), pick one
+        const dest = candidates.reduce((best, curr) =>
+          curr[1] < best[1] ? curr : curr[1] > best[1] ? best : curr
+        );
         const destKey = coordKey(dest[0], dest[1], dest[2]);
         toRemove.add(key);
         toAdd.set(destKey, color);
