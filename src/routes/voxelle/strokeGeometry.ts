@@ -264,6 +264,102 @@ export function thickenPathForStroke(
   return positions;
 }
 
+/** Applies a brush along a path. Sphere uses puffPath (scatter=0); cube uses thickenPath. */
+export function applyBrushAlongPath(
+  positions: [number, number, number][],
+  shape: 'sphere' | 'cube',
+  radius: number
+): [number, number, number][] {
+  if (positions.length === 0) return [];
+  if (shape === 'sphere') {
+    return puffPath(positions, radius, 0);
+  }
+  return thickenPath(positions, Math.floor(radius));
+}
+
+/** Catenary through two 3D points. tension 0=max sag, 1=taut (nearly straight). Returns centerline voxels. */
+export function getRopeCurveVoxels(
+  a: [number, number, number],
+  b: [number, number, number],
+  tension: number
+): [number, number, number][] {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const dz = b[2] - a[2];
+  const Lh = Math.sqrt(dx * dx + dz * dz);
+  const L = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (L < 1e-9) return [a];
+
+  const t0 = Math.max(0, Math.min(1, tension));
+  const aMin = L * 0.3;
+  const aMax = L * 50;
+  const catA = aMin * Math.pow(aMax / aMin, t0);
+
+  if (Lh < 1e-9) {
+    return getBresenham3DLine(a, b);
+  }
+
+  const horzDirX = dx / Lh;
+  const horzDirZ = dz / Lh;
+  const y1 = a[1];
+  const y2 = b[1];
+
+  function catenaryY(x: number, x0: number, c: number): number {
+    return catA * Math.cosh((x - x0) / catA) + c;
+  }
+
+  function f(x0: number): number {
+    return catA * (Math.cosh((Lh - x0) / catA) - Math.cosh(-x0 / catA)) - (y2 - y1);
+  }
+
+  let x0 = Lh / 2;
+  for (let i = 0; i < 30; i++) {
+    const fx = f(x0);
+    if (Math.abs(fx) < 1e-9) break;
+    const eps = 1e-6;
+    const df = (f(x0 + eps) - f(x0 - eps)) / (2 * eps);
+    if (Math.abs(df) < 1e-12) break;
+    x0 = x0 - fx / df;
+    x0 = Math.max(-Lh * 2, Math.min(Lh * 2, x0));
+  }
+
+  const c = y1 - catA * Math.cosh(-x0 / catA);
+  const steps = Math.max(50, Math.ceil(L * 2));
+  const points: [number, number, number][] = [];
+  const seen = new Set<string>();
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = t * Lh;
+    const y = catenaryY(x, x0, c);
+    const px = a[0] + x * horzDirX;
+    const pz = a[2] + x * horzDirZ;
+    const xi = Math.round(px);
+    const yi = Math.round(y);
+    const zi = Math.round(pz);
+    const k = `${xi},${yi},${zi}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      points.push([xi, yi, zi]);
+    }
+  }
+
+  const result: [number, number, number][] = [];
+  const resultSeen = new Set<string>();
+  for (let i = 0; i < points.length - 1; i++) {
+    const seg = getBresenham3DLine(points[i], points[i + 1]);
+    for (const p of seg) {
+      const k = `${p[0]},${p[1]},${p[2]}`;
+      if (!resultSeen.has(k)) {
+        resultSeen.add(k);
+        result.push(p);
+      }
+    }
+  }
+  if (points.length === 1) result.push(points[0]);
+  return result.length > 0 ? result : [a, b];
+}
+
 /** Returns all voxels along a 3D line between a and b (6-connected path). */
 export function getBresenham3DLine(
   a: [number, number, number],

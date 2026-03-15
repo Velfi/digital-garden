@@ -8,7 +8,9 @@ import {
   getAxisAlignedPlaneFromNormal,
   getAxisAlignedCuboid,
   getPolygonVoxels,
-  getRayDirectionPath
+  getRayDirectionPath,
+  getRopeCurveVoxels,
+  applyBrushAlongPath
 } from './strokeGeometry';
 
 const defaultParams = {
@@ -160,6 +162,83 @@ describe('getPolygonVoxels', () => {
     expect(result).toHaveLength(3);
     expect(result).toContainEqual([0, 0, 0]);
     expect(result).toContainEqual([2, 0, 0]);
+  });
+});
+
+describe('getRopeCurveVoxels', () => {
+  const a: [number, number, number] = [0, 10, 0];
+  const b: [number, number, number] = [20, 10, 0];
+
+  it('tension 1 produces a nearly straight line', () => {
+    const result = getRopeCurveVoxels(a, b, 1);
+    const minY = Math.min(...result.map(([, y]) => y));
+    const maxY = Math.max(...result.map(([, y]) => y));
+    expect(maxY - minY).toBeLessThanOrEqual(1);
+  });
+
+  it('tension 0 produces visible sag below endpoints', () => {
+    const result = getRopeCurveVoxels(a, b, 0);
+    const minY = Math.min(...result.map(([, y]) => y));
+    // Should sag well below y=10 (the endpoint height)
+    expect(minY).toBeLessThan(5);
+  });
+
+  it('lower tension produces more sag than higher tension', () => {
+    const loose = getRopeCurveVoxels(a, b, 0.2);
+    const tight = getRopeCurveVoxels(a, b, 0.8);
+    const looseMinY = Math.min(...loose.map(([, y]) => y));
+    const tightMinY = Math.min(...tight.map(([, y]) => y));
+    expect(looseMinY).toBeLessThan(tightMinY);
+  });
+
+  it('tension 0.5 produces moderate sag', () => {
+    const result = getRopeCurveVoxels(a, b, 0.5);
+    const minY = Math.min(...result.map(([, y]) => y));
+    expect(minY).toBeLessThan(10);
+    expect(minY).toBeGreaterThan(-20);
+  });
+
+  it('same point returns single voxel', () => {
+    expect(getRopeCurveVoxels([5, 5, 5], [5, 5, 5], 0.5)).toEqual([[5, 5, 5]]);
+  });
+
+  it('vertical chord falls back to straight line', () => {
+    const result = getRopeCurveVoxels([0, 0, 0], [0, 10, 0], 0.5);
+    expect(result.length).toBeGreaterThanOrEqual(2);
+    expect(result.every(([x, , z]) => x === 0 && z === 0)).toBe(true);
+  });
+
+  it('includes both endpoints', () => {
+    const result = getRopeCurveVoxels(a, b, 0.5);
+    expect(result).toContainEqual([0, 10, 0]);
+    expect(result).toContainEqual([20, 10, 0]);
+  });
+
+  it('3D diagonal chord works', () => {
+    const result = getRopeCurveVoxels([0, 10, 0], [10, 10, 10], 0.3);
+    const minY = Math.min(...result.map(([, y]) => y));
+    expect(minY).toBeLessThan(10);
+    expect(result.length).toBeGreaterThan(5);
+  });
+});
+
+describe('applyBrushAlongPath', () => {
+  it('sphere brush expands path', () => {
+    const path: [number, number, number][] = [[0, 0, 0]];
+    const result = applyBrushAlongPath(path, 'sphere', 1);
+    expect(result.length).toBe(7); // sphere r=1
+  });
+
+  it('cube brush expands path', () => {
+    const path: [number, number, number][] = [[0, 0, 0]];
+    const result = applyBrushAlongPath(path, 'cube', 1);
+    expect(result.length).toBe(27); // 3x3x3
+  });
+
+  it('radius 0 returns original path', () => {
+    const path: [number, number, number][] = [[0, 0, 0], [1, 0, 0]];
+    expect(applyBrushAlongPath(path, 'sphere', 0)).toEqual(path);
+    expect(applyBrushAlongPath(path, 'cube', 0)).toEqual(path);
   });
 });
 

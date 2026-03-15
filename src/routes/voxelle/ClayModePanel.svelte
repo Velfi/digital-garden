@@ -9,6 +9,8 @@
     puffRadiusMin,
     puffRadiusMax,
     puffScatter,
+    ropeBrushShape,
+    ropeBrushRadius,
     tool,
     sidebarOpen
   } from './store';
@@ -130,6 +132,42 @@
           oninput={(e) => puffScatter.set(Number((e.target as HTMLInputElement).value))}
         />
         <span class="add-panel-value">{$puffScatter}</span>
+      </div>
+    {/if}
+    {#if $clayMode === 'rope'}
+      <div class="add-panel-row">
+        <span class="add-panel-label">Shape</span>
+        <div class="stroke-buttons" role="group" aria-label="Rope brush shape">
+          <button
+            type="button"
+            class:active={$ropeBrushShape === 'sphere'}
+            onclick={() => ropeBrushShape.set('sphere')}
+            title="Spherical brush"
+          >
+            Sphere
+          </button>
+          <button
+            type="button"
+            class:active={$ropeBrushShape === 'cube'}
+            onclick={() => ropeBrushShape.set('cube')}
+            title="Cube brush"
+          >
+            Cube
+          </button>
+        </div>
+      </div>
+      <div class="add-panel-row">
+        <span class="add-panel-label">Size</span>
+        <input
+          type="range"
+          min="0"
+          max="5"
+          step="1"
+          value={$ropeBrushRadius}
+          oninput={(e) => ropeBrushRadius.set(Number((e.target as HTMLInputElement).value))}
+          title="Brush size (0–5)"
+        />
+        <span class="add-panel-value">{$ropeBrushRadius}</span>
       </div>
     {/if}
   </div>

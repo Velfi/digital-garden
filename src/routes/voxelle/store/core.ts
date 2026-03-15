@@ -33,7 +33,9 @@ export type Tool =
   | 'eyedropper'
   | 'clay';
 
-export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt';
+export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope';
+
+export type RopeBrushShape = 'sphere' | 'cube';
 
 const DEFAULT_COLOR = 0x888888;
 const MAX_GRID_SIZE = 256;
@@ -101,6 +103,12 @@ export const puffRadiusMin = writable<number>(0);
 export const puffRadiusMax = writable<number>(2);
 /** Puffy mode: max voxel offset for sphere centers (0=none, 1–4=scatter range). */
 export const puffScatter = writable<number>(0);
+/** Rope mode: tension 0–1 (0=max sag, 1=taut). */
+export const ropeTension = writable<number>(0.5);
+/** Rope mode: brush shape (sphere or cube). */
+export const ropeBrushShape = writable<RopeBrushShape>('sphere');
+/** Rope mode: brush radius 0–5 (0=single voxel, 1=3³, 2=5³, etc). */
+export const ropeBrushRadius = writable<number>(1);
 /** Airbrush stroke mode: sphere radius (0=single voxel, 1=3³, 2=5³, 3=7³, 4=9³, 5=11³). */
 export const airbrushRadius = writable<number>(1);
 /** Airbrush: max voxel offset for sphere centers (0=none, 1–4=scatter/spray). */

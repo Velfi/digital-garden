@@ -22,6 +22,9 @@
     puffRadiusMin,
     puffRadiusMax,
     puffScatter,
+    ropeTension,
+    ropeBrushShape,
+    ropeBrushRadius,
     airbrushRadius,
     airbrushScatter,
     airbrushRadiusRange,
@@ -82,7 +85,9 @@
     getPolygonVoxels,
     getBresenham3DLine,
     getRayDirectionPath,
-    thickenPathForStroke
+    thickenPathForStroke,
+    getRopeCurveVoxels,
+    applyBrushAlongPath
   } from './strokeGeometry';
   import { applySmooth, applyLevel, applyMelt } from './clayOps';
   import { buildGridPositions } from './gridLines';
@@ -181,6 +186,16 @@
   let polygonPointsMesh: THREE.InstancedMesh | null = null;
   let polygonPointsMaterial: THREE.MeshBasicMaterial | null = null;
   const POLYGON_POINTS_MAX = 64;
+
+  // Rope: two-point + tension flow
+  let ropePointA = $state<[number, number, number] | null>(null);
+  let ropePointB = $state<[number, number, number] | null>(null);
+  let ropePhase = $state<'placing' | 'tension' | null>(null);
+  let ropePointsMesh: THREE.InstancedMesh | null = null;
+  let ropePointsMaterial: THREE.MeshBasicMaterial | null = null;
+  let ropeTensionSliderPointerId: number | null = null;
+  let ropeTensionSliderStartY = 0;
+  let ropeTensionSliderStartVal = 0;
 
   let previewMesh: THREE.Mesh | null = null;
   let previewMaterial: THREE.MeshBasicMaterial | null = null;
@@ -392,6 +407,9 @@
     }
     if (polygonPhase && polygonPointsMesh) {
       targets.push(polygonPointsMesh);
+    }
+    if (ropePhase && ropePointsMesh) {
+      targets.push(ropePointsMesh);
     }
     return targets;
   }
@@ -609,7 +627,7 @@
 
   function applyClayStroke(
     positions: [number, number, number][],
-    clayModeVal: 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt',
+    clayModeVal: 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope',
     levelY: number
   ) {
     ensureGridFitsPositions(positions);
@@ -633,7 +651,7 @@
       });
       return;
     }
-    if (clayModeVal === 'bulk' || clayModeVal === 'branch' || clayModeVal === 'puffy') {
+    if (clayModeVal === 'bulk' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'rope') {
       updateVoxelsInStroke((next) => {
         for (const [x, y, z] of positions) {
           if (!inBounds(x, y, z, sz)) continue;
@@ -789,6 +807,61 @@
     updatePreviewMesh([]);
   }
 
+  function cancelRope() {
+    ropePointA = null;
+    ropePointB = null;
+    ropePhase = null;
+    updateRopePointsMesh([]);
+    updatePreviewMesh([]);
+  }
+
+  function updateRopePointsMesh(points: [number, number, number][]) {
+    if (!ropePointsMesh || !ropePointsMaterial) return;
+    const count = Math.min(points.length, 2);
+    ropePointsMesh.count = count;
+    ropePointsMesh.userData.positions = points;
+    const matrix = new THREE.Matrix4();
+    for (let i = 0; i < count; i++) {
+      const [x, y, z] = points[i];
+      matrix.setPosition(x, y, z);
+      ropePointsMesh.setMatrixAt(i, matrix);
+    }
+    ropePointsMesh.instanceMatrix.needsUpdate = true;
+    ropePointsMesh.visible = count > 0;
+  }
+
+  function updateRopeFromTension() {
+    const a = ropePointA;
+    const b = ropePointB;
+    if (!a || !b) return;
+    const t = get(ropeTension);
+    const centerline = getRopeCurveVoxels(a, b, t);
+    const shape = get(ropeBrushShape);
+    const radius = get(ropeBrushRadius);
+    const positions = applyBrushAlongPath(centerline, shape, radius);
+    pendingStrokePositions = positions;
+    updatePreviewMesh(positions);
+    updateRopePointsMesh([a, b]);
+    render();
+  }
+
+  function commitRope() {
+    const a = ropePointA;
+    const b = ropePointB;
+    if (!a || !b) return;
+    const t = get(ropeTension);
+    const centerline = getRopeCurveVoxels(a, b, t);
+    const shape = get(ropeBrushShape);
+    const radius = get(ropeBrushRadius);
+    const positions = applyBrushAlongPath(centerline, shape, radius);
+    if (positions.length > 0) {
+      beginStroke();
+      applyClayStroke(positions, 'rope', 0);
+    }
+    cancelRope();
+    render();
+  }
+
   function commitPolygon() {
     if (polygonPoints.length < 2) return;
     const positions = getPolygonVoxels(polygonPoints);
@@ -852,6 +925,9 @@
     if (polygonPhase) {
       cancelPolygon();
     }
+    if (ropePhase) {
+      cancelRope();
+    }
     if (cuboidPhase) {
       if (depthAdjustPointerId !== null) {
         try {
@@ -891,7 +967,7 @@
   function handlePointerDown(event: PointerEvent) {
     if (
       (event.target as Element)?.closest?.(
-        '.cuboid-done-btn, .polygon-done-btn, .polygon-cancel-btn, .zoom-controls, .depth-slider-container, .orbit-gizmo'
+        '.cuboid-done-btn, .polygon-done-btn, .polygon-cancel-btn, .rope-done-btn, .rope-cancel-btn, .rope-tension-slider, .zoom-controls, .depth-slider-container, .orbit-gizmo'
       )
     )
       return;
@@ -908,7 +984,7 @@
       return;
     }
     if (event.button === 2) {
-      if (isVoxelDrag || cuboidPhase || polygonPhase) {
+      if (isVoxelDrag || cuboidPhase || polygonPhase || ropePhase) {
         event.preventDefault();
         cancelDrag();
         render();
@@ -927,6 +1003,8 @@
       container.setPointerCapture(event.pointerId);
       return;
     }
+
+    // Rope tension phase: pointer down on slider track starts drag (handled in template)
 
     let hit = getIntersection();
     if (!hit) return;
@@ -972,8 +1050,29 @@
     container.setPointerCapture(event.pointerId);
     dragPointerId = event.pointerId;
 
-    // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/puffy/melt)
+    // Clay tool + rope mode: two-click flow (before other clay modes)
     const mode = get(clayMode);
+    if ($tool === 'clay' && mode === 'rope') {
+      const pos = getAddPosition(hit) ?? getVoxelPosition(hit);
+      if (pos) {
+        if (ropePhase === null) {
+          ropePointA = pos;
+          ropePhase = 'placing';
+          updateRopePointsMesh([pos]);
+        } else if (ropePhase === 'placing' && ropePointA) {
+          ropePointB = pos;
+          ropePhase = 'tension';
+          updateRopeFromTension();
+        }
+      } else {
+        dragPointerId = null;
+        container.releasePointerCapture(event.pointerId);
+      }
+      requestAnimationFrame(() => render());
+      return;
+    }
+
+    // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/puffy/melt)
     if ($tool === 'clay' && (mode === 'bulk' || mode === 'smooth' || mode === 'level' || mode === 'gouge' || mode === 'puffy' || mode === 'melt')) {
       // Start on voxel (grab surface) or face of voxel (extend outward)
       const pos = getVoxelPosition(hit) ?? getAddPosition(hit);
@@ -1722,6 +1821,26 @@
   });
 
   $effect(() => {
+    const mode = $clayMode;
+    if (mode !== 'rope' && ropePhase) {
+      cancelRope();
+    }
+  });
+
+  $effect(() => {
+    if (ropePhase !== 'tension') return;
+    updateRopeFromTension();
+    const unsubT = ropeTension.subscribe(() => updateRopeFromTension());
+    const unsubS = ropeBrushShape.subscribe(() => updateRopeFromTension());
+    const unsubR = ropeBrushRadius.subscribe(() => updateRopeFromTension());
+    return () => {
+      unsubT();
+      unsubS();
+      unsubR();
+    };
+  });
+
+  $effect(() => {
     const v = $voxels;
     const sz = $gridSize;
     const _ao = $enableAO;
@@ -1894,6 +2013,19 @@
     polygonPointsMesh.visible = false;
     polygonPointsMesh.renderOrder = 1;
     scene.add(polygonPointsMesh);
+
+    ropePointsMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffff00,
+      opacity: 0.9,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false
+    });
+    ropePointsMesh = new THREE.InstancedMesh(boxGeometry, ropePointsMaterial, 2);
+    ropePointsMesh.count = 0;
+    ropePointsMesh.visible = false;
+    ropePointsMesh.renderOrder = 1;
+    scene.add(ropePointsMesh);
 
     // Hemisphere: sky (top) + ground (bottom) for natural ambient bounce
     hemisphereLight = new THREE.HemisphereLight(0xb8d4e8, 0x4a5568, 1);
@@ -2164,6 +2296,7 @@
     polygonLineSegments?.geometry?.dispose();
     polygonLineMaterial?.dispose();
     polygonPointsMaterial?.dispose();
+    ropePointsMaterial?.dispose();
   });
 </script>
 
@@ -2268,6 +2401,84 @@
         onclick={() => cancelPolygon()}
         title="Cancel"
         aria-label="Cancel polygon"
+      >
+        Cancel
+      </button>
+    </div>
+  {/if}
+  {#if ropePhase === 'tension'}
+    <div class="rope-tension-slider depth-slider-container">
+      <div
+        class="depth-slider-track"
+        role="slider"
+        aria-label="Rope tension"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round($ropeTension * 100)}
+        tabindex="0"
+        onpointerdown={(e) => {
+          e.stopPropagation();
+          ropeTensionSliderPointerId = e.pointerId;
+          ropeTensionSliderStartY = e.clientY;
+          ropeTensionSliderStartVal = get(ropeTension);
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        }}
+        onpointermove={(e) => {
+          if (ropeTensionSliderPointerId !== e.pointerId) return;
+          const dy = ropeTensionSliderStartY - e.clientY;
+          const delta = dy / 200;
+          ropeTension.set(Math.max(0, Math.min(1, ropeTensionSliderStartVal + delta)));
+        }}
+        onpointerup={(e) => {
+          if (ropeTensionSliderPointerId === e.pointerId) ropeTensionSliderPointerId = null;
+        }}
+        onpointercancel={(e) => {
+          if (ropeTensionSliderPointerId === e.pointerId) ropeTensionSliderPointerId = null;
+        }}
+      >
+        <div
+          class="depth-slider-thumb"
+          style="bottom: {Math.min(99, Math.max(1, $ropeTension * 98))}%"
+        ></div>
+      </div>
+      <div class="depth-slider-controls">
+        <button
+          type="button"
+          class="depth-btn"
+          onpointerdown={(e) => e.stopPropagation()}
+          onclick={() => ropeTension.set(Math.max(0, $ropeTension - 0.05))}
+          aria-label="Decrease tension"
+        >−</button
+        >
+        <span class="depth-slider-label">Tension: {Math.round($ropeTension * 100)}%</span>
+        <button
+          type="button"
+          class="depth-btn"
+          onpointerdown={(e) => e.stopPropagation()}
+          onclick={() => ropeTension.set(Math.min(1, $ropeTension + 0.05))}
+          aria-label="Increase tension"
+        >+</button
+        >
+      </div>
+    </div>
+    <div class="polygon-actions">
+      <button
+        type="button"
+        class="rope-done-btn polygon-done-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => commitRope()}
+        title="Apply rope"
+        aria-label="Apply rope"
+      >
+        Done
+      </button>
+      <button
+        type="button"
+        class="rope-cancel-btn polygon-cancel-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => cancelRope()}
+        title="Cancel"
+        aria-label="Cancel rope"
       >
         Cancel
       </button>

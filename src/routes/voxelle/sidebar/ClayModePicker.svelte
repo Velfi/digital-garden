@@ -61,6 +61,14 @@
     >
       Melt
     </button>
+    <button
+      type="button"
+      class:active={$clayMode === 'rope'}
+      onclick={() => clayMode.set('rope')}
+      title="Rope: pick two points, set tension, draw catenary with brush"
+    >
+      Rope
+    </button>
   </div>
 </div>
 
