@@ -1,4 +1,6 @@
-# Voxelle Overview
+# Voxelle
+
+<img src="/voxelle/VoxelleTitle.png" alt="Voxelle" width="100%" height="auto">
 
 A 3D voxel sculpting tool. Add or remove voxels to create sculptures.
 
@@ -46,14 +48,6 @@ When using **Plane** or **Cuboid** stroke mode, it's possible to constrain the t
 - **Auto** – Use the clicked face normal. In plain english, this means that the tool will automatically orient the plane to the face you click on.
 - Alt+scroll during a drag cycles the plane orientation.
 
-
-### Fly Tool
-
-The **Fly** tool is a first-person camera. Click the canvas to capture the pointer, then: WASD to move, E/Q to go up/down, Shift held for 1/8 speed. Move the mouse to look. Press Escape to exit.
-
-Moving in this way changes the origin of the orbit camera. When you exit fthe fly tool, you can click "reset" in the lower right corner of the canvas to reset the camera to the default orbit origin.
-
-
 ### Clay Tools
 
 The **Clay** tab holds fast, imprecise sculpting modes—opposite of the Draw tools above.
@@ -71,7 +65,11 @@ The **Clay** tab holds fast, imprecise sculpting modes—opposite of the Draw to
 
 Brush size (0–2) applies to Bulk, Smooth, Level, Gouge, Branch, and Melt.
 
----
+### Fly Tool
+
+The **Fly** tool is a first-person camera. Click the canvas to capture the pointer, then: WASD to move, E/Q to go up/down, Shift held for 1/8 speed. Move the mouse to look. Press Escape to exit.
+
+Moving in this way changes the origin of the orbit camera. When you exit fthe fly tool, you can click "reset" in the lower right corner of the canvas to reset the camera to the default orbit origin.
 
 ---
 
