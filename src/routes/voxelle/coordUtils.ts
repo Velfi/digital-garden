@@ -7,6 +7,32 @@ export function parseCoordKey(key: string): [number, number, number] {
   return [x, y, z];
 }
 
+export type SymmetryAxes = { x: boolean; y: boolean; z: boolean };
+
+/** Returns coord keys for (x,y,z) and all mirror positions for the given axes. Deduplicated. */
+export function getMirrorCoordKeys(
+  x: number,
+  y: number,
+  z: number,
+  axes: SymmetryAxes
+): string[] {
+  const keys = new Set<string>();
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const zi = Math.floor(z);
+  const xVals = axes.x ? [xi, -xi] : [xi];
+  const yVals = axes.y ? [yi, -yi] : [yi];
+  const zVals = axes.z ? [zi, -zi] : [zi];
+  for (const px of xVals) {
+    for (const py of yVals) {
+      for (const pz of zVals) {
+        keys.add(coordKey(px, py, pz));
+      }
+    }
+  }
+  return [...keys];
+}
+
 /** Grid bounds: x,y,z in [-size/2, size/2) */
 export function inBounds(x: number, y: number, z: number, size: number): boolean {
   const h = size / 2;

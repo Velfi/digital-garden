@@ -1,4 +1,5 @@
 <script lang="ts">
+  import './sidebar/shared.css';
   import {
     sidebarOpen,
     modalRequest,
@@ -15,6 +16,7 @@
   import ToolPicker from './sidebar/ToolPicker.svelte';
   import StrokeModePicker from './sidebar/StrokeModePicker.svelte';
   import ClayModePicker from './sidebar/ClayModePicker.svelte';
+  import SymmetrySection from './sidebar/SymmetrySection.svelte';
   import ColorSection from './sidebar/ColorSection.svelte';
   import CameraSection from './sidebar/CameraSection.svelte';
   import SceneSection from './sidebar/SceneSection.svelte';
@@ -23,6 +25,7 @@
   import OriginSection from './sidebar/OriginSection.svelte';
   import ShareModal from './sidebar/ShareModal.svelte';
   import NewGridModal from './sidebar/NewGridModal.svelte';
+  import ExportGltfModal from './sidebar/ExportGltfModal.svelte';
   import StartupScreen from './StartupScreen.svelte';
 
   const STARTUP_URL = '/voxelle/STARTUP.md';
@@ -30,6 +33,7 @@
 
   let showShareModal = $state(false);
   let showNewGridModal = $state(false);
+  let showExportGltfModal = $state(false);
   let showStartupScreen = $state(false);
   let startupContentUrl = $state(STARTUP_URL);
   let shareUrl = $state('');
@@ -91,6 +95,9 @@
     } else if (req === 'add') {
       openAddPanel();
       modalRequest.set(null);
+    } else if (req === 'exportGltf') {
+      showExportGltfModal = true;
+      modalRequest.set(null);
     } else if (req === 'help') {
       startupContentUrl = HELP_URL;
       showStartupScreen = true;
@@ -147,10 +154,12 @@
       <div role="tabpanel">
         <ToolPicker />
         <StrokeModePicker />
+        <SymmetrySection />
       </div>
     {:else if $toolPane === 'clay'}
       <div role="tabpanel">
         <ClayModePicker />
+        <SymmetrySection />
       </div>
     {:else}
       <div role="tabpanel" class="fly-tab">
@@ -167,6 +176,7 @@
 
   <ShareModal bind:open={showShareModal} {shareUrl} />
   <NewGridModal bind:open={showNewGridModal} />
+  <ExportGltfModal bind:open={showExportGltfModal} />
   <StartupScreen
     bind:open={showStartupScreen}
     contentUrl={startupContentUrl}

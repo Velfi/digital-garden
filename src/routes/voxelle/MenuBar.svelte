@@ -26,7 +26,6 @@
     loadFromFile,
     importImageFromFile
   } from './store';
-  import { exportVoxelsToGltf } from './exportGltf';
   import type { SelectionMode } from './store';
 
   let fileOpen = $state(false);
@@ -176,7 +175,7 @@
   }
 
   function handleExport() {
-    exportVoxelsToGltf($voxels);
+    modalRequest.set('exportGltf');
     closeMenus();
   }
 

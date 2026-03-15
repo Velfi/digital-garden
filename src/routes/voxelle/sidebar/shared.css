@@ -71,6 +71,7 @@
 
 .checkbox-label {
   display: flex !important;
+  flex-direction: row;
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
@@ -132,6 +133,10 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.modal label.checkbox-label {
+  flex-direction: row;
 }
 
 .modal-buttons {

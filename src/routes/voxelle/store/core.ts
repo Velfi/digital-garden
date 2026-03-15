@@ -5,7 +5,9 @@ import {
   getSelectionBounds,
   getVoxelCenter,
   getSelectionCenter,
-  type SelectionBounds
+  getMirrorCoordKeys,
+  type SelectionBounds,
+  type SymmetryAxes
 } from '../coordUtils';
 import {
   initShape,
@@ -133,7 +135,7 @@ const DEFAULT_PALETTE = [
 ];
 export const palette = writable<string[]>([...DEFAULT_PALETTE]);
 export const sidebarOpen = writable<boolean>(true);
-export const modalRequest = writable<'newGrid' | 'share' | 'add' | 'help' | 'startup' | null>(null);
+export const modalRequest = writable<'newGrid' | 'share' | 'add' | 'help' | 'startup' | 'exportGltf' | null>(null);
 export const addPanelStore = writable<AddPanelState>({ ...defaultAddPanel });
 
 export type StampRotation = { rotX: number; rotY: number; rotZ: number };
@@ -151,6 +153,11 @@ export const roughness = writable<number>(0.6);
 export const metalness = writable<number>(0);
 export const focalLength = writable<number>(29);
 export const orthographic = writable<boolean>(false);
+
+/** Mirror symmetry: when enabled, voxel set/delete are applied at mirrored positions. */
+export const symmetryX = writable<boolean>(false);
+export const symmetryY = writable<boolean>(false);
+export const symmetryZ = writable<boolean>(false);
 
 // Undo system
 const undo = createUndo(voxels, selection);
@@ -270,11 +277,69 @@ export function resetCanvas(size: GridSize, shape: StartShape = 'cube') {
   voxels.set(initShape(size, shape));
 }
 
+/** Map-like view that mirrors set/delete across symmetry axes. has/get delegate to underlying. */
+function createMirrorMap(
+  underlying: Map<string, number>,
+  axes: SymmetryAxes
+): Map<string, number> {
+  return {
+    get(key: string) {
+      return underlying.get(key);
+    },
+    set(key: string, value: number) {
+      const [x, y, z] = parseCoordKey(key);
+      for (const k of getMirrorCoordKeys(x, y, z, axes)) {
+        underlying.set(k, value);
+      }
+      return underlying;
+    },
+    has(key: string) {
+      return underlying.has(key);
+    },
+    delete(key: string) {
+      const [x, y, z] = parseCoordKey(key);
+      let deleted = false;
+      for (const k of getMirrorCoordKeys(x, y, z, axes)) {
+        if (underlying.delete(k)) deleted = true;
+      }
+      return deleted;
+    },
+    get size() {
+      return underlying.size;
+    },
+    clear() {
+      underlying.clear();
+    },
+    forEach(cb: (value: number, key: string, map: Map<string, number>) => void) {
+      underlying.forEach(cb);
+    },
+    entries() {
+      return underlying.entries();
+    },
+    keys() {
+      return underlying.keys();
+    },
+    values() {
+      return underlying.values();
+    },
+    [Symbol.iterator]() {
+      return underlying[Symbol.iterator]();
+    }
+  } as Map<string, number>;
+}
+
 export function updateVoxels(updater: (v: Map<string, number>) => void) {
   pushUndo();
   voxels.update((v) => {
     const next = cloneVoxelsImpl(v);
-    updater(next);
+    const axes: SymmetryAxes = {
+      x: get(symmetryX),
+      y: get(symmetryY),
+      z: get(symmetryZ)
+    };
+    const target =
+      axes.x || axes.y || axes.z ? createMirrorMap(next, axes) : next;
+    updater(target);
     return next;
   });
 }
@@ -286,7 +351,14 @@ export function beginStroke() {
 export function updateVoxelsInStroke(updater: (v: Map<string, number>) => void) {
   voxels.update((v) => {
     const next = cloneVoxelsImpl(v);
-    updater(next);
+    const axes: SymmetryAxes = {
+      x: get(symmetryX),
+      y: get(symmetryY),
+      z: get(symmetryZ)
+    };
+    const target =
+      axes.x || axes.y || axes.z ? createMirrorMap(next, axes) : next;
+    updater(target);
     return next;
   });
 }
