@@ -1,17 +1,29 @@
 # Voxelle
 
-![Voxelle](VoxelleTitle.png)
+A 3D voxel sculpting tool that runs in the browser. Add, remove, and paint voxels; use brushes, shapes, stamps, and clay-style tools; then export to GLTF or save/load `.voxelle` files.
 
-A 3D voxel sculpting tool. Chip away or add voxels to create sculptures. Runs in the browser with WebGL.
+## What it does
 
-## Features
+- **Sculpt** – Draw, erase, fill, paint. Tools: voxel, remove, paint, select, stamp, clay, eyedropper, fly camera.
+- **Stroke modes** – Line, plane, cuboid, polygon, fill, airbrush.
+- **Scene** – Configurable grid, lighting, camera (orbit/fly), materials. Undo/redo, copy/paste, selection grow/shrink.
+- **Persistence** – Auto-save to browser storage; save/load `.voxelle` (gzipped BSON); share via URL; export to GLB.
 
-- Draw, erase, fill, and sculpt voxels in 3D
-- Multiple tools: brush, clay, stamps, shapes
-- Undo/redo (Ctrl+Z / Ctrl+Shift+Z)
-- Export to GLTF
-- Save/load `.voxelle` files
+## Structure
+
+| Area | Purpose |
+|------|--------|
+| `+page.svelte` | App shell, global shortcuts |
+| `VoxelCanvas.svelte` | Three.js scene, raycasting, greedy-mesh rendering, orbit/fly controls |
+| `Sidebar.svelte` + `sidebar/*` | Tool picker, stroke mode, color, camera, lights, scene, modals |
+| `store/` | Central state: voxels, selection, tool, undo, clipboard, storage, `.voxelle` I/O, import |
+| `greedyMesh*.ts` | Culled meshing (only visible faces, merged quads); optional worker |
+| `coordUtils.ts`, `strokeGeometry.ts`, `flyControls.ts` | Coords, stroke shapes, fly movement |
+| `exportGltf.ts` | Voxels → GLB |
+| `VOXELLE_FORMAT.md` | `.voxelle` file format |
+
+Tech: Svelte 5, SvelteKit, Three.js. See `AGENTS.md` for conventions and implementation notes.
 
 ## Try it
 
-Visit [this site](https://zeldas.page/voxelle) to use Voxelle.
+[https://zeldas.page/voxelle](https://zeldas.page/voxelle)
