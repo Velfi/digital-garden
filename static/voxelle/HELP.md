@@ -67,6 +67,7 @@ The **Clay** tab holds fast, imprecise sculpting modes—opposite of the Draw to
 - **Branch** – Extrude limbs or horns into empty space, following cursor direction. Option: Taper (thick base to thin tip).
 - **Puffy** – Organic spheres for clouds. Options: Size, Size range (min/max), Scatter.
 - **Melt** – Spread voxels downhill, highest first.
+- **Rope** – Draw a catenary curve between two points. Click to place the first point, click again for the second, then adjust tension (0=max sag, 1=taut) and click Done to apply. Options: Brush shape (sphere or cube), Brush radius (0–5).
 
 Brush size (0–2) applies to Bulk, Smooth, Level, Gouge, Branch, and Melt.
 
