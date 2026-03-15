@@ -37,6 +37,8 @@ export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy
 
 export type RopeBrushShape = 'sphere' | 'cube';
 
+export type DrawBrushShape = 'sphere' | 'cube' | 'pyramid';
+
 const DEFAULT_COLOR = 0x888888;
 const MAX_GRID_SIZE = 256;
 
@@ -117,6 +119,12 @@ export const airbrushScatter = writable<number>(0);
 export const airbrushRadiusRange = writable<boolean>(false);
 export const airbrushRadiusMin = writable<number>(0);
 export const airbrushRadiusMax = writable<number>(2);
+/** Draw tool brush shape (sphere, cube, pyramid). */
+export const drawBrushShape = writable<DrawBrushShape>('sphere');
+/** Draw tool brush size (0=single voxel, 1=3³, 2=5³, etc). */
+export const drawBrushSize = writable<number>(0);
+/** When true, offset brush along face normal so it sits on surface instead of through it. */
+export const drawBrushSnapToSurface = writable<boolean>(true);
 export const color = writable<string>('#ff5733');
 /** Palette colors selected for painting (shift+click). Empty = use color. */
 export const selectedColors = writable<string[]>([]);

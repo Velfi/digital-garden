@@ -219,6 +219,11 @@ export interface PathThickenParams {
   airbrushRadiusRange: boolean;
   airbrushRadiusMin: number;
   airbrushRadiusMax: number;
+  drawBrushShape?: 'sphere' | 'cube' | 'pyramid';
+  drawBrushSize?: number;
+  /** When true and drawBrushFaceNormal set, offset brush by radius*normal so it sits on surface */
+  drawBrushSnapToSurface?: boolean;
+  drawBrushFaceNormal?: { x: number; y: number; z: number };
 }
 
 const CLAY_PATH_MODES = ['bulk', 'smooth', 'level', 'gouge', 'branch', 'puffy', 'melt'] as const;
@@ -261,7 +266,67 @@ export function thickenPathForStroke(
       params.airbrushRadiusRange ? params.airbrushRadiusMax : undefined
     );
   }
+  const dbs = params.drawBrushSize ?? 0;
+  if (dbs > 0) {
+    const shape = params.drawBrushShape ?? 'sphere';
+    const snap = params.drawBrushSnapToSurface ?? false;
+    const n = snap ? params.drawBrushFaceNormal : undefined;
+    const r = Math.floor(dbs);
+    const positionsToUse =
+      n && r > 0
+        ? positions.map(([px, py, pz]) => [
+            px + n.x * r,
+            py + n.y * r,
+            pz + n.z * r
+          ] as [number, number, number])
+        : positions;
+    if (shape === 'pyramid') return pyramidPath(positionsToUse, dbs);
+    if (shape === 'cube') return thickenPath(positionsToUse, dbs);
+    return puffPath(positionsToUse, dbs, 0);
+  }
   return positions;
+}
+
+/** Pyramid: base (2r+1)² at y=-r, tapering to 1x1 at y=+r. */
+function getPyramidVoxels(
+  cx: number,
+  cy: number,
+  cz: number,
+  r: number
+): [number, number, number][] {
+  if (r <= 0) return [[Math.round(cx), Math.round(cy), Math.round(cz)]];
+  const ri = Math.floor(r);
+  const positions: [number, number, number][] = [];
+  for (let dy = -ri; dy <= ri; dy++) {
+    const layerR = Math.round(ri * (1 - (dy + ri) / (2 * ri)));
+    for (let dx = -layerR; dx <= layerR; dx++) {
+      for (let dz = -layerR; dz <= layerR; dz++) {
+        positions.push([cx + dx, cy + dy, cz + dz]);
+      }
+    }
+  }
+  return positions;
+}
+
+/** Expands each path point into a pyramid brush. */
+export function pyramidPath(
+  positions: [number, number, number][],
+  radius: number
+): [number, number, number][] {
+  if (positions.length === 0) return [];
+  if (radius <= 0) return positions;
+  const seen = new Set<string>();
+  const result: [number, number, number][] = [];
+  for (const [px, py, pz] of positions) {
+    for (const [x, y, z] of getPyramidVoxels(px, py, pz, radius)) {
+      const k = `${x},${y},${z}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        result.push([x, y, z]);
+      }
+    }
+  }
+  return result;
 }
 
 /** Applies a brush along a path. Sphere uses puffPath (scatter=0); cube uses thickenPath. */

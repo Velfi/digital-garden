@@ -30,6 +30,9 @@
     airbrushRadiusRange,
     airbrushRadiusMin,
     airbrushRadiusMax,
+    drawBrushShape,
+    drawBrushSize,
+    drawBrushSnapToSurface,
     selection,
     lightAngle,
     lightElevation,
@@ -105,11 +108,7 @@
   import { Sky } from 'three/addons/objects/Sky.js';
   import { buildGreedyMesh } from './greedyMesh';
   import OrbitGizmo from './OrbitGizmo.svelte';
-  import StampPanel from './StampPanel.svelte';
-  import ClayModePanel from './ClayModePanel.svelte';
-  import PlaneAxisPanel from './PlaneAxisPanel.svelte';
-  import AirbrushOptionsPanel from './AirbrushOptionsPanel.svelte';
-  import FillOptionsPanel from './FillOptionsPanel.svelte';
+  import ToolPanel from './ToolPanel.svelte';
   import SelectionCountPanel from './SelectionCountPanel.svelte';
 
   let container: HTMLDivElement;
@@ -1096,7 +1095,11 @@
             airbrushScatter: get(airbrushScatter),
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
-            airbrushRadiusMax: get(airbrushRadiusMax)
+            airbrushRadiusMax: get(airbrushRadiusMax),
+            drawBrushShape: get(drawBrushShape),
+            drawBrushSize: get(drawBrushSize),
+            drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
           })
         );
       } else {
@@ -1130,7 +1133,11 @@
             airbrushScatter: get(airbrushScatter),
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
-            airbrushRadiusMax: get(airbrushRadiusMax)
+            airbrushRadiusMax: get(airbrushRadiusMax),
+            drawBrushShape: get(drawBrushShape),
+            drawBrushSize: get(drawBrushSize),
+            drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
           })
         );
       } else {
@@ -1331,11 +1338,34 @@
           airbrushScatter: get(airbrushScatter),
           airbrushRadiusRange: get(airbrushRadiusRange),
           airbrushRadiusMin: get(airbrushRadiusMin),
-          airbrushRadiusMax: get(airbrushRadiusMax)
+          airbrushRadiusMax: get(airbrushRadiusMax),
+          drawBrushShape: get(drawBrushShape),
+          drawBrushSize: get(drawBrushSize),
+          drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
         })
       );
     } else {
-      updatePreviewMesh(pendingStrokePositions);
+      updatePreviewMesh(
+        thickenPathForStroke(pendingStrokePositions, {
+          strokeMode: get(strokeMode),
+          clayBrushRadius: get(clayBrushRadius) as number,
+          branchTaper: get(branchTaper),
+          puffRadius: get(puffRadius),
+          puffScatter: get(puffScatter),
+          puffRadiusRange: get(puffRadiusRange),
+          puffRadiusMin: get(puffRadiusMin),
+          puffRadiusMax: get(puffRadiusMax),
+          airbrushRadius: get(airbrushRadius) as number,
+          airbrushScatter: get(airbrushScatter),
+          airbrushRadiusRange: get(airbrushRadiusRange),
+          airbrushRadiusMin: get(airbrushRadiusMin),
+          airbrushRadiusMax: get(airbrushRadiusMax),
+          drawBrushShape: get(drawBrushShape),
+          drawBrushSize: get(drawBrushSize),
+          drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+          drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
+        })
+      );
     }
     requestAnimationFrame(() => render());
   }
@@ -1419,7 +1449,11 @@
             airbrushScatter: get(airbrushScatter),
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
-            airbrushRadiusMax: get(airbrushRadiusMax)
+            airbrushRadiusMax: get(airbrushRadiusMax),
+            drawBrushShape: get(drawBrushShape),
+            drawBrushSize: get(drawBrushSize),
+            drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
           })
         );
         deltaDisplay =
@@ -1483,7 +1517,11 @@
               airbrushScatter: get(airbrushScatter),
               airbrushRadiusRange: get(airbrushRadiusRange),
               airbrushRadiusMin: get(airbrushRadiusMin),
-              airbrushRadiusMax: get(airbrushRadiusMax)
+              airbrushRadiusMax: get(airbrushRadiusMax),
+              drawBrushShape: get(drawBrushShape),
+              drawBrushSize: get(drawBrushSize),
+              drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+              drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
             })
           );
           deltaDisplay = {
@@ -1666,7 +1704,11 @@
             airbrushScatter: get(airbrushScatter),
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
-            airbrushRadiusMax: get(airbrushRadiusMax)
+            airbrushRadiusMax: get(airbrushRadiusMax),
+            drawBrushShape: get(drawBrushShape),
+            drawBrushSize: get(drawBrushSize),
+            drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
           });
           if ($tool === 'select') {
             applySelectStroke(toApply);
@@ -2493,11 +2535,7 @@
       Δ {deltaDisplay.dx}, {deltaDisplay.dy}, {deltaDisplay.dz}
     </div>
   {/if}
-  <StampPanel />
-  <ClayModePanel />
-  <PlaneAxisPanel />
-  <AirbrushOptionsPanel />
-  <FillOptionsPanel />
+  <ToolPanel />
   <SelectionCountPanel />
   {#if $tool === 'fly'}
     <div class="fly-hint" role="status" aria-live="polite">
