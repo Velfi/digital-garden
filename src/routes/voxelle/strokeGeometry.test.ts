@@ -5,6 +5,7 @@ import {
   thickenPathTapered,
   getBresenham3DLine,
   getAxisAlignedLine,
+  projectPointOntoPlane,
   getAxisAlignedPlaneFromNormal,
   getAxisAlignedCuboid,
   getPolygonVoxels,
@@ -202,6 +203,33 @@ describe('getBresenham3DLine', () => {
     expect(result).toContainEqual([0, 0, 0]);
     expect(result).toContainEqual([3, 0, 0]);
     expect(result.length).toBe(4);
+  });
+});
+
+describe('projectPointOntoPlane', () => {
+  it('point on plane is unchanged', () => {
+    const planePoint: [number, number, number] = [0, 0, 0];
+    const normal = { x: 0, y: 1, z: 0 };
+    const pointOnPlane: [number, number, number] = [3, 0, 5];
+    const result = projectPointOntoPlane(pointOnPlane, planePoint, normal);
+    expect(result).toEqual([3, 0, 5]);
+  });
+
+  it('point off plane projects to plane', () => {
+    const planePoint: [number, number, number] = [0, 0, 0];
+    const normal = { x: 0, y: 1, z: 0 };
+    const pointOffPlane: [number, number, number] = [2, 4, 3];
+    const result = projectPointOntoPlane(pointOffPlane, planePoint, normal);
+    expect(result).toEqual([2, 0, 3]);
+  });
+
+  it('projects onto tilted plane', () => {
+    const planePoint: [number, number, number] = [0, 0, 0];
+    const len = Math.sqrt(2);
+    const n = { x: 1 / len, y: 1 / len, z: 0 };
+    const point: [number, number, number] = [5, 5, 2];
+    const result = projectPointOntoPlane(point, planePoint, n);
+    expect(result).toEqual([0, 0, 2]);
   });
 });
 

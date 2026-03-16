@@ -24,6 +24,7 @@ export {
   fillRespectsColor,
   fillConstrainToPlane,
   strokeMode,
+  lineAxisAlign,
   planeAxis,
   clayMode,
   clayBrushRadius,

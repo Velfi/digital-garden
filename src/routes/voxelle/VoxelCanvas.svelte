@@ -14,6 +14,7 @@
     color,
     selectedColors,
     strokeMode,
+    lineAxisAlign,
     planeAxis,
     clayMode,
     clayBrushRadius,
@@ -95,6 +96,7 @@
     getPolygonVoxels,
     getBresenham3DLine,
     getRayDirectionPath,
+    projectPointOntoPlane,
     thickenPathForStroke,
     getRopeCurveVoxels,
     applyBrushAlongPath,
@@ -1635,10 +1637,22 @@
             lastBulkPos = currentPos;
           } else {
             const normal = getEffectivePlaneNormal();
-            pendingStrokePositions =
-              (strokeModeVal === 'plane' || strokeModeVal === 'cuboid') && normal
-                ? getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, normal)
-                : getAxisAlignedLine(dragStartPos, currentPos);
+            if ((strokeModeVal === 'plane' || strokeModeVal === 'cuboid') && normal) {
+              pendingStrokePositions = getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, normal);
+            } else if (
+              strokeModeVal === 'line' &&
+              !get(lineAxisAlign) &&
+              dragFaceNormal
+            ) {
+              const projected = projectPointOntoPlane(currentPos, dragStartPos, {
+                x: dragFaceNormal.x,
+                y: dragFaceNormal.y,
+                z: dragFaceNormal.z
+              });
+              pendingStrokePositions = getBresenham3DLine(dragStartPos, projected);
+            } else {
+              pendingStrokePositions = getAxisAlignedLine(dragStartPos, currentPos);
+            }
           }
           // Clay path modes: show thickened preview (brush radius or puff); airbrush: sphere preview
           updatePreviewMesh(

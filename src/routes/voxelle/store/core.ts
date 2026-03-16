@@ -94,6 +94,8 @@ export const fillRespectsColor = writable<boolean>(true);
 /** When true, fill only expands within the plane through the seed (same coordinate on planeAxis). */
 export const fillConstrainToPlane = writable<boolean>(false);
 export const strokeMode = writable<StrokeMode>('line');
+/** When true (default), line stroke is axis-aligned; when false, line is drawn on the plane through the start voxel. */
+export const lineAxisAlign = writable<boolean>(true);
 export const planeAxis = writable<PlaneAxis>(1);
 export const clayMode = writable<ClayMode>('bulk');
 /** Brush radius for clay bulk (0=single voxel, 1=3³ tube, 2=5³). Like Blender F key. */
