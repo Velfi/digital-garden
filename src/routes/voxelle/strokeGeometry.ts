@@ -210,15 +210,29 @@ function getSphereVoxels(
   return positions;
 }
 
-/** Expands each path point into a sphere. Radius 0=single voxel, 1=3³, 2=5³, 3=7³, 4=9³, 5=11³. Scatter: max voxel offset for sphere centers (0=none). When radiusMin/radiusMax provided and radiusMax > radiusMin, picks random radius per sphere. */
+/** Returns a deterministic RNG in [0, 1) from a seed (mulberry32). */
+export function createSeededRng(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0; // 32-bit
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Expands each path point into a sphere. Radius 0=single voxel, 1=3³, 2=5³, 3=7³, 4=9³, 5=11³. Scatter: max voxel offset for sphere centers (0=none). When radiusMin/radiusMax provided and radiusMax > radiusMin, picks random radius per sphere. Optional rng for deterministic scatter/radius (e.g. from createSeededRng). */
 export function puffPath(
   positions: [number, number, number][],
   radius: number,
   scatter: number = 0,
   radiusMin?: number,
-  radiusMax?: number
+  radiusMax?: number,
+  rng?: () => number
 ): [number, number, number][] {
   if (positions.length === 0) return [];
+  const rand = rng ?? Math.random;
   const useRange =
     radiusMin !== undefined &&
     radiusMax !== undefined &&
@@ -229,10 +243,10 @@ export function puffPath(
   const seen = new Set<string>();
   const result: [number, number, number][] = [];
   for (const [px, py, pz] of positions) {
-    const ox = s > 0 ? Math.round((Math.random() * 2 - 1) * s) : 0;
-    const oy = s > 0 ? Math.round((Math.random() * 2 - 1) * s) : 0;
-    const oz = s > 0 ? Math.round((Math.random() * 2 - 1) * s) : 0;
-    const r = useRange ? rMin + Math.floor(Math.random() * (rMax - rMin + 1)) : rMin;
+    const ox = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
+    const oy = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
+    const oz = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
+    const r = useRange ? rMin + Math.floor(rand() * (rMax - rMin + 1)) : rMin;
     const voxels = getSphereVoxels(px + ox, py + oy, pz + oz, r);
     for (const [x, y, z] of voxels) {
       const xi = Math.round(x);
@@ -340,6 +354,10 @@ export interface PathThickenParams {
   airbrushRadiusRange: boolean;
   airbrushRadiusMin: number;
   airbrushRadiusMax: number;
+  /** When true, airbrush voxels are restricted to the plane through the path start (using planeAxis). */
+  airbrushConstrainToPlane?: boolean;
+  /** Axis for plane constraint (0=X, 1=Y, 2=Z, 'auto'=Y). */
+  planeAxis?: 0 | 1 | 2 | 'auto';
   /** Wall/spray direction. 'auto' uses wallFaceNormal when present. */
   sprayDirection?: SprayDirectionName;
   sprayStreakLength?: number;
@@ -354,6 +372,8 @@ export interface PathThickenParams {
   /** When true and drawBrushFaceNormal set, offset brush by radius*normal so it sits on surface */
   drawBrushSnapToSurface?: boolean;
   drawBrushFaceNormal?: { x: number; y: number; z: number };
+  /** Optional seed for deterministic scatter/radius in puffPath (preview and apply use same seed per stroke). */
+  seed?: number;
 }
 
 const CLAY_PATH_MODES = ['bulk', 'smooth', 'level', 'gouge', 'branch', 'puffy', 'melt', 'wall', 'inflate'] as const;
@@ -369,6 +389,7 @@ export function thickenPathForStroke(
   if (positions.length === 0) return [];
   const isClayPath =
     params.clayMode !== undefined && CLAY_PATH_MODES.includes(params.clayMode as (typeof CLAY_PATH_MODES)[number]);
+  const rng = params.seed != null ? createSeededRng(params.seed) : undefined;
 
   // Clay modes take precedence; stroke mode (e.g. airbrush) only applies to Draw tools
   if (isClayPath && params.clayMode === 'puffy') {
@@ -377,7 +398,8 @@ export function thickenPathForStroke(
       params.puffRadius,
       params.puffScatter,
       params.puffRadiusRange ? params.puffRadiusMin : undefined,
-      params.puffRadiusRange ? params.puffRadiusMax : undefined
+      params.puffRadiusRange ? params.puffRadiusMax : undefined,
+      rng
     );
   }
   if (isClayPath && params.clayMode === 'wall') {
@@ -422,13 +444,22 @@ export function thickenPathForStroke(
   }
   if (isClayPath) return positions;
   if (params.strokeMode === 'airbrush') {
-    return puffPath(
+    let out = puffPath(
       positions,
       params.airbrushRadius,
       params.airbrushScatter,
       params.airbrushRadiusRange ? params.airbrushRadiusMin : undefined,
-      params.airbrushRadiusRange ? params.airbrushRadiusMax : undefined
+      params.airbrushRadiusRange ? params.airbrushRadiusMax : undefined,
+      rng
     );
+    if (params.airbrushConstrainToPlane && positions.length > 0) {
+      const axis = params.planeAxis === 'auto' || params.planeAxis === undefined ? 1 : params.planeAxis;
+      const [sx, sy, sz] = positions[0];
+      out = out.filter(([x, y, z]) =>
+        axis === 0 ? x === sx : axis === 1 ? y === sy : z === sz
+      );
+    }
+    return out;
   }
   const dbs = params.drawBrushSize ?? 0;
   if (dbs > 0) {

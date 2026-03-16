@@ -30,6 +30,7 @@ export type Tool =
   | 'paint'
   | 'select'
   | 'selectByColor'
+  | 'selectCoplanar'
   | 'stamp'
   | 'fly'
   | 'eyedropper'
@@ -52,7 +53,8 @@ const DRAW_TOOLS_USING_STROKE_MODE: Tool[] = [
   'remove',
   'paint',
   'select',
-  'selectByColor'
+  'selectByColor',
+  'selectCoplanar'
 ];
 
 export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect' | 'toggle';
@@ -142,6 +144,8 @@ export const airbrushScatter = writable<number>(0);
 export const airbrushRadiusRange = writable<boolean>(false);
 export const airbrushRadiusMin = writable<number>(0);
 export const airbrushRadiusMax = writable<number>(2);
+/** When true, airbrush only places voxels on the plane through the stroke start (same coordinate on planeAxis). */
+export const airbrushConstrainToPlane = writable<boolean>(false);
 /** Wall (and legacy): direction to extend voxels. Auto = use face normal (wall only). */
 export type SprayDirection = 'none' | 'auto' | 'down' | 'up' | 'forward' | 'back' | 'left' | 'right';
 export const sprayDirection = writable<SprayDirection>('auto');

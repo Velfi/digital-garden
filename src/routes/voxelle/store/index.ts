@@ -44,6 +44,7 @@ export {
   airbrushRadiusRange,
   airbrushRadiusMin,
   airbrushRadiusMax,
+  airbrushConstrainToPlane,
   sprayDirection,
   sprayStreakLength,
   wallWidth,
@@ -129,6 +130,7 @@ export { canUndoStore as canUndo, canRedoStore as canRedo } from './core';
 export {
   getFillSelectionAt,
   getFillEmptyAt,
+  getCoplanarFacesSelectionAt,
   mergeSelection,
   selectAll,
   deselectAll,
@@ -137,6 +139,7 @@ export {
   invertSelection,
   growSelection,
   shrinkSelection,
+  deselectInnerVoxels,
   hollowOut,
   selectConnected
 } from './selection';

@@ -33,6 +33,32 @@ export function getMirrorCoordKeys(
   return [...keys];
 }
 
+/** Returns [x,y,z] and all mirror positions for the given axes. Deduplicated. */
+export function getMirrorPositions(
+  x: number,
+  y: number,
+  z: number,
+  axes: SymmetryAxes
+): [number, number, number][] {
+  const keys = getMirrorCoordKeys(x, y, z, axes);
+  return keys.map((k) => parseCoordKey(k) as [number, number, number]);
+}
+
+/** Expands a list of positions with all symmetry mirrors. Deduplicated. */
+export function expandPositionsWithSymmetry(
+  positions: [number, number, number][],
+  axes: SymmetryAxes
+): [number, number, number][] {
+  if (!axes.x && !axes.y && !axes.z) return positions;
+  const keys = new Set<string>();
+  for (const [x, y, z] of positions) {
+    for (const k of getMirrorCoordKeys(x, y, z, axes)) {
+      keys.add(k);
+    }
+  }
+  return [...keys].map((k) => parseCoordKey(k) as [number, number, number]);
+}
+
 /** Grid bounds: x,y,z in [-size/2, size/2) */
 export function inBounds(x: number, y: number, z: number, size: number): boolean {
   const h = size / 2;

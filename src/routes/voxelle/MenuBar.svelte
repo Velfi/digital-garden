@@ -11,6 +11,7 @@
     invertSelection,
     growSelection,
     shrinkSelection,
+    deselectInnerVoxels,
     selectConnected,
     deselectVoxels,
     deselectEmptySpaces,
@@ -204,6 +205,11 @@
     closeMenus();
   }
 
+  function handleDeselectInnerVoxels() {
+    deselectInnerVoxels();
+    closeMenus();
+  }
+
   function handleSelectConnected() {
     selectConnected();
     closeMenus();
@@ -213,6 +219,13 @@
     tool.set('selectByColor');
     toolPane.set('draw');
     lastDrawTool.set('selectByColor');
+    closeMenus();
+  }
+
+  function handleSelectCoplanarFaces() {
+    tool.set('selectCoplanar');
+    toolPane.set('draw');
+    lastDrawTool.set('selectCoplanar');
     closeMenus();
   }
 
@@ -396,6 +409,7 @@
     </button>
     {#if selectionOpen}
       <div class="dropdown" role="menu">
+        <span class="menu-label">Select</span>
         <button
           type="button"
           role="menuitem"
@@ -407,24 +421,31 @@
         <button
           type="button"
           role="menuitem"
-          onclick={handleDeselectAll}
-          disabled={$selection.size === 0}
-        >
-          Deselect All
-        </button>
-        <button type="button" role="menuitem" onclick={handleInvert} disabled={$voxels.size === 0}>
-          Invert
-        </button>
-        <button
-          type="button"
-          role="menuitem"
           onclick={handleSelectByColor}
           disabled={$voxels.size === 0}
           title="Click a voxel to select all voxels of that color"
         >
           Select by color
         </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleSelectConnected}
+          disabled={$selection.size === 0}
+        >
+          Select Connected
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleSelectCoplanarFaces}
+          disabled={$voxels.size === 0}
+          title="Click a voxel to select all connected voxels in that face's plane"
+        >
+          Select coplanar faces
+        </button>
         <div class="menu-separator" role="separator"></div>
+        <span class="menu-label">Modify</span>
         <button type="button" role="menuitem" onclick={handleGrow} disabled={$selection.size === 0}>
           Grow
         </button>
@@ -436,15 +457,28 @@
         >
           Shrink
         </button>
+        <button type="button" role="menuitem" onclick={handleInvert} disabled={$voxels.size === 0}>
+          Invert
+        </button>
+        <div class="menu-separator" role="separator"></div>
+        <span class="menu-label">Deselect</span>
         <button
           type="button"
           role="menuitem"
-          onclick={handleSelectConnected}
+          onclick={handleDeselectAll}
           disabled={$selection.size === 0}
         >
-          Select Connected
+          Deselect All
         </button>
-        <div class="menu-separator" role="separator"></div>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleDeselectInnerVoxels}
+          disabled={$selection.size === 0}
+          title="Deselect voxels that are surrounded on all 6 sides by selected voxels"
+        >
+          Deselect inner voxels
+        </button>
         <button
           type="button"
           role="menuitem"

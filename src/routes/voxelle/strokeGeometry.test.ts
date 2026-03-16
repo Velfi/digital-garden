@@ -3,6 +3,8 @@ import {
   thickenPathForStroke,
   thickenPath,
   thickenPathTapered,
+  puffPath,
+  createSeededRng,
   getBresenham3DLine,
   getAxisAlignedLine,
   projectPointOntoPlane,
@@ -58,6 +60,33 @@ describe('thickenPathForStroke', () => {
     });
     // Airbrush uses puffPath (sphere); r=1 gives 7 voxels (center + 6 face neighbors)
     expect(airbrushResult.length).toBe(7);
+  });
+
+  it('airbrush constrain to plane keeps voxels on plane through first point', () => {
+    const path: [number, number, number][] = [[1, 2, 3]];
+    const unconstrained = thickenPathForStroke(path, {
+      ...defaultParams,
+      strokeMode: 'airbrush',
+      airbrushRadius: 1
+    });
+    expect(unconstrained.length).toBe(7);
+    const constrainedY = thickenPathForStroke(path, {
+      ...defaultParams,
+      strokeMode: 'airbrush',
+      airbrushRadius: 1,
+      airbrushConstrainToPlane: true,
+      planeAxis: 1
+    });
+    expect(constrainedY.length).toBeLessThanOrEqual(7);
+    constrainedY.forEach(([x, y, z]) => expect(y).toBe(2));
+    const constrainedX = thickenPathForStroke(path, {
+      ...defaultParams,
+      strokeMode: 'airbrush',
+      airbrushRadius: 1,
+      airbrushConstrainToPlane: true,
+      planeAxis: 0
+    });
+    constrainedX.forEach(([x, y, z]) => expect(x).toBe(1));
   });
 
   // Regression: switching to Clay after using a selection method (line, plane, airbrush, etc.)
@@ -177,6 +206,25 @@ describe('thickenPathForStroke', () => {
     expect(result).toContainEqual([0, 0, 0]);
     expect(result).toContainEqual([0, -1, 0]);
     expect(result).toContainEqual([0, -2, 0]);
+  });
+});
+
+describe('puffPath with seeded RNG', () => {
+  it('same seed and path produce identical output', () => {
+    const positions: [number, number, number][] = [[0, 0, 0], [1, 0, 0], [2, 1, 0]];
+    const seed = 12345;
+    const rng = createSeededRng(seed);
+    const a = puffPath(positions, 1, 2, undefined, undefined, rng);
+    const rng2 = createSeededRng(seed);
+    const b = puffPath(positions, 1, 2, undefined, undefined, rng2);
+    expect(a).toEqual(b);
+  });
+
+  it('different seeds produce different output when scatter > 0', () => {
+    const positions: [number, number, number][] = [[0, 0, 0], [1, 0, 0]];
+    const out1 = puffPath(positions, 1, 2, undefined, undefined, createSeededRng(1));
+    const out2 = puffPath(positions, 1, 2, undefined, undefined, createSeededRng(2));
+    expect(out1).not.toEqual(out2);
   });
 });
 

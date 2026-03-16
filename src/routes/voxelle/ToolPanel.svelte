@@ -28,6 +28,7 @@
     airbrushRadiusRange,
     airbrushRadiusMin,
     airbrushRadiusMax,
+    airbrushConstrainToPlane,
     sprayDirection,
     sprayStreakLength,
     wallWidth,
@@ -41,7 +42,7 @@
     type SprayDirection
   } from './store';
 
-  const STROKE_TOOLS = ['voxel', 'remove', 'paint', 'select', 'selectByColor'] as const;
+  const STROKE_TOOLS = ['voxel', 'remove', 'paint', 'select', 'selectByColor', 'selectCoplanar'] as const;
   const isStrokeTool = (t: string) => STROKE_TOOLS.includes(t as (typeof STROKE_TOOLS)[number]);
 
   const drawBrushVisible = $derived($toolPane === 'draw' && isStrokeTool($tool));
@@ -257,6 +258,17 @@
             oninput={(e) => airbrushScatter.set(Number((e.target as HTMLInputElement).value))}
           />
           <span class="tool-panel-value">{$airbrushScatter}</span>
+        </div>
+        <div class="tool-panel-row">
+          <label class="tool-panel-check">
+            <input
+              type="checkbox"
+              checked={$airbrushConstrainToPlane}
+              onchange={(e) => airbrushConstrainToPlane.set((e.target as HTMLInputElement).checked)}
+              title="Keep airbrush on a single plane (uses Plane axis)"
+            />
+            Constrain to plane
+          </label>
         </div>
       </section>
     {/if}

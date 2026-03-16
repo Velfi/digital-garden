@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 import { coordKey, parseCoordKey, inBounds, getSelectionBounds } from '../coordUtils';
 import { voxels, selection, gridSize, pushUndo, updateVoxels, planeAxis, fillConstrainToPlane } from './core';
-import type { SelectionMode } from './core';
+import type { FaceNormal, SelectionMode } from './core';
 
 function getPlaneAxisNumber(): 0 | 1 | 2 {
   const pa = get(planeAxis);
@@ -231,6 +231,26 @@ export function shrinkSelection() {
   selection.set(next);
 }
 
+/** Deselect any selected voxel that has all 6 face-neighbors also in the selection. */
+export function deselectInnerVoxels() {
+  pushUndo();
+  const sel = get(selection);
+  const next = new Map<string, number>();
+  for (const [key, col] of sel) {
+    const [x, y, z] = parseCoordKey(key);
+    let bounded = true;
+    for (const [dx, dy, dz] of ADJ_6) {
+      const nk = coordKey(x + dx, y + dy, z + dz);
+      if (!sel.has(nk)) {
+        bounded = false;
+        break;
+      }
+    }
+    if (!bounded) next.set(key, col);
+  }
+  selection.set(next);
+}
+
 export function hollowOut(): void {
   const v = get(voxels);
   const sel = get(selection);
@@ -296,4 +316,41 @@ export function selectConnected() {
     }
   }
   selection.set(next);
+}
+
+/** All voxels in the same plane as the given face (plane perpendicular to faceNormal), connected within that plane. */
+export function getCoplanarFacesSelectionAt(
+  x: number,
+  y: number,
+  z: number,
+  faceNormal: FaceNormal
+): Map<string, number> {
+  const v = get(voxels);
+  const sz = get(gridSize);
+  const k0 = coordKey(x, y, z);
+  if (!v.has(k0)) return new Map();
+  const [nx, ny, nz] = faceNormal;
+  const visited = new Set<string>();
+  const stack: [number, number, number][] = [[x, y, z]];
+  const next = new Map<string, number>();
+  while (stack.length > 0) {
+    const [cx, cy, cz] = stack.pop()!;
+    const ck = coordKey(cx, cy, cz);
+    if (visited.has(ck)) continue;
+    visited.add(ck);
+    const col = v.get(ck);
+    if (col === undefined) continue;
+    next.set(ck, col);
+    for (const [dx, dy, dz] of ADJ_6) {
+      if (dx * nx + dy * ny + dz * nz !== 0) continue;
+      const nx_ = cx + dx;
+      const ny_ = cy + dy;
+      const nz_ = cz + dz;
+      if (inBounds(nx_, ny_, nz_, sz)) {
+        const nk = coordKey(nx_, ny_, nz_);
+        if (!visited.has(nk)) stack.push([nx_, ny_, nz_]);
+      }
+    }
+  }
+  return next;
 }

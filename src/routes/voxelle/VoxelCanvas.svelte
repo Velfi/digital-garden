@@ -34,6 +34,7 @@
     airbrushRadiusRange,
     airbrushRadiusMin,
     airbrushRadiusMax,
+    airbrushConstrainToPlane,
     sprayDirection,
     sprayStreakLength,
     wallWidth,
@@ -83,13 +84,17 @@
     fillRespectsColor,
     getFillSelectionAt,
     getFillEmptyAt,
+    getCoplanarFacesSelectionAt,
     getShapePositionsAt,
     addPanelStore,
+    symmetryX,
+    symmetryY,
+    symmetryZ,
     type Tool,
     type FaceNormal
   } from './store';
   import { getShareFromIndexedDB } from './shareStorage';
-  import { inBounds } from './coordUtils';
+  import { inBounds, expandPositionsWithSymmetry, type SymmetryAxes } from './coordUtils';
   import {
     getAxisAlignedLine,
     getAxisAlignedPlaneFromNormal,
@@ -158,6 +163,8 @@
   let dragPlaneAxisOverride = $state<0 | 1 | 2 | null>(null);
   let dragPointerId: number | null = null;
   let pendingStrokePositions: [number, number, number][] = [];
+  /** Per-stroke seed for deterministic scatter (preview and apply match). */
+  let currentStrokeSeed = 0;
   /** Clay bulk: last sampled position for path accumulation */
   let lastBulkPos: [number, number, number] | null = null;
   /** Branch: pointer down position for view-plane direction and length */
@@ -817,6 +824,12 @@
 
   function updatePreviewMesh(positions: [number, number, number][]) {
     if (!previewMesh || !previewMaterial) return;
+    const axes: SymmetryAxes = {
+      x: get(symmetryX),
+      y: get(symmetryY),
+      z: get(symmetryZ)
+    };
+    positions = expandPositionsWithSymmetry(positions, axes);
     const sel = $selection;
     const filtered =
       sel.size > 0 && ($tool === 'paint' || $tool === 'remove')
@@ -829,7 +842,7 @@
     const hex =
       $tool === 'remove'
         ? 0xff4444
-        : $tool === 'select' || $tool === 'selectByColor'
+        : $tool === 'select' || $tool === 'selectByColor' || $tool === 'selectCoplanar'
           ? 0x33aaff
           : hexToInt($color);
     const voxelMap = new Map<string, number>();
@@ -1176,6 +1189,7 @@
         dragStartPos = pos;
         lastBulkPos = pos;
         pendingStrokePositions = [pos];
+        currentStrokeSeed = Math.floor(Math.random() * 0xffffffff);
         if (mode === 'wall') {
           const n = getFaceNormalFromHit(hit);
           dragFaceNormal = n ? new THREE.Vector3(n[0], n[1], n[2]) : null;
@@ -1196,6 +1210,8 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
             airbrushRadiusMax: get(airbrushRadiusMax),
+            airbrushConstrainToPlane: get(airbrushConstrainToPlane),
+            planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
             wallWidth: get(wallWidth),
@@ -1204,7 +1220,8 @@
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize),
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
+            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+            seed: currentStrokeSeed
           })
         );
       } else {
@@ -1223,6 +1240,7 @@
         branchPointerDownX = event.clientX;
         branchPointerDownY = event.clientY;
         pendingStrokePositions = [pos];
+        currentStrokeSeed = Math.floor(Math.random() * 0xffffffff);
         updatePreviewMesh(
           thickenPathForStroke(pendingStrokePositions, {
             strokeMode: get(strokeMode),
@@ -1239,6 +1257,8 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
             airbrushRadiusMax: get(airbrushRadiusMax),
+            airbrushConstrainToPlane: get(airbrushConstrainToPlane),
+            planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
             wallWidth: get(wallWidth),
@@ -1247,7 +1267,8 @@
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize),
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
+            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+            seed: currentStrokeSeed
           })
         );
       } else {
@@ -1351,6 +1372,22 @@
       return;
     }
 
+    // Select coplanar faces: click voxel to select all connected voxels in that face's plane
+    if ($tool === 'selectCoplanar' && hit.object !== polygonPointsMesh) {
+      const pos = getVoxelPosition(hit);
+      const normal = getFaceNormalFromHit(hit);
+      if (pos && normal) {
+        const incoming = getCoplanarFacesSelectionAt(pos[0], pos[1], pos[2], normal);
+        if (incoming.size > 0) {
+          pushUndo();
+          const next = mergeSelection($selection, incoming, get(selectionMode));
+          selection.set(next);
+        }
+      }
+      requestAnimationFrame(() => render());
+      return;
+    }
+
     // Select by color: when fill mode, flood-fill select; else select all of that color globally
     if ($tool === 'selectByColor' && hit.object !== polygonPointsMesh) {
       const pos = getVoxelPosition(hit);
@@ -1426,10 +1463,13 @@
     }
 
     dragStartPos = startPos;
+    currentStrokeSeed = Math.floor(Math.random() * 0xffffffff);
     hit.object.getWorldQuaternion(worldQuaternion);
     const faceNormal = hit.face!.normal.clone().applyQuaternion(worldQuaternion);
     const pa = get(planeAxis);
-    dragFaceNormal = pa === 'auto' ? faceNormal : axisVector(pa);
+    // Line (non-axis-aligned): always use clicked face so line stays in that plane (e.g. XY on a wall)
+    const lineOnFace = get(effectiveStrokeMode) === 'line' && !get(lineAxisAlign);
+    dragFaceNormal = lineOnFace || pa === 'auto' ? faceNormal : axisVector(pa);
     dragPlaneAxisOverride = null;
     pendingStrokePositions = [startPos];
     const clayModeVal = get(clayMode);
@@ -1463,6 +1503,8 @@
       airbrushRadiusRange: get(airbrushRadiusRange),
       airbrushRadiusMin: get(airbrushRadiusMin),
       airbrushRadiusMax: get(airbrushRadiusMax),
+      airbrushConstrainToPlane: get(airbrushConstrainToPlane),
+      planeAxis: get(planeAxis),
       sprayDirection: get(sprayDirection),
       sprayStreakLength: get(sprayStreakLength),
       wallWidth: get(wallWidth),
@@ -1471,7 +1513,8 @@
       drawBrushShape: get(drawBrushShape),
       drawBrushSize: get(drawBrushSize),
       drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-      drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
+      drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+      seed: currentStrokeSeed
     };
     updatePreviewMesh(thickenPathForStroke(pendingStrokePositions, strokeParams));
     requestAnimationFrame(() => render());
@@ -1557,6 +1600,8 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
             airbrushRadiusMax: get(airbrushRadiusMax),
+            airbrushConstrainToPlane: get(airbrushConstrainToPlane),
+            planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
             wallWidth: get(wallWidth),
@@ -1565,7 +1610,8 @@
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize),
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
+            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+            seed: currentStrokeSeed
           })
         );
         deltaDisplay =
@@ -1672,6 +1718,8 @@
               airbrushRadiusRange: get(airbrushRadiusRange),
               airbrushRadiusMin: get(airbrushRadiusMin),
               airbrushRadiusMax: get(airbrushRadiusMax),
+              airbrushConstrainToPlane: get(airbrushConstrainToPlane),
+              planeAxis: get(planeAxis),
               sprayDirection: get(sprayDirection),
               sprayStreakLength: get(sprayStreakLength),
               wallWidth: get(wallWidth),
@@ -1680,7 +1728,8 @@
               drawBrushShape: get(drawBrushShape),
               drawBrushSize: get(drawBrushSize),
               drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-              drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
+              drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+              seed: currentStrokeSeed
             })
           );
           deltaDisplay = {
@@ -1864,6 +1913,8 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
             airbrushRadiusMax: get(airbrushRadiusMax),
+            airbrushConstrainToPlane: get(airbrushConstrainToPlane),
+            planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
             wallWidth: get(wallWidth),
@@ -1872,7 +1923,8 @@
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize),
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
+            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+            seed: currentStrokeSeed
           });
           if ($tool === 'select') {
             applySelectStroke(toApply);
@@ -2472,7 +2524,7 @@
       render();
       return;
     }
-    const positions = getShapePositionsAt({
+    let positions = getShapePositionsAt({
       position: [s.posX, s.posY, s.posZ],
       rotation: [
         Math.max(0, Math.min(3, Math.floor(s.rotX))) & 3,
@@ -2481,6 +2533,11 @@
       ],
       shape: s.shape,
       size: Math.max(1, Math.min(256, Math.floor(s.size)))
+    });
+    positions = expandPositionsWithSymmetry(positions, {
+      x: get(symmetryX),
+      y: get(symmetryY),
+      z: get(symmetryZ)
     });
     const sel = $selectedColors;
     const col = hexToInt(sel.length > 0 ? sel[0] : $color);
