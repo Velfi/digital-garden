@@ -7,7 +7,7 @@ export type RenderingMode = 'greedy' | 'marchingCubes';
 export interface VoxelMeshWorkerInput {
   voxels: [string, number][] | { coords: Int32Array; colors: Uint32Array };
   mode?: RenderingMode;
-  options?: { aoEnabled?: boolean };
+  options?: { aoEnabled?: boolean; aoStrength?: 0 | 1 | 2 };
   gen?: number;
 }
 

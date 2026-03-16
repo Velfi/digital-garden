@@ -589,6 +589,23 @@ export function getRopeCurveVoxels(
   return result.length > 0 ? result : [a, b];
 }
 
+/** Projects a point onto the plane through planePoint with given normal; returns integer voxel coords. */
+export function projectPointOntoPlane(
+  point: [number, number, number],
+  planePoint: [number, number, number],
+  normal: Vec3Like
+): [number, number, number] {
+  const dx = point[0] - planePoint[0];
+  const dy = point[1] - planePoint[1];
+  const dz = point[2] - planePoint[2];
+  const dot = dx * normal.x + dy * normal.y + dz * normal.z;
+  return [
+    Math.round(point[0] - dot * normal.x),
+    Math.round(point[1] - dot * normal.y),
+    Math.round(point[2] - dot * normal.z)
+  ];
+}
+
 /** Returns all voxels along a 3D line between a and b (6-connected path). */
 export function getBresenham3DLine(
   a: [number, number, number],
@@ -744,7 +761,7 @@ function areCoplanar(
 export function getPolygonVoxels(points: [number, number, number][]): [number, number, number][] {
   if (points.length === 0) return [];
   if (points.length === 1) return [points[0]];
-  if (points.length === 2) return getAxisAlignedLine(points[0], points[1]);
+  if (points.length === 2) return getBresenham3DLine(points[0], points[1]);
   if (points.length === 3) {
     const [a, b, c] = points;
     const ab = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);

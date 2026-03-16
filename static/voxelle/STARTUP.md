@@ -1,36 +1,39 @@
-# Voxelle Overview
+# Welcome to Voxelle
 
-A 3D voxel sculpting tool. Add or remove voxels to create sculptures.
+Voxelle is a 3D building and sculpting tool made of little cubes (voxels).
 
-## App Layout
+## Quick Start
 
-- **Canvas** – Main 3D view. Orbit (drag) or fly tool (WASD) to navigate. Click to sculpt.
-- **Sidebar** – Tools, stroke modes, color, camera, lighting, and scene settings.
-- **Menu bar** – File (open, save, share, export), Edit (undo, copy, paste), Add (shapes), Selection, Help.
+1. In the sidebar, choose a tool:
+   - **Voxel** to add blocks
+   - **Remove** to erase blocks
+   - **Paint** to recolor blocks
+2. Click or drag in the canvas to edit.
+3. Drag in empty space to rotate the camera.
+4. Undo mistakes with **Cmd/Ctrl + Z**.
+5. Save from **File -> Save .voxelle** (or use **Share link**).
 
-## Getting Started
+## Most Useful Controls
 
-1. Pick a **tool**.
-   - **Voxel**: Add voxels.
-   - **Remove**: Remove voxels.
-   - **Paint**: Paint voxels.
-   - **Select**: Select voxels.
-   - **Clay**: Fast but imprecise tools for sculpting.
-2. Choose **stroke mode**.
-   - **Line**: Draw lines (axis-aligned). Click to place single voxels.
-   - **Plane**: Fill whole plane.
-   - **Cuboid**: Drag to set plane, scroll for depth, click or Done to apply.
-   - **Polygon**: Click to place points, Done to fill convex hull.
-   - **Fill**: Click to flood-fill: Voxel (empty space), Remove/Paint (voxels), Select/SelectByColor (selection).
-   - **Airbrush**: Drag to paint a soft spherical brush along the path.
-   - **Wall** (Clay): Drag on a surface. Direction defaults to **Auto** (face normal). Set **Width**, **Height** (min 2), and **Lock start height** for enclosed loops.
-3. Click and drag in the 3D view to sculpt.
-4. **Undo**: Ctrl+Z. **Redo**: Ctrl+Shift+Z.
-5. **Save** your work via File → Save .voxelle, or **Share** to get a link.
-   - Your work is automatically saved to your browser's local storage. Projects stay saved until you start a new project or clear your browser's site data.
+- **Draw tab**: precise building tools
+- **Clay tab**: looser sculpting tools
+- **Fly tab**: first-person camera (WASD, E/Q, Shift, mouse)
+- **F**: enter fullscreen mode. Press F or Escape to exit.
+- **Escape**: close dialogs, exit fly mode, cancel in-progress polygon/rope/cuboid actions
 
-## Tips
+## Good First Workflow
 
-- Use the **eyedropper** to sample colors from existing voxels.
-- **Stamp** copies your selection. Select voxels, then click to place.
-- **Export** to GLTF for use in other 3D apps.
+1. Block out the shape with **Voxel**.
+2. Clean up with **Remove**.
+3. Color with **Paint** or sample with **Eyedropper**.
+4. Use **Select** + **Stamp** to duplicate repeated parts.
+
+## Saving and Sharing
+
+- Voxelle auto-saves in your browser while you work.
+- Use **File -> Save .voxelle** to download a project file.
+- Use **File -> Open...** to load a saved project.
+- Use **Share link** to create a URL you can send.
+- Use **Save as GLTF** to export for Blender, Unity, and other 3D apps.
+
+Need details on every tool? Open **Help -> Show help**.

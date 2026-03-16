@@ -1,126 +1,230 @@
-# Voxelle
+# Voxelle Help
 
 <img src="/voxelle/VoxelleTitle.png" alt="Voxelle" width="100%" height="auto">
 
-A 3D voxel sculpting tool. Add or remove voxels to create sculptures.
+Voxelle is a 3D sculpting tool made of blocks (voxels).
 
-## App Layout
+## If You Want To...
 
-- **Canvas** – Main 3D view. Orbit (drag) or fly tool (WASD) to navigate. Click to sculpt.
-- **Sidebar** – Tools, stroke modes, color, camera, lighting, and scene settings.
-- **Menu bar** – File, Edit, Add, Selection, Help.
+### Add and erase blocks
 
----
+1. Open the **Draw** tab.
+2. Pick **Voxel** to add or **Remove** to erase.
+3. Click or drag in the canvas.
 
-## Tools
+### Paint your model
 
-Voxelle offers three Categories of tools:
+1. Pick a color in the sidebar.
+2. Use **Paint** to recolor blocks.
+3. Use **Eyedropper** to sample a color from an existing block.
 
-- **Draw** – precise tools (voxel, remove, paint, etc.) with stroke modes.
-- **Clay** – fast sculpting modes for blocking in forms.
-- **Fly** – first-person camera navigation.
+### Move around the scene
 
-### Draw tools
+- Drag in empty space to orbit the camera.
+- Use the **Fly** tab for first-person movement:
+  - **WASD** move
+  - **E / Q** up/down
+  - **Shift** slower movement
+  - **Escape** exit fly mode
 
-- **Voxel** – Add voxels with the current color.
-- **Remove** – Delete voxels.
-- **Paint** – Change voxel colors to the current color.
-- **Select** – Click or drag to select voxels for stamping.
-- **Stamp** – Place copies of the selection. Requires a selection; click to place each copy.
-- **Eyedropper** – Click a voxel to sample its color.
+### Fix mistakes quickly
 
-#### Stroke Modes
+- **Cmd/Ctrl + Z** undo
+- **Cmd/Ctrl + Shift + Z** or **Ctrl + Y** redo
+- **Cmd/Ctrl + A** select all
 
-Selection method controls how each tool applies voxels:
+### Copy repeated parts
 
-- **Line** – Draw axis-aligned lines. Click to place a single voxel.
-- **Plane** – Fill a whole plane. Alt+scroll during drag to cycle orientation.
-- **Cuboid** – Drag to set the base plane, scroll to set depth, click or Done to apply.
-- **Polygon** – Click to place points, Done to fill the convex hull.
-- **Fill** – Click to flood-fill. Voxel fills empty space; Remove/Paint fills voxels; Select/Select by color fills the selection. Options: Include diagonals (8-connected vs 6-connected), Respect color (fill only matching voxels).
-- **Airbrush** – Drag to paint a soft spherical brush along the path. Options: Size (0–5), Size range (min/max for spray effect), Scatter (0–4).
+1. Use **Select** to pick voxels.
+2. Switch to **Stamp**.
+3. Click to place copies of the selection.
 
-#### Plane Axis
+### Save or share work
 
-When using **Plane** or **Cuboid** stroke mode, it's possible to constrain the tool to a specific axis.
-
-- **X** – Vertical plane (YZ). **Y** – Horizontal plane (XZ). **Z** – Vertical plane (XY).
-- **Auto** – Use the clicked face normal. In plain english, this means that the tool will automatically orient the plane to the face you click on.
-- Alt+scroll during a drag cycles the plane orientation.
-
-### Clay Tools
-
-The **Clay** tab holds fast, imprecise sculpting modes—opposite of the Draw tools above.
-
-#### Modes
-
-- **Bulk** – Pull voxels along the cursor path. Use for broad sculpting.
-- **Smooth** – Soften edges and fill small gaps.
-- **Level** – Flatten the surface to the height you click.
-- **Gouge** – Carve a trench along the path.
-- **Branch** – Extrude limbs or horns into empty space, following cursor direction. Option: Taper (thick base to thin tip).
-- **Puffy** – Organic spheres for clouds. Options: Size, Size range (min/max), Scatter.
-- **Melt** – Spread voxels downhill, highest first.
-- **Rope** – Draw a catenary curve between two points. Click to place the first point, click again for the second, then adjust tension (0=max sag, 1=taut) and click Done to apply. Options: Brush shape (sphere or cube), Brush radius (0–5).
-- **Wall** – Drag a path on a surface; voxels extend along a direction from each path point. **Direction**: Auto (face normal), None, or axis (X+, X−, Y+, Y−, Z+, Z−). **Width** (0–5): path thickness. **Height** (2–20): extension along direction. **Lock start height**: keep path on the starting plane for enclosed loops (e.g. walls around a building).
-
-Brush size (0–2) applies to Bulk, Smooth, Level, Gouge, Branch, and Melt.
-
-### Fly Tool
-
-The **Fly** tool is a first-person camera. Click the canvas to capture the pointer, then: WASD to move, E/Q to go up/down, Shift held for 1/8 speed. Move the mouse to look. Press Escape to exit.
-
-Moving in this way changes the origin of the orbit camera. When you exit fthe fly tool, you can click "reset" in the lower right corner of the canvas to reset the camera to the default orbit origin.
+- **File -> Save .voxelle** downloads a project file.
+- **File -> Open...** opens a `.voxelle` file.
+- **File -> Share link** creates a URL.
+- **File -> Save as GLTF** exports `.glb` for Blender/Unity/other 3D apps.
 
 ---
 
-## Sidebar Sections
+## Draw Tools
+
+- **Voxel** - add blocks
+- **Remove** - erase blocks
+- **Paint** - recolor blocks
+- **Select** - select blocks
+- **Stamp** - place a copy of selected blocks
+- **Eyedropper** - pick a color from the model
+
+### Selection method (how dragging behaves)
+
+- **Line** - draw a line between start and end points
+- **Plane** - fill a flat plane
+- **Cuboid** - draw a box
+- **Polygon** - place points, then fill the inside
+- **Fill** - flood fill connected area
+- **Airbrush** - spray-like brush while dragging
+
+### Selection method options explained
+
+#### Line: Axis-align
+
+- **What it does**: locks the line to a single axis (X, Y, or Z), based on your drag direction.
+- **When ON**: great for clean, blocky straight lines.
+- **When OFF**: line follows your full drag in 3D, which is better for diagonal placement.
+- **How to turn it off**: in the floating tool options panel, uncheck **Axis-align** while using **Line** mode.
+
+#### Plane and Cuboid: Axis
+
+- **X / Y / Z**: force a specific plane orientation.
+- **Auto**: use the face you clicked.
+- **Tip**: while dragging Plane or Cuboid, hold **Alt** and scroll to cycle X/Y/Z quickly.
+
+#### Fill options
+
+- **Include diagonals**: treats corner-touching voxels as connected.
+- **Respect color**: only fills voxels with the same starting color.
+- **Constrain to plane**: keeps fill on a single plane instead of spreading in full 3D.
+
+#### Airbrush options
+
+- **Size**: fixed spray size.
+- **Size range**: random size between Min and Max each spray step.
+- **Scatter**: how far droplets spread from the center path.
+
+### Helpful draw options
+
+- **Brush shape**: Sphere, Cube, Pyramid
+- **Brush size**: 0-5
+- **Snap to surface**: keeps brush on surface instead of through it
+- **Stamp rotation**: rotate copied selection in quarter-turns before placing
+
+---
+
+## Clay Tools (Fast Sculpting)
+
+- **Bulk** - quickly build up mass
+- **Smooth** - soften rough areas
+- **Inflate** - push surface outward
+- **Level** - flatten to a height
+- **Gouge** - carve grooves
+- **Branch** - pull out branch-like shapes
+- **Puffy** - add soft blob shapes
+- **Melt** - spread blocks downward
+- **Rope** - draw a hanging rope between two points
+- **Wall** - draw raised walls along a path
+
+### Clay options explained
+
+#### Brush size (most clay modes)
+
+- Used by **Bulk, Smooth, Inflate, Level, Gouge, Branch, Melt**.
+- Bigger brush edits a wider area with each stroke.
+
+#### Inflate: Strength
+
+- Controls how aggressively Inflate expands outward.
+- **Higher strength** = fills outward neighbors more often (faster inflation).
+- **Lower strength** = softer, noisier inflation.
+
+#### Branch: Taper
+
+- When enabled, branches start thicker and end thinner.
+- Good for horns, roots, tree-like forms.
+
+#### Puffy: Size, Size range, Scatter
+
+- **Size** sets blob size when range is off.
+- **Size range** randomizes each blob between Min and Max.
+- **Scatter** spreads blobs away from the path for a fluffier look.
+
+#### Rope: Tension, Shape, Size
+
+- Workflow:
+  1. Click first point.
+  2. Click second point.
+  3. Adjust **Tension** and click **Done**.
+- **Tension**:
+  - low = more sag
+  - high = straighter rope
+- You can adjust tension with the on-canvas slider or the +/- buttons.
+- **Shape** chooses rounder (`Sphere`) or blockier (`Cube`) rope thickness.
+- **Size** controls rope thickness.
+
+#### Wall: Direction, Width, Height, Lock start height
+
+- **Direction** chooses which way the wall extends:
+  - `Auto` uses the face you started on
+  - or pick a fixed axis direction (`X+`, `X-`, `Y+`, `Y-`, `Z+`, `Z-`)
+- **Width** controls wall thickness along the path.
+- **Height** controls how far the wall extrudes in the chosen direction.
+- **Lock start height** keeps your path on its starting plane, useful for closed wall loops.
+
+---
+
+## Symmetry
+
+Use **X**, **Y**, and **Z** symmetry toggles to mirror edits across axes.
+
+---
+
+## Sidebar Controls
 
 ### Color
 
-Color picker, hex input, and Lospec palette.
+- **Color picker**: choose a color visually.
+- **Hex field**: type an exact color value (for example `#ff8800`).
+- **Palette**: pick swatches from the built-in palette.
+- **Tip**: if you already have voxels selected, changing color also updates those selected voxels.
 
 ### Camera
 
-- **Orthographic view** – No perspective distortion.
-- **Focal length** (15–200 mm) – Only when perspective is on.
+- **Orthographic view**:
+  - ON = no perspective distortion (great for precise building and alignment)
+  - OFF = normal perspective view (more depth feel)
+- **Focal length** (perspective only):
+  - lower values = wider, more dramatic view
+  - higher values = flatter, zoomed-in look
 
 ### Scene
 
-- **Rendering** – Choose `Blocky (greedy mesh)` for crisp voxel faces or `Smooth (marching cubes)` for an isosurface look.
-- **Show borders** – Toggle the voxel gridlines.
-- **Sky & horizon** – Gradient sky with horizon.
-- **Background** – Solid color (when sky is off).
+- **Rendering**:
+  - **Blocky (greedy mesh)** keeps crisp voxel faces
+  - **Smooth (marching cubes)** rounds surfaces for an organic look
+- **Show borders**: shows/hides edge lines between voxels.
+- **Sky & horizon**: toggles gradient sky background.
+- **Background**: solid background color (only used when sky is off).
 
 ### Light
 
-- **Ambient** – Overall brightness.
-- **Color** – Directional light color.
-- **Angle** – Horizontal rotation (0–360°).
-- **Elevation** – Height above horizon (5–90°).
-- **Shadows** – Directional shadows.
-- **Ambient occlusion** – Darken corners for depth.
+- **Ambient**: base brightness for the whole scene.
+- **Color**: color of the main directional light.
+- **Angle**: rotates the light around your model.
+- **Elevation**: raises/lowers the light in the sky.
+- **Shadows**: toggles directional shadows.
+- **Ambient occlusion**:
+  - **Off** = clean/flat shading
+  - **Subtle** = mild depth in corners
+  - **Strong** = stronger corner darkening and contrast
 
-### Material (PBR)
+### Material
 
-- **Roughness** – Surface matte/gloss (0–1).
-- **Metalness** – Metallic look (0–1).
+- **Roughness**:
+  - low = shiny/smooth
+  - high = matte/rough
+- **Metalness**:
+  - low = non-metal (plastic/clay-like)
+  - high = metallic look
 
 ### Origin
 
-- **Center** – Move voxels so the object center is at the origin.
-- **To selection** – Move voxels so the selection center is at the origin.
-- **Shift** – Move the whole object or just the selection by x, y, z.
-
----
-
-## Keyboard Shortcuts
-
-- **F** – Fullscreen canvas (for screenshots); press F or Escape to exit
-- **Ctrl+Z** / Cmd+Z – Undo
-- **Ctrl+Shift+Z** / **Ctrl+Y** / Cmd+Y – Redo
-- **Ctrl+A** / Cmd+A – Select all
-- **Escape** – Cancel polygon mode, close modals, exit fly tool
+- **Center**: moves the whole model so its center sits at world origin.
+- **To selection**: moves the model so selected voxels are centered at origin.
+- **Shift**:
+  - if you have a selection, it shifts only that selection
+  - if nothing is selected, it shifts the whole model
+- Use **Shift** to nudge parts into place with exact x/y/z offsets.
 
 ---
 
@@ -128,63 +232,43 @@ Color picker, hex input, and Lospec palette.
 
 ### File
 
-- **New project** – New grid size and starting shape.
-- **Open…** – Load a .voxelle file.
-- **Save .voxelle** – Download the project.
-- **Import image…** – Convert pixels to voxels on a flat Y=0 plane.
-- **Share link** – Create a shareable URL.
-- **Save as GLTF** – Export for use in other 3D apps.
+- New project
+- Open...
+- Save .voxelle
+- Import image...
+- Share link
+- Save as GLTF
 
 ### Edit
 
-- **Undo** / **Redo**
-- **Cut** / **Copy** / **Paste**
-- **Hollow out** – Remove interior voxels, leaving a shell.
+- Undo / Redo
+- Cut / Copy / Paste
+- Hollow out (remove interior blocks)
 
 ### Add
 
-- **Add shape…** – Add a shape at a position with rotation and size.
+- Add shape...
 
 ### Selection
 
-- **Select all** / **Deselect all** / **Invert**
-- **Select by color** – Switch to Select by color tool; click a voxel to select all of that color.
-- **Grow** / **Shrink** – Expand or contract selection by one layer.
-- **Select connected** – Select all voxels connected to the current selection.
-- **Deselect voxels** – Remove voxel positions from selection.
-- **Deselect empty spaces** – Remove orphaned positions (no voxel there).
-- **Selection mode** – Replace, Add to selection, Subtract from selection, Intersect with selection.
+- Select All / Deselect All / Invert
+- Select by color
+- Grow / Shrink
+- Select Connected
+- Deselect voxels
+- Deselect empty spaces
+- Selection mode: Replace / Add / Subtract / Intersect
 
 ### Help
 
-- **Show help** – This page.
-- **Show startup screen** – Quick overview.
+- Show help
+- Show startup screen
 
 ---
 
-## File & Project
+## Notes
 
-- Work is **auto-saved** to your browser's local storage. Projects persist until you start a new project or clear site data.
-- **Share link** – On localhost, links use IndexedDB; deployed, links use Vercel Blob storage.
-- **Import image** – Each pixel becomes a voxel. Image is centered; fully transparent pixels are skipped. Large images may prompt for confirmation.
-- **Export GLTF** – Saves a .glb file for Blender, Unity, or other 3D software.
-
----
-
-## Add Shape
-
-Add → Add shape… opens a dialog:
-
-- **Position** – x, y, z coordinates.
-- **Rotation** – 0–3 per axis (0°–270° in quarter-turns).
-- **Shape** – Cube, Orb, Cylinder, Hollow cube, Plane.
-- **Size** – 1–256 voxels.
-
----
-
-## New Grid
-
-File → New project:
-
-- **Grid size** – 1–256. Defines the workspace bounds.
-- **Starting shape** – Cube, Orb, Cylinder, Hollow cube, Plane, or Empty.
+- Work auto-saves in your browser.
+- Import image places voxels on a flat plane.
+- Large image imports may ask for confirmation.
+- If the app does not run, your browser may not support WebGL.

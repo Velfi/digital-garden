@@ -5,6 +5,7 @@ import {
   thickenPathTapered,
   getBresenham3DLine,
   getAxisAlignedLine,
+  projectPointOntoPlane,
   getAxisAlignedPlaneFromNormal,
   getAxisAlignedCuboid,
   getPolygonVoxels,
@@ -57,6 +58,40 @@ describe('thickenPathForStroke', () => {
     });
     // Airbrush uses puffPath (sphere); r=1 gives 7 voxels (center + 6 face neighbors)
     expect(airbrushResult.length).toBe(7);
+  });
+
+  // Regression: switching to Clay after using a selection method (line, plane, airbrush, etc.)
+  // must use clay brush, not the previous selection method. Callers must pass clayMode when tool is clay.
+  it('clay mode with selection method line uses clay brush not draw brush', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      strokeMode: 'line',
+      drawBrushSize: 2,
+      clayMode: 'bulk',
+      clayBrushRadius: 1
+    });
+    const expectedClayBrush = thickenPath(singlePoint, 1);
+    expect(result).toEqual(expectedClayBrush);
+    expect(result.length).toBe(27); // 3x3x3 clay brush, not draw brush (2) or raw line
+  });
+
+  it('without clayMode, selection method determines behavior (callers must pass clayMode when in clay)', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const withAirbrush = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      strokeMode: 'airbrush',
+      clayBrushRadius: 1
+      // clayMode intentionally omitted
+    });
+    expect(withAirbrush.length).toBe(7); // airbrush sphere
+    const withClay = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      strokeMode: 'airbrush',
+      clayBrushRadius: 1,
+      clayMode: 'melt'
+    });
+    expect(withClay.length).toBe(27); // clay brush
   });
 
   it('clay wall with direction and wallHeight adds voxels along direction', () => {
@@ -202,6 +237,33 @@ describe('getBresenham3DLine', () => {
     expect(result).toContainEqual([0, 0, 0]);
     expect(result).toContainEqual([3, 0, 0]);
     expect(result.length).toBe(4);
+  });
+});
+
+describe('projectPointOntoPlane', () => {
+  it('point on plane is unchanged', () => {
+    const planePoint: [number, number, number] = [0, 0, 0];
+    const normal = { x: 0, y: 1, z: 0 };
+    const pointOnPlane: [number, number, number] = [3, 0, 5];
+    const result = projectPointOntoPlane(pointOnPlane, planePoint, normal);
+    expect(result).toEqual([3, 0, 5]);
+  });
+
+  it('point off plane projects to plane', () => {
+    const planePoint: [number, number, number] = [0, 0, 0];
+    const normal = { x: 0, y: 1, z: 0 };
+    const pointOffPlane: [number, number, number] = [2, 4, 3];
+    const result = projectPointOntoPlane(pointOffPlane, planePoint, normal);
+    expect(result).toEqual([2, 0, 3]);
+  });
+
+  it('projects onto tilted plane', () => {
+    const planePoint: [number, number, number] = [0, 0, 0];
+    const len = Math.sqrt(2);
+    const n = { x: 1 / len, y: 1 / len, z: 0 };
+    const point: [number, number, number] = [5, 5, 2];
+    const result = projectPointOntoPlane(point, planePoint, n);
+    expect(result).toEqual([0, 0, 2]);
   });
 });
 

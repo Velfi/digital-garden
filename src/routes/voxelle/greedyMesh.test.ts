@@ -135,7 +135,7 @@ describe('buildGreedyMesh', () => {
       [coordKey(1, 0, 0), 0x888888]
     ]);
     expect(countVisibleFaces(voxels)).toBe(10);
-    const result = buildGreedyMesh(voxels);
+    const result = buildGreedyMesh(voxels, { aoEnabled: false });
     const geo = result.get(0x888888)!;
     // 6 quads = 12 tris; vertex welding reduces to 24 unique verts
     expect(getVertexCount(geo)).toBe(24);
@@ -148,7 +148,7 @@ describe('buildGreedyMesh', () => {
         for (let z = 0; z < 2; z++) voxels.set(coordKey(x, y, z), 0x888888);
 
     expect(countVisibleFaces(voxels)).toBe(24);
-    const result = buildGreedyMesh(voxels);
+    const result = buildGreedyMesh(voxels, { aoEnabled: false });
     const geo = result.get(0x888888)!;
     // 6 faces × 2 triangles each = 12 tris; vertex welding = 24 unique verts
     expect(getVertexCount(geo)).toBe(24);
@@ -157,7 +157,7 @@ describe('buildGreedyMesh', () => {
 
   it('initShape cube produces 6 faces (one quad per face)', () => {
     const voxels = initShape(8, 'cube');
-    const result = buildGreedyMesh(voxels);
+    const result = buildGreedyMesh(voxels, { aoEnabled: false });
     expect(result.size).toBe(1);
     const geo = result.get(0x888888)!;
     // 8×8×8 cube: 6 faces, each 8×8 merged to one quad = 6 quads = 12 tris
@@ -199,7 +199,7 @@ describe('buildGreedyMesh', () => {
         for (let z = -1; z <= 0; z++) voxels.set(coordKey(x, y, z), 0x888888);
 
     expect(countVisibleFaces(voxels)).toBe(24);
-    const result = buildGreedyMesh(voxels);
+    const result = buildGreedyMesh(voxels, { aoEnabled: false });
     const geo = result.get(0x888888)!;
     expect(getVertexCount(geo)).toBe(24); // vertex welding
 
@@ -214,6 +214,34 @@ describe('buildGreedyMesh', () => {
     }
     expect(hasNegFace).toBe(true); // -X face at x=-1.5
     expect(hasPosFace).toBe(true); // +X face at x=0.5
+  });
+
+  it('plane with 1-height line and AO enabled is subdivided for smooth AO', () => {
+    // Flat plane at y=0 (one voxel thick), 3×3; 1-height line on top at y=1 along one edge
+    const voxels = new Map<string, number>();
+    for (let x = -1; x <= 1; x++)
+      for (let z = -1; z <= 1; z++) voxels.set(coordKey(x, 0, z), 0xcccccc);
+    voxels.set(coordKey(-1, 1, 0), 0x444444);
+    voxels.set(coordKey(0, 1, 0), 0x444444);
+    voxels.set(coordKey(1, 1, 0), 0x444444);
+
+    const resultNoAO = buildGreedyMesh(voxels, { aoEnabled: false });
+    const resultAO = buildGreedyMesh(voxels, { aoEnabled: true });
+    const geoNoAO = resultNoAO.get(0xcccccc)!;
+    const geoAO = resultAO.get(0xcccccc)!;
+
+    // With AO off, plane top is one merged quad (9 cells) = 4 verts (welded). With AO on, quad is subdivided.
+    expect(getVertexCount(geoAO)).toBeGreaterThan(getVertexCount(geoNoAO));
+    // Plane top face vertices should have varying color (AO darkens under the line)
+    const colors = geoAO.getAttribute('color') as THREE.BufferAttribute;
+    let minC = 1;
+    let maxC = 0;
+    for (let i = 0; i < colors.count; i++) {
+      const c = colors.getX(i);
+      if (c < minC) minC = c;
+      if (c > maxC) maxC = c;
+    }
+    expect(maxC - minC).toBeGreaterThan(0.01);
   });
 
   it('empty voxels returns empty map', () => {

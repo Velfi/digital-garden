@@ -5,9 +5,14 @@
 import * as THREE from 'three';
 import { computeGreedyMesh, getGreedyMeshFaceArea } from './greedyMeshCore';
 
+import type { AOStrength } from './greedyMeshCore';
+export type { AOStrength } from './greedyMeshCore';
+
 export interface GreedyMeshOptions {
-  /** When false, vertex ambient occlusion is disabled (flat vertex colors). */
+  /** @deprecated use aoStrength instead */
   aoEnabled?: boolean;
+  /** 0 = off, 1 = subtle, 2 = strong */
+  aoStrength?: AOStrength;
 }
 
 export function buildGreedyMesh(

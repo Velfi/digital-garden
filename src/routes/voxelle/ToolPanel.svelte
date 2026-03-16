@@ -4,6 +4,7 @@
     tool,
     toolPane,
     strokeMode,
+    lineAxisAlign,
     planeAxis,
     sidebarOpen,
     selection,
@@ -47,13 +48,23 @@
   const planeAxisVisible = $derived(
     ($strokeMode === 'plane' || $strokeMode === 'cuboid') && isStrokeTool($tool)
   );
+  const lineAxisAlignVisible = $derived(
+    $strokeMode === 'line' && isStrokeTool($tool)
+  );
   const airbrushVisible = $derived($strokeMode === 'airbrush' && isStrokeTool($tool));
   const fillVisible = $derived($strokeMode === 'fill' && isStrokeTool($tool));
+  const polygonVisible = $derived($strokeMode === 'polygon' && isStrokeTool($tool));
   const stampVisible = $derived($tool === 'stamp' && $selection.size > 0);
   const clayVisible = $derived($tool === 'clay');
 
   const show = $derived(
-    drawBrushVisible || planeAxisVisible || airbrushVisible || fillVisible || stampVisible || clayVisible
+    drawBrushVisible ||
+      planeAxisVisible ||
+      lineAxisAlignVisible ||
+      airbrushVisible ||
+      fillVisible ||
+      stampVisible ||
+      clayVisible
   );
 
   const DRAW_BRUSH_SHAPES: { id: DrawBrushShape; label: string; title: string }[] = [
@@ -83,7 +94,7 @@
     aria-label="Tool options"
     tabindex="-1"
   >
-    {#if drawBrushVisible}
+    {#if drawBrushVisible && !airbrushVisible && !fillVisible && !polygonVisible}
       <section class="tool-panel-section" aria-label="Draw brush">
         <div class="stroke-buttons" role="group" aria-label="Brush shape">
           {#each DRAW_BRUSH_SHAPES as s}
@@ -98,7 +109,7 @@
           {/each}
         </div>
         <div class="tool-panel-row">
-          <span class="tool-panel-label">Size</span>
+          <span class="tool-panel-label">Brush size</span>
           <input
             type="range"
             min="0"
@@ -118,6 +129,20 @@
             title="Offset brush along surface normal so it sits on the face instead of through it"
           />
           Snap to surface
+        </label>
+      </section>
+    {/if}
+
+    {#if lineAxisAlignVisible}
+      <section class="tool-panel-section" aria-label="Line options">
+        <label class="tool-panel-check">
+          <input
+            type="checkbox"
+            checked={$lineAxisAlign}
+            onchange={(e) => lineAxisAlign.set((e.target as HTMLInputElement).checked)}
+            title="Constrain line to dominant axis (X, Y, or Z)"
+          />
+          Axis-align
         </label>
       </section>
     {/if}

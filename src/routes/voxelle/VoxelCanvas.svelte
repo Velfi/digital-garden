@@ -14,6 +14,8 @@
     color,
     selectedColors,
     strokeMode,
+    effectiveStrokeMode,
+    lineAxisAlign,
     planeAxis,
     clayMode,
     clayBrushRadius,
@@ -46,7 +48,7 @@
     lightColor,
     ambientIntensity,
     enableShadows,
-    enableAO,
+    aoStrength,
     backgroundColor,
     enableSky,
     focalLength,
@@ -95,6 +97,7 @@
     getPolygonVoxels,
     getBresenham3DLine,
     getRayDirectionPath,
+    projectPointOntoPlane,
     thickenPathForStroke,
     getRopeCurveVoxels,
     applyBrushAlongPath,
@@ -350,7 +353,7 @@
     meshWorker.postMessage({
       voxels: voxelsArr,
       mode: $renderingMode,
-      options: { aoEnabled: $enableAO },
+      options: { aoStrength: $aoStrength },
       gen
     });
   }
@@ -1076,7 +1079,7 @@
     if (event.button !== 0) return;
 
     // Cuboid depth phase: pointer down starts drag-to-adjust-depth (anywhere on canvas)
-    if (get(strokeMode) === 'cuboid' && cuboidPhase === 'depth' && cuboidPlane) {
+    if (get(effectiveStrokeMode) === 'cuboid' && cuboidPhase === 'depth' && cuboidPlane) {
       event.preventDefault();
       event.stopPropagation();
       depthAdjustPointerId = event.pointerId;
@@ -1091,15 +1094,14 @@
     let hit = getIntersection();
     if (!hit) return;
 
-    // Polygon mode: prioritize polygon point hits over voxels (points sit on voxel faces)
-    if (get(strokeMode) === 'polygon' && polygonPhase && polygonPointsMesh && camera) {
+    // Polygon mode only when current tool uses stroke mode (effectiveStrokeMode is null for clay)
+    if (get(effectiveStrokeMode) === 'polygon' && polygonPhase && polygonPointsMesh && camera) {
       raycaster.setFromCamera(pointer, camera);
       const pointHits = raycaster.intersectObject(polygonPointsMesh, false);
       if (pointHits.length > 0) hit = pointHits[0];
     }
 
-    // Polygon mode: click to add point or delete existing point
-    if (get(strokeMode) === 'polygon') {
+    if (get(effectiveStrokeMode) === 'polygon') {
       event.preventDefault();
       event.stopPropagation();
       // Click on existing point: remove it
@@ -1113,10 +1115,21 @@
           updatePreviewMesh(fillPositions);
         }
       } else {
-        const pos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
+        // In polygon mode, anchor points to the clicked voxel center so face choice
+        // (top/side) resolves to the same coordinate.
+        const pos = getVoxelPosition(hit);
         if (pos) {
-          polygonPhase = 'placing';
-          polygonPoints = [...polygonPoints, pos];
+          // If we clicked an already placed polygon coordinate, toggle it off.
+          const existingIdx = polygonPoints.findIndex(
+            ([x, y, z]) => x === pos[0] && y === pos[1] && z === pos[2]
+          );
+          if (existingIdx >= 0) {
+            polygonPoints = polygonPoints.filter((_, i) => i !== existingIdx);
+            polygonPhase = polygonPoints.length > 0 ? 'placing' : null;
+          } else {
+            polygonPhase = 'placing';
+            polygonPoints = [...polygonPoints, pos];
+          }
           updatePolygonPreview(polygonPoints);
           const fillPositions = polygonPoints.length >= 2 ? getPolygonVoxels(polygonPoints) : [];
           updatePreviewMesh(fillPositions);
@@ -1246,7 +1259,7 @@
     }
 
     // Select tool + fill method: click voxel to select it and all connected same-color voxels
-    if ($tool === 'select' && get(strokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
+    if ($tool === 'select' && get(effectiveStrokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
       const pos = getVoxelPosition(hit);
       if (pos) {
         const incoming = getFillSelectionAt(
@@ -1267,7 +1280,7 @@
     }
 
     // Paint tool + fill method: click voxel to flood-fill connected same-color region
-    if ($tool === 'paint' && get(strokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
+    if ($tool === 'paint' && get(effectiveStrokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
       const pos = getVoxelPosition(hit);
       if (pos) {
         const fillRegion = getFillSelectionAt(
@@ -1294,7 +1307,7 @@
     }
 
     // Voxel tool + fill method: click face to flood-fill connected empty space with voxels
-    if ($tool === 'voxel' && get(strokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
+    if ($tool === 'voxel' && get(effectiveStrokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
       const pos = getAddPosition(hit);
       if (pos && !$voxels.has(coordKey(pos[0], pos[1], pos[2]))) {
         const emptyRegion = getFillEmptyAt(pos[0], pos[1], pos[2], get(fillSelectDiagonals));
@@ -1315,7 +1328,7 @@
     }
 
     // Remove tool + fill method: click voxel to flood-remove connected region
-    if ($tool === 'remove' && get(strokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
+    if ($tool === 'remove' && get(effectiveStrokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
       const pos = getVoxelPosition(hit);
       if (pos) {
         const fillRegion = getFillSelectionAt(
@@ -1346,7 +1359,7 @@
         if (targetColor !== undefined) {
           pushUndo();
           const incoming =
-            get(strokeMode) === 'fill'
+            get(effectiveStrokeMode) === 'fill'
               ? getFillSelectionAt(
                   pos[0],
                   pos[1],
@@ -1419,58 +1432,48 @@
     dragFaceNormal = pa === 'auto' ? faceNormal : axisVector(pa);
     dragPlaneAxisOverride = null;
     pendingStrokePositions = [startPos];
-    if (get(strokeMode) === 'airbrush') {
+    const clayModeVal = get(clayMode);
+    const isClayPathFollow =
+      $tool === 'clay' &&
+      (clayModeVal === 'bulk' ||
+        clayModeVal === 'smooth' ||
+        clayModeVal === 'level' ||
+        clayModeVal === 'gouge' ||
+        clayModeVal === 'puffy' ||
+        clayModeVal === 'melt' ||
+        clayModeVal === 'wall' ||
+        clayModeVal === 'inflate');
+    if (isClayPathFollow) {
       lastBulkPos = startPos;
-      updatePreviewMesh(
-        thickenPathForStroke(pendingStrokePositions, {
-          strokeMode: 'airbrush',
-          clayBrushRadius: get(clayBrushRadius) as number,
-          branchTaper: get(branchTaper),
-          puffRadius: get(puffRadius),
-          puffScatter: get(puffScatter),
-          puffRadiusRange: get(puffRadiusRange),
-          puffRadiusMin: get(puffRadiusMin),
-          puffRadiusMax: get(puffRadiusMax),
-          airbrushRadius: get(airbrushRadius) as number,
-          airbrushScatter: get(airbrushScatter),
-          airbrushRadiusRange: get(airbrushRadiusRange),
-          airbrushRadiusMin: get(airbrushRadiusMin),
-          airbrushRadiusMax: get(airbrushRadiusMax),
-          sprayDirection: get(sprayDirection),
-          sprayStreakLength: get(sprayStreakLength),
-          drawBrushShape: get(drawBrushShape),
-          drawBrushSize: get(drawBrushSize),
-          drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
-        })
-      );
-    } else {
-      updatePreviewMesh(
-        thickenPathForStroke(pendingStrokePositions, {
-          strokeMode: get(strokeMode),
-          clayBrushRadius: get(clayBrushRadius) as number,
-          branchTaper: get(branchTaper),
-          puffRadius: get(puffRadius),
-          puffScatter: get(puffScatter),
-          puffRadiusRange: get(puffRadiusRange),
-          puffRadiusMin: get(puffRadiusMin),
-          puffRadiusMax: get(puffRadiusMax),
-          airbrushRadius: get(airbrushRadius) as number,
-          airbrushScatter: get(airbrushScatter),
-          airbrushRadiusRange: get(airbrushRadiusRange),
-          airbrushRadiusMin: get(airbrushRadiusMin),
-          airbrushRadiusMax: get(airbrushRadiusMax),
-          sprayDirection: get(sprayDirection),
-          sprayStreakLength: get(sprayStreakLength),
-          wallWidth: get(wallWidth),
-          wallHeight: get(wallHeight),
-          wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
-          drawBrushShape: get(drawBrushShape),
-          drawBrushSize: get(drawBrushSize),
-          drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-          drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
-        })
-      );
+    } else if (get(effectiveStrokeMode) === 'airbrush') {
+      lastBulkPos = startPos;
     }
+    const strokeParams = {
+      strokeMode: get(strokeMode) as string,
+      clayMode: isClayPathFollow ? clayModeVal : undefined,
+      clayBrushRadius: get(clayBrushRadius) as number,
+      branchTaper: get(branchTaper),
+      puffRadius: get(puffRadius),
+      puffScatter: get(puffScatter),
+      puffRadiusRange: get(puffRadiusRange),
+      puffRadiusMin: get(puffRadiusMin),
+      puffRadiusMax: get(puffRadiusMax),
+      airbrushRadius: get(airbrushRadius) as number,
+      airbrushScatter: get(airbrushScatter),
+      airbrushRadiusRange: get(airbrushRadiusRange),
+      airbrushRadiusMin: get(airbrushRadiusMin),
+      airbrushRadiusMax: get(airbrushRadiusMax),
+      sprayDirection: get(sprayDirection),
+      sprayStreakLength: get(sprayStreakLength),
+      wallWidth: get(wallWidth),
+      wallHeight: get(wallHeight),
+      wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+      drawBrushShape: get(drawBrushShape),
+      drawBrushSize: get(drawBrushSize),
+      drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+      drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined
+    };
+    updatePreviewMesh(thickenPathForStroke(pendingStrokePositions, strokeParams));
     requestAnimationFrame(() => render());
   }
 
@@ -1579,7 +1582,7 @@
         if (hit) {
           currentPos = $tool === 'voxel' || $tool === 'clay' ? getAddPosition(hit) : getVoxelPosition(hit);
         }
-        const strokeModeVal = get(strokeMode);
+        const strokeModeVal = get(effectiveStrokeMode);
         const clayPathMode = get(clayMode);
         const isAirbrushPath = strokeModeVal === 'airbrush' && lastBulkPos;
         const isClayPathFollow =
@@ -1635,15 +1638,27 @@
             lastBulkPos = currentPos;
           } else {
             const normal = getEffectivePlaneNormal();
-            pendingStrokePositions =
-              (strokeModeVal === 'plane' || strokeModeVal === 'cuboid') && normal
-                ? getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, normal)
-                : getAxisAlignedLine(dragStartPos, currentPos);
+            if ((strokeModeVal === 'plane' || strokeModeVal === 'cuboid') && normal) {
+              pendingStrokePositions = getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, normal);
+            } else if (
+              strokeModeVal === 'line' &&
+              !get(lineAxisAlign) &&
+              dragFaceNormal
+            ) {
+              const projected = projectPointOntoPlane(currentPos, dragStartPos, {
+                x: dragFaceNormal.x,
+                y: dragFaceNormal.y,
+                z: dragFaceNormal.z
+              });
+              pendingStrokePositions = getBresenham3DLine(dragStartPos, projected);
+            } else {
+              pendingStrokePositions = getAxisAlignedLine(dragStartPos, currentPos);
+            }
           }
           // Clay path modes: show thickened preview (brush radius or puff); airbrush: sphere preview
           updatePreviewMesh(
             thickenPathForStroke(pendingStrokePositions, {
-              strokeMode: (isAirbrushPath && !isClayPathFollow ? 'airbrush' : strokeModeVal) as string,
+              strokeMode: (isAirbrushPath && !isClayPathFollow ? 'airbrush' : strokeModeVal ?? get(strokeMode)) as string,
               clayMode: isClayPathFollow ? clayPathMode : undefined,
               clayBrushRadius: get(clayBrushRadius) as number,
               branchTaper: get(branchTaper),
@@ -1800,7 +1815,7 @@
     }
     if (event.button === 0 && isVoxelDrag) {
       updatePointerFromEvent(event);
-      const mode = get(strokeMode);
+      const mode = get(effectiveStrokeMode);
       const clayModeVal = get(clayMode);
       const isClayPath =
         $tool === 'clay' &&
@@ -1931,7 +1946,7 @@
 
   function onWheel(event: WheelEvent) {
     // Alt+scroll during plane/cuboid drag: cycle plane orientation (X/Y/Z)
-    const mode = get(strokeMode);
+    const mode = get(effectiveStrokeMode);
     if (
       event.altKey &&
       isVoxelDrag &&
@@ -2018,7 +2033,7 @@
   }
 
   $effect(() => {
-    const mode = $strokeMode;
+    const mode = $effectiveStrokeMode;
     if (mode !== 'cuboid' && cuboidPhase) {
       cuboidPhase = null;
       cuboidPlane = null;
@@ -2053,7 +2068,7 @@
   $effect(() => {
     const v = $voxels;
     const sz = $gridSize;
-    const _ao = $enableAO;
+    const _ao = $aoStrength;
     const _renderingMode = $renderingMode;
     requestRebuildVoxelMeshes(v, sz);
     render();
@@ -2223,6 +2238,7 @@
     polygonPointsMesh.count = 0;
     polygonPointsMesh.visible = false;
     polygonPointsMesh.renderOrder = 1;
+    polygonPointsMesh.frustumCulled = false;
     scene.add(polygonPointsMesh);
 
     ropePointsMaterial = new THREE.MeshBasicMaterial({
@@ -2236,6 +2252,7 @@
     ropePointsMesh.count = 0;
     ropePointsMesh.visible = false;
     ropePointsMesh.renderOrder = 1;
+    ropePointsMesh.frustumCulled = false;
     scene.add(ropePointsMesh);
 
     // Hemisphere: sky (top) + ground (bottom) for natural ambient bounce

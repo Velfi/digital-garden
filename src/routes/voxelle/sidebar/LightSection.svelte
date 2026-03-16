@@ -5,7 +5,7 @@
     lightAngle,
     lightElevation,
     enableShadows,
-    enableAO
+    aoStrength
   } from '../store';
 </script>
 
@@ -73,14 +73,21 @@
   </label>
 </div>
 <div class="light-control">
-  <label class="checkbox-label">
+  <label for="ao-strength">Ambient occlusion</label>
+  <div class="slider-row">
     <input
-      type="checkbox"
-      checked={$enableAO}
-      onchange={(e) => enableAO.set((e.target as HTMLInputElement).checked)}
+      id="ao-strength"
+      type="range"
+      min="0"
+      max="2"
+      step="1"
+      value={$aoStrength}
+      oninput={(e) => aoStrength.set(Number((e.target as HTMLInputElement).value) as 0 | 1 | 2)}
     />
-    Ambient occlusion
-  </label>
+    <span class="slider-value">
+      {$aoStrength === 0 ? 'Off' : $aoStrength === 1 ? 'Subtle' : 'Strong'}
+    </span>
+  </div>
 </div>
 
 <style>

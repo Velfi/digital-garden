@@ -15,7 +15,11 @@
     updateVoxels,
     hexToInt,
     modalRequest,
-    getSkipStartup
+    getSkipStartup,
+    voxels,
+    gridSize,
+    focalLength,
+    orthographic
   } from './store';
 
   let colorChangeMounted = false;
@@ -52,16 +56,39 @@
   let webglSupported = $state(true);
   if (browser) webglSupported = isWebGLSupported();
 
+  let autosaveInterval: ReturnType<typeof setInterval> | undefined;
+
   onMount(() => {
     if (browser) {
       window.addEventListener('beforeunload', saveToStorage);
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      autosaveInterval = setInterval(saveToStorage, 20_000);
       if (!getSkipStartup() && webglSupported) {
         modalRequest.set('startup');
       }
     }
   });
   onDestroy(() => {
-    if (browser) window.removeEventListener('beforeunload', saveToStorage);
+    if (browser) {
+      window.removeEventListener('beforeunload', saveToStorage);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (autosaveInterval) clearInterval(autosaveInterval);
+    }
+  });
+
+  function onVisibilityChange() {
+    if (document.hidden) saveToStorage();
+  }
+
+  // Debounced save 2.5s after last change to persisted state
+  $effect(() => {
+    if (!browser) return;
+    $voxels;
+    $gridSize;
+    $focalLength;
+    $orthographic;
+    const t = setTimeout(saveToStorage, 2500);
+    return () => clearTimeout(t);
   });
 </script>
 

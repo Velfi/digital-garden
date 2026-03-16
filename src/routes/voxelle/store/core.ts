@@ -1,4 +1,4 @@
-import { writable, get } from 'svelte/store';
+import { writable, get, derived } from 'svelte/store';
 import {
   coordKey,
   parseCoordKey,
@@ -45,6 +45,15 @@ const DEFAULT_COLOR = 0x888888;
 const MAX_GRID_SIZE = 256;
 
 export type StrokeMode = 'line' | 'plane' | 'cuboid' | 'polygon' | 'fill' | 'airbrush';
+
+/** Tools that use stroke mode (selection method). Clay/stamp/fly/eyedropper use their own flows. */
+const DRAW_TOOLS_USING_STROKE_MODE: Tool[] = [
+  'voxel',
+  'remove',
+  'paint',
+  'select',
+  'selectByColor'
+];
 
 export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect' | 'toggle';
 
@@ -94,6 +103,13 @@ export const fillRespectsColor = writable<boolean>(true);
 /** When true, fill only expands within the plane through the seed (same coordinate on planeAxis). */
 export const fillConstrainToPlane = writable<boolean>(false);
 export const strokeMode = writable<StrokeMode>('line');
+/** Stroke mode only when current tool uses it (draw tools). Null for clay/stamp/fly/eyedropper so selection method never applies. */
+export const effectiveStrokeMode = derived(
+  [tool, strokeMode],
+  ([t, sm]) => (DRAW_TOOLS_USING_STROKE_MODE.includes(t) ? sm : null)
+);
+/** When true (default), line stroke is axis-aligned; when false, line is drawn on the plane through the start voxel. */
+export const lineAxisAlign = writable<boolean>(true);
 export const planeAxis = writable<PlaneAxis>(1);
 export const clayMode = writable<ClayMode>('bulk');
 /** Brush radius for clay bulk (0=single voxel, 1=3³ tube, 2=5³). Like Blender F key. */
@@ -163,7 +179,8 @@ export const lightElevation = writable<number>(40);
 export const lightColor = writable<string>('#ffffff');
 export const ambientIntensity = writable<number>(0.5);
 export const enableShadows = writable<boolean>(true);
-export const enableAO = writable<boolean>(true);
+/** 0 = off, 1 = subtle, 2 = strong */
+export const aoStrength = writable<0 | 1 | 2>(1);
 export const backgroundColor = writable<string>('#f0f0f0');
 export const enableSky = writable<boolean>(true);
 export const roughness = writable<number>(0.6);
