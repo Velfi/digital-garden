@@ -2573,6 +2573,7 @@
         aria-valuenow={cuboidDepth}
         tabindex="0"
         onpointerdown={(e) => {
+          e.preventDefault();
           e.stopPropagation();
           depthSliderPointerId = e.pointerId;
           depthSliderStartY = e.clientY;
@@ -2580,6 +2581,7 @@
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         }}
         onpointermove={(e) => {
+          e.preventDefault();
           if (depthSliderPointerId !== e.pointerId) return;
           const dy = depthSliderStartY - e.clientY;
           cuboidDepth = Math.max(-256, Math.min(256, depthSliderStartDepth + Math.round(dy / 10)));
@@ -2668,6 +2670,7 @@
         aria-valuenow={Math.round($ropeTension * 100)}
         tabindex="0"
         onpointerdown={(e) => {
+          e.preventDefault();
           e.stopPropagation();
           ropeTensionSliderPointerId = e.pointerId;
           ropeTensionSliderStartY = e.clientY;
@@ -2675,6 +2678,7 @@
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         }}
         onpointermove={(e) => {
+          e.preventDefault();
           if (ropeTensionSliderPointerId !== e.pointerId) return;
           const dy = ropeTensionSliderStartY - e.clientY;
           const delta = dy / 200;
@@ -2901,6 +2905,8 @@
     pointer-events: auto;
     z-index: 1;
     touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .depth-slider-track {
