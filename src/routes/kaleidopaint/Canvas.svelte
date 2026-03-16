@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from '$app/environment';
   import { tick } from 'svelte';
   import { get } from 'svelte/store';
   import { onMount, onDestroy } from 'svelte';
@@ -11,7 +12,7 @@
     symmetryOriginY,
     symmetryRotation,
     color,
-    secondaryColor,
+    backgroundColor,
     brushSize,
     brushShape,
     brushAngle,
@@ -30,7 +31,6 @@
     brushRotationAngle,
     brushIsotropicSpacing,
     brushSource,
-    brushMix,
     showSymmetryPreview,
     brushRotateWithSymmetry,
     history,
@@ -66,6 +66,7 @@
   let viewport: HTMLDivElement;
   let ctx: CanvasRenderingContext2D;
   let isDrawing = false;
+  let isErasing = false;
   let lastX = 0;
   let lastY = 0;
   let hoverX: number | null = null;
@@ -95,6 +96,9 @@
   let undoStack: ImageData[] = [];
   let redoStack: ImageData[] = [];
   let paintBucketImg: HTMLImageElement | null = null;
+  let autosaveInterval: ReturnType<typeof setInterval> | undefined;
+  let autosaveDebounce: ReturnType<typeof setTimeout> | undefined;
+  let autosaveVersion = 0;
 
   // RAF batching for stroke drawing
   let strokeQueue: { x: number; y: number }[] = [];
@@ -122,6 +126,7 @@
     ctx.putImageData(snapshot, 0, 0);
     history.canUndo.set(undoStack.length > 0);
     history.canRedo.set(redoStack.length > 0);
+    autosaveVersion += 1;
   }
 
   function doRedo() {
@@ -132,6 +137,7 @@
     ctx.putImageData(snapshot, 0, 0);
     history.canUndo.set(undoStack.length > 0);
     history.canRedo.set(redoStack.length > 0);
+    autosaveVersion += 1;
   }
 
   function fitToView() {
@@ -238,7 +244,6 @@
       angle: $brushAngle,
       ratio: Math.max(0.1, Math.min(1, $brushRatio)),
       color: $color,
-      secondaryColor: $secondaryColor,
       opacity: $brushOpacity,
       flow: $brushFlow,
       softness: $brushSoftness,
@@ -252,9 +257,12 @@
       rotationAngle: $brushRotationAngle,
       spacing: $brushSpacing,
       isotropicSpacing: $brushIsotropicSpacing,
-      source: $brushSource,
-      mix: $brushMix
+      source: $brushSource
     };
+  }
+
+  function getEffectivePaintColor(): string {
+    return isErasing ? $backgroundColor : $color;
   }
 
   function handlePointerDown(e: PointerEvent) {
@@ -263,11 +271,17 @@
       if (!e.isPrimary) return;
       e.preventDefault();
     }
+    if (e.button === 2) {
+      // Keep right-drag for erase without opening the browser context menu.
+      e.preventDefault();
+    }
     if (e.button === 1 || spaceHeld) {
       startPan(e);
       return;
     }
-    if (e.button !== 0) return;
+    const isPrimaryDrawButton = e.button === 0;
+    const isSecondaryEraseButton = e.button === 2 && $tool === 'paint';
+    if (!isPrimaryDrawButton && !isSecondaryEraseButton) return;
     viewport.setPointerCapture(e.pointerId);
     const [x, y] = getCanvasCoords(e);
     const [cx, cy] = getCenter();
@@ -295,11 +309,13 @@
     if ($tool === 'paint') {
       pushUndo();
       isDrawing = true;
+      isErasing = isSecondaryEraseButton;
       lastX = x;
       lastY = y;
       prevHoverX = x;
       prevHoverY = y;
       const params = getBrushParams();
+      params.color = getEffectivePaintColor();
       const [cx, cy] = getCenter();
       const pts = getSymmetricPoints(
         x,
@@ -359,6 +375,7 @@
       if (img && img.complete && img.naturalWidth > 0) {
         pushUndo();
         stampImage(ctx, x, y, img);
+        autosaveVersion += 1;
       }
     }
   }
@@ -705,6 +722,7 @@
     if (!canvas || !ctx || strokeQueue.length === 0) return;
     const [cx, cy] = getCenter();
     const params = getBrushParams();
+    params.color = getEffectivePaintColor();
     const spacingParams = {
       size: $brushSize,
       ratio: Math.max(0.1, Math.min(1, $brushRatio)),
@@ -778,7 +796,8 @@
   function handlePointerUp(e: PointerEvent) {
     if (e.button === 1 || isPanning) {
       isPanning = false;
-    } else if (e.button === 0 || e.button === -1) {
+    } else if (e.button === 0 || e.button === 2 || e.button === -1) {
+      const hadStroke = isDrawing || strokeQueue.length > 0;
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
         rafId = null;
@@ -786,11 +805,14 @@
       if (strokeQueue.length > 0) flushStrokeQueue();
       isRotating = false;
       isDrawing = false;
+      isErasing = false;
       drawPreview();
+      if (hadStroke) autosaveVersion += 1;
     }
   }
 
   function handlePointerLeave() {
+    const hadStroke = isDrawing || strokeQueue.length > 0;
     isPanning = false;
     isRotating = false;
     if (rafId !== null) {
@@ -799,10 +821,12 @@
     }
     if (strokeQueue.length > 0) flushStrokeQueue();
     isDrawing = false;
+    isErasing = false;
     hoverX = null;
     hoverY = null;
     smoothedDrawingAngleRad = Math.PI / 4;
     drawPreview();
+    if (hadStroke) autosaveVersion += 1;
   }
 
   function floodFill(startX: number, startY: number) {
@@ -819,7 +843,7 @@
       canvas?.height,
       $mosaicType
     );
-    const fillColor = hexToRgb($color);
+    const fillColor = hexToRgb(getEffectivePaintColor());
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
     const w = canvas.width;
@@ -920,6 +944,7 @@
     }
 
     ctx.putImageData(imageData, 0, 0);
+    autosaveVersion += 1;
   }
 
   function hexToRgb(hex: string): [number, number, number, number] {
@@ -950,7 +975,7 @@
       previewCanvas.width = cw;
       previewCanvas.height = ch;
     }
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = $backgroundColor;
     ctx.fillRect(0, 0, cw, ch);
     tick().then(fitToView);
   }
@@ -986,10 +1011,18 @@
     }
   }
 
+  function onVisibilityChange() {
+    if (document.hidden) saveCanvas();
+  }
+
   onMount(async () => {
     history.undo = doUndo;
     history.redo = doRedo;
-    window.addEventListener('beforeunload', saveCanvas);
+    if (browser) {
+      window.addEventListener('beforeunload', saveCanvas);
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      autosaveInterval = setInterval(saveCanvas, 20_000);
+    }
     await tick();
     const url = get(restoreDataUrl);
     if (url && canvas && ctx) {
@@ -1010,7 +1043,12 @@
   });
 
   onDestroy(() => {
-    window.removeEventListener('beforeunload', saveCanvas);
+    if (browser) {
+      window.removeEventListener('beforeunload', saveCanvas);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (autosaveInterval) clearInterval(autosaveInterval);
+      if (autosaveDebounce) clearTimeout(autosaveDebounce);
+    }
     saveCanvas();
     history.undo = () => {};
     history.redo = () => {};
@@ -1025,7 +1063,7 @@
     const ch = Math.max(100, Math.min(2000, dims.h));
     node.width = cw;
     node.height = ch;
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = $backgroundColor;
     ctx.fillRect(0, 0, cw, ch);
     return {
       update(newDims: { w: number; h: number }) {
@@ -1037,10 +1075,19 @@
           previewCanvas.width = nw;
           previewCanvas.height = nh;
         }
-        ctx!.fillStyle = '#ffffff';
+        ctx!.fillStyle = $backgroundColor;
         ctx!.fillRect(0, 0, nw, nh);
       }
     };
+  }
+
+  // Debounced save 2.5s after the last persisted change, matching Voxelle's autosave cadence.
+  $: if (browser && canvas && ctx) {
+    w;
+    h;
+    autosaveVersion;
+    if (autosaveDebounce) clearTimeout(autosaveDebounce);
+    autosaveDebounce = setTimeout(saveCanvas, 2500);
   }
 </script>
 
@@ -1085,6 +1132,7 @@
   on:pointerup={handlePointerUp}
   on:pointerleave={handlePointerLeave}
   on:pointercancel={handlePointerUp}
+  on:contextmenu|preventDefault
   tabindex="0"
   style="touch-action: none;"
 >

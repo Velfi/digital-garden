@@ -15,7 +15,6 @@ export interface BrushParams {
   angle: number; // degrees
   ratio: number; // 0.1–1, ellipse flatness (1 = circle)
   color: string;
-  secondaryColor?: string; // for mix
   opacity: number; // 0–1
   flow: number; // 0–1, per-dab opacity (build-up)
   softness: number; // 0–1, radial gradient falloff (0=hard, 1=soft)
@@ -30,7 +29,6 @@ export interface BrushParams {
   spacing: number; // fraction of size (0.25 = dabs every 25% of diameter)
   isotropicSpacing: boolean; // true = diameter only; false = use ratio for ellipse
   source: ColorSource;
-  mix: number; // 0–1, blend fg vs bg when source=plain (0=fg, 1=bg)
 }
 
 const DEFAULT_PARAMS: Partial<BrushParams> = {
@@ -47,8 +45,7 @@ const DEFAULT_PARAMS: Partial<BrushParams> = {
   rotationAngle: 0,
   spacing: 0.25,
   isotropicSpacing: true,
-  source: 'plain',
-  mix: 0
+  source: 'plain'
 };
 
 export function withDefaults(
@@ -171,9 +168,7 @@ function applyScatter(
   dab.y += sx * sin + sy * cos;
 }
 
-/**
- * Get dab color based on source and mix.
- */
+/** Get dab color based on source mode. */
 function getDabColor(params: BrushParams, rng: () => number): string {
   if (params.source === 'uniformRandom') {
     const h = Math.floor(rng() * 360);
@@ -181,31 +176,7 @@ function getDabColor(params: BrushParams, rng: () => number): string {
     const l = 40 + rng() * 40;
     return `hsl(${h}, ${s}%, ${l}%)`;
   }
-  if (params.mix <= 0 || !params.secondaryColor) return params.color;
-  if (params.mix >= 1) return params.secondaryColor;
-  const mix = params.mix;
-  const [r1, g1, b1] = hexToRgb(params.color);
-  const [r2, g2, b2] = hexToRgb(params.secondaryColor);
-  return rgbToHex(r1 + (r2 - r1) * mix, g1 + (g2 - g1) * mix, b1 + (b2 - b1) * mix);
-}
-
-function hexToRgb(hex: string): [number, number, number] {
-  const m = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
-  if (!m) return [0, 0, 0];
-  return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
-}
-
-function rgbToHex(r: number, g: number, b: number): string {
-  return (
-    '#' +
-    [r, g, b]
-      .map((c) =>
-        Math.max(0, Math.min(255, Math.round(c)))
-          .toString(16)
-          .padStart(2, '0')
-      )
-      .join('')
-  );
+  return params.color;
 }
 
 let _rng = seededRandom(12345);

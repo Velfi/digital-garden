@@ -4,6 +4,7 @@ import type { SymmetryMode, MosaicType } from './symmetry';
 import type { BrushShape, RotationMode, ColorSource } from './brushEngine';
 
 const KALEIDOPAINT_STORAGE_KEY = 'kaleidopaint';
+const KALEIDOPAINT_SKIP_STARTUP_KEY = 'kaleidopaint-skip-startup';
 let saved: { width: number; height: number; dataUrl: string } | null = null;
 if (browser) {
   try {
@@ -18,8 +19,12 @@ if (browser) {
 }
 
 export type Tool = 'paint' | 'fill' | 'origin' | 'rotate' | 'eyedropper' | 'image';
+export type ToolPane = 'color' | 'draw' | 'symmetry';
+export type ModalRequest = 'newCanvas' | 'help' | 'startup' | 'exportPng' | null;
 
 export const tool = writable<Tool>('paint');
+export const toolPane = writable<ToolPane>('color');
+export const modalRequest = writable<ModalRequest>(null);
 export const symmetryEnabled = writable<boolean>(true);
 export const symmetryMode = writable<SymmetryMode>('polar');
 export const symmetryOriginX = writable<number>(0.5);
@@ -28,7 +33,7 @@ export const symmetryRotation = writable<number>(0);
 export const symmetryFolds = writable<number>(6);
 export const mosaicType = writable<MosaicType>('hex-6');
 export const color = writable<string>('#000000');
-export const secondaryColor = writable<string>('#ffffff');
+export const backgroundColor = writable<string>('#ffffff');
 export const palette = writable<string[]>([]);
 export const brushSize = writable<number>(5);
 export const brushShape = writable<BrushShape>('round');
@@ -48,7 +53,6 @@ export const brushRotationMode = writable<RotationMode>('fixed');
 export const brushRotationAngle = writable<number>(0);
 export const brushIsotropicSpacing = writable<boolean>(true);
 export const brushSource = writable<ColorSource>('plain');
-export const brushMix = writable<number>(0);
 export const canvasWidth = writable<number>(saved?.width ?? 900);
 export const canvasHeight = writable<number>(saved?.height ?? 900);
 export const restoreDataUrl = writable<string | null>(saved?.dataUrl ?? null);
@@ -57,6 +61,24 @@ export function saveKaleidopaintToStorage(width: number, height: number, dataUrl
   if (!browser) return;
   try {
     localStorage.setItem(KALEIDOPAINT_STORAGE_KEY, JSON.stringify({ width, height, dataUrl }));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getSkipStartup(): boolean {
+  if (!browser) return false;
+  try {
+    return localStorage.getItem(KALEIDOPAINT_SKIP_STARTUP_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setSkipStartup(value: boolean) {
+  if (!browser) return;
+  try {
+    localStorage.setItem(KALEIDOPAINT_SKIP_STARTUP_KEY, value ? '1' : '0');
   } catch {
     /* ignore */
   }
