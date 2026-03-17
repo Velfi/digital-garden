@@ -57,12 +57,56 @@
   if (browser) webglSupported = isWebGLSupported();
 
   let autosaveInterval: ReturnType<typeof setInterval> | undefined;
+  const FULLSCREEN_UI_IDLE_MS = 2500;
+  let isFullscreen = $state(false);
+  let fullscreenUiVisible = $state(true);
+  let fullscreenUiHideTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function clearFullscreenUiHideTimeout() {
+    if (fullscreenUiHideTimeout != null) {
+      clearTimeout(fullscreenUiHideTimeout);
+      fullscreenUiHideTimeout = null;
+    }
+  }
+
+  function scheduleFullscreenUiHide() {
+    clearFullscreenUiHideTimeout();
+    if (!isFullscreen) return;
+    fullscreenUiHideTimeout = setTimeout(() => {
+      fullscreenUiVisible = false;
+      fullscreenUiHideTimeout = null;
+    }, FULLSCREEN_UI_IDLE_MS);
+  }
+
+  function onFullscreenUiActivity() {
+    if (!isFullscreen) return;
+    fullscreenUiVisible = true;
+    scheduleFullscreenUiHide();
+  }
+
+  function onFullscreenChange() {
+    isFullscreen = !!document.fullscreenElement;
+    if (isFullscreen) {
+      fullscreenUiVisible = true;
+      scheduleFullscreenUiHide();
+    } else {
+      fullscreenUiVisible = true;
+      clearFullscreenUiHideTimeout();
+    }
+  }
 
   onMount(() => {
     if (browser) {
       window.addEventListener('beforeunload', saveToStorage);
       document.addEventListener('visibilitychange', onVisibilityChange);
+      document.addEventListener('fullscreenchange', onFullscreenChange);
+      window.addEventListener('pointermove', onFullscreenUiActivity, { passive: true });
+      window.addEventListener('pointerdown', onFullscreenUiActivity, { passive: true });
+      window.addEventListener('wheel', onFullscreenUiActivity, { passive: true });
+      window.addEventListener('keydown', onFullscreenUiActivity);
+      window.addEventListener('touchstart', onFullscreenUiActivity, { passive: true });
       autosaveInterval = setInterval(saveToStorage, 20_000);
+      onFullscreenChange();
       if (!getSkipStartup() && webglSupported) {
         modalRequest.set('startup');
       }
@@ -72,6 +116,13 @@
     if (browser) {
       window.removeEventListener('beforeunload', saveToStorage);
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      window.removeEventListener('pointermove', onFullscreenUiActivity);
+      window.removeEventListener('pointerdown', onFullscreenUiActivity);
+      window.removeEventListener('wheel', onFullscreenUiActivity);
+      window.removeEventListener('keydown', onFullscreenUiActivity);
+      window.removeEventListener('touchstart', onFullscreenUiActivity);
+      clearFullscreenUiHideTimeout();
       if (autosaveInterval) clearInterval(autosaveInterval);
     }
   });
@@ -100,7 +151,7 @@
   />
 </svelte:head>
 
-<div class="page">
+<div class="page" class:fullscreen-ui-hidden={isFullscreen && !fullscreenUiVisible}>
   <header class="header">
     <h1>Voxelle</h1>
     <MenuBar />
@@ -196,5 +247,40 @@
     .app {
       flex-direction: column;
     }
+  }
+
+  .page :global(.header),
+  .page :global(.sidebar-wrapper),
+  .page :global(.add-panel),
+  .page :global(.menubar),
+  .page :global(.tool-panel),
+  .page :global(.selection-panel),
+  .page :global(.zoom-controls),
+  .page :global(.fly-hint),
+  .page :global(.orbit-gizmo),
+  .page :global(.depth-slider-container),
+  .page :global(.polygon-actions),
+  .page :global(.cuboid-done-btn),
+  .page :global(.delta-display),
+  .page > p {
+    transition: opacity 0.2s ease;
+  }
+
+  .page.fullscreen-ui-hidden :global(.header),
+  .page.fullscreen-ui-hidden :global(.sidebar-wrapper),
+  .page.fullscreen-ui-hidden :global(.add-panel),
+  .page.fullscreen-ui-hidden :global(.menubar),
+  .page.fullscreen-ui-hidden :global(.tool-panel),
+  .page.fullscreen-ui-hidden :global(.selection-panel),
+  .page.fullscreen-ui-hidden :global(.zoom-controls),
+  .page.fullscreen-ui-hidden :global(.fly-hint),
+  .page.fullscreen-ui-hidden :global(.orbit-gizmo),
+  .page.fullscreen-ui-hidden :global(.depth-slider-container),
+  .page.fullscreen-ui-hidden :global(.polygon-actions),
+  .page.fullscreen-ui-hidden :global(.cuboid-done-btn),
+  .page.fullscreen-ui-hidden :global(.delta-display),
+  .page.fullscreen-ui-hidden > p {
+    opacity: 0;
+    pointer-events: none;
   }
 </style>
