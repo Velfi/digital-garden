@@ -330,17 +330,18 @@
       geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
       geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
       geo.setIndex(new THREE.BufferAttribute(indices, 1));
+      geo.computeVertexNormals();
       geo.computeBoundingSphere();
 
       const mat = new THREE.MeshStandardMaterial({
         vertexColors: true,
         roughness: r,
         metalness: m,
-        envMap: envMap
+        envMap: envMap,
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = $enableShadows;
-      mesh.receiveShadow = $enableShadows;
+      mesh.receiveShadow = $enableShadows && $renderingMode !== 'marchingCubes';
       voxelGroup.add(mesh);
       meshesByColor.set(col, { mesh, positions: null });
     }
@@ -2138,7 +2139,7 @@
     if (dirLight) dirLight.castShadow = shadows;
     for (const { mesh } of meshesByColor.values()) {
       mesh.castShadow = shadows;
-      mesh.receiveShadow = shadows;
+      mesh.receiveShadow = shadows && $renderingMode !== 'marchingCubes';
     }
     render();
   });
@@ -2312,7 +2313,7 @@
     scene.add(hemisphereLight);
     dirLight = new THREE.DirectionalLight(hexToInt($lightColor), 2);
     dirLight.castShadow = $enableShadows;
-    dirLight.shadow.mapSize.set(2048, 2048);
+    dirLight.shadow.mapSize.set(4096, 4096);
     dirLight.shadow.bias = -0.0002;
     dirLight.shadow.normalBias = 0.02;
     dirLight.target.position.set(0, 0, 0);
@@ -2360,7 +2361,7 @@
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = $enableShadows;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
     renderer.outputColorSpace = THREE.SRGBColorSpace;

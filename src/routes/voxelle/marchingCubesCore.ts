@@ -95,9 +95,11 @@ export function computeMarchingCubes(
   const nodeMinX = minX - 1;
   const nodeMinY = minY - 1;
   const nodeMinZ = minZ - 1;
-  const nodeMaxX = maxX + 1;
-  const nodeMaxY = maxY + 1;
-  const nodeMaxZ = maxZ + 1;
+  // With symmetric corner sampling (-1..0), we need one extra +axis layer
+  // so the final outside->inside transition is still represented.
+  const nodeMaxX = maxX + 2;
+  const nodeMaxY = maxY + 2;
+  const nodeMaxZ = maxZ + 2;
 
   const nx = nodeMaxX - nodeMinX + 1;
   const ny = nodeMaxY - nodeMinY + 1;
@@ -122,9 +124,11 @@ export function computeMarchingCubes(
         let sg = 0;
         let sb = 0;
 
-        for (let dz = 0; dz <= 1; dz++) {
-          for (let dy = 0; dy <= 1; dy++) {
-            for (let dx = 0; dx <= 1; dx++) {
+        // Sample the 8 voxels that share this lattice corner symmetrically.
+        // Using -1..0 avoids directional bias that can drop opposite-side faces.
+        for (let dz = -1; dz <= 0; dz++) {
+          for (let dy = -1; dy <= 0; dy++) {
+            for (let dx = -1; dx <= 0; dx++) {
               const col = voxels.get(coordKey(gx + dx, gy + dy, gz + dz));
               if (col === undefined) continue;
               count++;
@@ -295,7 +299,7 @@ export function computeMarchingCubes(
     const x = rawPos[i];
     const y = rawPos[i + 1];
     const z = rawPos[i + 2];
-    const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
+    const key = `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`;
     let vi = vertexMap.get(key);
     if (vi === undefined) {
       vi = outPos.length / 3;
