@@ -169,7 +169,7 @@
       <p>Try updating your browser, or use another browser that supports WebGL.</p>
     </div>
   {/if}
-  <p>For my brother Otto</p>
+  <p style="margin: 0">For my brother Otto</p>
 </div>
 
 <svelte:window
