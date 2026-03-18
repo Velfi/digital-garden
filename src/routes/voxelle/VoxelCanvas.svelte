@@ -34,7 +34,7 @@
     airbrushRadiusRange,
     airbrushRadiusMin,
     airbrushRadiusMax,
-    airbrushConstrainToPlane,
+    airbrushPlaneConstraint,
     sprayDirection,
     sprayStreakLength,
     wallWidth,
@@ -202,6 +202,8 @@
   let polygonLineMaterial: THREE.LineBasicMaterial | null = null;
   let polygonPointsMesh: THREE.InstancedMesh | null = null;
   let polygonPointsMaterial: THREE.MeshBasicMaterial | null = null;
+  /** When set, polygon commit (voxel/clay) places voxels one layer along this normal. */
+  let polygonPlacementNormal = $state<FaceNormal | null>(null);
   const POLYGON_POINTS_MAX = 64;
 
   // Rope: two-point + tension flow
@@ -493,6 +495,20 @@
     return snapToGrid(target);
   }
 
+  /** Intersect the current raycaster ray with a plane through planePoint with the given normal. Used for airbrush constrain-to-plane in empty space. */
+  function getIntersectionWithPlane(
+    planePoint: THREE.Vector3,
+    normal: THREE.Vector3
+  ): [number, number, number] | null {
+    if (!camera || !raycaster) return null;
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal.clone().normalize(), planePoint);
+    const target = new THREE.Vector3();
+    const hit = raycaster.ray.intersectPlane(plane, target);
+    if (!hit) return null;
+    if (target.clone().sub(raycaster.ray.origin).dot(raycaster.ray.direction) < 0) return null;
+    return snapToGrid(target);
+  }
+
   /** Returns voxel positions along axis-aligned line from a to b (dominant axis). */
   function axisVector(axis: 0 | 1 | 2): THREE.Vector3 {
     const v = new THREE.Vector3(0, 0, 0);
@@ -507,6 +523,24 @@
     const pa = get(planeAxis);
     if (pa !== 'auto') return axisVector(pa);
     return dragFaceNormal;
+  }
+
+  /** Axis (0=X, 1=Y, 2=Z) with largest absolute component. Used for airbrush constrain plane (plane normal = that axis). */
+  function getDominantAxisOfNormal(n: THREE.Vector3): 0 | 1 | 2 {
+    const ax = Math.abs(n.x);
+    const ay = Math.abs(n.y);
+    const az = Math.abs(n.z);
+    if (ax >= ay && ax >= az) return 0;
+    if (ay >= az) return 1;
+    return 2;
+  }
+
+  /** Camera look direction (view plane normal) for airbrush constrain to camera plane. */
+  function getCameraPlaneNormal(): { x: number; y: number; z: number } | undefined {
+    if (!camera) return undefined;
+    const v = new THREE.Vector3();
+    camera.getWorldDirection(v);
+    return { x: v.x, y: v.y, z: v.z };
   }
 
   function buildGrid(_size: number, v: Map<string, number>) {
@@ -907,6 +941,7 @@
   function cancelPolygon() {
     polygonPoints = [];
     polygonPhase = null;
+    polygonPlacementNormal = null;
     updatePolygonPreview([]);
     updatePreviewMesh([]);
   }
@@ -968,7 +1003,12 @@
 
   function commitPolygon() {
     if (polygonPoints.length < 2) return;
-    const positions = getPolygonVoxels(polygonPoints);
+    let positions = getPolygonVoxels(polygonPoints);
+    // When placing (voxel/clay), put voxels on top of the clicked face; remove stays at clicked voxels.
+    if (positions.length > 0 && ($tool === 'voxel' || $tool === 'clay') && polygonPlacementNormal) {
+      const [nx, ny, nz] = polygonPlacementNormal;
+      positions = positions.map(([x, y, z]) => [x + nx, y + ny, z + nz] as [number, number, number]);
+    }
     if (positions.length > 0) {
       if ($tool === 'select') {
         applySelectStroke(positions);
@@ -1125,7 +1165,11 @@
           polygonPoints = polygonPoints.filter((_, i) => i !== idx);
           polygonPhase = polygonPoints.length > 0 ? 'placing' : null;
           updatePolygonPreview(polygonPoints);
-          const fillPositions = polygonPoints.length >= 2 ? getPolygonVoxels(polygonPoints) : [];
+          let fillPositions = polygonPoints.length >= 2 ? getPolygonVoxels(polygonPoints) : [];
+          if (fillPositions.length > 0 && ($tool === 'voxel' || $tool === 'clay') && polygonPlacementNormal) {
+            const [nx, ny, nz] = polygonPlacementNormal;
+            fillPositions = fillPositions.map(([x, y, z]) => [x + nx, y + ny, z + nz] as [number, number, number]);
+          }
           updatePreviewMesh(fillPositions);
         }
       } else {
@@ -1143,9 +1187,14 @@
           } else {
             polygonPhase = 'placing';
             polygonPoints = [...polygonPoints, pos];
+            polygonPlacementNormal = getFaceNormalFromHit(hit);
           }
           updatePolygonPreview(polygonPoints);
-          const fillPositions = polygonPoints.length >= 2 ? getPolygonVoxels(polygonPoints) : [];
+          let fillPositions = polygonPoints.length >= 2 ? getPolygonVoxels(polygonPoints) : [];
+          if (fillPositions.length > 0 && ($tool === 'voxel' || $tool === 'clay') && polygonPlacementNormal) {
+            const [nx, ny, nz] = polygonPlacementNormal;
+            fillPositions = fillPositions.map(([x, y, z]) => [x + nx, y + ny, z + nz] as [number, number, number]);
+          }
           updatePreviewMesh(fillPositions);
         }
       }
@@ -1211,7 +1260,9 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
             airbrushRadiusMax: get(airbrushRadiusMax),
-            airbrushConstrainToPlane: get(airbrushConstrainToPlane),
+            airbrushConstrainToPlane: get(airbrushPlaneConstraint) !== 'none',
+            airbrushPlaneAxis: get(airbrushPlaneConstraint) === 'face' && dragFaceNormal ? getDominantAxisOfNormal(dragFaceNormal) : undefined,
+            airbrushPlaneNormal: get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
@@ -1258,7 +1309,9 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
             airbrushRadiusMax: get(airbrushRadiusMax),
-            airbrushConstrainToPlane: get(airbrushConstrainToPlane),
+            airbrushConstrainToPlane: get(airbrushPlaneConstraint) !== 'none',
+            airbrushPlaneAxis: get(airbrushPlaneConstraint) === 'face' && dragFaceNormal ? getDominantAxisOfNormal(dragFaceNormal) : undefined,
+            airbrushPlaneNormal: get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
@@ -1468,9 +1521,10 @@
     hit.object.getWorldQuaternion(worldQuaternion);
     const faceNormal = hit.face!.normal.clone().applyQuaternion(worldQuaternion);
     const pa = get(planeAxis);
-    // Line (non-axis-aligned): always use clicked face so line stays in that plane (e.g. XY on a wall)
+    // Line (non-axis-aligned) and airbrush (constrain-to-plane): always use clicked face normal
     const lineOnFace = get(effectiveStrokeMode) === 'line' && !get(lineAxisAlign);
-    dragFaceNormal = lineOnFace || pa === 'auto' ? faceNormal : axisVector(pa);
+    const airbrushUseFaceNormal = get(effectiveStrokeMode) === 'airbrush';
+    dragFaceNormal = lineOnFace || pa === 'auto' || airbrushUseFaceNormal ? faceNormal : axisVector(pa);
     dragPlaneAxisOverride = null;
     pendingStrokePositions = [startPos];
     const clayModeVal = get(clayMode);
@@ -1504,7 +1558,9 @@
       airbrushRadiusRange: get(airbrushRadiusRange),
       airbrushRadiusMin: get(airbrushRadiusMin),
       airbrushRadiusMax: get(airbrushRadiusMax),
-      airbrushConstrainToPlane: get(airbrushConstrainToPlane),
+      airbrushConstrainToPlane: get(airbrushPlaneConstraint) !== 'none',
+      airbrushPlaneAxis: get(airbrushPlaneConstraint) === 'face' && dragFaceNormal ? getDominantAxisOfNormal(dragFaceNormal) : undefined,
+      airbrushPlaneNormal: get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
       planeAxis: get(planeAxis),
       sprayDirection: get(sprayDirection),
       sprayStreakLength: get(sprayStreakLength),
@@ -1601,7 +1657,9 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
             airbrushRadiusMax: get(airbrushRadiusMax),
-            airbrushConstrainToPlane: get(airbrushConstrainToPlane),
+            airbrushConstrainToPlane: get(airbrushPlaneConstraint) !== 'none',
+            airbrushPlaneAxis: get(airbrushPlaneConstraint) === 'face' && dragFaceNormal ? getDominantAxisOfNormal(dragFaceNormal) : undefined,
+            airbrushPlaneNormal: get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
@@ -1656,6 +1714,24 @@
           if (axis !== null && (axis === 0 || axis === 1 || axis === 2)) {
             currentPos = getIntersectionWithLockedPlane(axis, dragStartPos[axis]);
           }
+        }
+        // Airbrush + constrain to plane: when cursor is in empty space, intersect ray with plane through starting voxel (face normal or camera plane)
+        if (
+          currentPos === null &&
+          isAirbrushPath &&
+          get(airbrushPlaneConstraint) !== 'none' &&
+          dragStartPos &&
+          (get(airbrushPlaneConstraint) === 'camera' ? camera : dragFaceNormal)
+        ) {
+          const planePoint = new THREE.Vector3(
+            dragStartPos[0] + 0.5,
+            dragStartPos[1] + 0.5,
+            dragStartPos[2] + 0.5
+          );
+          const normal = get(airbrushPlaneConstraint) === 'camera' && camera
+            ? (() => { const v = new THREE.Vector3(); camera.getWorldDirection(v); return v; })()
+            : dragFaceNormal!;
+          currentPos = getIntersectionWithPlane(planePoint, normal);
         }
         if (currentPos) {
           // Wall + lock start height: keep path on starting plane (for enclosed loops)
@@ -1719,7 +1795,9 @@
               airbrushRadiusRange: get(airbrushRadiusRange),
               airbrushRadiusMin: get(airbrushRadiusMin),
               airbrushRadiusMax: get(airbrushRadiusMax),
-              airbrushConstrainToPlane: get(airbrushConstrainToPlane),
+              airbrushConstrainToPlane: get(airbrushPlaneConstraint) !== 'none',
+              airbrushPlaneAxis: get(airbrushPlaneConstraint) === 'face' && dragFaceNormal ? getDominantAxisOfNormal(dragFaceNormal) : undefined,
+              airbrushPlaneNormal: get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
               planeAxis: get(planeAxis),
               sprayDirection: get(sprayDirection),
               sprayStreakLength: get(sprayStreakLength),
@@ -1914,7 +1992,9 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin),
             airbrushRadiusMax: get(airbrushRadiusMax),
-            airbrushConstrainToPlane: get(airbrushConstrainToPlane),
+            airbrushConstrainToPlane: get(airbrushPlaneConstraint) !== 'none',
+            airbrushPlaneAxis: get(airbrushPlaneConstraint) === 'face' && dragFaceNormal ? getDominantAxisOfNormal(dragFaceNormal) : undefined,
+            airbrushPlaneNormal: get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),

@@ -28,7 +28,7 @@
     airbrushRadiusRange,
     airbrushRadiusMin,
     airbrushRadiusMax,
-    airbrushConstrainToPlane,
+    airbrushPlaneConstraint,
     sprayDirection,
     sprayStreakLength,
     wallWidth,
@@ -259,16 +259,18 @@
           />
           <span class="tool-panel-value">{$airbrushScatter}</span>
         </div>
-        <div class="tool-panel-row">
-          <label class="tool-panel-check">
-            <input
-              type="checkbox"
-              checked={$airbrushConstrainToPlane}
-              onchange={(e) => airbrushConstrainToPlane.set((e.target as HTMLInputElement).checked)}
-              title="Keep airbrush on a single plane (uses Plane axis)"
-            />
-            Constrain to plane
-          </label>
+        <div class="tool-panel-row tool-panel-row--wide-label">
+          <span class="tool-panel-label">Constrain to</span>
+          <select
+            class="tool-panel-select"
+            aria-label="Airbrush plane constraint"
+            title="Keep airbrush on a plane: none, camera view plane, or clicked face normal"
+            bind:value={$airbrushPlaneConstraint}
+          >
+            <option value="none">None</option>
+            <option value="camera">Camera plane</option>
+            <option value="face">Clicked normal plane</option>
+          </select>
         </div>
       </section>
     {/if}
@@ -508,6 +510,7 @@
           <div class="tool-panel-row">
             <span class="tool-panel-label">Direction</span>
             <select
+              class="tool-panel-select"
               value={$sprayDirection}
               title="Auto = face normal; or pick axis (e.g. Y− for rain)"
               onchange={(e) => sprayDirection.set((e.target as HTMLSelectElement).value as SprayDirection)}
@@ -673,6 +676,23 @@
 
   .tool-panel-row input[type='number'] {
     width: 3rem;
+  }
+
+  .tool-panel-row select.tool-panel-select,
+  .tool-panel-row .tool-panel-select {
+    flex: 1;
+    min-width: 0;
+    padding: 0.25rem 0.35rem;
+    font-size: 0.85rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-color);
+    color: var(--text-color);
+    cursor: pointer;
+  }
+
+  .tool-panel-row--wide-label .tool-panel-label {
+    width: 5rem;
   }
 
   .tool-panel-check {

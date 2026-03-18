@@ -354,9 +354,13 @@ export interface PathThickenParams {
   airbrushRadiusRange: boolean;
   airbrushRadiusMin: number;
   airbrushRadiusMax: number;
-  /** When true, airbrush voxels are restricted to the plane through the path start (using planeAxis). */
+  /** When true, airbrush voxels are restricted to the plane through the path start. */
   airbrushConstrainToPlane?: boolean;
-  /** Axis for plane constraint (0=X, 1=Y, 2=Z, 'auto'=Y). */
+  /** Axis for plane constraint when airbrushConstrainToPlane: from face normal (airbrushPlaneAxis) or sidebar (planeAxis). Ignored when airbrushPlaneNormal set. */
+  airbrushPlaneAxis?: 0 | 1 | 2;
+  /** Plane normal for camera-plane constraint (non-axis-aligned). When set, voxels are filtered to lie on this plane through the path start. */
+  airbrushPlaneNormal?: { x: number; y: number; z: number };
+  /** Axis for plane constraint (0=X, 1=Y, 2=Z, 'auto'=Y). Used when airbrushPlaneAxis not set. */
   planeAxis?: 0 | 1 | 2 | 'auto';
   /** Wall/spray direction. 'auto' uses wallFaceNormal when present. */
   sprayDirection?: SprayDirectionName;
@@ -453,11 +457,30 @@ export function thickenPathForStroke(
       rng
     );
     if (params.airbrushConstrainToPlane && positions.length > 0) {
-      const axis = params.planeAxis === 'auto' || params.planeAxis === undefined ? 1 : params.planeAxis;
       const [sx, sy, sz] = positions[0];
-      out = out.filter(([x, y, z]) =>
-        axis === 0 ? x === sx : axis === 1 ? y === sy : z === sz
-      );
+      const startCenterX = sx + 0.5;
+      const startCenterY = sy + 0.5;
+      const startCenterZ = sz + 0.5;
+      if (params.airbrushPlaneNormal) {
+        const n = params.airbrushPlaneNormal;
+        const len = Math.sqrt(n.x * n.x + n.y * n.y + n.z * n.z) || 1;
+        const nx = n.x / len;
+        const ny = n.y / len;
+        const nz = n.z / len;
+        const planeEpsilon = 0.5;
+        out = out.filter(([x, y, z]) => {
+          const dx = x + 0.5 - startCenterX;
+          const dy = y + 0.5 - startCenterY;
+          const dz = z + 0.5 - startCenterZ;
+          const dist = Math.abs(dx * nx + dy * ny + dz * nz);
+          return dist < planeEpsilon;
+        });
+      } else {
+        const axis = params.airbrushPlaneAxis ?? (params.planeAxis === 'auto' || params.planeAxis === undefined ? 1 : params.planeAxis);
+        out = out.filter(([x, y, z]) =>
+          axis === 0 ? x === sx : axis === 1 ? y === sy : z === sz
+        );
+      }
     }
     return out;
   }

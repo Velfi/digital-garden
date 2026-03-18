@@ -144,8 +144,9 @@ export const airbrushScatter = writable<number>(0);
 export const airbrushRadiusRange = writable<boolean>(false);
 export const airbrushRadiusMin = writable<number>(0);
 export const airbrushRadiusMax = writable<number>(2);
-/** When true, airbrush only places voxels on the plane through the stroke start (same coordinate on planeAxis). */
-export const airbrushConstrainToPlane = writable<boolean>(false);
+/** Airbrush plane constraint: none, camera plane (view plane), or clicked face normal plane. */
+export type AirbrushPlaneConstraint = 'none' | 'camera' | 'face';
+export const airbrushPlaneConstraint = writable<AirbrushPlaneConstraint>('none');
 /** Wall (and legacy): direction to extend voxels. Auto = use face normal (wall only). */
 export type SprayDirection = 'none' | 'auto' | 'down' | 'up' | 'forward' | 'back' | 'left' | 'right';
 export const sprayDirection = writable<SprayDirection>('auto');

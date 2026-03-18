@@ -44,7 +44,7 @@ export {
   airbrushRadiusRange,
   airbrushRadiusMin,
   airbrushRadiusMax,
-  airbrushConstrainToPlane,
+  airbrushPlaneConstraint,
   sprayDirection,
   sprayStreakLength,
   wallWidth,
