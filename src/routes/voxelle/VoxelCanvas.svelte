@@ -29,6 +29,7 @@
     ropeTension,
     ropeBrushShape,
     ropeBrushRadius,
+    ropeGravityDirection,
     airbrushRadius,
     airbrushScatter,
     airbrushRadiusRange,
@@ -974,7 +975,8 @@
     const b = ropePointB;
     if (!a || !b) return;
     const t = get(ropeTension);
-    const centerline = getRopeCurveVoxels(a, b, t);
+    const gravity = get(ropeGravityDirection);
+    const centerline = getRopeCurveVoxels(a, b, t, gravity);
     const shape = get(ropeBrushShape);
     const radius = get(ropeBrushRadius);
     const positions = applyBrushAlongPath(centerline, shape, radius);
@@ -989,7 +991,8 @@
     const b = ropePointB;
     if (!a || !b) return;
     const t = get(ropeTension);
-    const centerline = getRopeCurveVoxels(a, b, t);
+    const gravity = get(ropeGravityDirection);
+    const centerline = getRopeCurveVoxels(a, b, t, gravity);
     const shape = get(ropeBrushShape);
     const radius = get(ropeBrushRadius);
     const positions = applyBrushAlongPath(centerline, shape, radius);
@@ -2191,10 +2194,12 @@
     const unsubT = ropeTension.subscribe(() => updateRopeFromTension());
     const unsubS = ropeBrushShape.subscribe(() => updateRopeFromTension());
     const unsubR = ropeBrushRadius.subscribe(() => updateRopeFromTension());
+    const unsubG = ropeGravityDirection.subscribe(() => updateRopeFromTension());
     return () => {
       unsubT();
       unsubS();
       unsubR();
+      unsubG();
     };
   });
 

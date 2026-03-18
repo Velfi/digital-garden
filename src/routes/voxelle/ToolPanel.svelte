@@ -20,6 +20,7 @@
     puffScatter,
     ropeBrushShape,
     ropeBrushRadius,
+    ropeGravityDirection,
     drawBrushShape,
     drawBrushSize,
     drawBrushSnapToSurface,
@@ -562,6 +563,21 @@
           </label>
         {/if}
         {#if $clayMode === 'rope'}
+          <div class="tool-panel-row">
+            <span class="tool-panel-label">Gravity</span>
+            <select
+              aria-label="Rope gravity direction"
+              title="Direction of gravity (rope sags toward this axis)"
+              bind:value={$ropeGravityDirection}
+            >
+              <option value="down">Down (−Y)</option>
+              <option value="up">Up (+Y)</option>
+              <option value="left">Left (−X)</option>
+              <option value="right">Right (+X)</option>
+              <option value="forward">Forward (−Z)</option>
+              <option value="back">Back (+Z)</option>
+            </select>
+          </div>
           <div class="tool-panel-row">
             <span class="tool-panel-label">Shape</span>
             <div class="stroke-buttons" role="group" aria-label="Rope brush shape">

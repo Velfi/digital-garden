@@ -39,6 +39,8 @@ export type Tool =
 export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope' | 'wall' | 'inflate';
 
 export type RopeBrushShape = 'sphere' | 'cube';
+/** Rope mode: direction of gravity (sag). */
+export type RopeGravityDirection = 'down' | 'up' | 'left' | 'right' | 'forward' | 'back';
 
 export type DrawBrushShape = 'sphere' | 'cube' | 'pyramid';
 
@@ -136,6 +138,8 @@ export const ropeTension = writable<number>(0.5);
 export const ropeBrushShape = writable<RopeBrushShape>('sphere');
 /** Rope mode: brush radius 0–5 (0=single voxel, 1=3³, 2=5³, etc). */
 export const ropeBrushRadius = writable<number>(1);
+/** Rope mode: gravity direction (rope sags toward this axis). */
+export const ropeGravityDirection = writable<RopeGravityDirection>('down');
 /** Airbrush stroke mode: sphere radius (0=single voxel, 1=3³, 2=5³, 3=7³, 4=9³, 5=11³). */
 export const airbrushRadius = writable<number>(1);
 /** Airbrush: max voxel offset for sphere centers (0=none, 1–4=scatter/spray). */

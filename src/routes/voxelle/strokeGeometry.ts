@@ -560,17 +560,33 @@ export function applyBrushAlongPath(
   return thickenPath(positions, Math.floor(radius));
 }
 
+/** Gravity direction for rope catenary: rope sags toward this axis. */
+export type RopeGravityDirection = 'down' | 'up' | 'left' | 'right' | 'forward' | 'back';
+
+function ropeGravityVector(dir: RopeGravityDirection): [number, number, number] {
+  switch (dir) {
+    case 'down': return [0, -1, 0];
+    case 'up': return [0, 1, 0];
+    case 'left': return [-1, 0, 0];
+    case 'right': return [1, 0, 0];
+    case 'forward': return [0, 0, -1];
+    case 'back': return [0, 0, 1];
+  }
+}
+
 /** Catenary through two 3D points. tension 0=max sag, 1=taut (nearly straight). Returns centerline voxels. */
 export function getRopeCurveVoxels(
   a: [number, number, number],
   b: [number, number, number],
-  tension: number
+  tension: number,
+  gravityDirection: RopeGravityDirection = 'down'
 ): [number, number, number][] {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const dz = b[2] - a[2];
-  const Lh = Math.sqrt(dx * dx + dz * dz);
-  const L = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const g = ropeGravityVector(gravityDirection);
+  const gPerp: [number, number, number] = [-g[0], -g[1], -g[2]];
+  const dot = (p: [number, number, number], q: [number, number, number]) =>
+    p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+  const ba: [number, number, number] = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const L = Math.sqrt(ba[0] * ba[0] + ba[1] * ba[1] + ba[2] * ba[2]);
   if (L < 1e-9) return [a];
 
   const t0 = Math.max(0, Math.min(1, tension));
@@ -578,21 +594,28 @@ export function getRopeCurveVoxels(
   const aMax = L * 50;
   const catA = aMin * Math.pow(aMax / aMin, t0);
 
+  const baAlongPerp = dot(ba, gPerp);
+  const u: [number, number, number] = [
+    ba[0] - baAlongPerp * gPerp[0],
+    ba[1] - baAlongPerp * gPerp[1],
+    ba[2] - baAlongPerp * gPerp[2]
+  ];
+  const Lh = Math.sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]);
+
   if (Lh < 1e-9) {
     return getBresenham3DLine(a, b);
   }
 
-  const horzDirX = dx / Lh;
-  const horzDirZ = dz / Lh;
-  const y1 = a[1];
-  const y2 = b[1];
+  const v: [number, number, number] = [u[0] / Lh, u[1] / Lh, u[2] / Lh];
+  const s1 = dot(a, gPerp);
+  const s2 = dot(b, gPerp);
 
   function catenaryY(x: number, x0: number, c: number): number {
     return catA * Math.cosh((x - x0) / catA) + c;
   }
 
   function f(x0: number): number {
-    return catA * (Math.cosh((Lh - x0) / catA) - Math.cosh(-x0 / catA)) - (y2 - y1);
+    return catA * (Math.cosh((Lh - x0) / catA) - Math.cosh(-x0 / catA)) - (s2 - s1);
   }
 
   let x0 = Lh / 2;
@@ -606,7 +629,7 @@ export function getRopeCurveVoxels(
     x0 = Math.max(-Lh * 2, Math.min(Lh * 2, x0));
   }
 
-  const c = y1 - catA * Math.cosh(-x0 / catA);
+  const c = s1 - catA * Math.cosh(-x0 / catA);
   const steps = Math.max(50, Math.ceil(L * 2));
   const points: [number, number, number][] = [];
   const seen = new Set<string>();
@@ -614,11 +637,12 @@ export function getRopeCurveVoxels(
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const x = t * Lh;
-    const y = catenaryY(x, x0, c);
-    const px = a[0] + x * horzDirX;
-    const pz = a[2] + x * horzDirZ;
+    const sag = catenaryY(x, x0, c);
+    const px = a[0] + x * v[0] + (sag - s1) * gPerp[0];
+    const py = a[1] + x * v[1] + (sag - s1) * gPerp[1];
+    const pz = a[2] + x * v[2] + (sag - s1) * gPerp[2];
     const xi = Math.round(px);
-    const yi = Math.round(y);
+    const yi = Math.round(py);
     const zi = Math.round(pz);
     const k = `${xi},${yi},${zi}`;
     if (!seen.has(k)) {
