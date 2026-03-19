@@ -7,13 +7,17 @@ export {
   getBoundsFromPositions,
   getVoxelBounds,
   getVoxelCenter,
-  getSelectionCenter
+  getSelectionCenter,
+  inBounds,
+  inBoundsBox,
+  getEffectiveBounds
 } from '../coordUtils';
 export type { SelectionBounds } from '../coordUtils';
 
 // Core
 export {
   gridSize,
+  MAX_GRID_SIZE,
   MAX_BRUSH_SIZE,
   voxels,
   tool,
@@ -31,14 +35,10 @@ export {
   planeCuboidHollow,
   clayMode,
   clayBrushRadius,
+  bulkBrushShape,
   branchTaper,
   branchTaperStartSize,
   branchTaperEndSize,
-  puffRadius,
-  puffRadiusRange,
-  puffRadiusMin,
-  puffRadiusMax,
-  puffScatter,
   inflateStrength,
   ropeTension,
   ropeBrushShape,
@@ -83,6 +83,8 @@ export {
   symmetryY,
   symmetryZ,
   pushUndo,
+  getUndoSnapshot,
+  restoreUndoSnapshot,
   history,
   canUndoStore,
   canRedoStore,

@@ -12,15 +12,11 @@
     stampRotation,
     clayMode,
     clayBrushRadius,
+    bulkBrushShape,
     inflateStrength,
     branchTaper,
     branchTaperStartSize,
     branchTaperEndSize,
-    puffRadius,
-    puffRadiusRange,
-    puffRadiusMin,
-    puffRadiusMax,
-    puffScatter,
     ropeBrushShape,
     ropeBrushRadius,
     ropeGravityDirection,
@@ -421,6 +417,45 @@ min="0"
             />
             <span class="tool-panel-value">{$clayBrushRadius + 1}</span>
           </div>
+          {#if $clayMode === 'bulk'}
+            <div class="tool-panel-row">
+              <span class="tool-panel-label">Brush shape</span>
+              <div class="stroke-buttons" role="group" aria-label="Bulk brush shape">
+                <button
+                  type="button"
+                  class:active={$bulkBrushShape === 'cube'}
+                  onclick={() => bulkBrushShape.set('cube')}
+                  title="Full cube (Chebyshev)"
+                >
+                  Cube
+                </button>
+                <button
+                  type="button"
+                  class:active={$bulkBrushShape === 'sphere'}
+                  onclick={() => bulkBrushShape.set('sphere')}
+                  title="Full sphere"
+                >
+                  Sphere
+                </button>
+                <button
+                  type="button"
+                  class:active={$bulkBrushShape === 'hemicube'}
+                  onclick={() => bulkBrushShape.set('hemicube')}
+                  title="Half cube toward surface"
+                >
+                  Hemicube
+                </button>
+                <button
+                  type="button"
+                  class:active={$bulkBrushShape === 'hemisphere'}
+                  onclick={() => bulkBrushShape.set('hemisphere')}
+                  title="Half sphere toward surface"
+                >
+                  Hemisphere
+                </button>
+              </div>
+            </div>
+          {/if}
           {#if $clayMode === 'branch'}
             <div class="tool-panel-row">
               <label class="tool-panel-check">
@@ -477,78 +512,6 @@ min="0"
               <span class="tool-panel-value">{Math.round($inflateStrength * 100)}%</span>
             </div>
           {/if}
-        {/if}
-        {#if $clayMode === 'puffy'}
-          <div class="tool-panel-row">
-            <label class="tool-panel-check">
-              <input
-                type="checkbox"
-                checked={$puffRadiusRange}
-                onchange={(e) => puffRadiusRange.set((e.target as HTMLInputElement).checked)}
-                title="Vary sphere size per stamp"
-              />
-              Size range
-            </label>
-          </div>
-          {#if $puffRadiusRange}
-            <div class="tool-panel-row">
-              <span class="tool-panel-label">Min</span>
-              <input
-                type="range"
-                min="0"
-                max={BRUSH_SIZE_MAX}
-                step="1"
-                value={$puffRadiusMin}
-                oninput={(e) => {
-                  const v = Number((e.target as HTMLInputElement).value);
-                  puffRadiusMin.set(v);
-                  if (v > get(puffRadiusMax)) puffRadiusMax.set(v);
-                }}
-              />
-              <span class="tool-panel-value">{$puffRadiusMin + 1}</span>
-            </div>
-            <div class="tool-panel-row">
-              <span class="tool-panel-label">Max</span>
-              <input
-                type="range"
-                min="0"
-                max={BRUSH_SIZE_MAX}
-                step="1"
-                value={$puffRadiusMax}
-                oninput={(e) => {
-                  const v = Number((e.target as HTMLInputElement).value);
-                  puffRadiusMax.set(v);
-                  if (v < get(puffRadiusMin)) puffRadiusMin.set(v);
-                }}
-              />
-              <span class="tool-panel-value">{$puffRadiusMax + 1}</span>
-            </div>
-          {:else}
-            <div class="tool-panel-row">
-              <span class="tool-panel-label">Size</span>
-              <input
-                type="range"
-                min="0"
-                max={BRUSH_SIZE_MAX}
-                step="1"
-                value={$puffRadius}
-                oninput={(e) => puffRadius.set(Number((e.target as HTMLInputElement).value))}
-              />
-              <span class="tool-panel-value">{$puffRadius + 1}</span>
-            </div>
-          {/if}
-          <div class="tool-panel-row">
-            <span class="tool-panel-label">Scatter</span>
-            <input
-              type="range"
-min="0"
-            max={BRUSH_SIZE_MAX}
-            step="1"
-            value={$puffScatter}
-              oninput={(e) => puffScatter.set(Number((e.target as HTMLInputElement).value))}
-            />
-            <span class="tool-panel-value">{$puffScatter}</span>
-          </div>
         {/if}
         {#if $clayMode === 'wall'}
           <div class="tool-panel-row">

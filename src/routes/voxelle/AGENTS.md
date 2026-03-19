@@ -67,7 +67,7 @@ Central state in writable stores. Import from `'./store'` (resolves to `store/in
 
 ### Tools
 
-`voxel`, `remove`, `paint`, `select`, `selectByColor`, `stamp`, `fly`, `eyedropper`, `clay`. Stroke modes: `line`, `plane`, `cuboid`, `polygon`, `fill`, `airbrush`. Clay modes: `bulk` (Blender Snake Hook–style: pull from surface, path-following, brush radius).
+`voxel`, `remove`, `paint`, `select`, `selectByColor`, `stamp`, `fly`, `eyedropper`, `clay`. Stroke modes: `line`, `plane`, `cuboid`, `polygon`, `fill`, `airbrush`. Clay modes: `bulk`, `smooth`, `level`, `gouge`, `branch`, `melt`, `rope`, `wall`, `inflate` (e.g. bulk = Blender Snake Hook–style pull from surface; use Draw + airbrush for scattered spheres along path).
 
 ### Greedy Meshing
 
@@ -75,7 +75,7 @@ Central state in writable stores. Import from `'./store'` (resolves to `store/in
 
 ## Conventions
 
-- **Coords**: Integer voxel positions. Grid centered at origin; `gridSize` defines `[-size/2, size/2)` per axis.
+- **Coords**: Integer voxel positions. Placement is unbounded; selection/fill/clay use content-derived bounds (getEffectiveBounds). `gridSize` is used for New Grid initial shape and file format only.
 - **Colors**: 24-bit hex stored as `number`; `hexToInt('#ff5733')`, `intToHex(n)` for conversions.
 - **Faces**: `FaceNormal` = `[nx, ny, nz]` (1, 0, or -1).
 - **Shapes**: `cube`, `orb`, `cylinder`, `hollowCube`, `plane`, `circle`, `empty`. Rotation in quarter-turns (0–3) per axis.

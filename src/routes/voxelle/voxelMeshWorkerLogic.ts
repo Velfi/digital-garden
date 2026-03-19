@@ -1,13 +1,16 @@
+import { parseCoordKey } from './coordUtils';
 import { computeGreedyMesh } from './greedyMeshCore';
 import { computeMarchingCubes } from './marchingCubesCore';
 import { voxelsFromInput } from './greedyMeshWorkerLogic';
 
 export type RenderingMode = 'greedy' | 'marchingCubes';
 
+const CHUNK_SIZE_DEFAULT = 0;
+
 export interface VoxelMeshWorkerInput {
   voxels: [string, number][] | { coords: Int32Array; colors: Uint32Array };
   mode?: RenderingMode;
-  options?: { aoEnabled?: boolean; aoStrength?: 0 | 1 | 2 };
+  options?: { aoEnabled?: boolean; aoStrength?: 0 | 1 | 2; chunkSize?: number };
   gen?: number;
 }
 
@@ -22,9 +25,96 @@ export interface VoxelMeshWorkerOutput {
   }>;
 }
 
+function chunkKey(cx: number, cy: number, cz: number): string {
+  return `${cx},${cy},${cz}`;
+}
+
+/** Partition voxels by spatial chunks. chunkSize must be >= 1. */
+function partitionByChunks(
+  voxels: Map<string, number>,
+  chunkSize: number
+): Map<string, Map<string, number>> {
+  const chunks = new Map<string, Map<string, number>>();
+  for (const [key, color] of voxels) {
+    const [x, y, z] = parseCoordKey(key);
+    const cx = Math.floor(x / chunkSize);
+    const cy = Math.floor(y / chunkSize);
+    const cz = Math.floor(z / chunkSize);
+    const ck = chunkKey(cx, cy, cz);
+    let ch = chunks.get(ck);
+    if (!ch) {
+      ch = new Map();
+      chunks.set(ck, ch);
+    }
+    ch.set(key, color);
+  }
+  return chunks;
+}
+
+function mergeChunkResults(
+  chunkResults: Array<{ color: number; positions: Float32Array; normals: Float32Array; colors: Float32Array; indices: Uint32Array }>
+): VoxelMeshWorkerOutput['results'] {
+  const byColor = new Map<
+    number,
+    { positions: number[]; normals: number[]; colors: number[]; indices: number[] }
+  >();
+  for (const r of chunkResults) {
+    const pos = byColor.get(r.color) ?? {
+      positions: [],
+      normals: [],
+      colors: [],
+      indices: []
+    };
+    if (!byColor.has(r.color)) byColor.set(r.color, pos);
+    const base = pos.positions.length / 3;
+    for (let i = 0; i < r.positions.length; i++) pos.positions.push(r.positions[i]);
+    for (let i = 0; i < r.normals.length; i++) pos.normals.push(r.normals[i]);
+    for (let i = 0; i < r.colors.length; i++) pos.colors.push(r.colors[i]);
+    for (let i = 0; i < r.indices.length; i++) pos.indices.push(r.indices[i] + base);
+    byColor.set(r.color, pos);
+  }
+  const results: VoxelMeshWorkerOutput['results'] = [];
+  for (const [color, pos] of byColor) {
+    results.push({
+      color,
+      positions: new Float32Array(pos.positions),
+      normals: new Float32Array(pos.normals),
+      colors: new Float32Array(pos.colors),
+      indices: new Uint32Array(pos.indices)
+    });
+  }
+  return results;
+}
+
 export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshWorkerOutput {
   const { voxels: voxelInput, mode = 'greedy', options = {}, gen } = input;
   const voxels = voxelsFromInput(voxelInput);
+  const chunkSize = options.chunkSize ?? CHUNK_SIZE_DEFAULT;
+
+  if (chunkSize >= 16 && mode === 'greedy' && voxels.size > 0) {
+    const chunks = partitionByChunks(voxels, chunkSize);
+    const allChunkResults: Array<{
+      color: number;
+      positions: Float32Array;
+      normals: Float32Array;
+      colors: Float32Array;
+      indices: Uint32Array;
+    }> = [];
+    for (const ch of chunks.values()) {
+      const coreResults = computeGreedyMesh(ch, options);
+      for (const [color, data] of coreResults) {
+        allChunkResults.push({
+          color,
+          positions: data.positions,
+          normals: data.normals,
+          colors: data.colors,
+          indices: data.indices
+        });
+      }
+    }
+    const results = mergeChunkResults(allChunkResults);
+    return { results, gen };
+  }
 
   const coreResults =
     mode === 'marchingCubes'

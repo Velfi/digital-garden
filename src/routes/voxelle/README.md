@@ -5,7 +5,8 @@ A 3D voxel sculpting tool that runs in the browser. Add, remove, and paint voxel
 ## What it does
 
 - **Sculpt** – Draw, erase, fill, paint. Tools: voxel, remove, paint, select, stamp, clay, eyedropper, fly camera.
-- **Stroke modes** – Line, plane, cuboid, polygon, fill, airbrush.
+- **Stroke modes** – Line, plane, cuboid, polygon, fill, airbrush (scattered spheres along path).
+- **Clay modes** – Bulk, smooth, level, gouge, branch, melt, rope, wall, inflate.
 - **Scene** – Configurable grid, lighting, camera (orbit/fly), materials. Undo/redo, copy/paste, selection grow/shrink.
 - **Persistence** – Auto-save to browser storage; save/load `.voxelle` (gzipped BSON); share via URL; export to GLB.
 

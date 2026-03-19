@@ -96,7 +96,15 @@ useWorker();
 
 export function serializeToVoxelleFormat(): VoxelleFileFormat {
   const v = get(voxels);
-  const sz = get(gridSize);
+  let sz = get(gridSize);
+  if (v.size > 0) {
+    let maxAbs = 0;
+    for (const key of v.keys()) {
+      const [x, y, z] = parseCoordKey(key);
+      maxAbs = Math.max(maxAbs, Math.abs(x), Math.abs(y), Math.abs(z));
+    }
+    sz = Math.max(sz, 2 * (maxAbs + 1));
+  }
   return {
     version: VOXELLE_FILE_VERSION,
     gridSize: sz,
@@ -132,11 +140,12 @@ function isGzipped(bytes: Uint8Array): boolean {
 
 function applyModelData(data: VoxelleFileFormat): void {
   const voxelsMap = new Map<string, number>();
+  const sz = data.gridSize;
   for (const [x, y, z, c] of data.voxels) {
     voxelsMap.set(coordKey(x, y, z), c);
   }
   resetUndo();
-  gridSize.set(data.gridSize as GridSize);
+  gridSize.set(sz as GridSize);
   voxels.set(voxelsMap);
   if (data.scene) {
     if (

@@ -1,7 +1,25 @@
 import { get } from 'svelte/store';
-import { coordKey, parseCoordKey, inBounds, getSelectionBounds } from '../coordUtils';
-import { voxels, selection, gridSize, pushUndo, updateVoxels, planeAxis, fillConstrainToPlane } from './core';
+import {
+  coordKey,
+  parseCoordKey,
+  inBoundsBox,
+  getEffectiveBounds,
+  getSelectionBounds
+} from '../coordUtils';
+import {
+  voxels,
+  selection,
+  gridSize,
+  pushUndo,
+  updateVoxels,
+  planeAxis,
+  fillConstrainToPlane
+} from './core';
 import type { FaceNormal, SelectionMode } from './core';
+
+function getEffectiveBoundsForSelection(): ReturnType<typeof getEffectiveBounds> {
+  return getEffectiveBounds(get(voxels), get(gridSize), true, 512);
+}
 
 function getPlaneAxisNumber(): 0 | 1 | 2 {
   const pa = get(planeAxis);
@@ -39,7 +57,7 @@ export function getFillSelectionAt(
   respectsColor: boolean = true
 ): Map<string, number> {
   const v = get(voxels);
-  const sz = get(gridSize);
+  const bounds = getEffectiveBoundsForSelection();
   const k0 = coordKey(x, y, z);
   const targetColor = v.get(k0);
   if (targetColor === undefined) return new Map();
@@ -60,7 +78,7 @@ export function getFillSelectionAt(
       const nx = cx + dx;
       const ny = cy + dy;
       const nz = cz + dz;
-      if (inBounds(nx, ny, nz, sz)) {
+      if (inBoundsBox(nx, ny, nz, bounds)) {
         if (get(fillConstrainToPlane) && !inPlane(nx, ny, nz, x, y, z)) continue;
         const nk = coordKey(nx, ny, nz);
         if (!visited.has(nk)) stack.push([nx, ny, nz]);
@@ -77,7 +95,7 @@ export function getFillEmptyAt(
   diagonals: boolean
 ): Set<string> {
   const v = get(voxels);
-  const sz = get(gridSize);
+  const bounds = getEffectiveBoundsForSelection();
   const k0 = coordKey(x, y, z);
   if (v.has(k0)) return new Set();
   const adj = diagonals ? ADJ_26 : ADJ_6;
@@ -95,7 +113,7 @@ export function getFillEmptyAt(
       const nx = cx + dx;
       const ny = cy + dy;
       const nz = cz + dz;
-      if (inBounds(nx, ny, nz, sz)) {
+      if (inBoundsBox(nx, ny, nz, bounds)) {
         if (get(fillConstrainToPlane) && !inPlane(nx, ny, nz, x, y, z)) continue;
         const nk = coordKey(nx, ny, nz);
         if (!visited.has(nk)) stack.push([nx, ny, nz]);
@@ -183,7 +201,7 @@ export function invertSelection() {
 export function growSelection() {
   pushUndo();
   const v = get(voxels);
-  const sz = get(gridSize);
+  const bounds = getEffectiveBoundsForSelection();
   const sel = get(selection);
   const next = new Map(sel);
   for (const key of sel.keys()) {
@@ -192,7 +210,7 @@ export function growSelection() {
       const nx = x + dx;
       const ny = y + dy;
       const nz = z + dz;
-      if (inBounds(nx, ny, nz, sz)) {
+      if (inBoundsBox(nx, ny, nz, bounds)) {
         const k = coordKey(nx, ny, nz);
         const col = v.get(k);
         if (col !== undefined) next.set(k, col);
@@ -205,7 +223,7 @@ export function growSelection() {
 export function shrinkSelection() {
   pushUndo();
   const v = get(voxels);
-  const sz = get(gridSize);
+  const bounds = getEffectiveBoundsForSelection();
   const sel = get(selection);
   const next = new Map<string, number>();
   for (const [key, col] of sel) {
@@ -215,7 +233,7 @@ export function shrinkSelection() {
       const nx = x + dx;
       const ny = y + dy;
       const nz = z + dz;
-      if (inBounds(nx, ny, nz, sz)) {
+      if (inBoundsBox(nx, ny, nz, bounds)) {
         const k = coordKey(nx, ny, nz);
         if (!v.has(k)) {
           onBoundary = true;
@@ -286,7 +304,7 @@ export function hollowOut(): void {
 
 export function selectConnected() {
   const v = get(voxels);
-  const sz = get(gridSize);
+  const bounds = getEffectiveBoundsForSelection();
   const sel = get(selection);
   if (sel.size === 0) return;
   pushUndo();
@@ -309,7 +327,7 @@ export function selectConnected() {
       const nx = x + dx;
       const ny = y + dy;
       const nz = z + dz;
-      if (inBounds(nx, ny, nz, sz)) {
+      if (inBoundsBox(nx, ny, nz, bounds)) {
         const nk = coordKey(nx, ny, nz);
         if (!visited.has(nk)) stack.push([nx, ny, nz]);
       }
@@ -326,7 +344,7 @@ export function getCoplanarFacesSelectionAt(
   faceNormal: FaceNormal
 ): Map<string, number> {
   const v = get(voxels);
-  const sz = get(gridSize);
+  const bounds = getEffectiveBoundsForSelection();
   const k0 = coordKey(x, y, z);
   if (!v.has(k0)) return new Map();
   const [nx, ny, nz] = faceNormal;
@@ -346,7 +364,7 @@ export function getCoplanarFacesSelectionAt(
       const nx_ = cx + dx;
       const ny_ = cy + dy;
       const nz_ = cz + dz;
-      if (inBounds(nx_, ny_, nz_, sz)) {
+      if (inBoundsBox(nx_, ny_, nz_, bounds)) {
         const nk = coordKey(nx_, ny_, nz_);
         if (!visited.has(nk)) stack.push([nx_, ny_, nz_]);
       }

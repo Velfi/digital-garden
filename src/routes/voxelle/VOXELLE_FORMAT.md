@@ -9,7 +9,7 @@ After decompression (if gzipped), the payload is BSON. The logical structure is:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `version` | number | yes | Format version (currently 1). New editors should support all known versions. |
-| `gridSize` | number | yes | Grid size (integer ≥ 1). Defines bounds `[-size/2, size/2)` per axis. |
+| `gridSize` | number | yes | Grid size (integer ≥ 1). Nominal bounds `[-size/2, size/2)` per axis; the editor treats space as unbounded. When saving, gridSize is at least the content extent. |
 | `voxels` | array | yes | Array of `[x, y, z, color]` tuples. Coordinates are integers; color is 24-bit RGB as a number (e.g. `0xff5733`). |
 | `scene` | object | no | Optional camera/view settings. |
 | `scene.focalLength` | number | no | Camera focal length (typically 15–200). |

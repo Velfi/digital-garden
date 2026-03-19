@@ -36,7 +36,7 @@ export type Tool =
   | 'eyedropper'
   | 'clay';
 
-export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope' | 'wall' | 'inflate';
+export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'melt' | 'rope' | 'wall' | 'inflate';
 
 export type RopeBrushShape = 'sphere' | 'cube';
 /** Rope mode: direction of gravity (sag). */
@@ -45,7 +45,8 @@ export type RopeGravityDirection = 'down' | 'up' | 'left' | 'right' | 'forward' 
 export type DrawBrushShape = 'sphere' | 'cube' | 'pyramid';
 
 const DEFAULT_COLOR = 0x888888;
-const MAX_GRID_SIZE = 256;
+/** Maximum grid size when not unbounded. Unbounded projects have no placement limit. */
+export const MAX_GRID_SIZE = 65536;
 /** Max brush/stamp size in voxels (index 0..MAX_BRUSH_SIZE-1 => 1..MAX_BRUSH_SIZE). */
 export const MAX_BRUSH_SIZE = 25;
 
@@ -98,7 +99,7 @@ export type ToolPane = 'draw' | 'clay' | 'fly';
 // Stores
 export const gridSize = writable<GridSize>(32);
 export const voxels = writable<Map<string, number>>(new Map());
-export const tool = writable<Tool>('remove');
+export const tool = writable<Tool>('voxel');
 export const toolPane = writable<ToolPane>('draw');
 /** Last selected draw tool, restored when switching from Clay back to Draw pane. */
 export const lastDrawTool = writable<Tool>('remove');
@@ -108,7 +109,7 @@ export const fillSelectDiagonals = writable<boolean>(false);
 export const fillRespectsColor = writable<boolean>(true);
 /** When true, fill only expands within the plane through the seed (same coordinate on planeAxis). */
 export const fillConstrainToPlane = writable<boolean>(false);
-export const strokeMode = writable<StrokeMode>('line');
+export const strokeMode = writable<StrokeMode>('airbrush');
 /** Stroke mode only when current tool uses it (draw tools). Null for clay/stamp/fly/eyedropper so selection method never applies. */
 export const effectiveStrokeMode = derived(
   [tool, strokeMode],
@@ -122,22 +123,15 @@ export const planeCuboidHollow = writable<boolean>(false);
 export const clayMode = writable<ClayMode>('bulk');
 /** Clay brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
 export const clayBrushRadius = writable<number>(2);
+/** Bulk mode: brush shape (cube, sphere, hemicube, hemisphere). */
+export type BulkBrushShape = 'cube' | 'sphere' | 'hemicube' | 'hemisphere';
+export const bulkBrushShape = writable<BulkBrushShape>('cube');
 /** Branch mode: taper from thick base to thin tip. */
 export const branchTaper = writable<boolean>(false);
 /** Branch taper: start size index 0..(MAX_BRUSH_SIZE-1) (when taper on). */
 export const branchTaperStartSize = writable<number>(2);
 /** Branch taper: end size index 0..(MAX_BRUSH_SIZE-1) (when taper on). */
 export const branchTaperEndSize = writable<number>(0);
-/** Puffy size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxel diameter spheres. */
-export const puffRadius = writable<number>(2);
-/** Puffy mode: when true, radius varies between puffRadiusMin and puffRadiusMax per sphere. */
-export const puffRadiusRange = writable<boolean>(false);
-/** Puffy mode: min sphere radius when range enabled. */
-export const puffRadiusMin = writable<number>(0);
-/** Puffy mode: max sphere radius when range enabled. */
-export const puffRadiusMax = writable<number>(4);
-/** Puffy mode: max voxel offset for sphere centers (0=none, 1–4=scatter range). */
-export const puffScatter = writable<number>(0);
 /** Inflate mode: 0–1 probability of adding each empty face-neighbor (1=always). */
 export const inflateStrength = writable<number>(1);
 /** Rope mode: tension 0–1 (0=max sag, 1=taut). */
@@ -214,6 +208,8 @@ export const symmetryZ = writable<boolean>(false);
 const undo = createUndo(voxels, selection);
 export const pushUndo = undo.pushUndo;
 export const resetUndo = undo.reset;
+export const getUndoSnapshot = undo.getSnapshot;
+export const restoreUndoSnapshot = undo.restoreSnapshot;
 export const history = undo.history;
 export const canUndoStore = undo.canUndoStore;
 export const canRedoStore = undo.canRedoStore;
@@ -229,9 +225,7 @@ export function ensureGridFitsPositions(positions: Iterable<[number, number, num
   }
   const minSize = 2 * (maxAbs + 1);
   const sz = get(gridSize);
-  if (minSize > sz && minSize <= MAX_GRID_SIZE) {
-    gridSize.set(minSize);
-  }
+  if (minSize > sz) gridSize.set(Math.min(minSize, MAX_GRID_SIZE));
 }
 
 export function shiftVoxelsAndSelection(dx: number, dy: number, dz: number): void {

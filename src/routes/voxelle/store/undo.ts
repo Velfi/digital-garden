@@ -1,10 +1,18 @@
 import { writable, get } from 'svelte/store';
 import type { Writable } from 'svelte/store';
-import { serializeVoxels, deserializeVoxels } from './serialization';
+import {
+  serializeVoxels,
+  deserializeVoxels
+} from './serialization';
 
 const MAX_UNDO = 50;
 
-type UndoSnapshot = { v: string; s: string };
+type UndoEntry = { v: string; s: string };
+
+export type UndoSnapshot = {
+  undoStack: UndoEntry[];
+  redoStack: UndoEntry[];
+};
 
 export function createUndo(
   voxels: Writable<Map<string, number>>,
@@ -12,8 +20,8 @@ export function createUndo(
 ) {
   const canUndoStore = writable(false);
   const canRedoStore = writable(false);
-  const undoStack: UndoSnapshot[] = [];
-  const redoStack: UndoSnapshot[] = [];
+  const undoStack: UndoEntry[] = [];
+  const redoStack: UndoEntry[] = [];
 
   function pushUndo() {
     redoStack.length = 0;
@@ -59,11 +67,29 @@ export function createUndo(
     canRedoStore.set(false);
   }
 
+  function getSnapshot(): UndoSnapshot {
+    return {
+      undoStack: [...undoStack],
+      redoStack: [...redoStack]
+    };
+  }
+
+  function restoreSnapshot(snapshot: UndoSnapshot) {
+    undoStack.length = 0;
+    redoStack.length = 0;
+    undoStack.push(...snapshot.undoStack);
+    redoStack.push(...snapshot.redoStack);
+    canUndoStore.set(undoStack.length > 0);
+    canRedoStore.set(redoStack.length > 0);
+  }
+
   return {
     pushUndo,
     doUndo,
     doRedo,
     reset,
+    getSnapshot,
+    restoreSnapshot,
     history: {
       undo: doUndo,
       redo: doRedo,

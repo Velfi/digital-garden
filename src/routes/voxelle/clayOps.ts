@@ -1,4 +1,5 @@
-import { coordKey, inBounds } from './coordUtils';
+import { coordKey, inBounds, inBoundsBox } from './coordUtils';
+import type { SelectionBounds } from './coordUtils';
 
 const FACE_OFFSETS: [number, number, number][] = [
   [1, 0, 0],
@@ -13,25 +14,31 @@ function getFaceNeighbors(x: number, y: number, z: number): [number, number, num
   return FACE_OFFSETS.map(([dx, dy, dz]) => [x + dx, y + dy, z + dz] as [number, number, number]);
 }
 
+/** Bounds check: either grid size (number) or explicit bounds. */
+function withinBounds(x: number, y: number, z: number, sizeOrBounds: number | SelectionBounds): boolean {
+  if (typeof sizeOrBounds === 'number') return inBounds(x, y, z, sizeOrBounds);
+  return inBoundsBox(x, y, z, sizeOrBounds);
+}
+
 /** Smooth: fill single-voxel concavities, remove single-voxel bumps. */
 export function applySmooth(
   v: Map<string, number>,
   brushPositions: [number, number, number][],
-  gridSize: number
+  gridSizeOrBounds: number | SelectionBounds
 ): { toAdd: Map<string, number>; toRemove: Set<string> } {
   const toAdd = new Map<string, number>();
   const toRemove = new Set<string>();
   const brushSet = new Set(brushPositions.map(([x, y, z]) => coordKey(x, y, z)));
 
   for (const [x, y, z] of brushPositions) {
-    if (!inBounds(x, y, z, gridSize)) continue;
+    if (!withinBounds(x, y, z, gridSizeOrBounds)) continue;
     const key = coordKey(x, y, z);
     const filled = v.has(key);
     const neighbors = getFaceNeighbors(x, y, z);
     let filledCount = 0;
     const neighborColors: number[] = [];
     for (const [nx, ny, nz] of neighbors) {
-      if (!inBounds(nx, ny, nz, gridSize)) continue;
+      if (!withinBounds(nx, ny, nz, gridSizeOrBounds)) continue;
       const nk = coordKey(nx, ny, nz);
       if (v.has(nk)) {
         filledCount++;
@@ -58,20 +65,20 @@ export function applySmooth(
 export function applyInflate(
   v: Map<string, number>,
   brushPositions: [number, number, number][],
-  gridSize: number,
+  gridSizeOrBounds: number | SelectionBounds,
   strength: number
 ): { toAdd: Map<string, number>; toRemove: Set<string> } {
   const toAdd = new Map<string, number>();
   const toRemove = new Set<string>();
 
   for (const [x, y, z] of brushPositions) {
-    if (!inBounds(x, y, z, gridSize)) continue;
+    if (!withinBounds(x, y, z, gridSizeOrBounds)) continue;
     const key = coordKey(x, y, z);
     if (!v.has(key)) continue;
     const color = v.get(key)!;
     const neighbors = getFaceNeighbors(x, y, z);
     for (const [nx, ny, nz] of neighbors) {
-      if (!inBounds(nx, ny, nz, gridSize)) continue;
+      if (!withinBounds(nx, ny, nz, gridSizeOrBounds)) continue;
       const nk = coordKey(nx, ny, nz);
       if (!v.has(nk) && (strength >= 1 || Math.random() < strength)) toAdd.set(nk, color);
     }
@@ -85,21 +92,21 @@ export function applyLevel(
   brushPositions: [number, number, number][],
   levelY: number,
   getColor: () => number,
-  gridSize: number
+  gridSizeOrBounds: number | SelectionBounds
 ): { toAdd: Map<string, number>; toRemove: Set<string> } {
   const toAdd = new Map<string, number>();
   const toRemove = new Set<string>();
   const xzInBrush = new Set<string>();
 
   for (const [x, y, z] of brushPositions) {
-    if (!inBounds(x, y, z, gridSize)) continue;
+    if (!withinBounds(x, y, z, gridSizeOrBounds)) continue;
     xzInBrush.add(`${x},${z}`);
   }
 
   for (const xz of xzInBrush) {
     const [x, z] = xz.split(',').map(Number);
     const key = coordKey(x, levelY, z);
-    if (!inBounds(x, levelY, z, gridSize)) continue;
+    if (!withinBounds(x, levelY, z, gridSizeOrBounds)) continue;
     if (!v.has(key)) toAdd.set(key, getColor());
   }
   return { toAdd, toRemove };
@@ -109,11 +116,14 @@ export function applyLevel(
 export function applyMelt(
   v: Map<string, number>,
   brushPositions: [number, number, number][],
-  gridSize: number
+  gridSizeOrBounds: number | SelectionBounds
 ): { toAdd: Map<string, number>; toRemove: Set<string> } {
   const brushSet = new Set(brushPositions.map(([x, y, z]) => coordKey(x, y, z)));
   const occupied = new Map(v);
-  const maxPasses = gridSize; // tower height at most
+  const maxPasses =
+    typeof gridSizeOrBounds === 'number'
+      ? gridSizeOrBounds
+      : Math.min(1024, gridSizeOrBounds.maxY - gridSizeOrBounds.minY + 1);
 
   for (let pass = 0; pass < maxPasses; pass++) {
     const voxelsInBrush = [...occupied.keys()]
@@ -121,7 +131,10 @@ export function applyMelt(
         const [x, y, z] = k.split(',').map(Number);
         return [x, y, z] as [number, number, number];
       })
-      .filter(([x, y, z]) => brushSet.has(coordKey(x, y, z)) && inBounds(x, y, z, gridSize))
+      .filter(
+        ([x, y, z]) =>
+          brushSet.has(coordKey(x, y, z)) && withinBounds(x, y, z, gridSizeOrBounds)
+      )
       .sort((a, b) => b[1] - a[1]); // Y descending
 
     let moved = false;
@@ -135,7 +148,7 @@ export function applyMelt(
       // Down or sideways into empty space (candle-style); only to positions inside brush so we only rearrange, never create
       const candidates = neighbors.filter(
         ([nx, ny, nz]) =>
-          inBounds(nx, ny, nz, gridSize) &&
+          withinBounds(nx, ny, nz, gridSizeOrBounds) &&
           brushSet.has(coordKey(nx, ny, nz)) &&
           !occupied.has(coordKey(nx, ny, nz)) &&
           (ny < y || (ny === y && (nx !== x || nz !== z)))

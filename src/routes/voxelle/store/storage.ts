@@ -6,9 +6,12 @@ import {
   focalLength,
   orthographic,
   resetUndo,
+  getUndoSnapshot,
+  restoreUndoSnapshot,
   serializeVoxels,
   deserializeVoxels
 } from './core';
+import type { UndoSnapshot } from './undo';
 
 const VOXELLE_STORAGE_KEY = 'voxelle';
 const SKIP_STARTUP_KEY = 'voxelle-skip-startup';
@@ -39,9 +42,17 @@ export function loadFromStorage(): boolean {
     const data = JSON.parse(raw);
     const sz = data.gridSize;
     if (typeof sz !== 'number' || sz < 1 || !Number.isInteger(sz)) return false;
-    resetUndo();
     gridSize.set(sz);
     voxels.set(deserializeVoxels(data.voxelsJson));
+    if (data.undoSnapshot && typeof data.undoSnapshot === 'object') {
+      try {
+        restoreUndoSnapshot(data.undoSnapshot as UndoSnapshot);
+      } catch {
+        resetUndo();
+      }
+    } else {
+      resetUndo();
+    }
     if (typeof data.focalLength === 'number' && data.focalLength >= 15 && data.focalLength <= 200) {
       focalLength.set(data.focalLength);
     }
@@ -62,6 +73,7 @@ export function saveToStorage() {
       JSON.stringify({
         gridSize: get(gridSize),
         voxelsJson: serializeVoxels(get(voxels)),
+        undoSnapshot: getUndoSnapshot(),
         focalLength: get(focalLength),
         orthographic: get(orthographic)
       })

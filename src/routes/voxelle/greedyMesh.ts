@@ -3,11 +3,14 @@
  * Thin wrapper over greedyMeshCore that builds Three.js BufferGeometry.
  */
 import * as THREE from 'three';
-import { positionsToVoxelMap } from './coordUtils';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { coordKey, positionsToVoxelMap } from './coordUtils';
 import { computeGreedyMesh, getGreedyMeshFaceArea } from './greedyMeshCore';
 
 import type { AOStrength } from './greedyMeshCore';
 export type { AOStrength } from './greedyMeshCore';
+
+const OVERLAP_DARKEN = 0.5;
 
 export interface GreedyMeshOptions {
   /** @deprecated use aoStrength instead */
@@ -24,17 +27,41 @@ export const PREVIEW_MESH_OPTIONS: GreedyMeshOptions = {
   skipMerge: true
 };
 
+function darkenHex(hex: number, factor: number): number {
+  const r = Math.min(255, Math.floor(((hex >> 16) & 0xff) * factor));
+  const g = Math.min(255, Math.floor(((hex >> 8) & 0xff) * factor));
+  const b = Math.min(255, Math.floor((hex & 0xff) * factor));
+  return (r << 16) | (g << 8) | b;
+}
+
 /**
  * Build a single-color mesh from positions. Returns BufferGeometry or null if empty.
+ * When existingVoxels is provided, positions that intersect existing voxels are shaded more darkly.
  */
 export function buildPreviewGeometry(
   positions: [number, number, number][],
-  color: number
+  color: number,
+  existingVoxels?: Map<string, number>
 ): THREE.BufferGeometry | null {
   if (positions.length === 0) return null;
-  const voxelMap = positionsToVoxelMap(positions, color);
+  let voxelMap: Map<string, number>;
+  if (existingVoxels && existingVoxels.size > 0) {
+    const darkColor = darkenHex(color, OVERLAP_DARKEN);
+    voxelMap = new Map();
+    for (const [x, y, z] of positions) {
+      const key = coordKey(x, y, z);
+      voxelMap.set(key, existingVoxels.has(key) ? darkColor : color);
+    }
+  } else {
+    voxelMap = positionsToVoxelMap(positions, color);
+  }
   const geoByColor = buildGreedyMesh(voxelMap, PREVIEW_MESH_OPTIONS);
-  return geoByColor.get(color) ?? null;
+  const geos = [...geoByColor.values()];
+  if (geos.length === 0) return null;
+  if (geos.length === 1) return geos[0];
+  const merged = mergeGeometries(geos);
+  geos.forEach((g) => g.dispose());
+  return merged;
 }
 
 export function buildGreedyMesh(

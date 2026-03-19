@@ -71,10 +71,73 @@ export function expandPositionsWithSymmetry(
   return [...keys].map((k) => parseCoordKey(k) as [number, number, number]);
 }
 
-/** Grid bounds: x,y,z in [-size/2, size/2) */
-export function inBounds(x: number, y: number, z: number, size: number): boolean {
+/** Grid bounds: x,y,z in [-size/2, size/2). When size is undefined or null, always true (unbounded). */
+export function inBounds(
+  x: number,
+  y: number,
+  z: number,
+  size?: number | null
+): boolean {
+  if (size == null || size === undefined) return true;
   const h = size / 2;
   return x >= -h && x < h && y >= -h && y < h && z >= -h && z < h;
+}
+
+/** Whether (x,y,z) is inside the given bounding box (inclusive on min/max). */
+export function inBoundsBox(
+  x: number,
+  y: number,
+  z: number,
+  b: SelectionBounds
+): boolean {
+  return (
+    x >= b.minX &&
+    x <= b.maxX &&
+    y >= b.minY &&
+    y <= b.maxY &&
+    z >= b.minZ &&
+    z <= b.maxZ
+  );
+}
+
+/** Bounds for operations that need a finite search space. When unbounded, use voxel extent + margin; when empty use a large box around origin. */
+export function getEffectiveBounds(
+  voxels: Map<string, number>,
+  gridSize: number | undefined | null,
+  unbounded: boolean,
+  margin: number = 256
+): SelectionBounds {
+  if (!unbounded && gridSize != null && gridSize > 0) {
+    const h = gridSize / 2;
+    return {
+      minX: -Math.floor(h),
+      minY: -Math.floor(h),
+      minZ: -Math.floor(h),
+      maxX: Math.ceil(h) - 1,
+      maxY: Math.ceil(h) - 1,
+      maxZ: Math.ceil(h) - 1
+    };
+  }
+  const b = getVoxelBounds(voxels);
+  if (b) {
+    return {
+      minX: b.minX - margin,
+      minY: b.minY - margin,
+      minZ: b.minZ - margin,
+      maxX: b.maxX + margin,
+      maxY: b.maxY + margin,
+      maxZ: b.maxZ + margin
+    };
+  }
+  const m = Math.min(margin, 1e5);
+  return {
+    minX: -m,
+    minY: -m,
+    minZ: -m,
+    maxX: m,
+    maxY: m,
+    maxZ: m
+  };
 }
 
 /** Min corner [x,y,z] of selection bounding box; null if empty. */

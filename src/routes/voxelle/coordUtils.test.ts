@@ -3,6 +3,8 @@ import {
   coordKey,
   parseCoordKey,
   inBounds,
+  inBoundsBox,
+  getEffectiveBounds,
   getSelectionAnchor,
   getSelectionBounds,
   getVoxelBounds,
@@ -46,6 +48,61 @@ describe('inBounds', () => {
   it('handles size 1', () => {
     expect(inBounds(0, 0, 0, 1)).toBe(true);
     expect(inBounds(-1, 0, 0, 1)).toBe(false);
+  });
+
+  it('returns true for any coord when size is undefined (unbounded)', () => {
+    expect(inBounds(0, 0, 0)).toBe(true);
+    expect(inBounds(1e6, -1e6, 0)).toBe(true);
+    expect(inBounds(4, 0, 0)).toBe(true);
+  });
+
+  it('returns true for any coord when size is null (unbounded)', () => {
+    expect(inBounds(100, 100, 100, null)).toBe(true);
+  });
+});
+
+describe('inBoundsBox', () => {
+  const b = { minX: -1, minY: 0, minZ: 1, maxX: 2, maxY: 2, maxZ: 3 };
+  it('returns true inside box', () => {
+    expect(inBoundsBox(0, 1, 2, b)).toBe(true);
+    expect(inBoundsBox(-1, 0, 1, b)).toBe(true);
+    expect(inBoundsBox(2, 2, 3, b)).toBe(true);
+  });
+  it('returns false outside box', () => {
+    expect(inBoundsBox(-2, 0, 1, b)).toBe(false);
+    expect(inBoundsBox(3, 1, 2, b)).toBe(false);
+  });
+});
+
+describe('getEffectiveBounds', () => {
+  it('returns grid box when bounded and gridSize set', () => {
+    const v = new Map<string, number>();
+    expect(getEffectiveBounds(v, 8, false)).toEqual({
+      minX: -4,
+      minY: -4,
+      minZ: -4,
+      maxX: 3,
+      maxY: 3,
+      maxZ: 3
+    });
+  });
+  it('returns voxel bounds + margin when unbounded and non-empty', () => {
+    const v = new Map<string, number>([
+      ['10,20,30', 0xff],
+      ['15,25,35', 0xff]
+    ]);
+    const b = getEffectiveBounds(v, 32, true, 5);
+    expect(b.minX).toBe(5);
+    expect(b.maxX).toBe(20);
+    expect(b.minY).toBe(15);
+    expect(b.maxY).toBe(30);
+    expect(b.minZ).toBe(25);
+    expect(b.maxZ).toBe(40);
+  });
+  it('returns large box around origin when unbounded and empty', () => {
+    const b = getEffectiveBounds(new Map(), null, true, 100);
+    expect(b.minX).toBe(-100);
+    expect(b.maxX).toBe(100);
   });
 });
 

@@ -98,7 +98,12 @@ describe('core', () => {
     it('does not exceed MAX_GRID_SIZE', () => {
       gridSize.set(8);
       ensureGridFitsPositions([[200, 0, 0]]);
-      expect(get(gridSize)).toBeLessThanOrEqual(256);
+      expect(get(gridSize)).toBeLessThanOrEqual(65536);
+    });
+    it('expands grid when positions exceed grid', () => {
+      gridSize.set(8);
+      ensureGridFitsPositions([[50, 0, 0]]);
+      expect(get(gridSize)).toBe(102);
     });
   });
 

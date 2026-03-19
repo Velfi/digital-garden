@@ -146,6 +146,79 @@ export function thickenPath(
   return result;
 }
 
+/** Expands each path point into half a cube (Chebyshev): only voxels where (p - center) · normal >= 0. */
+function thickenPathHemicube(
+  positions: [number, number, number][],
+  radius: number,
+  normal: { x: number; y: number; z: number } | undefined
+): [number, number, number][] {
+  if (radius <= 0) return positions;
+  if (!normal) return thickenPath(positions, radius);
+  const { x: nx, y: ny, z: nz } = normal;
+  const lo = -Math.ceil(radius);
+  const hi = Math.floor(radius);
+  const seen = new Set<string>();
+  const result: [number, number, number][] = [];
+  for (const [px, py, pz] of positions) {
+    for (let dx = lo; dx <= hi; dx++) {
+      for (let dy = lo; dy <= hi; dy++) {
+        for (let dz = lo; dz <= hi; dz++) {
+          if (dx * nx + dy * ny + dz * nz >= 0) {
+            const x = px + dx;
+            const y = py + dy;
+            const z = pz + dz;
+            const k = `${x},${y},${z}`;
+            if (!seen.has(k)) {
+              seen.add(k);
+              result.push([x, y, z]);
+            }
+          }
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/** Expands each path point into half a sphere: only voxels where (p - center) · normal >= 0. */
+function hemispherePath(
+  positions: [number, number, number][],
+  radius: number,
+  normal: { x: number; y: number; z: number } | undefined
+): [number, number, number][] {
+  if (radius <= 0) return positions;
+  if (!normal) return puffPath(positions, radius, 0);
+  const { x: nx, y: ny, z: nz } = normal;
+  const r = Math.max(0, radius);
+  const lo = -Math.ceil(r);
+  const hi = Math.floor(r);
+  const rSq = r * r;
+  const seen = new Set<string>();
+  const result: [number, number, number][] = [];
+  for (const [px, py, pz] of positions) {
+    for (let dx = lo; dx <= hi; dx++) {
+      for (let dy = lo; dy <= hi; dy++) {
+        for (let dz = lo; dz <= hi; dz++) {
+          if (dx * dx + dy * dy + dz * dz <= rSq && dx * nx + dy * ny + dz * nz >= 0) {
+            const x = px + dx;
+            const y = py + dy;
+            const z = pz + dz;
+            const xi = Math.round(x);
+            const yi = Math.round(y);
+            const zi = Math.round(z);
+            const k = `${xi},${yi},${zi}`;
+            if (!seen.has(k)) {
+              seen.add(k);
+              result.push([xi, yi, zi]);
+            }
+          }
+        }
+      }
+    }
+  }
+  return result;
+}
+
 /** Thickens path only in the plane perpendicular to the given axis (0=X, 1=Y, 2=Z). Used for wall width so height is unaffected. */
 function thickenPathInPlane(
   positions: [number, number, number][],
@@ -357,11 +430,6 @@ export interface PathThickenParams {
   branchTaperStartRadius?: number;
   /** When branch+taper: end radius (optional; falls back to 0). */
   branchTaperEndRadius?: number;
-  puffRadius: number;
-  puffScatter: number;
-  puffRadiusRange: boolean;
-  puffRadiusMin: number;
-  puffRadiusMax: number;
   airbrushRadius: number;
   airbrushScatter: number;
   airbrushRadiusRange: boolean;
@@ -389,15 +457,17 @@ export interface PathThickenParams {
   /** When true and drawBrushFaceNormal set, offset brush by radius*normal so it sits on surface */
   drawBrushSnapToSurface?: boolean;
   drawBrushFaceNormal?: { x: number; y: number; z: number };
+  /** Bulk mode: brush shape (cube, sphere, hemicube, hemisphere). */
+  bulkBrushShape?: 'cube' | 'sphere' | 'hemicube' | 'hemisphere';
   /** Optional seed for deterministic scatter/radius in puffPath (preview and apply use same seed per stroke). */
   seed?: number;
 }
 
-const CLAY_PATH_MODES = ['bulk', 'smooth', 'level', 'gouge', 'branch', 'puffy', 'melt', 'wall', 'inflate'] as const;
+const CLAY_PATH_MODES = ['bulk', 'smooth', 'level', 'gouge', 'branch', 'melt', 'wall', 'inflate'] as const;
 
 /**
  * Thickens a path according to stroke/clay mode. Single source of truth for preview and apply.
- * Priority: clay puffy > airbrush > clay branch+taper > clay thicken > raw.
+ * Priority: airbrush > clay branch+taper > clay thicken > raw.
  */
 export function thickenPathForStroke(
   positions: [number, number, number][],
@@ -409,16 +479,6 @@ export function thickenPathForStroke(
   const rng = params.seed != null ? createSeededRng(params.seed) : undefined;
 
   // Clay modes take precedence; stroke mode (e.g. airbrush) only applies to Draw tools
-  if (isClayPath && params.clayMode === 'puffy') {
-    return puffPath(
-      positions,
-      params.puffRadius,
-      params.puffScatter,
-      params.puffRadiusRange ? params.puffRadiusMin : undefined,
-      params.puffRadiusRange ? params.puffRadiusMax : undefined,
-      rng
-    );
-  }
   if (isClayPath && params.clayMode === 'wall') {
     const dir = params.sprayDirection ?? 'auto';
     const dirVec = getSprayDirectionVector(dir, params.wallFaceNormal ?? undefined);
@@ -457,6 +517,20 @@ export function thickenPathForStroke(
     const startR = params.branchTaperStartRadius ?? params.clayBrushRadius;
     const endR = params.branchTaperEndRadius ?? 0;
     return thickenPathTapered(positions, startR, endR);
+  }
+  if (isClayPath && params.clayMode === 'bulk' && params.clayBrushRadius > 0) {
+    const shape = params.bulkBrushShape ?? 'cube';
+    const normal = params.drawBrushFaceNormal;
+    switch (shape) {
+      case 'sphere':
+        return puffPath(positions, params.clayBrushRadius, 0);
+      case 'hemicube':
+        return thickenPathHemicube(positions, params.clayBrushRadius, normal);
+      case 'hemisphere':
+        return hemispherePath(positions, params.clayBrushRadius, normal);
+      default:
+        return thickenPath(positions, params.clayBrushRadius);
+    }
   }
   if (isClayPath && params.clayBrushRadius > 0) {
     return thickenPath(positions, params.clayBrushRadius);

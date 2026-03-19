@@ -21,11 +21,6 @@ const defaultParams = {
   strokeMode: 'line',
   clayBrushRadius: 1,
   branchTaper: false,
-  puffRadius: 1,
-  puffScatter: 0,
-  puffRadiusRange: false,
-  puffRadiusMin: 0,
-  puffRadiusMax: 2,
   airbrushRadius: 1,
   airbrushScatter: 0,
   airbrushRadiusRange: false,
@@ -107,6 +102,79 @@ describe('thickenPathForStroke', () => {
     const expectedClayBrush = thickenPath(singlePoint, 1);
     expect(result).toEqual(expectedClayBrush);
     expect(result.length).toBe(27); // 3x3x3 clay brush, not draw brush (2) or raw line
+  });
+
+  it('bulk with bulkBrushShape sphere uses full sphere', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      clayMode: 'bulk',
+      clayBrushRadius: 1,
+      bulkBrushShape: 'sphere'
+    });
+    const expectedSphere = puffPath(singlePoint, 1, 0);
+    expect(result).toEqual(expectedSphere);
+    expect(result.length).toBe(7); // sphere r=1
+  });
+
+  it('bulk with bulkBrushShape hemicube and normal keeps half-space toward normal', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      clayMode: 'bulk',
+      clayBrushRadius: 1,
+      bulkBrushShape: 'hemicube',
+      drawBrushFaceNormal: { x: 0, y: 1, z: 0 }
+    });
+    // Full cube r=1 has 27 voxels; hemicube with normal (0,1,0) keeps voxels with dy >= 0 => 18 (3×2×3)
+    expect(result.length).toBe(18);
+    for (const [x, y, z] of result) {
+      expect(x).toBeGreaterThanOrEqual(-1);
+      expect(x).toBeLessThanOrEqual(1);
+      expect(y).toBeGreaterThanOrEqual(0); // half-space toward +Y
+      expect(y).toBeLessThanOrEqual(1);
+      expect(z).toBeGreaterThanOrEqual(-1);
+      expect(z).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('bulk with bulkBrushShape hemisphere and normal keeps half-sphere toward normal', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      clayMode: 'bulk',
+      clayBrushRadius: 1,
+      bulkBrushShape: 'hemisphere',
+      drawBrushFaceNormal: { x: 0, y: 1, z: 0 }
+    });
+    // Sphere r=1 has 7 voxels; hemisphere keeps those with dy >= 0 => 6 (excludes (0,-1,0))
+    expect(result.length).toBe(6);
+    for (const [, y] of result) {
+      expect(y).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('bulk hemicube without normal falls back to full cube', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      clayMode: 'bulk',
+      clayBrushRadius: 1,
+      bulkBrushShape: 'hemicube'
+      // no drawBrushFaceNormal
+    });
+    expect(result.length).toBe(27);
+  });
+
+  it('bulk hemisphere without normal falls back to full sphere', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      clayMode: 'bulk',
+      clayBrushRadius: 1,
+      bulkBrushShape: 'hemisphere'
+    });
+    expect(result.length).toBe(7);
   });
 
   it('without clayMode, selection method determines behavior (callers must pass clayMode when in clay)', () => {

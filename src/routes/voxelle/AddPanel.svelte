@@ -4,12 +4,15 @@
     addShapeAt,
     getPaintColorResolver,
     sidebarOpen,
+    MAX_GRID_SIZE,
     type StartShape
   } from './store';
 
+  const ADD_SHAPE_MAX_SIZE = Math.min(1024, MAX_GRID_SIZE);
+
   function handleDone() {
     const s = $addPanelStore;
-    const size = Math.max(1, Math.min(256, Math.floor(s.size)));
+    const size = Math.max(1, Math.min(ADD_SHAPE_MAX_SIZE, Math.floor(s.size)));
     const rx = Math.max(0, Math.min(3, Math.floor(s.rotX))) & 3;
     const ry = Math.max(0, Math.min(3, Math.floor(s.rotY))) & 3;
     const rz = Math.max(0, Math.min(3, Math.floor(s.rotZ))) & 3;
@@ -114,7 +117,7 @@
       <input
         type="number"
         min="1"
-        max="256"
+        max={ADD_SHAPE_MAX_SIZE}
         step="1"
         value={$addPanelStore.size}
         oninput={(e) => update('size', Number((e.target as HTMLInputElement).value))}

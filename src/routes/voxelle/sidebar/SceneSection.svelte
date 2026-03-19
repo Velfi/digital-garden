@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { showGrid, enableSky, backgroundColor, renderingMode, type RenderingMode } from '../store';
+  import {
+    showGrid,
+    enableSky,
+    backgroundColor,
+    renderingMode,
+    type RenderingMode
+  } from '../store';
 </script>
 
 <h2>Scene</h2>

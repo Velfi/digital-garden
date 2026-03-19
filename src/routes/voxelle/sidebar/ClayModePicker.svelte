@@ -55,14 +55,6 @@
     </button>
     <button
       type="button"
-      class:active={$clayMode === 'puffy'}
-      onclick={() => clayMode.set('puffy')}
-      title="Puffy: organic spheres for clouds"
-    >
-      Puffy
-    </button>
-    <button
-      type="button"
       class:active={$clayMode === 'melt'}
       onclick={() => clayMode.set('melt')}
       title="Melt: spread voxels downhill, highest first"

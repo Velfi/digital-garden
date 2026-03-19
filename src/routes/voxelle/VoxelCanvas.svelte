@@ -20,15 +20,11 @@
     planeCuboidHollow,
     clayMode,
     clayBrushRadius,
+    bulkBrushShape,
     inflateStrength,
     branchTaper,
     branchTaperStartSize,
     branchTaperEndSize,
-    puffRadius,
-    puffRadiusRange,
-    puffRadiusMin,
-    puffRadiusMax,
-    puffScatter,
     ropeTension,
     ropeBrushShape,
     ropeBrushRadius,
@@ -98,7 +94,12 @@
     type FaceNormal
   } from './store';
   import { getShareFromIndexedDB } from './shareStorage';
-  import { inBounds, expandPositionsWithSymmetry, type SymmetryAxes } from './coordUtils';
+  import {
+    inBounds,
+    getEffectiveBounds,
+    expandPositionsWithSymmetry,
+    type SymmetryAxes
+  } from './coordUtils';
   import {
     getAxisAlignedLine,
     getAxisAlignedPlaneFromNormal,
@@ -239,7 +240,7 @@
   const ZOOM_FACTOR_IN = 1 / 1.2;
   const ZOOM_FACTOR_OUT = 1.2;
   const MIN_DISTANCE = 5;
-  const MAX_DISTANCE = 5000;
+  const MAX_DISTANCE = 50000;
 
   // 35mm equivalent: sensor height 24mm; FOV = 2 * atan(12 / focalLength)
   function focalLengthToFov(mm: number): number {
@@ -364,10 +365,12 @@
       if (greedyMeshLoading) showGreedyMeshSpinner = true;
     }, 2000);
     const voxelsArr: [string, number][] = [...v];
+    const CHUNK_THRESHOLD = 50000;
+    const chunkSize = v.size >= CHUNK_THRESHOLD ? 32 : 0;
     meshWorker.postMessage({
       voxels: voxelsArr,
       mode: $renderingMode,
-      options: { aoStrength: $aoStrength },
+      options: { aoStrength: $aoStrength, chunkSize },
       gen
     });
   }
@@ -583,7 +586,12 @@
       zoomPercent = Math.round(camera.zoom * 100);
     } else {
       const dist = getCameraDistance();
-      const baseDist = $gridSize * 2.5;
+      const v = $voxels;
+      const b = v.size > 0 ? getBoundsFromPositions([...v.keys()].map((k) => parseCoordKey(k))) : null;
+      const baseDist =
+        b
+          ? Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) * 1.5 + 10
+          : $gridSize * 2.5;
       zoomPercent = Math.round((baseDist / dist) * 100);
     }
   }
@@ -612,11 +620,19 @@
 
   function resetCamera() {
     if (!camera || !orbitControls) return;
-    const sz = $gridSize;
-    const dist = sz * 2.5;
-    orbitControls.target.set(0, 0, 0);
-    camera.position.set(dist * 0.6, dist * 0.8, dist);
-    camera.lookAt(0, 0, 0);
+    const v = $voxels;
+    const b =
+      v.size > 0 ? getBoundsFromPositions([...v.keys()].map((k) => parseCoordKey(k))) : null;
+    const center = b
+      ? [(b.minX + b.maxX + 1) / 2, (b.minY + b.maxY + 1) / 2, (b.minZ + b.maxZ + 1) / 2]
+      : [0, 0, 0];
+    const extent = b
+      ? Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) + 2
+      : 64;
+    const dist = extent * 2.5;
+    orbitControls.target.set(center[0], center[1], center[2]);
+    camera.position.set(center[0] + dist * 0.6, center[1] + dist * 0.8, center[2] + dist);
+    camera.lookAt(center[0], center[1], center[2]);
     if (camera instanceof THREE.OrthographicCamera) {
       camera.zoom = 1;
       camera.updateProjectionMatrix();
@@ -630,8 +646,12 @@
     if (!camera || !orbitControls || !container) return;
     const v = $voxels;
     const sz = $gridSize;
+    const emptyBoxSize = 64;
     if (v.size === 0) {
-      fitHelperBox.setFromCenterAndSize(new THREE.Vector3(0, 0, 0), new THREE.Vector3(sz, sz, sz));
+      fitHelperBox.setFromCenterAndSize(
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(emptyBoxSize, emptyBoxSize, emptyBoxSize)
+      );
     } else {
       fitHelperBox.makeEmpty();
       for (const key of v.keys()) {
@@ -642,7 +662,10 @@
     }
     fitHelperBox.getBoundingSphere(fitHelperSphere);
     if (camera instanceof THREE.OrthographicCamera) {
-      const baseHeight = sz * 2;
+      const baseHeight =
+        v.size > 0
+          ? Math.max(256, fitHelperSphere.radius * 2.5)
+          : sz * 2;
       const targetHeight = fitHelperSphere.radius * 3;
       camera.zoom = Math.max(0.1, baseHeight / targetHeight);
       camera.updateProjectionMatrix();
@@ -737,10 +760,11 @@
         : positions;
     ensureGridFitsPositions(effective);
     const sz = $gridSize;
+    const boundSize: number | undefined = undefined;
     const getCol = getPaintColorResolver();
     updateVoxelsInStroke((v) => {
       for (const [x, y, z] of effective) {
-        if (!inBounds(x, y, z, sz)) continue;
+        if (!inBounds(x, y, z, boundSize)) continue;
         const key = coordKey(x, y, z);
         if ($tool === 'remove') {
           v.delete(key);
@@ -755,15 +779,17 @@
 
   function applyClayStroke(
     positions: [number, number, number][],
-    clayModeVal: 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'puffy' | 'melt' | 'rope' | 'wall' | 'inflate',
+    clayModeVal: 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'melt' | 'rope' | 'wall' | 'inflate',
     levelY: number
   ) {
     ensureGridFitsPositions(positions);
     const sz = $gridSize;
+    const clayBoundsOrSize = getEffectiveBounds($voxels, sz, true, 512);
+    const boundSize: number | undefined = undefined;
     const getCol = getPaintColorResolver();
     const v = $voxels;
     if (clayModeVal === 'melt') {
-      const { toAdd, toRemove } = applyMelt(v, positions, sz);
+      const { toAdd, toRemove } = applyMelt(v, positions, clayBoundsOrSize);
       updateVoxelsInStroke((next) => {
         for (const key of toRemove) next.delete(key);
         for (const [key, c] of toAdd) next.set(key, c);
@@ -773,16 +799,16 @@
     if (clayModeVal === 'gouge') {
       updateVoxelsInStroke((next) => {
         for (const [x, y, z] of positions) {
-          if (!inBounds(x, y, z, sz)) continue;
+          if (!inBounds(x, y, z, boundSize)) continue;
           next.delete(coordKey(x, y, z));
         }
       });
       return;
     }
-    if (clayModeVal === 'bulk' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'rope' || clayModeVal === 'wall') {
+    if (clayModeVal === 'bulk' || clayModeVal === 'branch' || clayModeVal === 'rope' || clayModeVal === 'wall') {
       updateVoxelsInStroke((next) => {
         for (const [x, y, z] of positions) {
-          if (!inBounds(x, y, z, sz)) continue;
+          if (!inBounds(x, y, z, boundSize)) continue;
           const key = coordKey(x, y, z);
           if (!next.has(key)) next.set(key, getCol());
         }
@@ -790,7 +816,7 @@
       return;
     }
     if (clayModeVal === 'smooth') {
-      const { toAdd, toRemove } = applySmooth(v, positions, sz);
+      const { toAdd, toRemove } = applySmooth(v, positions, clayBoundsOrSize);
       updateVoxelsInStroke((next) => {
         for (const key of toRemove) next.delete(key);
         for (const [key, c] of toAdd) next.set(key, c);
@@ -798,7 +824,7 @@
       return;
     }
     if (clayModeVal === 'inflate') {
-      const { toAdd, toRemove } = applyInflate(v, positions, sz, get(inflateStrength));
+      const { toAdd, toRemove } = applyInflate(v, positions, clayBoundsOrSize, get(inflateStrength));
       updateVoxelsInStroke((next) => {
         for (const key of toRemove) next.delete(key);
         for (const [key, c] of toAdd) next.set(key, c);
@@ -806,7 +832,7 @@
       return;
     }
     if (clayModeVal === 'level') {
-      const { toAdd, toRemove } = applyLevel(v, positions, levelY, getCol, sz);
+      const { toAdd, toRemove } = applyLevel(v, positions, levelY, getCol, clayBoundsOrSize);
       updateVoxelsInStroke((next) => {
         for (const key of toRemove) next.delete(key);
         for (const [key, c] of toAdd) next.set(key, c);
@@ -817,11 +843,11 @@
   function applySelectStroke(positions: [number, number, number][]) {
     pushUndo();
     const v = $voxels;
-    const sz = $gridSize;
+    const boundSize: number | undefined = undefined;
     const mode = get(selectionMode);
     const incoming = new Map<string, number>();
     for (const [x, y, z] of positions) {
-      if (!inBounds(x, y, z, sz)) continue;
+      if (!inBounds(x, y, z, boundSize)) continue;
       const key = coordKey(x, y, z);
       const col = v.get(key);
       if (col !== undefined) incoming.set(key, col);
@@ -852,10 +878,11 @@
       ([x, y, z]) => [x + dx, y + dy, z + dz] as [number, number, number]
     );
     ensureGridFitsPositions(stampPositions);
+    const stampBoundSize: number | undefined = undefined;
     beginStroke();
     updateVoxelsInStroke((v) => {
       stampPositions.forEach(([x, y, z], i) => {
-        if (!inBounds(x, y, z, $gridSize)) return;
+        if (!inBounds(x, y, z, stampBoundSize)) return;
         v.set(coordKey(x, y, z), colors[i]);
       });
     });
@@ -884,7 +911,7 @@
         : $tool === 'select' || $tool === 'selectByColor' || $tool === 'selectCoplanar'
           ? 0x33aaff
           : hexToInt($color);
-    const geo = buildPreviewGeometry(filtered, hex);
+    const geo = buildPreviewGeometry(filtered, hex, $voxels);
     if (geo) {
       if (previewMesh.geometry) previewMesh.geometry.dispose();
       previewMesh.geometry = geo;
@@ -1233,8 +1260,8 @@
       return;
     }
 
-    // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/puffy/melt/wall)
-    if ($tool === 'clay' && (mode === 'bulk' || mode === 'smooth' || mode === 'level' || mode === 'gouge' || mode === 'puffy' || mode === 'melt' || mode === 'wall' || mode === 'inflate')) {
+    // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/melt/wall)
+    if ($tool === 'clay' && (mode === 'bulk' || mode === 'smooth' || mode === 'level' || mode === 'gouge' || mode === 'melt' || mode === 'wall' || mode === 'inflate')) {
       // Start on voxel (grab surface) or face of voxel (extend outward)
       const pos = getVoxelPosition(hit) ?? getAddPosition(hit);
       if (pos) {
@@ -1252,14 +1279,10 @@
             strokeMode: get(strokeMode),
             clayMode: mode,
             clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
+            bulkBrushShape: get(bulkBrushShape),
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-            puffRadius: get(puffRadius) * 0.5,
-            puffScatter: get(puffScatter),
-            puffRadiusRange: get(puffRadiusRange),
-            puffRadiusMin: get(puffRadiusMin) * 0.5,
-            puffRadiusMax: get(puffRadiusMax) * 0.5,
             airbrushRadius: (get(airbrushRadius) as number) * 0.5,
             airbrushScatter: get(airbrushScatter),
             airbrushRadiusRange: get(airbrushRadiusRange),
@@ -1303,14 +1326,10 @@
             strokeMode: get(strokeMode),
             clayMode: 'branch',
             clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
+            bulkBrushShape: get(bulkBrushShape),
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-            puffRadius: get(puffRadius) * 0.5,
-            puffScatter: get(puffScatter),
-            puffRadiusRange: get(puffRadiusRange),
-            puffRadiusMin: get(puffRadiusMin) * 0.5,
-            puffRadiusMax: get(puffRadiusMax) * 0.5,
             airbrushRadius: (get(airbrushRadius) as number) * 0.5,
             airbrushScatter: get(airbrushScatter),
             airbrushRadiusRange: get(airbrushRadiusRange),
@@ -1541,7 +1560,6 @@
         clayModeVal === 'smooth' ||
         clayModeVal === 'level' ||
         clayModeVal === 'gouge' ||
-        clayModeVal === 'puffy' ||
         clayModeVal === 'melt' ||
         clayModeVal === 'wall' ||
         clayModeVal === 'inflate');
@@ -1554,14 +1572,10 @@
       strokeMode: get(strokeMode) as string,
       clayMode: isClayPathFollow ? clayModeVal : undefined,
       clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
+      bulkBrushShape: get(bulkBrushShape),
       branchTaper: get(branchTaper),
       branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
       branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-      puffRadius: get(puffRadius) * 0.5,
-      puffScatter: get(puffScatter),
-      puffRadiusRange: get(puffRadiusRange),
-      puffRadiusMin: get(puffRadiusMin) * 0.5,
-      puffRadiusMax: get(puffRadiusMax) * 0.5,
       airbrushRadius: (get(airbrushRadius) as number) * 0.5,
       airbrushScatter: get(airbrushScatter),
       airbrushRadiusRange: get(airbrushRadiusRange),
@@ -1655,14 +1669,10 @@
             strokeMode: get(strokeMode),
             clayMode: 'branch',
             clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
+            bulkBrushShape: get(bulkBrushShape),
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-            puffRadius: get(puffRadius) * 0.5,
-            puffScatter: get(puffScatter),
-            puffRadiusRange: get(puffRadiusRange),
-            puffRadiusMin: get(puffRadiusMin) * 0.5,
-            puffRadiusMax: get(puffRadiusMax) * 0.5,
             airbrushRadius: (get(airbrushRadius) as number) * 0.5,
             airbrushScatter: get(airbrushScatter),
             airbrushRadiusRange: get(airbrushRadiusRange),
@@ -1707,7 +1717,6 @@
             clayPathMode === 'smooth' ||
             clayPathMode === 'level' ||
             clayPathMode === 'gouge' ||
-            clayPathMode === 'puffy' ||
             clayPathMode === 'melt' ||
             clayPathMode === 'wall' ||
             clayPathMode === 'inflate') &&
@@ -1806,20 +1815,16 @@
               pendingStrokePositions = getAxisAlignedLine(dragStartPos, currentPos);
             }
           }
-          // Clay path modes: show thickened preview (brush radius or puff); airbrush: sphere preview
+          // Clay path modes: show thickened preview (brush radius); airbrush: sphere preview
           updatePreviewMesh(
             thickenPathForStroke(pendingStrokePositions, {
               strokeMode: (isAirbrushPath && !isClayPathFollow ? 'airbrush' : strokeModeVal ?? get(strokeMode)) as string,
               clayMode: isClayPathFollow ? clayPathMode : undefined,
               clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
+              bulkBrushShape: get(bulkBrushShape),
               branchTaper: get(branchTaper),
               branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
               branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-              puffRadius: get(puffRadius) * 0.5,
-              puffScatter: get(puffScatter),
-              puffRadiusRange: get(puffRadiusRange),
-              puffRadiusMin: get(puffRadiusMin) * 0.5,
-              puffRadiusMax: get(puffRadiusMax) * 0.5,
               airbrushRadius: (get(airbrushRadius) as number) * 0.5,
               airbrushScatter: get(airbrushScatter),
               airbrushRadiusRange: get(airbrushRadiusRange),
@@ -1977,7 +1982,7 @@
       const clayModeVal = get(clayMode);
       const isClayPath =
         $tool === 'clay' &&
-        (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'melt' || clayModeVal === 'wall' || clayModeVal === 'inflate');
+        (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'melt' || clayModeVal === 'wall' || clayModeVal === 'inflate');
       const normal = getEffectivePlaneNormal();
       if (mode === 'cuboid' && dragStartPos && normal && !isClayPath) {
         // Enter depth phase: drag plane, then scroll for depth
@@ -2016,19 +2021,15 @@
         if (pendingStrokePositions.length > 0) {
           const isClayPath =
             $tool === 'clay' &&
-            (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'puffy' || clayModeVal === 'melt' || clayModeVal === 'wall' || clayModeVal === 'inflate');
+            (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'melt' || clayModeVal === 'wall' || clayModeVal === 'inflate');
           const toApply = thickenPathForStroke(pendingStrokePositions, {
             strokeMode: mode as string,
             clayMode: isClayPath ? clayModeVal : undefined,
             clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
+            bulkBrushShape: get(bulkBrushShape),
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-            puffRadius: get(puffRadius) * 0.5,
-            puffScatter: get(puffScatter),
-            puffRadiusRange: get(puffRadiusRange),
-            puffRadiusMin: get(puffRadiusMin) * 0.5,
-            puffRadiusMax: get(puffRadiusMax) * 0.5,
             airbrushRadius: (get(airbrushRadius) as number) * 0.5,
             airbrushScatter: get(airbrushScatter),
             airbrushRadiusRange: get(airbrushRadiusRange),
@@ -2172,7 +2173,13 @@
     const w = container.clientWidth;
     const h = container.clientHeight;
     const aspect = w / h;
-    const frustumHeight = $gridSize * 2;
+    const v = $voxels;
+    const b =
+      v.size > 0 ? getBoundsFromPositions([...v.keys()].map((k) => parseCoordKey(k))) : null;
+    const extent = b
+      ? Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) + 2
+      : $gridSize;
+    const frustumHeight = Math.max(extent * 2, 256);
     const frustumWidth = frustumHeight * aspect;
     orthographicCamera.left = -frustumWidth / 2;
     orthographicCamera.right = frustumWidth / 2;
@@ -2666,7 +2673,7 @@
         Math.max(0, Math.min(3, Math.floor(s.rotZ))) & 3
       ],
       shape: s.shape,
-      size: Math.max(1, Math.min(256, Math.floor(s.size)))
+      size: Math.max(1, Math.min(1024, Math.floor(s.size)))
     });
     positions = expandPositionsWithSymmetry(positions, {
       x: get(symmetryX),
@@ -2675,7 +2682,7 @@
     });
     const sel = $selectedColors;
     const col = hexToInt(sel.length > 0 ? sel[0] : $color);
-    const geo = buildPreviewGeometry(positions, col);
+    const geo = buildPreviewGeometry(positions, col, $voxels);
     if (geo) {
       if (addPreviewMesh.geometry) addPreviewMesh.geometry.dispose();
       addPreviewMesh.geometry = geo;
