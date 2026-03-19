@@ -79,6 +79,7 @@
     rotatePositionAroundOrigin,
     getSelectionCenter,
     selectionMode,
+    type SelectionMode,
     mergeSelection,
     fillSelectDiagonals,
     fillRespectsColor,
@@ -96,13 +97,16 @@
     rockClusterRadius,
     rockSinkDirection,
     rockSinkAmount,
+    ashlarSize,
+    ashlarRoughness,
+    ashlarThickness,
     grassRadius,
     grassDensity,
     grassHeight,
     type Tool,
     type FaceNormal
   } from './store';
-  import { generateRockVoxels, getRockPositions } from './store/generators/rock';
+  import { generateRockVoxels, getRockPositions, generateAshlarVoxels, getAshlarPositions } from './store/generators/rock';
   import { generateGrassVoxels, getGrassPositions } from './store/generators/grass';
   import { getShareFromIndexedDB } from './shareStorage';
   import {
@@ -169,6 +173,8 @@
   > = new Map();
   let animationFrameId: number;
   let isVoxelDrag = false;
+  /** Selection mode for the current drag (set at pointer down when select tool); used so shift-drag extends selection. */
+  let selectionModeForCurrentGesture: SelectionMode | null = null;
   let isStampDrag = false;
   let lastStampTarget: [number, number, number] | null = null;
   let lastStampNormal: FaceNormal | null = null;
@@ -185,6 +191,8 @@
   let nextRockPlacementSeed = $state(0);
   /** Next grass placement seed (preview and apply match). */
   let nextGrassPlacementSeed = $state(0);
+  /** Next ashlar placement seed (preview and apply match). */
+  let nextAshlarPlacementSeed = $state(0);
   /** Clay bulk: last sampled position for path accumulation */
   let lastBulkPos: [number, number, number] | null = null;
   /** Branch: pointer down position for view-plane direction and length */
@@ -872,11 +880,11 @@
     }
   }
 
-  function applySelectStroke(positions: [number, number, number][]) {
+  function applySelectStroke(positions: [number, number, number][], mode?: SelectionMode) {
     pushUndo();
     const v = $voxels;
     const boundSize: number | undefined = undefined;
-    const mode = get(selectionMode);
+    const modeToUse = mode ?? get(selectionMode);
     const incoming = new Map<string, number>();
     for (const [x, y, z] of positions) {
       if (!inBounds(x, y, z, boundSize)) continue;
@@ -884,7 +892,7 @@
       const col = v.get(key);
       if (col !== undefined) incoming.set(key, col);
     }
-    const next = mergeSelection($selection, incoming, mode);
+    const next = mergeSelection($selection, incoming, modeToUse);
     selection.set(next);
   }
 
@@ -1012,6 +1020,66 @@
     });
   }
 
+  function getAshlarThicknessAxis(normal: FaceNormal): 0 | 1 | 2 {
+    const ax = Math.abs(normal[0]);
+    const ay = Math.abs(normal[1]);
+    const az = Math.abs(normal[2]);
+    return ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+  }
+
+  function placeAshlar(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
+    const getCol = getPaintColorResolver();
+    const size = get(ashlarSize) as number;
+    const roughness = get(ashlarRoughness) as number;
+    const thickness = get(ashlarThickness) as number;
+    const thicknessAxis = getAshlarThicknessAxis(normal);
+    const surfaceTarget: [number, number, number] = [
+      place[0] - normal[0],
+      place[1] - normal[1],
+      place[2] - normal[2]
+    ];
+    const ashlarMap = generateAshlarVoxels(
+      placementSeed,
+      size,
+      roughness,
+      getCol(),
+      thickness,
+      thicknessAxis
+    );
+    const localPositions = [...ashlarMap.keys()].map(
+      (k) => parseCoordKey(k) as [number, number, number]
+    );
+    const bounds = getBoundsFromPositions(localPositions);
+    if (!bounds) return;
+    const halfW = (bounds.maxX - bounds.minX) / 2;
+    const halfH = (bounds.maxY - bounds.minY) / 2;
+    const halfD = (bounds.maxZ - bounds.minZ) / 2;
+    const targetForStamp: [number, number, number] = [
+      normal[0] ? surfaceTarget[0] : place[0] - halfW,
+      normal[1] ? surfaceTarget[1] : place[1] - halfH,
+      normal[2] ? surfaceTarget[2] : place[2] - halfD
+    ];
+    const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
+    const allPositions: [number, number, number][] = [];
+    const allColors: number[] = [];
+    for (const [key, col] of ashlarMap) {
+      const [lx, ly, lz] = parseCoordKey(key);
+      allPositions.push([lx + ox, ly + oy, lz + oz]);
+      allColors.push(col);
+    }
+    if (allPositions.length === 0) return;
+    playPlaceSound();
+    ensureGridFitsPositions(allPositions);
+    const boundSize: number | undefined = undefined;
+    beginStroke();
+    updateVoxelsInStroke((v) => {
+      allPositions.forEach(([x, y, z], i) => {
+        if (!inBounds(x, y, z, boundSize)) return;
+        v.set(coordKey(x, y, z), allColors[i]);
+      });
+    });
+  }
+
   function placeGrass(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
     const getCol = getPaintColorResolver();
     const radius = get(grassRadius) as number;
@@ -1109,7 +1177,7 @@
     );
     if (positions.length > 0) {
       if ($tool === 'select') {
-        applySelectStroke(positions);
+        applySelectStroke(positions, selectionModeForCurrentGesture ?? get(selectionMode));
       } else {
         beginStroke();
         applyLineStroke(positions);
@@ -1200,7 +1268,7 @@
     }
     if (positions.length > 0) {
       if ($tool === 'select') {
-        applySelectStroke(positions);
+        applySelectStroke(positions, selectionModeForCurrentGesture ?? get(selectionMode));
       } else {
         beginStroke();
         applyLineStroke(positions);
@@ -1287,6 +1355,7 @@
         dragPointerId = null;
       }
       isVoxelDrag = false;
+      selectionModeForCurrentGesture = null;
       dragStartPos = null;
       dragFaceNormal = null;
       dragPlaneAxisOverride = null;
@@ -1321,6 +1390,56 @@
       if ($tool === 'grass') {
         nextGrassPlacementSeed = Math.floor(Math.random() * 0xffffffff);
         event.preventDefault();
+        render();
+        return;
+      }
+      if ($tool === 'ashlar') {
+        nextAshlarPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+        event.preventDefault();
+        const hit = getIntersection();
+        if (hit) {
+          const place = getAddPosition(hit);
+          const normal = getFaceNormalFromHit(hit);
+          if (place && normal) {
+            const size = get(ashlarSize) as number;
+            const roughness = get(ashlarRoughness) as number;
+            const thickness = get(ashlarThickness) as number;
+            const thicknessAxis = getAshlarThicknessAxis(normal);
+            const surfaceTarget: [number, number, number] = [
+              place[0] - normal[0],
+              place[1] - normal[1],
+              place[2] - normal[2]
+            ];
+            const localPositions = getAshlarPositions(
+              nextAshlarPlacementSeed,
+              size,
+              roughness,
+              thickness,
+              thicknessAxis
+            );
+            const bounds = getBoundsFromPositions(localPositions);
+            if (bounds) {
+              const halfW = (bounds.maxX - bounds.minX) / 2;
+              const halfH = (bounds.maxY - bounds.minY) / 2;
+              const halfD = (bounds.maxZ - bounds.minZ) / 2;
+              const targetForStamp: [number, number, number] = [
+                normal[0] ? surfaceTarget[0] : place[0] - halfW,
+                normal[1] ? surfaceTarget[1] : place[1] - halfH,
+                normal[2] ? surfaceTarget[2] : place[2] - halfD
+              ];
+              const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
+              const previewPositions = localPositions.map(([lx, ly, lz]) => [
+                lx + ox,
+                ly + oy,
+                lz + oz
+              ] as [number, number, number]);
+              updatePreviewMesh(previewPositions);
+            } else {
+              updatePreviewMesh([]);
+            }
+            rollOverMesh.visible = false;
+          }
+        }
         render();
         return;
       }
@@ -1584,7 +1703,11 @@
         );
         if (incoming.size > 0) {
           pushUndo();
-          const next = mergeSelection($selection, incoming, get(selectionMode));
+          const next = mergeSelection(
+            $selection,
+            incoming,
+            event.shiftKey ? 'add' : get(selectionMode)
+          );
           selection.set(next);
         }
       }
@@ -1684,7 +1807,11 @@
         const incoming = getCoplanarFacesSelectionAt(pos[0], pos[1], pos[2], normal);
         if (incoming.size > 0) {
           pushUndo();
-          const next = mergeSelection($selection, incoming, get(selectionMode));
+          const next = mergeSelection(
+            $selection,
+            incoming,
+            event.shiftKey ? 'add' : get(selectionMode)
+          );
           selection.set(next);
         }
       }
@@ -1715,7 +1842,11 @@
                   }
                   return m;
                 })();
-          const next = mergeSelection($selection, incoming, get(selectionMode));
+          const next = mergeSelection(
+            $selection,
+            incoming,
+            event.shiftKey ? 'add' : get(selectionMode)
+          );
           selection.set(next);
         }
       }
@@ -1753,7 +1884,7 @@
     }
 
     // Rocks / Grass generator: click places on pointerup; do not start stroke drag
-    if ($tool === 'rocks' || $tool === 'grass') {
+    if ($tool === 'rocks' || $tool === 'grass' || $tool === 'ashlar') {
       requestAnimationFrame(() => render());
       return;
     }
@@ -1773,6 +1904,9 @@
     }
 
     dragStartPos = startPos;
+    if ($tool === 'select') {
+      selectionModeForCurrentGesture = event.shiftKey ? 'add' : get(selectionMode);
+    }
     currentStrokeSeed = Math.floor(Math.random() * 0xffffffff);
     hit.object.getWorldQuaternion(worldQuaternion);
     const faceNormal = hit.face!.normal.clone().applyQuaternion(worldQuaternion);
@@ -2266,6 +2400,64 @@
       render();
       return;
     }
+    // Ashlar hover preview
+    if ($tool === 'ashlar') {
+      const hit = getIntersection();
+      if (hit) {
+        const place = getAddPosition(hit);
+        const normal = getFaceNormalFromHit(hit);
+        if (place && normal) {
+          if (nextAshlarPlacementSeed === 0) {
+            nextAshlarPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+          }
+          const size = get(ashlarSize) as number;
+          const roughness = get(ashlarRoughness) as number;
+          const thickness = get(ashlarThickness) as number;
+          const thicknessAxis = getAshlarThicknessAxis(normal);
+          const surfaceTarget: [number, number, number] = [
+            place[0] - normal[0],
+            place[1] - normal[1],
+            place[2] - normal[2]
+          ];
+          const localPositions = getAshlarPositions(
+            nextAshlarPlacementSeed,
+            size,
+            roughness,
+            thickness,
+            thicknessAxis
+          );
+          const bounds = getBoundsFromPositions(localPositions);
+          if (bounds) {
+            const halfW = (bounds.maxX - bounds.minX) / 2;
+            const halfH = (bounds.maxY - bounds.minY) / 2;
+            const halfD = (bounds.maxZ - bounds.minZ) / 2;
+            const targetForStamp: [number, number, number] = [
+              normal[0] ? surfaceTarget[0] : place[0] - halfW,
+              normal[1] ? surfaceTarget[1] : place[1] - halfH,
+              normal[2] ? surfaceTarget[2] : place[2] - halfD
+            ];
+            const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
+            const previewPositions = localPositions.map(([lx, ly, lz]) => [
+              lx + ox,
+              ly + oy,
+              lz + oz
+            ] as [number, number, number]);
+            updatePreviewMesh(previewPositions);
+          } else {
+            updatePreviewMesh([]);
+          }
+          rollOverMesh.visible = false;
+        } else {
+          updatePreviewMesh([]);
+          rollOverMesh.visible = false;
+        }
+      } else {
+        updatePreviewMesh([]);
+        rollOverMesh.visible = false;
+      }
+      render();
+      return;
+    }
     if ($tool !== 'voxel' && $tool !== 'clay') {
       rollOverMesh.visible = false;
       updatePreviewMesh([]);
@@ -2371,6 +2563,21 @@
         }
       }
     }
+    if (event.button === 0 && $tool === 'ashlar') {
+      const hit = getIntersection();
+      if (hit) {
+        const place = getAddPosition(hit);
+        const normal = getFaceNormalFromHit(hit);
+        if (place && normal) {
+          const seed =
+            nextAshlarPlacementSeed === 0
+              ? Math.floor(Math.random() * 0xffffffff)
+              : nextAshlarPlacementSeed;
+          placeAshlar(place, normal, seed);
+          nextAshlarPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+        }
+      }
+    }
     if (event.button === 0 && isVoxelDrag) {
       updatePointerFromEvent(event);
       const mode = get(effectiveStrokeMode);
@@ -2468,7 +2675,7 @@
             seed: currentStrokeSeed
           });
           if ($tool === 'select') {
-            applySelectStroke(toApply);
+            applySelectStroke(toApply, selectionModeForCurrentGesture ?? get(selectionMode));
           } else if (isClayPath) {
             beginStroke();
             applyClayStroke(toApply, clayModeVal, dragStartPos?.[1] ?? 0);
@@ -2481,6 +2688,7 @@
         updatePreviewMesh([]);
       }
       isVoxelDrag = false;
+      selectionModeForCurrentGesture = null;
       dragStartPos = null;
       dragFaceNormal = null;
       dragPlaneAxisOverride = null;

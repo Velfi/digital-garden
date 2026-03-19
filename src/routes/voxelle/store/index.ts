@@ -71,6 +71,9 @@ export {
   rockClusterRadius,
   rockSinkDirection,
   rockSinkAmount,
+  ashlarSize,
+  ashlarRoughness,
+  ashlarThickness,
   grassRadius,
   grassDensity,
   grassHeight,
@@ -187,5 +190,5 @@ export { importImageFromFile } from './importImage';
 export type { VoxelleFileFormat } from './voxelleFile';
 
 // Generators
-export { generateRockVoxels, getRockPositions } from './generators/rock';
+export { generateRockVoxels, getRockPositions, generateAshlarVoxels, getAshlarPositions } from './generators/rock';
 export { generateGrassVoxels, getGrassPositions } from './generators/grass';

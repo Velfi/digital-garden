@@ -36,7 +36,8 @@ export type Tool =
   | 'eyedropper'
   | 'clay'
   | 'rocks'
-  | 'grass';
+  | 'grass'
+  | 'ashlar';
 
 export type ClayMode =
   | 'bulk'
@@ -226,7 +227,14 @@ export const rockSinkDirection = writable<RockSinkDirection>('none');
 /** Rocks generator: sink amount in voxel layers (0–5). */
 export const rockSinkAmount = writable<number>(0);
 
-/** Grass generator: patch radius on surface (2–12 voxels). */
+/** Ashlar generator: block scale (1–20 voxels per dimension). */
+export const ashlarSize = writable<number>(3);
+/** Ashlar generator: edge irregularity 0–1 (removes boundary voxels). */
+export const ashlarRoughness = writable<number>(0.3);
+/** Ashlar generator: thickness along surface normal (1–20 voxels) for thin walls. */
+export const ashlarThickness = writable<number>(3);
+
+/** Grass generator: patch radius on surface (2–20 voxels). */
 export const grassRadius = writable<number>(4);
 /** Grass generator: density 0–1 (blade placement probability). */
 export const grassDensity = writable<number>(0.6);

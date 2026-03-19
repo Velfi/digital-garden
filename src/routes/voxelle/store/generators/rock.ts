@@ -125,3 +125,111 @@ export function getRockPositions(
   const map = generateRockVoxels(seed, size, roughness, 0x888888);
   return [...map.keys()].map((k) => parseCoordKey(k) as [number, number, number]);
 }
+
+/** Derive integer in [lo, hi] from seed. */
+function seedToInt(seed: number, lo: number, hi: number): number {
+  let h = (seed >>> 0) * 0x9e3779b9;
+  h = (h ^ (h >>> 16)) * 0x85ebca6b;
+  h = (h ^ (h >>> 13)) * 0xc2b2ae35;
+  return lo + (((h >>> 0) % (hi - lo + 1)) | 0);
+}
+
+/**
+ * Generate a single ashlar (dressed stone) block for walls: axis-aligned box with
+ * rough edges. Dimensions vary by seed; roughness removes boundary voxels for a hand-cut look.
+ * When thickness and thicknessAxis are provided, that axis is set to thickness (for thin walls).
+ */
+export function generateAshlarVoxels(
+  seed: number,
+  size: number,
+  roughness: number,
+  baseColor: number,
+  thickness?: number,
+  thicknessAxis?: 0 | 1 | 2
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (size < 1) return out;
+
+  const s = Math.max(1, Math.floor(size));
+  const lo = Math.max(3, Math.floor(s / 2)); // min 3 so corner rounding doesn't remove all voxels
+  const hi = Math.max(lo, Math.min(20, s + Math.floor(s / 2)));
+  let wx = Math.max(3, seedToInt(seed, lo, hi));
+  let wy = Math.max(3, seedToInt(seed + 1, lo, hi));
+  let wz = Math.max(3, seedToInt(seed + 2, lo, hi));
+  if (thickness != null && thicknessAxis !== undefined) {
+    const t = Math.max(1, Math.min(20, Math.floor(thickness)));
+    if (thicknessAxis === 0) wx = t;
+    else if (thicknessAxis === 1) wy = t;
+    else wz = t;
+  }
+
+  const rough = Math.max(0, Math.min(1, roughness));
+
+  for (let x = 0; x < wx; x++) {
+    for (let y = 0; y < wy; y++) {
+      for (let z = 0; z < wz; z++) {
+        const onBoundary =
+          x === 0 ||
+          x === wx - 1 ||
+          y === 0 ||
+          y === wy - 1 ||
+          z === 0 ||
+          z === wz - 1;
+        if (onBoundary && rough > 0) {
+          const h = hash3(seed + 0xabcd, x, y, z);
+          if (h < rough * 0.4) continue;
+        }
+        // Slightly rounded edges: remove voxels near corners so edges read as rounded
+        const corners: [number, number, number][] = [
+          [0, 0, 0],
+          [wx - 1, 0, 0],
+          [0, wy - 1, 0],
+          [wx - 1, wy - 1, 0],
+          [0, 0, wz - 1],
+          [wx - 1, 0, wz - 1],
+          [0, wy - 1, wz - 1],
+          [wx - 1, wy - 1, wz - 1]
+        ];
+        const roundRadius = 1.4; // voxel units; removes corner + adjacent edge voxels
+        const nearCorner = corners.some(([cx, cy, cz]) => {
+          const dx = x - cx;
+          const dy = y - cy;
+          const dz = z - cz;
+          return Math.sqrt(dx * dx + dy * dy + dz * dz) < roundRadius;
+        });
+        if (nearCorner) continue;
+        out.set(coordKey(x, y, z), 0);
+      }
+    }
+  }
+
+  for (const key of out.keys()) {
+    out.set(key, baseColor);
+  }
+
+  const bounds = { minX: 0, maxX: wx - 1, minY: 0, maxY: wy - 1, minZ: 0, maxZ: wz - 1 };
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cy = (bounds.minY + bounds.maxY) / 2;
+  const cz = (bounds.minZ + bounds.maxZ) / 2;
+
+  const centered = new Map<string, number>();
+  for (const [key, col] of out) {
+    const [x, y, z] = parseCoordKey(key);
+    centered.set(coordKey(x - cx, y - cy, z - cz), col);
+  }
+  return centered;
+}
+
+/**
+ * Get ashlar voxel positions only (for preview mesh). Returns positions in local space (centered).
+ */
+export function getAshlarPositions(
+  seed: number,
+  size: number,
+  roughness: number,
+  thickness?: number,
+  thicknessAxis?: 0 | 1 | 2
+): [number, number, number][] {
+  const map = generateAshlarVoxels(seed, size, roughness, 0x888888, thickness, thicknessAxis);
+  return [...map.keys()].map((k) => parseCoordKey(k) as [number, number, number]);
+}

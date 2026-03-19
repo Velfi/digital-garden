@@ -121,7 +121,7 @@
         onclick={() => {
           toolPane.set('draw');
           tool.set(
-            $lastDrawTool === 'fly' || $lastDrawTool === 'clay' || $lastDrawTool === 'rocks' || $lastDrawTool === 'grass'
+            $lastDrawTool === 'fly' || $lastDrawTool === 'clay' || $lastDrawTool === 'rocks' || $lastDrawTool === 'grass' || $lastDrawTool === 'ashlar'
               ? 'remove'
               : $lastDrawTool
           );

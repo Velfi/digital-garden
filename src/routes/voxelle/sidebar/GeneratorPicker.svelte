@@ -20,6 +20,14 @@
   >
     Grass
   </button>
+  <button
+    type="button"
+    class:active={$tool === 'ashlar'}
+    onclick={() => tool.set('ashlar')}
+    title="Place rough stone blocks for walls. Right-click to regenerate block."
+  >
+    Ashlar
+  </button>
 </div>
 
 <style>
