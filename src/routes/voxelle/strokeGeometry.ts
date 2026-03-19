@@ -589,7 +589,7 @@ export function getRopeCurveVoxels(
   ];
   const Lh = Math.sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]);
 
-  if (Lh < 1e-9) {
+  if (Lh < 1e-6 * L) {
     return getBresenham3DLine(a, b);
   }
 
@@ -614,6 +614,9 @@ export function getRopeCurveVoxels(
     if (Math.abs(df) < 1e-12) break;
     x0 = x0 - fx / df;
     x0 = Math.max(-Lh * 2, Math.min(Lh * 2, x0));
+  }
+  if (Math.abs(f(x0)) > 1e-6) {
+    return getBresenham3DLine(a, b);
   }
 
   const c = s1 - catA * Math.cosh(-x0 / catA);
@@ -651,6 +654,20 @@ export function getRopeCurveVoxels(
     }
   }
   if (points.length === 1) result.push(points[0]);
+
+  const eq = (p: [number, number, number], q: [number, number, number]) =>
+    p[0] === q[0] && p[1] === q[1] && p[2] === q[2];
+  if (result.length > 0) {
+    if (!eq(result[0], a)) {
+      const seg = getBresenham3DLine(a, result[0]).slice(0, -1).reverse();
+      result.unshift(...seg);
+    }
+    const last = result[result.length - 1];
+    if (!eq(last, b)) {
+      const seg = getBresenham3DLine(last, b).slice(1);
+      result.push(...seg);
+    }
+  }
   return result.length > 0 ? result : [a, b];
 }
 
