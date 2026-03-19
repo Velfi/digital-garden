@@ -6,6 +6,7 @@
     strokeMode,
     lineAxisAlign,
     planeAxis,
+    planeCuboidHollow,
     sidebarOpen,
     selection,
     stampRotation,
@@ -185,6 +186,15 @@
             Auto
           </button>
         </div>
+        <label class="tool-panel-check">
+          <input
+            type="checkbox"
+            checked={$planeCuboidHollow}
+            onchange={(e) => planeCuboidHollow.set((e.target as HTMLInputElement).checked)}
+            title="Only perimeter (plane) or shell (cuboid)"
+          />
+          Hollow
+        </label>
       </section>
     {/if}
 

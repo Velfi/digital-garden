@@ -62,7 +62,7 @@ describe('thickenPathForStroke', () => {
     expect(airbrushResult.length).toBe(7);
   });
 
-  it('airbrush constrain to plane keeps voxels on plane through first point', () => {
+  it('airbrush constrain to plane does not flatten brush shape (path is constrained in canvas)', () => {
     const path: [number, number, number][] = [[1, 2, 3]];
     const unconstrained = thickenPathForStroke(path, {
       ...defaultParams,
@@ -70,6 +70,7 @@ describe('thickenPathForStroke', () => {
       airbrushRadius: 1
     });
     expect(unconstrained.length).toBe(7);
+    // With constrain to plane, brush shape stays spherical; only path is constrained (in VoxelCanvas).
     const constrainedY = thickenPathForStroke(path, {
       ...defaultParams,
       strokeMode: 'airbrush',
@@ -77,8 +78,9 @@ describe('thickenPathForStroke', () => {
       airbrushConstrainToPlane: true,
       planeAxis: 1
     });
-    expect(constrainedY.length).toBeLessThanOrEqual(7);
-    constrainedY.forEach(([x, y, z]) => expect(y).toBe(2));
+    expect(constrainedY.length).toBe(7);
+    const ys = constrainedY.map(([, y]) => y);
+    expect(new Set(ys).size).toBeGreaterThan(1); // sphere has voxels off the plane
     const constrainedX = thickenPathForStroke(path, {
       ...defaultParams,
       strokeMode: 'airbrush',
@@ -86,7 +88,9 @@ describe('thickenPathForStroke', () => {
       airbrushConstrainToPlane: true,
       planeAxis: 0
     });
-    constrainedX.forEach(([x, y, z]) => expect(x).toBe(1));
+    expect(constrainedX.length).toBe(7);
+    const xs = constrainedX.map(([x]) => x);
+    expect(new Set(xs).size).toBeGreaterThan(1);
   });
 
   // Regression: switching to Clay after using a selection method (line, plane, airbrush, etc.)
@@ -346,6 +350,36 @@ describe('getAxisAlignedPlaneFromNormal', () => {
     const result = getAxisAlignedPlaneFromNormal([0, 3, 0], [1, 3, 1], { x: 0, y: 1, z: 0 });
     expect(result.every(([, y]) => y === 3)).toBe(true);
   });
+
+  it('hollow true returns only perimeter', () => {
+    const result = getAxisAlignedPlaneFromNormal([0, 1, 0], [2, 1, 2], { x: 0, y: 1, z: 0 }, true);
+    expect(result.length).toBe(8);
+    expect(result.every(([, y]) => y === 1)).toBe(true);
+    const xz = new Set(result.map(([x, , z]) => `${x},${z}`));
+    expect(xz.has('0,0')).toBe(true);
+    expect(xz.has('1,0')).toBe(true);
+    expect(xz.has('2,0')).toBe(true);
+    expect(xz.has('0,1')).toBe(true);
+    expect(xz.has('2,1')).toBe(true);
+    expect(xz.has('0,2')).toBe(true);
+    expect(xz.has('1,2')).toBe(true);
+    expect(xz.has('2,2')).toBe(true);
+    expect(xz.has('1,1')).toBe(false);
+  });
+
+  it('hollow 2×2 plane returns all 4 voxels', () => {
+    const result = getAxisAlignedPlaneFromNormal([0, 0, 0], [1, 0, 1], { x: 0, y: 1, z: 0 }, true);
+    expect(result.length).toBe(4);
+  });
+
+  it('hollow 1D plane segment returns no duplicates', () => {
+    const result = getAxisAlignedPlaneFromNormal([0, 0, 0], [2, 0, 0], { x: 0, y: 1, z: 0 }, true);
+    expect(result.length).toBe(3);
+    expect(result).toContainEqual([0, 0, 0]);
+    expect(result).toContainEqual([1, 0, 0]);
+    expect(result).toContainEqual([2, 0, 0]);
+    expect(new Set(result.map((p) => p.join(','))).size).toBe(3);
+  });
 });
 
 describe('getAxisAlignedCuboid', () => {
@@ -360,6 +394,21 @@ describe('getAxisAlignedCuboid', () => {
     expect(result).toContainEqual([0, 0, 0]);
     expect(result).toContainEqual([0, 0, 1]);
     expect(result.length).toBe(2);
+  });
+
+  it('hollow true returns only shell', () => {
+    const result = getAxisAlignedCuboid([0, 0, 0], [2, 2, 0], { x: 0, y: 0, z: 1 }, 2, true);
+    expect(result).not.toContainEqual([1, 1, 1]);
+    result.forEach(([x, y, z]) => {
+      const onBoundary = x === 0 || x === 2 || y === 0 || y === 2 || z === 0 || z === 2;
+      expect(onBoundary).toBe(true);
+    });
+  });
+
+  it('hollow depth 0 equals hollow plane', () => {
+    const plane = getAxisAlignedPlaneFromNormal([0, 0, 0], [2, 2, 0], { x: 0, y: 0, z: 1 }, true);
+    const cuboid = getAxisAlignedCuboid([0, 0, 0], [2, 2, 0], { x: 0, y: 0, z: 1 }, 0, true);
+    expect(cuboid).toEqual(plane);
   });
 });
 

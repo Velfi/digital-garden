@@ -27,6 +27,7 @@ export {
   effectiveStrokeMode,
   lineAxisAlign,
   planeAxis,
+  planeCuboidHollow,
   clayMode,
   clayBrushRadius,
   branchTaper,

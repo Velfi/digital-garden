@@ -17,6 +17,7 @@
     effectiveStrokeMode,
     lineAxisAlign,
     planeAxis,
+    planeCuboidHollow,
     clayMode,
     clayBrushRadius,
     inflateStrength,
@@ -909,7 +910,8 @@
       cuboidPlane.a,
       cuboidPlane.b,
       cuboidPlane.normal,
-      cuboidDepth
+      cuboidDepth,
+      get(planeCuboidHollow)
     );
     updatePreviewMesh(pendingStrokePositions);
     render();
@@ -921,7 +923,8 @@
       cuboidPlane.a,
       cuboidPlane.b,
       cuboidPlane.normal,
-      cuboidDepth
+      cuboidDepth,
+      get(planeCuboidHollow)
     );
     if (positions.length > 0) {
       if ($tool === 'select') {
@@ -1718,9 +1721,8 @@
             currentPos = getIntersectionWithLockedPlane(axis, dragStartPos[axis]);
           }
         }
-        // Airbrush + constrain to plane: when cursor is in empty space, intersect ray with plane through starting voxel (face normal or camera plane)
+        // Airbrush + constrain to plane: prefer plane intersection over voxel hit so cursor stays on the invisible plane
         if (
-          currentPos === null &&
           isAirbrushPath &&
           get(airbrushPlaneConstraint) !== 'none' &&
           dragStartPos &&
@@ -1734,7 +1736,8 @@
           const normal = get(airbrushPlaneConstraint) === 'camera' && camera
             ? (() => { const v = new THREE.Vector3(); camera.getWorldDirection(v); return v; })()
             : dragFaceNormal!;
-          currentPos = getIntersectionWithPlane(planePoint, normal);
+          const planePos = getIntersectionWithPlane(planePoint, normal);
+          if (planePos) currentPos = planePos;
         }
         if (currentPos) {
           // Wall + lock start height: keep path on starting plane (for enclosed loops)
@@ -1765,7 +1768,7 @@
           } else {
             const normal = getEffectivePlaneNormal();
             if ((strokeModeVal === 'plane' || strokeModeVal === 'cuboid') && normal) {
-              pendingStrokePositions = getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, normal);
+              pendingStrokePositions = getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, normal, get(planeCuboidHollow));
             } else if (
               strokeModeVal === 'line' &&
               !get(lineAxisAlign) &&
@@ -1971,7 +1974,8 @@
           cuboidPlane.a,
           cuboidPlane.b,
           cuboidPlane.normal,
-          cuboidDepth
+          cuboidDepth,
+          get(planeCuboidHollow)
         );
         updatePreviewMesh(pendingStrokePositions);
       } else {
@@ -2110,7 +2114,8 @@
         pendingStrokePositions = getAxisAlignedPlaneFromNormal(
           dragStartPos,
           currentPos,
-          axisVector(next)
+          axisVector(next),
+          get(planeCuboidHollow)
         );
       }
       updatePreviewMesh(pendingStrokePositions);

@@ -448,7 +448,7 @@ export function thickenPathForStroke(
   }
   if (isClayPath) return positions;
   if (params.strokeMode === 'airbrush') {
-    let out = puffPath(
+    const out = puffPath(
       positions,
       params.airbrushRadius,
       params.airbrushScatter,
@@ -456,32 +456,6 @@ export function thickenPathForStroke(
       params.airbrushRadiusRange ? params.airbrushRadiusMax : undefined,
       rng
     );
-    if (params.airbrushConstrainToPlane && positions.length > 0) {
-      const [sx, sy, sz] = positions[0];
-      const startCenterX = sx + 0.5;
-      const startCenterY = sy + 0.5;
-      const startCenterZ = sz + 0.5;
-      if (params.airbrushPlaneNormal) {
-        const n = params.airbrushPlaneNormal;
-        const len = Math.sqrt(n.x * n.x + n.y * n.y + n.z * n.z) || 1;
-        const nx = n.x / len;
-        const ny = n.y / len;
-        const nz = n.z / len;
-        const planeEpsilon = 0.5;
-        out = out.filter(([x, y, z]) => {
-          const dx = x + 0.5 - startCenterX;
-          const dy = y + 0.5 - startCenterY;
-          const dz = z + 0.5 - startCenterZ;
-          const dist = Math.abs(dx * nx + dy * ny + dz * nz);
-          return dist < planeEpsilon;
-        });
-      } else {
-        const axis = params.airbrushPlaneAxis ?? (params.planeAxis === 'auto' || params.planeAxis === undefined ? 1 : params.planeAxis);
-        out = out.filter(([x, y, z]) =>
-          axis === 0 ? x === sx : axis === 1 ? y === sy : z === sz
-        );
-      }
-    }
     return out;
   }
   const dbs = params.drawBrushSize ?? 0;
@@ -736,7 +710,8 @@ export function getAxisAlignedLine(
 export function getAxisAlignedPlaneFromNormal(
   a: [number, number, number],
   b: [number, number, number],
-  faceNormal: Vec3Like
+  faceNormal: Vec3Like,
+  hollow = false
 ): [number, number, number][] {
   const ax = Math.abs(faceNormal.x);
   const ay = Math.abs(faceNormal.y);
@@ -749,24 +724,69 @@ export function getAxisAlignedPlaneFromNormal(
     const y1 = Math.max(a[1], b[1]);
     const z0 = Math.min(a[2], b[2]);
     const z1 = Math.max(a[2], b[2]);
-    for (let py = y0; py <= y1; py++)
-      for (let pz = z0; pz <= z1; pz++) positions.push([x, py, pz]);
+    if (hollow) {
+      if (y0 === y1 && z0 === z1) {
+        positions.push([x, y0, z0]);
+      } else if (y0 === y1) {
+        for (let pz = z0; pz <= z1; pz++) positions.push([x, y0, pz]);
+      } else if (z0 === z1) {
+        for (let py = y0; py <= y1; py++) positions.push([x, py, z0]);
+      } else {
+        for (let py = y0; py <= y1; py++) positions.push([x, py, z0]);
+        for (let py = y0; py <= y1; py++) positions.push([x, py, z1]);
+        for (let pz = z0 + 1; pz < z1; pz++) positions.push([x, y0, pz]);
+        for (let pz = z0 + 1; pz < z1; pz++) positions.push([x, y1, pz]);
+      }
+    } else {
+      for (let py = y0; py <= y1; py++)
+        for (let pz = z0; pz <= z1; pz++) positions.push([x, py, pz]);
+    }
   } else if (fixedAxis === 1) {
     const y = a[1];
     const x0 = Math.min(a[0], b[0]);
     const x1 = Math.max(a[0], b[0]);
     const z0 = Math.min(a[2], b[2]);
     const z1 = Math.max(a[2], b[2]);
-    for (let px = x0; px <= x1; px++)
-      for (let pz = z0; pz <= z1; pz++) positions.push([px, y, pz]);
+    if (hollow) {
+      if (x0 === x1 && z0 === z1) {
+        positions.push([x0, y, z0]);
+      } else if (x0 === x1) {
+        for (let pz = z0; pz <= z1; pz++) positions.push([x0, y, pz]);
+      } else if (z0 === z1) {
+        for (let px = x0; px <= x1; px++) positions.push([px, y, z0]);
+      } else {
+        for (let px = x0; px <= x1; px++) positions.push([px, y, z0]);
+        for (let px = x0; px <= x1; px++) positions.push([px, y, z1]);
+        for (let pz = z0 + 1; pz < z1; pz++) positions.push([x0, y, pz]);
+        for (let pz = z0 + 1; pz < z1; pz++) positions.push([x1, y, pz]);
+      }
+    } else {
+      for (let px = x0; px <= x1; px++)
+        for (let pz = z0; pz <= z1; pz++) positions.push([px, y, pz]);
+    }
   } else {
     const z = a[2];
     const x0 = Math.min(a[0], b[0]);
     const x1 = Math.max(a[0], b[0]);
     const y0 = Math.min(a[1], b[1]);
     const y1 = Math.max(a[1], b[1]);
-    for (let px = x0; px <= x1; px++)
-      for (let py = y0; py <= y1; py++) positions.push([px, py, z]);
+    if (hollow) {
+      if (x0 === x1 && y0 === y1) {
+        positions.push([x0, y0, z]);
+      } else if (x0 === x1) {
+        for (let py = y0; py <= y1; py++) positions.push([x0, py, z]);
+      } else if (y0 === y1) {
+        for (let px = x0; px <= x1; px++) positions.push([px, y0, z]);
+      } else {
+        for (let px = x0; px <= x1; px++) positions.push([px, y0, z]);
+        for (let px = x0; px <= x1; px++) positions.push([px, y1, z]);
+        for (let py = y0 + 1; py < y1; py++) positions.push([x0, py, z]);
+        for (let py = y0 + 1; py < y1; py++) positions.push([x1, py, z]);
+      }
+    } else {
+      for (let px = x0; px <= x1; px++)
+        for (let py = y0; py <= y1; py++) positions.push([px, py, z]);
+    }
   }
   return positions;
 }
@@ -775,9 +795,10 @@ export function getAxisAlignedCuboid(
   a: [number, number, number],
   b: [number, number, number],
   faceNormal: Vec3Like,
-  depth: number
+  depth: number,
+  hollow = false
 ): [number, number, number][] {
-  const planePositions = getAxisAlignedPlaneFromNormal(a, b, faceNormal);
+  const planePositions = getAxisAlignedPlaneFromNormal(a, b, faceNormal, hollow);
   if (depth === 0) return planePositions;
   const positions: [number, number, number][] = [...planePositions];
   const ax = Math.abs(faceNormal.x);
@@ -795,6 +816,18 @@ export function getAxisAlignedCuboid(
       pos[axis] += dk;
       positions.push(pos);
     }
+  }
+  if (hollow) {
+    const minX = Math.min(...positions.map((p) => p[0]));
+    const maxX = Math.max(...positions.map((p) => p[0]));
+    const minY = Math.min(...positions.map((p) => p[1]));
+    const maxY = Math.max(...positions.map((p) => p[1]));
+    const minZ = Math.min(...positions.map((p) => p[2]));
+    const maxZ = Math.max(...positions.map((p) => p[2]));
+    return positions.filter(
+      ([px, py, pz]) =>
+        px === minX || px === maxX || py === minY || py === maxY || pz === minZ || pz === maxZ
+    );
   }
   return positions;
 }
