@@ -118,18 +118,18 @@ export const planeAxis = writable<PlaneAxis>(1);
 /** When true, plane/cuboid stroke selects only perimeter (plane) or 6-face shell (cuboid). */
 export const planeCuboidHollow = writable<boolean>(false);
 export const clayMode = writable<ClayMode>('bulk');
-/** Brush radius for clay bulk (0=single voxel, 1=3³ tube, 2=5³). Like Blender F key. */
-export const clayBrushRadius = writable<number>(1);
+/** Clay brush size index 0-4 => 1-5 voxels (radius 0, 0.5, 1, 1.5, 2). */
+export const clayBrushRadius = writable<number>(2);
 /** Branch mode: taper from thick base to thin tip. */
 export const branchTaper = writable<boolean>(false);
-/** Puffy mode: sphere radius (0=single voxel, 1=3³, 2=5³, 3=7³, 4=9³, 5=11³). */
-export const puffRadius = writable<number>(1);
+/** Puffy size index 0-4 => 1-5 voxel diameter spheres. */
+export const puffRadius = writable<number>(2);
 /** Puffy mode: when true, radius varies between puffRadiusMin and puffRadiusMax per sphere. */
 export const puffRadiusRange = writable<boolean>(false);
 /** Puffy mode: min sphere radius when range enabled. */
 export const puffRadiusMin = writable<number>(0);
 /** Puffy mode: max sphere radius when range enabled. */
-export const puffRadiusMax = writable<number>(2);
+export const puffRadiusMax = writable<number>(4);
 /** Puffy mode: max voxel offset for sphere centers (0=none, 1–4=scatter range). */
 export const puffScatter = writable<number>(0);
 /** Inflate mode: 0–1 probability of adding each empty face-neighbor (1=always). */
@@ -138,18 +138,18 @@ export const inflateStrength = writable<number>(1);
 export const ropeTension = writable<number>(0.5);
 /** Rope mode: brush shape (sphere or cube). */
 export const ropeBrushShape = writable<RopeBrushShape>('sphere');
-/** Rope mode: brush radius 0–5 (0=single voxel, 1=3³, 2=5³, etc). */
-export const ropeBrushRadius = writable<number>(1);
+/** Rope brush size index 0-4 => 1-5 voxels (radius 0, 0.5, 1, 1.5, 2). */
+export const ropeBrushRadius = writable<number>(2);
 /** Rope mode: gravity direction (rope sags toward this axis). */
 export const ropeGravityDirection = writable<RopeGravityDirection>('down');
-/** Airbrush stroke mode: sphere radius (0=single voxel, 1=3³, 2=5³, 3=7³, 4=9³, 5=11³). */
-export const airbrushRadius = writable<number>(1);
+/** Airbrush size index 0-4 => 1-5 voxel diameter spheres. */
+export const airbrushRadius = writable<number>(2);
 /** Airbrush: max voxel offset for sphere centers (0=none, 1–4=scatter/spray). */
 export const airbrushScatter = writable<number>(0);
 /** Airbrush: when true, radius varies between airbrushRadiusMin and airbrushRadiusMax per sphere. */
 export const airbrushRadiusRange = writable<boolean>(false);
 export const airbrushRadiusMin = writable<number>(0);
-export const airbrushRadiusMax = writable<number>(2);
+export const airbrushRadiusMax = writable<number>(4);
 /** Airbrush plane constraint: none, camera plane (view plane), or clicked face normal plane. */
 export type AirbrushPlaneConstraint = 'none' | 'camera' | 'face';
 export const airbrushPlaneConstraint = writable<AirbrushPlaneConstraint>('none');
@@ -158,7 +158,7 @@ export type SprayDirection = 'none' | 'auto' | 'down' | 'up' | 'forward' | 'back
 export const sprayDirection = writable<SprayDirection>('auto');
 /** Legacy: streak length. Wall uses wallHeight instead. */
 export const sprayStreakLength = writable<number>(0);
-/** Wall: path thickness (0 = 1 voxel, 1 = 3³, 2 = 5³). */
+/** Wall width index where 0=1 voxel and larger values increase path thickness up to 5 voxels. */
 export const wallWidth = writable<number>(0);
 /** Wall: voxels to extend along direction (min 2). */
 export const wallHeight = writable<number>(2);
@@ -166,7 +166,7 @@ export const wallHeight = writable<number>(2);
 export const wallLockStartHeight = writable<boolean>(false);
 /** Draw tool brush shape (sphere, cube, pyramid). */
 export const drawBrushShape = writable<DrawBrushShape>('sphere');
-/** Draw tool brush size (0=single voxel, 1=3³, 2=5³, etc). */
+/** Draw brush size index 0-4 => 1-5 voxels (radius 0, 0.5, 1, 1.5, 2). */
 export const drawBrushSize = writable<number>(0);
 /** When true, offset brush along face normal so it sits on surface instead of through it. */
 export const drawBrushSnapToSurface = writable<boolean>(true);

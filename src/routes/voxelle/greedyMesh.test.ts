@@ -263,7 +263,7 @@ describe('buildGreedyMesh', () => {
   });
 
   it('total quad area equals visible face count (no faces lost)', () => {
-    for (const shape of ['cube', 'orb', 'cylinder', 'hollowCube', 'plane'] as const) {
+    for (const shape of ['cube', 'orb', 'cylinder', 'hollowCube', 'plane', 'circle'] as const) {
       const voxels = initShape(8, shape);
       if (voxels.size === 0) continue;
       const expectedFaces = countVisibleFaces(voxels);

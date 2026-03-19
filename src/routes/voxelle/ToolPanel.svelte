@@ -116,13 +116,13 @@
           <input
             type="range"
             min="0"
-            max="5"
+            max="4"
             step="1"
             value={$drawBrushSize}
             oninput={(e) => drawBrushSize.set(Number((e.target as HTMLInputElement).value))}
-            title="Brush radius (0 = single voxel)"
+            title="Brush size (1-5 voxels)"
           />
-          <span class="tool-panel-value">{$drawBrushSize}</span>
+          <span class="tool-panel-value">{$drawBrushSize + 1}</span>
         </div>
         <label class="tool-panel-check">
           <input
@@ -217,7 +217,7 @@
             <input
               type="range"
               min="0"
-              max="5"
+              max="4"
               step="1"
               value={$airbrushRadiusMin}
               oninput={(e) => {
@@ -226,14 +226,14 @@
                 if (v > get(airbrushRadiusMax)) airbrushRadiusMax.set(v);
               }}
             />
-            <span class="tool-panel-value">{$airbrushRadiusMin}</span>
+            <span class="tool-panel-value">{$airbrushRadiusMin + 1}</span>
           </div>
           <div class="tool-panel-row">
             <span class="tool-panel-label">Max</span>
             <input
               type="range"
               min="0"
-              max="5"
+              max="4"
               step="1"
               value={$airbrushRadiusMax}
               oninput={(e) => {
@@ -242,7 +242,7 @@
                 if (v < get(airbrushRadiusMin)) airbrushRadiusMin.set(v);
               }}
             />
-            <span class="tool-panel-value">{$airbrushRadiusMax}</span>
+            <span class="tool-panel-value">{$airbrushRadiusMax + 1}</span>
           </div>
         {:else}
           <div class="tool-panel-row">
@@ -250,12 +250,12 @@
             <input
               type="range"
               min="0"
-              max="5"
+              max="4"
               step="1"
               value={$airbrushRadius}
               oninput={(e) => airbrushRadius.set(Number((e.target as HTMLInputElement).value))}
             />
-            <span class="tool-panel-value">{$airbrushRadius}</span>
+            <span class="tool-panel-value">{$airbrushRadius + 1}</span>
           </div>
         {/if}
         <div class="tool-panel-row">
@@ -408,13 +408,13 @@
             <input
               type="range"
               min="0"
-              max="2"
+              max="4"
               step="1"
               value={$clayBrushRadius}
               oninput={(e) => clayBrushRadius.set(Number((e.target as HTMLInputElement).value))}
-              title="Brush size (0–2)"
+              title="Brush size (1-5 voxels)"
             />
-            <span class="tool-panel-value">{$clayBrushRadius}</span>
+            <span class="tool-panel-value">{$clayBrushRadius + 1}</span>
           </div>
           {#if $clayMode === 'branch'}
             <div class="tool-panel-row">
@@ -463,7 +463,7 @@
               <input
                 type="range"
                 min="0"
-                max="5"
+                max="4"
                 step="1"
                 value={$puffRadiusMin}
                 oninput={(e) => {
@@ -472,14 +472,14 @@
                   if (v > get(puffRadiusMax)) puffRadiusMax.set(v);
                 }}
               />
-              <span class="tool-panel-value">{$puffRadiusMin}</span>
+              <span class="tool-panel-value">{$puffRadiusMin + 1}</span>
             </div>
             <div class="tool-panel-row">
               <span class="tool-panel-label">Max</span>
               <input
                 type="range"
                 min="0"
-                max="5"
+                max="4"
                 step="1"
                 value={$puffRadiusMax}
                 oninput={(e) => {
@@ -488,7 +488,7 @@
                   if (v < get(puffRadiusMin)) puffRadiusMin.set(v);
                 }}
               />
-              <span class="tool-panel-value">{$puffRadiusMax}</span>
+              <span class="tool-panel-value">{$puffRadiusMax + 1}</span>
             </div>
           {:else}
             <div class="tool-panel-row">
@@ -496,12 +496,12 @@
               <input
                 type="range"
                 min="0"
-                max="5"
+                max="4"
                 step="1"
                 value={$puffRadius}
                 oninput={(e) => puffRadius.set(Number((e.target as HTMLInputElement).value))}
               />
-              <span class="tool-panel-value">{$puffRadius}</span>
+              <span class="tool-panel-value">{$puffRadius + 1}</span>
             </div>
           {/if}
           <div class="tool-panel-row">
@@ -545,9 +545,9 @@
               step="1"
               value={$wallWidth}
               oninput={(e) => wallWidth.set(Number((e.target as HTMLInputElement).value))}
-              title="Path thickness (0 = 1 voxel, 1 = 2 voxels, 2+ = thicker)"
+              title="Path thickness (1-5 voxels)"
             />
-            <span class="tool-panel-value">{$wallWidth}</span>
+            <span class="tool-panel-value">{$wallWidth === 0 ? 1 : $wallWidth}</span>
           </div>
           <div class="tool-panel-row">
             <span class="tool-panel-label">Height</span>
@@ -614,13 +614,13 @@
             <input
               type="range"
               min="0"
-              max="5"
+              max="4"
               step="1"
               value={$ropeBrushRadius}
               oninput={(e) => ropeBrushRadius.set(Number((e.target as HTMLInputElement).value))}
-              title="Brush size (0–5)"
+              title="Brush size (1-5 voxels)"
             />
-            <span class="tool-panel-value">{$ropeBrushRadius}</span>
+            <span class="tool-panel-value">{$ropeBrushRadius + 1}</span>
           </div>
         {/if}
       </section>

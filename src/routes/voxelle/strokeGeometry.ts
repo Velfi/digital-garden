@@ -33,14 +33,14 @@ export function getRayDirectionPath(
   return positions;
 }
 
-/** Map continuous radius to discrete size (0=1x1, 0.5=2x2, 1=3x3, 2=5x5...) so taper hits 3→2→1. */
+/** Map continuous radius to nearest discrete size (0, 0.5, 1, 1.5, 2). */
 function taperRadiusToSize(c: number): number {
   if (c <= 0) return 0;
-  if (c < 0.5) return 0;
-  if (c < 1) return 0.5; // 2x2
-  if (c < 2) return 1;
-  if (c < 3) return 2;
-  return 3;
+  if (c < 0.25) return 0;
+  if (c < 0.75) return 0.5; // 2x2
+  if (c < 1.25) return 1; // 3x3
+  if (c < 1.75) return 1.5; // 4x4
+  return 2;
 }
 
 /** Add voxels for a single path point with given size. Size 0=1x1, 0.5=2x2, 1+=cube radius. */
@@ -77,10 +77,11 @@ function addThickenPoint(
     }
     return;
   }
-  const radius = Math.floor(size);
-  for (let dx = -radius; dx <= radius; dx++) {
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dz = -radius; dz <= radius; dz++) {
+  const lo = -Math.ceil(size);
+  const hi = Math.floor(size);
+  for (let dx = lo; dx <= hi; dx++) {
+    for (let dy = lo; dy <= hi; dy++) {
+      for (let dz = lo; dz <= hi; dz++) {
         const x = px + dx;
         const y = py + dy;
         const z = pz + dz;
@@ -94,7 +95,7 @@ function addThickenPoint(
   }
 }
 
-/** Like thickenPath but radius interpolates from baseRadius (start) to tipRadius (end). Uses discrete steps 3→2→1. */
+/** Like thickenPath but radius interpolates from baseRadius (start) to tipRadius (end) in discrete 1-voxel diameter steps. */
 export function thickenPathTapered(
   positions: [number, number, number][],
   baseRadius: number,
@@ -121,12 +122,14 @@ export function thickenPath(
   radius: number
 ): [number, number, number][] {
   if (radius <= 0) return positions;
+  const lo = -Math.ceil(radius);
+  const hi = Math.floor(radius);
   const seen = new Set<string>();
   const result: [number, number, number][] = [];
   for (const [px, py, pz] of positions) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      for (let dy = -radius; dy <= radius; dy++) {
-        for (let dz = -radius; dz <= radius; dz++) {
+    for (let dx = lo; dx <= hi; dx++) {
+      for (let dy = lo; dy <= hi; dy++) {
+        for (let dz = lo; dz <= hi; dz++) {
           const x = px + dx;
           const y = py + dy;
           const z = pz + dz;
@@ -149,12 +152,14 @@ function thickenPathInPlane(
   normalAxis: 0 | 1 | 2
 ): [number, number, number][] {
   if (radius <= 0) return positions;
+  const lo = -Math.ceil(radius);
+  const hi = Math.floor(radius);
   const seen = new Set<string>(positions.map(([x, y, z]) => `${x},${y},${z}`));
   const result: [number, number, number][] = [...positions];
   for (const [px, py, pz] of positions) {
     if (normalAxis === 0) {
-      for (let dy = -radius; dy <= radius; dy++) {
-        for (let dz = -radius; dz <= radius; dz++) {
+      for (let dy = lo; dy <= hi; dy++) {
+        for (let dz = lo; dz <= hi; dz++) {
           const k = `${px},${py + dy},${pz + dz}`;
           if (!seen.has(k)) {
             seen.add(k);
@@ -163,8 +168,8 @@ function thickenPathInPlane(
         }
       }
     } else if (normalAxis === 1) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        for (let dz = -radius; dz <= radius; dz++) {
+      for (let dx = lo; dx <= hi; dx++) {
+        for (let dz = lo; dz <= hi; dz++) {
           const k = `${px + dx},${py},${pz + dz}`;
           if (!seen.has(k)) {
             seen.add(k);
@@ -173,8 +178,8 @@ function thickenPathInPlane(
         }
       }
     } else {
-      for (let dx = -radius; dx <= radius; dx++) {
-        for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = lo; dx <= hi; dx++) {
+        for (let dy = lo; dy <= hi; dy++) {
           const k = `${px + dx},${py + dy},${pz}`;
           if (!seen.has(k)) {
             seen.add(k);
@@ -195,12 +200,13 @@ function getSphereVoxels(
   r: number
 ): [number, number, number][] {
   if (r <= 0) return [[Math.round(cx), Math.round(cy), Math.round(cz)]];
-  const ri = Math.floor(r);
-  const rSq = ri * ri;
+  const lo = -Math.ceil(r);
+  const hi = Math.floor(r);
+  const rSq = r * r;
   const positions: [number, number, number][] = [];
-  for (let dx = -ri; dx <= ri; dx++) {
-    for (let dy = -ri; dy <= ri; dy++) {
-      for (let dz = -ri; dz <= ri; dz++) {
+  for (let dx = lo; dx <= hi; dx++) {
+    for (let dy = lo; dy <= hi; dy++) {
+      for (let dz = lo; dz <= hi; dz++) {
         if (dx * dx + dy * dy + dz * dz <= rSq) {
           positions.push([cx + dx, cy + dy, cz + dz]);
         }
@@ -236,9 +242,9 @@ export function puffPath(
   const useRange =
     radiusMin !== undefined &&
     radiusMax !== undefined &&
-    Math.floor(radiusMax) > Math.floor(radiusMin);
-  const rMin = useRange ? Math.max(0, Math.floor(radiusMin!)) : Math.max(0, Math.floor(radius));
-  const rMax = useRange ? Math.max(0, Math.floor(radiusMax!)) : rMin;
+    radiusMax > radiusMin;
+  const rMin = useRange ? Math.max(0, radiusMin!) : Math.max(0, radius);
+  const rMax = useRange ? Math.max(0, radiusMax!) : rMin;
   const s = Math.max(0, Math.floor(scatter));
   const seen = new Set<string>();
   const result: [number, number, number][] = [];
@@ -246,7 +252,9 @@ export function puffPath(
     const ox = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
     const oy = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
     const oz = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
-    const r = useRange ? rMin + Math.floor(rand() * (rMax - rMin + 1)) : rMin;
+    const r = useRange
+      ? (Math.round(rMin * 2) + Math.floor(rand() * (Math.round(rMax * 2) - Math.round(rMin * 2) + 1))) / 2
+      : rMin;
     const voxels = getSphereVoxels(px + ox, py + oy, pz + oz, r);
     for (const [x, y, z] of voxels) {
       const xi = Math.round(x);
@@ -365,7 +373,7 @@ export interface PathThickenParams {
   /** Wall/spray direction. 'auto' uses wallFaceNormal when present. */
   sprayDirection?: SprayDirectionName;
   sprayStreakLength?: number;
-  /** Wall: path thickness (0 = 1 voxel, 1+ = thickenPath radius). */
+  /** Wall: path thickness (0=1 voxel, 1=2 voxels, 2=3 voxels, 3=4 voxels, 4=5 voxels). */
   wallWidth?: number;
   /** Wall: extension along direction (min 2). */
   wallHeight?: number;
@@ -432,7 +440,7 @@ export function thickenPathForStroke(
     } else {
       // Thicken only in the plane perpendicular to wall direction so width does not affect height
       const dirAxis = (dirVec[0] !== 0 ? 0 : dirVec[1] !== 0 ? 1 : 2) as 0 | 1 | 2;
-      basePositions = thickenPathInPlane(positions, width - 1, dirAxis);
+      basePositions = thickenPathInPlane(positions, (width - 1) * 0.5, dirAxis);
     }
     const height = Math.max(2, Math.floor(params.wallHeight ?? params.sprayStreakLength ?? 2));
     const seen = new Set<string>(basePositions.map(([x, y, z]) => `${x},${y},${z}`));
@@ -463,7 +471,7 @@ export function thickenPathForStroke(
     const shape = params.drawBrushShape ?? 'sphere';
     const snap = params.drawBrushSnapToSurface ?? false;
     const n = snap ? params.drawBrushFaceNormal : undefined;
-    const r = Math.floor(dbs);
+    const r = Math.round(dbs);
     const positionsToUse =
       n && r > 0
         ? positions.map(([px, py, pz]) => [
@@ -479,7 +487,7 @@ export function thickenPathForStroke(
   return positions;
 }
 
-/** Pyramid: base (2r+1)² at y=-r, tapering to 1x1 at y=+r. */
+/** Pyramid: base scales with radius at bottom and tapers to 1x1 at top. */
 function getPyramidVoxels(
   cx: number,
   cy: number,
@@ -487,12 +495,17 @@ function getPyramidVoxels(
   r: number
 ): [number, number, number][] {
   if (r <= 0) return [[Math.round(cx), Math.round(cy), Math.round(cz)]];
-  const ri = Math.floor(r);
+  const lo = -Math.ceil(r);
+  const hi = Math.floor(r);
+  const span = Math.max(1, hi - lo);
   const positions: [number, number, number][] = [];
-  for (let dy = -ri; dy <= ri; dy++) {
-    const layerR = Math.round(ri * (1 - (dy + ri) / (2 * ri)));
-    for (let dx = -layerR; dx <= layerR; dx++) {
-      for (let dz = -layerR; dz <= layerR; dz++) {
+  for (let dy = lo; dy <= hi; dy++) {
+    const t = (dy - lo) / span;
+    const layerR = Math.max(0, r * (1 - t));
+    const layerLo = -Math.ceil(layerR);
+    const layerHi = Math.floor(layerR);
+    for (let dx = layerLo; dx <= layerHi; dx++) {
+      for (let dz = layerLo; dz <= layerHi; dz++) {
         positions.push([cx + dx, cy + dy, cz + dz]);
       }
     }
@@ -531,7 +544,7 @@ export function applyBrushAlongPath(
   if (shape === 'sphere') {
     return puffPath(positions, radius, 0);
   }
-  return thickenPath(positions, Math.floor(radius));
+  return thickenPath(positions, radius);
 }
 
 /** Gravity direction for rope catenary: rope sags toward this axis. */

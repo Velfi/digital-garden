@@ -1,7 +1,7 @@
 import { coordKey, parseCoordKey } from '../coordUtils';
 
 export type GridSize = number;
-export type StartShape = 'cube' | 'orb' | 'cylinder' | 'hollowCube' | 'plane' | 'empty';
+export type StartShape = 'cube' | 'orb' | 'cylinder' | 'hollowCube' | 'plane' | 'circle' | 'empty';
 
 const DEFAULT_COLOR = 0x888888;
 
@@ -40,6 +40,8 @@ export function initShape(
           include = onFace;
         } else if (shape === 'plane') {
           include = y === 0;
+        } else if (shape === 'circle') {
+          include = y === 0 && x * x + z * z <= rSq;
         }
         if (include) map.set(coordKey(x, y, z), color);
       }

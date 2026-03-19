@@ -205,8 +205,8 @@ describe('thickenPathForStroke', () => {
       wallWidth: 2,
       wallHeight: 2
     });
-    // Base = 3×3 in XZ plane (9 voxels), each extends down 2 → 9 * 3 = 27
-    expect(result.length).toBe(27);
+    // width=2 maps to radius 0.5 => 2x2 base in XZ (4 voxels), each extends down 2 => 4 * 3 = 12
+    expect(result.length).toBe(12);
     expect(result).toContainEqual([0, 0, 0]);
     expect(result).toContainEqual([0, -1, 0]);
     expect(result).toContainEqual([0, -2, 0]);
@@ -265,6 +265,23 @@ describe('thickenPath', () => {
     expect(result).toContainEqual([1, 1, 1]);
     expect(result).toContainEqual([-1, -1, -1]);
   });
+
+  it('radius 0.5 expands to 2x2x2 per point', () => {
+    const path: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPath(path, 0.5);
+    expect(result.length).toBe(8);
+    expect(result).toContainEqual([0, 0, 0]);
+    expect(result).toContainEqual([-1, -1, -1]);
+  });
+
+  it('radius 1.5 expands to 4x4x4 per point', () => {
+    const path: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPath(path, 1.5);
+    expect(result.length).toBe(64);
+    expect(result).toContainEqual([0, 0, 0]);
+    expect(result).toContainEqual([-2, -2, -2]);
+    expect(result).toContainEqual([1, 1, 1]);
+  });
 });
 
 describe('thickenPathTapered', () => {
@@ -272,7 +289,7 @@ describe('thickenPathTapered', () => {
     expect(thickenPathTapered([], 1, 0)).toEqual([]);
   });
 
-  it('single point with baseRadius 1 produces cube', () => {
+  it('single point with baseRadius 1 produces a 3x3x3 taper step', () => {
     const result = thickenPathTapered([[0, 0, 0]], 1, 0);
     expect(result.length).toBe(27);
   });
@@ -519,6 +536,12 @@ describe('applyBrushAlongPath', () => {
     const path: [number, number, number][] = [[0, 0, 0]];
     const result = applyBrushAlongPath(path, 'cube', 1);
     expect(result.length).toBe(27); // 3x3x3
+  });
+
+  it('cube brush supports half-step size (radius 1.5 -> 4x4x4)', () => {
+    const path: [number, number, number][] = [[0, 0, 0]];
+    const result = applyBrushAlongPath(path, 'cube', 1.5);
+    expect(result.length).toBe(64);
   });
 
   it('radius 0 returns original path', () => {

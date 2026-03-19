@@ -45,6 +45,18 @@ describe('initShape', () => {
     }
   });
 
+  it('circle is y=0 disk (x²+z² <= r²)', () => {
+    const v = initShape(5, 'circle');
+    for (const key of v.keys()) {
+      const [x, y, z] = key.split(',').map(Number);
+      expect(y).toBe(0);
+      expect(x * x + z * z).toBeLessThanOrEqual(4); // r=2, r²=4
+    }
+    expect(v.has(coordKey(0, 0, 0))).toBe(true);
+    expect(v.has(coordKey(2, 0, 0))).toBe(true);
+    expect(v.has(coordKey(2, 0, 2))).toBe(false);
+  });
+
   it('size < 1 returns empty', () => {
     expect(initShape(0, 'cube').size).toBe(0);
   });

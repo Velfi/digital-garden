@@ -47,6 +47,7 @@
           <option value="cylinder">Cylinder</option>
           <option value="hollowCube">Hollow cube</option>
           <option value="plane">Plane</option>
+          <option value="circle">Circle</option>
           <option value="empty">Empty</option>
         </select>
       </label>
