@@ -33,14 +33,15 @@ export function getRayDirectionPath(
   return positions;
 }
 
-/** Map continuous radius to nearest discrete size (0, 0.5, 1, 1.5, 2). */
+/** Map continuous radius to nearest discrete size (0, 0.5, 1, 1.5, 2, ..., up to 12 for 25 voxels). */
 function taperRadiusToSize(c: number): number {
   if (c <= 0) return 0;
   if (c < 0.25) return 0;
   if (c < 0.75) return 0.5; // 2x2
   if (c < 1.25) return 1; // 3x3
   if (c < 1.75) return 1.5; // 4x4
-  return 2;
+  if (c <= 2) return 2;
+  return c; // support larger radii (branch taper up to MAX_BRUSH_SIZE voxels)
 }
 
 /** Add voxels for a single path point with given size. Size 0=1x1, 0.5=2x2, 1+=cube radius. */
@@ -352,6 +353,10 @@ export interface PathThickenParams {
   clayMode?: string;
   clayBrushRadius: number;
   branchTaper: boolean;
+  /** When branch+taper: start radius (optional; falls back to clayBrushRadius). */
+  branchTaperStartRadius?: number;
+  /** When branch+taper: end radius (optional; falls back to 0). */
+  branchTaperEndRadius?: number;
   puffRadius: number;
   puffScatter: number;
   puffRadiusRange: boolean;
@@ -449,7 +454,9 @@ export function thickenPathForStroke(
     return result;
   }
   if (isClayPath && params.clayMode === 'branch' && params.branchTaper) {
-    return thickenPathTapered(positions, params.clayBrushRadius, 0);
+    const startR = params.branchTaperStartRadius ?? params.clayBrushRadius;
+    const endR = params.branchTaperEndRadius ?? 0;
+    return thickenPathTapered(positions, startR, endR);
   }
   if (isClayPath && params.clayBrushRadius > 0) {
     return thickenPath(positions, params.clayBrushRadius);

@@ -14,6 +14,8 @@
     clayBrushRadius,
     inflateStrength,
     branchTaper,
+    branchTaperStartSize,
+    branchTaperEndSize,
     puffRadius,
     puffRadiusRange,
     puffRadiusMin,
@@ -39,10 +41,13 @@
     fillSelectDiagonals,
     fillRespectsColor,
     fillConstrainToPlane,
+    MAX_BRUSH_SIZE,
     type DrawBrushShape,
     type StampRotation,
     type SprayDirection
   } from './store';
+
+  const BRUSH_SIZE_MAX = MAX_BRUSH_SIZE - 1;
 
   const STROKE_TOOLS = ['voxel', 'remove', 'paint', 'select', 'selectByColor', 'selectCoplanar'] as const;
   const isStrokeTool = (t: string) => STROKE_TOOLS.includes(t as (typeof STROKE_TOOLS)[number]);
@@ -116,11 +121,11 @@
           <input
             type="range"
             min="0"
-            max="4"
+            max={BRUSH_SIZE_MAX}
             step="1"
             value={$drawBrushSize}
             oninput={(e) => drawBrushSize.set(Number((e.target as HTMLInputElement).value))}
-            title="Brush size (1-5 voxels)"
+            title="Brush size (1–{MAX_BRUSH_SIZE} voxels)"
           />
           <span class="tool-panel-value">{$drawBrushSize + 1}</span>
         </div>
@@ -216,10 +221,10 @@
             <span class="tool-panel-label">Min</span>
             <input
               type="range"
-              min="0"
-              max="4"
-              step="1"
-              value={$airbrushRadiusMin}
+min="0"
+                max={BRUSH_SIZE_MAX}
+                step="1"
+                value={$airbrushRadiusMin}
               oninput={(e) => {
                 const v = Number((e.target as HTMLInputElement).value);
                 airbrushRadiusMin.set(v);
@@ -232,10 +237,10 @@
             <span class="tool-panel-label">Max</span>
             <input
               type="range"
-              min="0"
-              max="4"
-              step="1"
-              value={$airbrushRadiusMax}
+min="0"
+                max={BRUSH_SIZE_MAX}
+                step="1"
+                value={$airbrushRadiusMax}
               oninput={(e) => {
                 const v = Number((e.target as HTMLInputElement).value);
                 airbrushRadiusMax.set(v);
@@ -250,7 +255,7 @@
             <input
               type="range"
               min="0"
-              max="4"
+              max={BRUSH_SIZE_MAX}
               step="1"
               value={$airbrushRadius}
               oninput={(e) => airbrushRadius.set(Number((e.target as HTMLInputElement).value))}
@@ -263,7 +268,7 @@
           <input
             type="range"
             min="0"
-            max="4"
+            max={BRUSH_SIZE_MAX}
             step="1"
             value={$airbrushScatter}
             oninput={(e) => airbrushScatter.set(Number((e.target as HTMLInputElement).value))}
@@ -408,11 +413,11 @@
             <input
               type="range"
               min="0"
-              max="4"
+              max={BRUSH_SIZE_MAX}
               step="1"
               value={$clayBrushRadius}
               oninput={(e) => clayBrushRadius.set(Number((e.target as HTMLInputElement).value))}
-              title="Brush size (1-5 voxels)"
+              title="Brush size (1–{MAX_BRUSH_SIZE} voxels)"
             />
             <span class="tool-panel-value">{$clayBrushRadius + 1}</span>
           </div>
@@ -428,6 +433,34 @@
                 Taper
               </label>
             </div>
+            {#if $branchTaper}
+              <div class="tool-panel-row">
+                <span class="tool-panel-label">Start</span>
+                <input
+                  type="range"
+                  min="0"
+                  max={BRUSH_SIZE_MAX}
+                  step="1"
+                  value={$branchTaperStartSize}
+                  oninput={(e) => branchTaperStartSize.set(Number((e.target as HTMLInputElement).value))}
+                  title="Taper start size (1–{MAX_BRUSH_SIZE} voxels)"
+                />
+                <span class="tool-panel-value">{$branchTaperStartSize + 1}</span>
+              </div>
+              <div class="tool-panel-row">
+                <span class="tool-panel-label">End</span>
+                <input
+                  type="range"
+                  min="0"
+                  max={BRUSH_SIZE_MAX}
+                  step="1"
+                  value={$branchTaperEndSize}
+                  oninput={(e) => branchTaperEndSize.set(Number((e.target as HTMLInputElement).value))}
+                  title="Taper end size (1–{MAX_BRUSH_SIZE} voxels)"
+                />
+                <span class="tool-panel-value">{$branchTaperEndSize + 1}</span>
+              </div>
+            {/if}
           {/if}
           {#if $clayMode === 'inflate'}
             <div class="tool-panel-row">
@@ -463,7 +496,7 @@
               <input
                 type="range"
                 min="0"
-                max="4"
+                max={BRUSH_SIZE_MAX}
                 step="1"
                 value={$puffRadiusMin}
                 oninput={(e) => {
@@ -479,7 +512,7 @@
               <input
                 type="range"
                 min="0"
-                max="4"
+                max={BRUSH_SIZE_MAX}
                 step="1"
                 value={$puffRadiusMax}
                 oninput={(e) => {
@@ -496,7 +529,7 @@
               <input
                 type="range"
                 min="0"
-                max="4"
+                max={BRUSH_SIZE_MAX}
                 step="1"
                 value={$puffRadius}
                 oninput={(e) => puffRadius.set(Number((e.target as HTMLInputElement).value))}
@@ -508,10 +541,10 @@
             <span class="tool-panel-label">Scatter</span>
             <input
               type="range"
-              min="0"
-              max="4"
-              step="1"
-              value={$puffScatter}
+min="0"
+            max={BRUSH_SIZE_MAX}
+            step="1"
+            value={$puffScatter}
               oninput={(e) => puffScatter.set(Number((e.target as HTMLInputElement).value))}
             />
             <span class="tool-panel-value">{$puffScatter}</span>
@@ -541,13 +574,13 @@
             <input
               type="range"
               min="0"
-              max="5"
+              max={BRUSH_SIZE_MAX}
               step="1"
               value={$wallWidth}
               oninput={(e) => wallWidth.set(Number((e.target as HTMLInputElement).value))}
-              title="Path thickness (1-5 voxels)"
+              title="Path thickness (1–{MAX_BRUSH_SIZE} voxels)"
             />
-            <span class="tool-panel-value">{$wallWidth === 0 ? 1 : $wallWidth}</span>
+            <span class="tool-panel-value">{$wallWidth + 1}</span>
           </div>
           <div class="tool-panel-row">
             <span class="tool-panel-label">Height</span>
@@ -614,11 +647,11 @@
             <input
               type="range"
               min="0"
-              max="4"
+              max={BRUSH_SIZE_MAX}
               step="1"
               value={$ropeBrushRadius}
               oninput={(e) => ropeBrushRadius.set(Number((e.target as HTMLInputElement).value))}
-              title="Brush size (1-5 voxels)"
+              title="Brush size (1–{MAX_BRUSH_SIZE} voxels)"
             />
             <span class="tool-panel-value">{$ropeBrushRadius + 1}</span>
           </div>

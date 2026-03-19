@@ -46,6 +46,8 @@ export type DrawBrushShape = 'sphere' | 'cube' | 'pyramid';
 
 const DEFAULT_COLOR = 0x888888;
 const MAX_GRID_SIZE = 256;
+/** Max brush/stamp size in voxels (index 0..MAX_BRUSH_SIZE-1 => 1..MAX_BRUSH_SIZE). */
+export const MAX_BRUSH_SIZE = 25;
 
 export type StrokeMode = 'line' | 'plane' | 'cuboid' | 'polygon' | 'fill' | 'airbrush';
 
@@ -118,11 +120,15 @@ export const planeAxis = writable<PlaneAxis>(1);
 /** When true, plane/cuboid stroke selects only perimeter (plane) or 6-face shell (cuboid). */
 export const planeCuboidHollow = writable<boolean>(false);
 export const clayMode = writable<ClayMode>('bulk');
-/** Clay brush size index 0-4 => 1-5 voxels (radius 0, 0.5, 1, 1.5, 2). */
+/** Clay brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
 export const clayBrushRadius = writable<number>(2);
 /** Branch mode: taper from thick base to thin tip. */
 export const branchTaper = writable<boolean>(false);
-/** Puffy size index 0-4 => 1-5 voxel diameter spheres. */
+/** Branch taper: start size index 0..(MAX_BRUSH_SIZE-1) (when taper on). */
+export const branchTaperStartSize = writable<number>(2);
+/** Branch taper: end size index 0..(MAX_BRUSH_SIZE-1) (when taper on). */
+export const branchTaperEndSize = writable<number>(0);
+/** Puffy size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxel diameter spheres. */
 export const puffRadius = writable<number>(2);
 /** Puffy mode: when true, radius varies between puffRadiusMin and puffRadiusMax per sphere. */
 export const puffRadiusRange = writable<boolean>(false);
@@ -138,11 +144,11 @@ export const inflateStrength = writable<number>(1);
 export const ropeTension = writable<number>(0.5);
 /** Rope mode: brush shape (sphere or cube). */
 export const ropeBrushShape = writable<RopeBrushShape>('sphere');
-/** Rope brush size index 0-4 => 1-5 voxels (radius 0, 0.5, 1, 1.5, 2). */
+/** Rope brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
 export const ropeBrushRadius = writable<number>(2);
 /** Rope mode: gravity direction (rope sags toward this axis). */
 export const ropeGravityDirection = writable<RopeGravityDirection>('down');
-/** Airbrush size index 0-4 => 1-5 voxel diameter spheres. */
+/** Airbrush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxel diameter spheres. */
 export const airbrushRadius = writable<number>(2);
 /** Airbrush: max voxel offset for sphere centers (0=none, 1–4=scatter/spray). */
 export const airbrushScatter = writable<number>(0);
@@ -158,7 +164,7 @@ export type SprayDirection = 'none' | 'auto' | 'down' | 'up' | 'forward' | 'back
 export const sprayDirection = writable<SprayDirection>('auto');
 /** Legacy: streak length. Wall uses wallHeight instead. */
 export const sprayStreakLength = writable<number>(0);
-/** Wall width index where 0=1 voxel and larger values increase path thickness up to 5 voxels. */
+/** Wall width index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels path thickness. */
 export const wallWidth = writable<number>(0);
 /** Wall: voxels to extend along direction (min 2). */
 export const wallHeight = writable<number>(2);
@@ -166,7 +172,7 @@ export const wallHeight = writable<number>(2);
 export const wallLockStartHeight = writable<boolean>(false);
 /** Draw tool brush shape (sphere, cube, pyramid). */
 export const drawBrushShape = writable<DrawBrushShape>('sphere');
-/** Draw brush size index 0-4 => 1-5 voxels (radius 0, 0.5, 1, 1.5, 2). */
+/** Draw brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
 export const drawBrushSize = writable<number>(0);
 /** When true, offset brush along face normal so it sits on surface instead of through it. */
 export const drawBrushSnapToSurface = writable<boolean>(true);

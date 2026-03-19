@@ -22,6 +22,8 @@
     clayBrushRadius,
     inflateStrength,
     branchTaper,
+    branchTaperStartSize,
+    branchTaperEndSize,
     puffRadius,
     puffRadiusRange,
     puffRadiusMin,
@@ -1251,6 +1253,8 @@
             clayMode: mode,
             clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
             branchTaper: get(branchTaper),
+            branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
+            branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
             puffRadius: get(puffRadius) * 0.5,
             puffScatter: get(puffScatter),
             puffRadiusRange: get(puffRadiusRange),
@@ -1267,7 +1271,7 @@
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
-            wallWidth: get(wallWidth),
+            wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
             wallHeight: get(wallHeight),
             wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
             drawBrushShape: get(drawBrushShape),
@@ -1300,6 +1304,8 @@
             clayMode: 'branch',
             clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
             branchTaper: get(branchTaper),
+            branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
+            branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
             puffRadius: get(puffRadius) * 0.5,
             puffScatter: get(puffScatter),
             puffRadiusRange: get(puffRadiusRange),
@@ -1316,7 +1322,7 @@
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
-            wallWidth: get(wallWidth),
+            wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
             wallHeight: get(wallHeight),
             wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
             drawBrushShape: get(drawBrushShape),
@@ -1549,6 +1555,8 @@
       clayMode: isClayPathFollow ? clayModeVal : undefined,
       clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
       branchTaper: get(branchTaper),
+      branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
+      branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
       puffRadius: get(puffRadius) * 0.5,
       puffScatter: get(puffScatter),
       puffRadiusRange: get(puffRadiusRange),
@@ -1565,7 +1573,7 @@
       planeAxis: get(planeAxis),
       sprayDirection: get(sprayDirection),
       sprayStreakLength: get(sprayStreakLength),
-      wallWidth: get(wallWidth),
+      wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
       wallHeight: get(wallHeight),
       wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
       drawBrushShape: get(drawBrushShape),
@@ -1619,7 +1627,7 @@
         const currY = event?.clientY ?? branchPointerDownY;
         const dx = currX - branchPointerDownX;
         const dy = branchPointerDownY - currY; // screen up = positive
-        const length = Math.max(0, Math.round(Math.sqrt(dx * dx + dy * dy) / 12));
+        const length = Math.max(0, Math.round(Math.sqrt(dx * dx + dy * dy) / 6));
         let dir = { x: 0, y: 0, z: 0 };
         if (length > 0 && camera) {
           camera.updateMatrixWorld(true);
@@ -1648,6 +1656,8 @@
             clayMode: 'branch',
             clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
             branchTaper: get(branchTaper),
+            branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
+            branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
             puffRadius: get(puffRadius) * 0.5,
             puffScatter: get(puffScatter),
             puffRadiusRange: get(puffRadiusRange),
@@ -1664,7 +1674,7 @@
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
-            wallWidth: get(wallWidth),
+            wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
             wallHeight: get(wallHeight),
             wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
             drawBrushShape: get(drawBrushShape),
@@ -1714,6 +1724,23 @@
           const axis = getWallDirectionAxis();
           if (axis !== null && (axis === 0 || axis === 1 || axis === 2)) {
             currentPos = getIntersectionWithLockedPlane(axis, dragStartPos[axis]);
+          }
+        }
+        // Plane/cuboid: when cursor is in empty space, intersect ray with drag plane so plane extends into thin air
+        if (
+          currentPos === null &&
+          (strokeModeVal === 'plane' || strokeModeVal === 'cuboid') &&
+          dragStartPos
+        ) {
+          const planeNormal = getEffectivePlaneNormal();
+          if (planeNormal) {
+            const planePoint = new THREE.Vector3(
+              dragStartPos[0] + 0.5,
+              dragStartPos[1] + 0.5,
+              dragStartPos[2] + 0.5
+            );
+            const planePos = getIntersectionWithPlane(planePoint, planeNormal);
+            if (planePos) currentPos = planePos;
           }
         }
         // Airbrush + constrain to plane: prefer plane intersection over voxel hit so cursor stays on the invisible plane
@@ -1786,6 +1813,8 @@
               clayMode: isClayPathFollow ? clayPathMode : undefined,
               clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
               branchTaper: get(branchTaper),
+              branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
+              branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
               puffRadius: get(puffRadius) * 0.5,
               puffScatter: get(puffScatter),
               puffRadiusRange: get(puffRadiusRange),
@@ -1802,7 +1831,7 @@
               planeAxis: get(planeAxis),
               sprayDirection: get(sprayDirection),
               sprayStreakLength: get(sprayStreakLength),
-              wallWidth: get(wallWidth),
+              wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
               wallHeight: get(wallHeight),
               wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
               drawBrushShape: get(drawBrushShape),
@@ -1957,6 +1986,15 @@
         if (hit) {
           const pos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
           if (pos) cornerB = pos;
+        } else {
+          // No voxel hit: use invisible hit plane so cuboid can be placed in empty space
+          const planePoint = new THREE.Vector3(
+            dragStartPos[0] + 0.5,
+            dragStartPos[1] + 0.5,
+            dragStartPos[2] + 0.5
+          );
+          const planePos = getIntersectionWithPlane(planePoint, normal);
+          if (planePos) cornerB = planePos;
         }
         cuboidPhase = 'depth';
         cuboidPlane = {
@@ -1984,6 +2022,8 @@
             clayMode: isClayPath ? clayModeVal : undefined,
             clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
             branchTaper: get(branchTaper),
+            branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
+            branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
             puffRadius: get(puffRadius) * 0.5,
             puffScatter: get(puffScatter),
             puffRadiusRange: get(puffRadiusRange),
@@ -2000,7 +2040,7 @@
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
-            wallWidth: get(wallWidth),
+            wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
             wallHeight: get(wallHeight),
             wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
             drawBrushShape: get(drawBrushShape),
@@ -2100,11 +2140,19 @@
         event.deltaY < 0 ? (((current + 1) % 3) as 0 | 1 | 2) : (((current + 2) % 3) as 0 | 1 | 2);
       dragPlaneAxisOverride = next;
       const hit = getIntersection();
-      const currentPos = hit
+      let currentPos = hit
         ? $tool === 'voxel'
           ? getAddPosition(hit)
           : getVoxelPosition(hit)
         : null;
+      if (currentPos === null && dragStartPos) {
+        const planePoint = new THREE.Vector3(
+          dragStartPos[0] + 0.5,
+          dragStartPos[1] + 0.5,
+          dragStartPos[2] + 0.5
+        );
+        currentPos = getIntersectionWithPlane(planePoint, axisVector(next)) ?? null;
+      }
       if (currentPos) {
         pendingStrokePositions = getAxisAlignedPlaneFromNormal(
           dragStartPos,

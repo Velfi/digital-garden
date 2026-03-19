@@ -14,6 +14,7 @@ export type { SelectionBounds } from '../coordUtils';
 // Core
 export {
   gridSize,
+  MAX_BRUSH_SIZE,
   voxels,
   tool,
   toolPane,
@@ -31,6 +32,8 @@ export {
   clayMode,
   clayBrushRadius,
   branchTaper,
+  branchTaperStartSize,
+  branchTaperEndSize,
   puffRadius,
   puffRadiusRange,
   puffRadiusMin,

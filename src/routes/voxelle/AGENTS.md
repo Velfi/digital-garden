@@ -79,7 +79,7 @@ Central state in writable stores. Import from `'./store'` (resolves to `store/in
 - **Colors**: 24-bit hex stored as `number`; `hexToInt('#ff5733')`, `intToHex(n)` for conversions.
 - **Faces**: `FaceNormal` = `[nx, ny, nz]` (1, 0, or -1).
 - **Shapes**: `cube`, `orb`, `cylinder`, `hollowCube`, `plane`, `circle`, `empty`. Rotation in quarter-turns (0–3) per axis.
-- **Brush size indices**: Most UI size sliders store `0..4` and map to `1..5` voxels via radius `index * 0.5`.
+- **Brush size indices**: Most UI size sliders store `0..(MAX_BRUSH_SIZE-1)` and map to `1..MAX_BRUSH_SIZE` voxels (default 25) via radius `index * 0.5`.
 
 ## Guidelines for Changes
 
