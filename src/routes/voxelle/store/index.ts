@@ -65,6 +65,13 @@ export {
   modalRequest,
   addPanelStore,
   stampRotation,
+  rockSize,
+  rockRoughness,
+  rockColorVariation,
+  rockCount,
+  rockClusterRadius,
+  rockSinkDirection,
+  rockSinkAmount,
   showGrid,
   renderingMode,
   lightAngle,
@@ -127,6 +134,7 @@ export type {
   FaceNormal,
   AddPanelState,
   StampRotation,
+  RockSinkDirection,
   StartShape,
   AddShapeParams
 } from './core';
@@ -179,3 +187,6 @@ export {
 // Import
 export { importImageFromFile } from './importImage';
 export type { VoxelleFileFormat } from './voxelleFile';
+
+// Generators
+export { generateRockVoxels, getRockPositions } from './generators/rock';

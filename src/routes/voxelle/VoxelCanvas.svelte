@@ -90,9 +90,17 @@
     symmetryX,
     symmetryY,
     symmetryZ,
+    rockSize,
+    rockRoughness,
+    rockColorVariation,
+    rockCount,
+    rockClusterRadius,
+    rockSinkDirection,
+    rockSinkAmount,
     type Tool,
     type FaceNormal
   } from './store';
+  import { generateRockVoxels, getRockPositions } from './store/generators/rock';
   import { getShareFromIndexedDB } from './shareStorage';
   import {
     inBounds,
@@ -170,6 +178,8 @@
   let pendingStrokePositions: [number, number, number][] = [];
   /** Per-stroke seed for deterministic scatter (preview and apply match). */
   let currentStrokeSeed = 0;
+  /** Next rock placement seed (preview and apply match). */
+  let nextRockPlacementSeed = $state(0);
   /** Clay bulk: last sampled position for path accumulation */
   let lastBulkPos: [number, number, number] | null = null;
   /** Branch: pointer down position for view-plane direction and length */
@@ -888,6 +898,87 @@
     });
   }
 
+  /** Seeded RNG for cluster offset. Returns 0–1. */
+  function nextRockClusterRng(seed: number): () => number {
+    let state = seed >>> 0;
+    return () => {
+      state = (state + 0x6d2b79f5) | 0;
+      let t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function placeRocks(
+    place: [number, number, number],
+    normal: FaceNormal,
+    placementSeed: number
+  ) {
+    const getCol = getPaintColorResolver();
+    const size = get(rockSize) as number;
+    const roughness = get(rockRoughness) as number;
+    const colorVariation = get(rockColorVariation) as number;
+    const count = get(rockCount) as number;
+    const clusterR = get(rockClusterRadius) as number;
+    const sinkDir = get(rockSinkDirection) as 'none' | 'under' | 'over';
+    const sinkAmount = get(rockSinkAmount) as number;
+    const allPositions: [number, number, number][] = [];
+    const allColors: number[] = [];
+    // Surface for placement: none = on surface; under = buried; over = floating
+    const N = sinkDir !== 'none' ? Math.min(5, Math.max(0, sinkAmount)) : 0;
+    const surfaceTarget: [number, number, number] =
+      sinkDir === 'under'
+        ? [place[0] - (1 + N) * normal[0], place[1] - (1 + N) * normal[1], place[2] - (1 + N) * normal[2]]
+        : sinkDir === 'over'
+          ? [place[0] + (N - 1) * normal[0], place[1] + (N - 1) * normal[1], place[2] + (N - 1) * normal[2]]
+          : [place[0] - normal[0], place[1] - normal[1], place[2] - normal[2]];
+
+    for (let i = 0; i < count; i++) {
+      const rng = nextRockClusterRng(placementSeed + i);
+      const dx = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
+      const dy = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
+      const dz = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
+      const placeI: [number, number, number] = [place[0] + dx, place[1] + dy, place[2] + dz];
+      const rockMap = generateRockVoxels(
+        placementSeed + i,
+        size,
+        roughness,
+        getCol(),
+        colorVariation
+      );
+      const localPositions = [...rockMap.keys()].map((k) => parseCoordKey(k) as [number, number, number]);
+      const bounds = getBoundsFromPositions(localPositions);
+      if (!bounds) continue;
+      // Surface for normal axis (rock sits on plane); center on cursor in tangent plane (placeI - halfSize)
+      const halfW = (bounds.maxX - bounds.minX) / 2;
+      const halfH = (bounds.maxY - bounds.minY) / 2;
+      const halfD = (bounds.maxZ - bounds.minZ) / 2;
+      const targetForStamp: [number, number, number] = [
+        normal[0] ? surfaceTarget[0] : placeI[0] - halfW,
+        normal[1] ? surfaceTarget[1] : placeI[1] - halfH,
+        normal[2] ? surfaceTarget[2] : placeI[2] - halfD
+      ];
+      const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
+      for (const [key, col] of rockMap) {
+        const [lx, ly, lz] = parseCoordKey(key);
+        allPositions.push([lx + ox, ly + oy, lz + oz]);
+        allColors.push(col);
+      }
+    }
+
+    if (allPositions.length === 0) return;
+    ensureGridFitsPositions(allPositions);
+    const boundSize: number | undefined = undefined;
+    beginStroke();
+    updateVoxelsInStroke((v) => {
+      allPositions.forEach(([x, y, z], i) => {
+        if (!inBounds(x, y, z, boundSize)) return;
+        v.set(coordKey(x, y, z), allColors[i]);
+      });
+    });
+  }
+
   function updatePreviewMesh(positions: [number, number, number][]) {
     if (!previewMesh || !previewMaterial) return;
     const axes: SymmetryAxes = {
@@ -1153,6 +1244,12 @@
       return;
     }
     if (event.button === 2) {
+      if ($tool === 'rocks') {
+        nextRockPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+        event.preventDefault();
+        render();
+        return;
+      }
       if (isVoxelDrag || cuboidPhase || polygonPhase || ropePhase) {
         event.preventDefault();
         cancelDrag();
@@ -1524,6 +1621,12 @@
         lastStampNormal = normal;
         updatePreviewMesh(getStampPositionsForFace(target, normal));
       }
+      requestAnimationFrame(() => render());
+      return;
+    }
+
+    // Rocks generator: click places on pointerup; do not start stroke drag
+    if ($tool === 'rocks') {
       requestAnimationFrame(() => render());
       return;
     }
@@ -1901,6 +2004,65 @@
       render();
       return;
     }
+    // Rocks hover preview (same seed and cluster logic as placement so preview matches)
+    if ($tool === 'rocks') {
+      const hit = getIntersection();
+      if (hit) {
+        const place = getAddPosition(hit);
+        const normal = getFaceNormalFromHit(hit);
+        if (place && normal) {
+          if (nextRockPlacementSeed === 0) {
+            nextRockPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+          }
+          const size = get(rockSize) as number;
+          const roughness = get(rockRoughness) as number;
+          const count = get(rockCount) as number;
+          const clusterR = get(rockClusterRadius) as number;
+          const sinkDir = get(rockSinkDirection) as 'none' | 'under' | 'over';
+          const sinkAmount = get(rockSinkAmount) as number;
+          const N = sinkDir !== 'none' ? Math.min(5, Math.max(0, sinkAmount)) : 0;
+          const surfaceTarget: [number, number, number] =
+            sinkDir === 'under'
+              ? [place[0] - (1 + N) * normal[0], place[1] - (1 + N) * normal[1], place[2] - (1 + N) * normal[2]]
+              : sinkDir === 'over'
+                ? [place[0] + (N - 1) * normal[0], place[1] + (N - 1) * normal[1], place[2] + (N - 1) * normal[2]]
+                : [place[0] - normal[0], place[1] - normal[1], place[2] - normal[2]];
+          const previewPositions: [number, number, number][] = [];
+          for (let i = 0; i < count; i++) {
+            const rng = nextRockClusterRng(nextRockPlacementSeed + i);
+            const dx = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
+            const dy = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
+            const dz = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
+            const placeI: [number, number, number] = [place[0] + dx, place[1] + dy, place[2] + dz];
+            const localPositions = getRockPositions(nextRockPlacementSeed + i, size, roughness);
+            const bounds = getBoundsFromPositions(localPositions);
+            if (!bounds) continue;
+            const halfW = (bounds.maxX - bounds.minX) / 2;
+            const halfH = (bounds.maxY - bounds.minY) / 2;
+            const halfD = (bounds.maxZ - bounds.minZ) / 2;
+            const targetForStamp: [number, number, number] = [
+              normal[0] ? surfaceTarget[0] : placeI[0] - halfW,
+              normal[1] ? surfaceTarget[1] : placeI[1] - halfH,
+              normal[2] ? surfaceTarget[2] : placeI[2] - halfD
+            ];
+            const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
+            for (const [lx, ly, lz] of localPositions) {
+              previewPositions.push([lx + ox, ly + oy, lz + oz]);
+            }
+          }
+          updatePreviewMesh(previewPositions);
+          rollOverMesh.visible = false;
+        } else {
+          updatePreviewMesh([]);
+          rollOverMesh.visible = false;
+        }
+      } else {
+        updatePreviewMesh([]);
+        rollOverMesh.visible = false;
+      }
+      render();
+      return;
+    }
     if ($tool !== 'voxel' && $tool !== 'clay') {
       rollOverMesh.visible = false;
       updatePreviewMesh([]);
@@ -1975,6 +2137,18 @@
       lastStampTarget = null;
       lastStampNormal = null;
       updatePreviewMesh([]);
+    }
+    if (event.button === 0 && $tool === 'rocks') {
+      const hit = getIntersection();
+      if (hit) {
+        const place = getAddPosition(hit);
+        const normal = getFaceNormalFromHit(hit);
+        if (place && normal) {
+          const seed = nextRockPlacementSeed === 0 ? Math.floor(Math.random() * 0xffffffff) : nextRockPlacementSeed;
+          placeRocks(place, normal, seed);
+          nextRockPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+        }
+      }
     }
     if (event.button === 0 && isVoxelDrag) {
       updatePointerFromEvent(event);

@@ -34,7 +34,8 @@ export type Tool =
   | 'stamp'
   | 'fly'
   | 'eyedropper'
-  | 'clay';
+  | 'clay'
+  | 'rocks';
 
 export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'melt' | 'rope' | 'wall' | 'inflate';
 
@@ -93,8 +94,8 @@ const defaultAddPanel: AddPanelState = {
   size: 8
 };
 
-/** Draw vs Clay vs Fly tab pane. Draw = voxel/remove/paint/etc + stroke mode; Clay = clay tool + clay modes; Fly = first-person camera. */
-export type ToolPane = 'draw' | 'clay' | 'fly';
+/** Draw vs Clay vs Fly vs Generators tab pane. Generators = procedural tools (e.g. rocks). */
+export type ToolPane = 'draw' | 'clay' | 'fly' | 'generators';
 
 // Stores
 export const gridSize = writable<GridSize>(32);
@@ -183,6 +184,23 @@ export const addPanelStore = writable<AddPanelState>({ ...defaultAddPanel });
 
 export type StampRotation = { rotX: number; rotY: number; rotZ: number };
 export const stampRotation = writable<StampRotation>({ rotX: 0, rotY: 0, rotZ: 0 });
+
+/** Rocks generator: nominal radius (1–8 voxels). */
+export const rockSize = writable<number>(3);
+/** Rocks generator: surface irregularity 0–1. */
+export const rockRoughness = writable<number>(0.4);
+/** Rocks generator: per-voxel color variation 0–1 (tint range). */
+export const rockColorVariation = writable<number>(0.15);
+/** Rocks generator: number of rocks to place per click (1–5). */
+export const rockCount = writable<number>(1);
+/** Rocks generator: max voxel offset for cluster centers when rockCount > 1 (0–3). */
+export const rockClusterRadius = writable<number>(1);
+/** Rocks generator: sink direction – none, under (buried), or over (floating). */
+export type RockSinkDirection = 'none' | 'under' | 'over';
+export const rockSinkDirection = writable<RockSinkDirection>('none');
+/** Rocks generator: sink amount in voxel layers (0–5). */
+export const rockSinkAmount = writable<number>(0);
+
 export const showGrid = writable<boolean>(false);
 export const renderingMode = writable<RenderingMode>('greedy');
 export const lightAngle = writable<number>(45);

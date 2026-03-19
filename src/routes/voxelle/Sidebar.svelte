@@ -16,6 +16,7 @@
   import ToolPicker from './sidebar/ToolPicker.svelte';
   import StrokeModePicker from './sidebar/StrokeModePicker.svelte';
   import ClayModePicker from './sidebar/ClayModePicker.svelte';
+  import GeneratorPicker from './sidebar/GeneratorPicker.svelte';
   import SymmetrySection from './sidebar/SymmetrySection.svelte';
   import ColorSection from './sidebar/ColorSection.svelte';
   import CameraSection from './sidebar/CameraSection.svelte';
@@ -120,7 +121,7 @@
         aria-selected={$toolPane === 'draw'}
         onclick={() => {
           toolPane.set('draw');
-          tool.set($lastDrawTool === 'fly' || $lastDrawTool === 'clay' ? 'remove' : $lastDrawTool);
+          tool.set($lastDrawTool === 'fly' || $lastDrawTool === 'clay' || $lastDrawTool === 'rocks' ? 'remove' : $lastDrawTool);
         }}
       >
         Draw
@@ -149,6 +150,18 @@
       >
         Fly
       </button>
+      <button
+        type="button"
+        role="tab"
+        class:active={$toolPane === 'generators'}
+        aria-selected={$toolPane === 'generators'}
+        onclick={() => {
+          toolPane.set('generators');
+          tool.set('rocks');
+        }}
+      >
+        Generators
+      </button>
     </div>
     {#if $toolPane === 'draw'}
       <div role="tabpanel">
@@ -159,6 +172,11 @@
     {:else if $toolPane === 'clay'}
       <div role="tabpanel">
         <ClayModePicker />
+        <SymmetrySection />
+      </div>
+    {:else if $toolPane === 'generators'}
+      <div role="tabpanel">
+        <GeneratorPicker />
         <SymmetrySection />
       </div>
     {:else}
