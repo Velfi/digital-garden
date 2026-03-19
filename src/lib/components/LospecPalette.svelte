@@ -28,6 +28,12 @@
   let loading = $state(false);
   let loadError = $state('');
 
+  // Drag-to-select range (only when selectedColors is provided)
+  let paletteContainer = $state<HTMLDivElement | null>(null);
+  let dragStartIndex = $state<number | null>(null);
+  let isDragging = $state(false);
+  let dragStartShiftKey = $state(false);
+
   async function loadPaletteBySlug(slug: string) {
     const normalized = slug.trim().toLowerCase();
     if (!normalized) return;
@@ -62,7 +68,7 @@
     loadPaletteBySlug(lospecSlug);
   }
 
-  function handleSwatchClick(swatch: string, e: MouseEvent) {
+  function handleSwatchClick(swatch: string, e: MouseEvent | { shiftKey?: boolean }) {
     if (selectedColors) {
       const sel = [...get(selectedColors)];
       if (e.shiftKey) {
@@ -81,6 +87,64 @@
     } else {
       color.set(swatch);
     }
+  }
+
+  function getSwatchIndexUnder(clientX: number, clientY: number): number | null {
+    const el = document.elementFromPoint(clientX, clientY);
+    const swatchEl = el?.closest?.('[data-swatch-index]');
+    if (!swatchEl) return null;
+    const raw = swatchEl.getAttribute('data-swatch-index');
+    if (raw === null) return null;
+    const idx = parseInt(raw, 10);
+    return Number.isNaN(idx) ? null : idx;
+  }
+
+  function handlePalettePointerMove(e: PointerEvent) {
+    if (dragStartIndex === null || disabled || !selectedColors || !paletteContainer) return;
+    const currentIndex = getSwatchIndexUnder(e.clientX, e.clientY);
+    if (currentIndex === null) return;
+    const pal = get(palette);
+    if (currentIndex < 0 || currentIndex >= pal.length) return;
+    if (!isDragging && currentIndex === dragStartIndex) return;
+    isDragging = true;
+    const lo = Math.min(dragStartIndex, currentIndex);
+    const hi = Math.max(dragStartIndex, currentIndex);
+    const range = pal.slice(lo, hi + 1);
+    if (dragStartShiftKey) {
+      const existing = get(selectedColors);
+      const combined = [...existing];
+      for (const c of range) {
+        if (!combined.includes(c)) combined.push(c);
+      }
+      selectedColors.set(combined);
+    } else {
+      selectedColors.set(range);
+    }
+    color.set(pal[currentIndex]);
+  }
+
+  function handlePalettePointerUp(e: PointerEvent) {
+    if (dragStartIndex === null || !selectedColors) return;
+    const pal = get(palette);
+    if (!isDragging) {
+      handleSwatchClick(pal[dragStartIndex], { shiftKey: dragStartShiftKey });
+    } else if (dragStartShiftKey) {
+      const currentIndex = getSwatchIndexUnder(e.clientX, e.clientY);
+      if (currentIndex !== null && currentIndex >= 0 && currentIndex < pal.length) {
+        const lo = Math.min(dragStartIndex, currentIndex);
+        const hi = Math.max(dragStartIndex, currentIndex);
+        const range = pal.slice(lo, hi + 1);
+        const existing = get(selectedColors);
+        const combined = [...existing];
+        for (const c of range) {
+          if (!combined.includes(c)) combined.push(c);
+        }
+        selectedColors.set(combined);
+        color.set(pal[currentIndex]);
+      }
+    }
+    dragStartIndex = null;
+    isDragging = false;
   }
 </script>
 
@@ -120,27 +184,47 @@
 {/if}
 {#if $palette.length > 0}
   {@const sel = selectedColors ? ($selectedColors ?? []) : []}
-  <div class="palette-swatches">
-    {#each $palette as swatch}
+  <div
+    class="palette-swatches"
+    role="group"
+    aria-label="Color palette swatches"
+    bind:this={paletteContainer}
+    onpointermove={selectedColors ? handlePalettePointerMove : undefined}
+    onpointerup={selectedColors ? handlePalettePointerUp : undefined}
+    onpointercancel={selectedColors ? handlePalettePointerUp : undefined}
+  >
+    {#each $palette as swatch, i}
       <button
         type="button"
         class="swatch"
         class:active={selectedColors ? (sel.length > 0 ? sel.includes(swatch) : swatch === $color) : swatch === $color}
         style="background-color: {swatch}"
-        title={`${swatch} — Shift+click to multi-select`}
+        data-swatch-index={i}
+        title="{swatch} — Shift+click to multi-select; drag to select range; shift+drag to add range"
         aria-label="Select color {swatch}"
         onpointerdown={(e) => {
           if (e.button !== 0 || disabled) return;
           e.stopPropagation();
           e.preventDefault();
-          handleSwatchClick(swatch, e);
+          if (selectedColors && paletteContainer) {
+            dragStartIndex = i;
+            isDragging = false;
+            dragStartShiftKey = e.shiftKey;
+            paletteContainer.setPointerCapture(e.pointerId);
+            if (!e.shiftKey) {
+              color.set(swatch);
+              selectedColors.set([swatch]);
+            }
+          } else {
+            handleSwatchClick(swatch, e);
+          }
         }}
         {disabled}
       ></button>
     {/each}
   </div>
   {#if selectedColors}
-    <p class="palette-hint">Shift+click to select multiple colors; painting will randomly use them.</p>
+    <p class="palette-hint">Shift+click to multi-select; drag to select a range; shift+drag to add a range. Painting uses selected colors randomly.</p>
   {/if}
 {/if}
 
