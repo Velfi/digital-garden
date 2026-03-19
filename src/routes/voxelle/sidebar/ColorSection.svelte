@@ -31,7 +31,6 @@
 </div>
 
 <style>
-
   .color-row {
     display: flex;
     gap: 0.5rem;

@@ -30,7 +30,10 @@ function makeVoxels(entries: [number, number, number, number][]): Map<string, nu
 
 describe('mergeSelection', () => {
   it('replace mode replaces current with incoming', () => {
-    const current = makeSel([[0, 0, 0], [1, 1, 1]]);
+    const current = makeSel([
+      [0, 0, 0],
+      [1, 1, 1]
+    ]);
     const incoming = makeSel([[2, 2, 2]]);
     const result = mergeSelection(current, incoming, 'replace');
     expect(result.size).toBe(1);
@@ -47,7 +50,10 @@ describe('mergeSelection', () => {
   });
 
   it('subtract mode removes incoming from current', () => {
-    const current = makeSel([[0, 0, 0], [1, 1, 1]]);
+    const current = makeSel([
+      [0, 0, 0],
+      [1, 1, 1]
+    ]);
     const incoming = makeSel([[1, 1, 1]]);
     const result = mergeSelection(current, incoming, 'subtract');
     expect(result.size).toBe(1);
@@ -56,18 +62,30 @@ describe('mergeSelection', () => {
   });
 
   it('toggle mode adds new and removes existing', () => {
-    const current = makeSel([[0, 0, 0], [1, 1, 1]]);
-    const incoming = makeSel([[1, 1, 1], [2, 2, 2]]);
+    const current = makeSel([
+      [0, 0, 0],
+      [1, 1, 1]
+    ]);
+    const incoming = makeSel([
+      [1, 1, 1],
+      [2, 2, 2]
+    ]);
     const result = mergeSelection(current, incoming, 'toggle');
     expect(result.size).toBe(2);
-    expect(result.has('0,0,0')).toBe(true);  // untouched
+    expect(result.has('0,0,0')).toBe(true); // untouched
     expect(result.has('1,1,1')).toBe(false); // toggled off
-    expect(result.has('2,2,2')).toBe(true);  // toggled on
+    expect(result.has('2,2,2')).toBe(true); // toggled on
   });
 
   it('intersect mode keeps only coords in both', () => {
-    const current = makeSel([[0, 0, 0], [1, 1, 1]]);
-    const incoming = makeSel([[1, 1, 1], [2, 2, 2]]);
+    const current = makeSel([
+      [0, 0, 0],
+      [1, 1, 1]
+    ]);
+    const incoming = makeSel([
+      [1, 1, 1],
+      [2, 2, 2]
+    ]);
     const result = mergeSelection(current, incoming, 'intersect');
     expect(result.size).toBe(1);
     expect(result.has('1,1,1')).toBe(true);
@@ -191,7 +209,12 @@ describe('selection store actions', () => {
   });
 
   it('selectAll selects all voxels', () => {
-    voxels.set(makeVoxels([[0, 0, 0, 0xff0000], [1, 1, 1, 0x00ff00]]));
+    voxels.set(
+      makeVoxels([
+        [0, 0, 0, 0xff0000],
+        [1, 1, 1, 0x00ff00]
+      ])
+    );
     selectAll();
     expect(get(selection).size).toBe(2);
   });
@@ -223,7 +246,12 @@ describe('selection store actions', () => {
         [1, 0, 0, 0xff0000]
       ])
     );
-    selection.set(makeVoxels([[0, 0, 0, 0xff0000], [1, 0, 0, 0xff0000]]));
+    selection.set(
+      makeVoxels([
+        [0, 0, 0, 0xff0000],
+        [1, 0, 0, 0xff0000]
+      ])
+    );
     shrinkSelection();
     expect(get(selection).size).toBe(0);
   });
@@ -231,8 +259,7 @@ describe('selection store actions', () => {
   it('hollowOut removes interior voxels', () => {
     const positions: [number, number, number, number][] = [];
     for (let x = 0; x < 3; x++)
-      for (let y = 0; y < 3; y++)
-        for (let z = 0; z < 3; z++) positions.push([x, y, z, 0xff0000]);
+      for (let y = 0; y < 3; y++) for (let z = 0; z < 3; z++) positions.push([x, y, z, 0xff0000]);
     voxels.set(makeVoxels(positions));
     selection.set(get(voxels));
     hollowOut();
@@ -257,7 +284,12 @@ describe('selection store actions', () => {
 
   it('deselectVoxels keeps only selection entries with no voxel', () => {
     voxels.set(makeVoxels([[0, 0, 0, 0xff0000]]));
-    selection.set(makeVoxels([[0, 0, 0, 0xff0000], [1, 1, 1, 0x00ff00]]));
+    selection.set(
+      makeVoxels([
+        [0, 0, 0, 0xff0000],
+        [1, 1, 1, 0x00ff00]
+      ])
+    );
     deselectVoxels();
     expect(get(selection).size).toBe(1);
     expect(get(selection).has('1,1,1')).toBe(true);
@@ -265,8 +297,18 @@ describe('selection store actions', () => {
   });
 
   it('deselectEmptySpaces keeps only selection keys that have voxels', () => {
-    voxels.set(makeVoxels([[0, 0, 0, 0xff0000], [1, 1, 1, 0x00ff00]]));
-    selection.set(makeVoxels([[0, 0, 0, 0xff0000], [2, 2, 2, 0x0000ff]]));
+    voxels.set(
+      makeVoxels([
+        [0, 0, 0, 0xff0000],
+        [1, 1, 1, 0x00ff00]
+      ])
+    );
+    selection.set(
+      makeVoxels([
+        [0, 0, 0, 0xff0000],
+        [2, 2, 2, 0x0000ff]
+      ])
+    );
     deselectEmptySpaces();
     expect(get(selection).size).toBe(1);
     expect(get(selection).has('0,0,0')).toBe(true);
@@ -274,7 +316,12 @@ describe('selection store actions', () => {
   });
 
   it('invertSelection selects unselected voxels', () => {
-    voxels.set(makeVoxels([[0, 0, 0, 0xff0000], [1, 1, 1, 0x00ff00]]));
+    voxels.set(
+      makeVoxels([
+        [0, 0, 0, 0xff0000],
+        [1, 1, 1, 0x00ff00]
+      ])
+    );
     selection.set(makeVoxels([[0, 0, 0, 0xff0000]]));
     invertSelection();
     expect(get(selection).size).toBe(1);

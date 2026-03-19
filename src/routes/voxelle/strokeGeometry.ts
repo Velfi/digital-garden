@@ -313,10 +313,7 @@ export function puffPath(
 ): [number, number, number][] {
   if (positions.length === 0) return [];
   const rand = rng ?? Math.random;
-  const useRange =
-    radiusMin !== undefined &&
-    radiusMax !== undefined &&
-    radiusMax > radiusMin;
+  const useRange = radiusMin !== undefined && radiusMax !== undefined && radiusMax > radiusMin;
   const rMin = useRange ? Math.max(0, radiusMin!) : Math.max(0, radius);
   const rMax = useRange ? Math.max(0, radiusMax!) : rMin;
   const s = Math.max(0, Math.floor(scatter));
@@ -327,7 +324,9 @@ export function puffPath(
     const oy = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
     const oz = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
     const r = useRange
-      ? (Math.round(rMin * 2) + Math.floor(rand() * (Math.round(rMax * 2) - Math.round(rMin * 2) + 1))) / 2
+      ? (Math.round(rMin * 2) +
+          Math.floor(rand() * (Math.round(rMax * 2) - Math.round(rMin * 2) + 1))) /
+        2
       : rMin;
     const voxels = getSphereVoxels(px + ox, py + oy, pz + oz, r);
     for (const [x, y, z] of voxels) {
@@ -345,7 +344,15 @@ export function puffPath(
 }
 
 /** World-axis direction for wall/spray. 'auto' = use face normal (wall only). */
-export type SprayDirectionName = 'none' | 'auto' | 'down' | 'up' | 'forward' | 'back' | 'left' | 'right';
+export type SprayDirectionName =
+  | 'none'
+  | 'auto'
+  | 'down'
+  | 'up'
+  | 'forward'
+  | 'back'
+  | 'left'
+  | 'right';
 
 /** Snap face normal to nearest principal axis (max |component|). */
 export function snapNormalToAxis(n: { x: number; y: number; z: number }): [number, number, number] {
@@ -463,7 +470,16 @@ export interface PathThickenParams {
   seed?: number;
 }
 
-const CLAY_PATH_MODES = ['bulk', 'smooth', 'level', 'gouge', 'branch', 'melt', 'wall', 'inflate'] as const;
+const CLAY_PATH_MODES = [
+  'bulk',
+  'smooth',
+  'level',
+  'gouge',
+  'branch',
+  'melt',
+  'wall',
+  'inflate'
+] as const;
 
 /**
  * Thickens a path according to stroke/clay mode. Single source of truth for preview and apply.
@@ -475,7 +491,8 @@ export function thickenPathForStroke(
 ): [number, number, number][] {
   if (positions.length === 0) return [];
   const isClayPath =
-    params.clayMode !== undefined && CLAY_PATH_MODES.includes(params.clayMode as (typeof CLAY_PATH_MODES)[number]);
+    params.clayMode !== undefined &&
+    CLAY_PATH_MODES.includes(params.clayMode as (typeof CLAY_PATH_MODES)[number]);
   const rng = params.seed != null ? createSeededRng(params.seed) : undefined;
 
   // Clay modes take precedence; stroke mode (e.g. airbrush) only applies to Draw tools
@@ -555,11 +572,9 @@ export function thickenPathForStroke(
     const r = Math.round(dbs);
     const positionsToUse =
       n && r > 0
-        ? positions.map(([px, py, pz]) => [
-            px + n.x * r,
-            py + n.y * r,
-            pz + n.z * r
-          ] as [number, number, number])
+        ? positions.map(
+            ([px, py, pz]) => [px + n.x * r, py + n.y * r, pz + n.z * r] as [number, number, number]
+          )
         : positions;
     if (shape === 'pyramid') return pyramidPath(positionsToUse, dbs);
     if (shape === 'cube') return thickenPath(positionsToUse, dbs);
@@ -633,12 +648,18 @@ export type RopeGravityDirection = 'down' | 'up' | 'left' | 'right' | 'forward' 
 
 function ropeGravityVector(dir: RopeGravityDirection): [number, number, number] {
   switch (dir) {
-    case 'down': return [0, -1, 0];
-    case 'up': return [0, 1, 0];
-    case 'left': return [-1, 0, 0];
-    case 'right': return [1, 0, 0];
-    case 'forward': return [0, 0, -1];
-    case 'back': return [0, 0, 1];
+    case 'down':
+      return [0, -1, 0];
+    case 'up':
+      return [0, 1, 0];
+    case 'left':
+      return [-1, 0, 0];
+    case 'right':
+      return [1, 0, 0];
+    case 'forward':
+      return [0, 0, -1];
+    case 'back':
+      return [0, 0, 1];
   }
 }
 
@@ -946,11 +967,19 @@ export function getAxisAlignedCuboid(
 const PIP_EDGE_TOL = 1e-6;
 
 /** Point (px,py) on segment from (x0,y0) to (x1,y1) (within tolerance). */
-function pointOnSegment(px: number, py: number, x0: number, y0: number, x1: number, y1: number): boolean {
+function pointOnSegment(
+  px: number,
+  py: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number
+): boolean {
   const dx = x1 - x0;
   const dy = y1 - y0;
   const lenSq = dx * dx + dy * dy;
-  if (lenSq < PIP_EDGE_TOL * PIP_EDGE_TOL) return Math.abs(px - x0) < PIP_EDGE_TOL && Math.abs(py - y0) < PIP_EDGE_TOL;
+  if (lenSq < PIP_EDGE_TOL * PIP_EDGE_TOL)
+    return Math.abs(px - x0) < PIP_EDGE_TOL && Math.abs(py - y0) < PIP_EDGE_TOL;
   let t = ((px - x0) * dx + (py - y0) * dy) / lenSq;
   t = Math.max(0, Math.min(1, t));
   const projX = x0 + t * dx;
@@ -1051,7 +1080,12 @@ export function getPolygonVoxels(points: [number, number, number][]): [number, n
     const coord: [number, number, number] = [0, 0, 0];
     for (let u = floorU; u <= ceilU; u++) {
       for (let v = floorV; v <= ceilV; v++) {
-        const corners2D: [number, number][] = [[u, v], [u + 1, v], [u + 1, v + 1], [u, v + 1]];
+        const corners2D: [number, number][] = [
+          [u, v],
+          [u + 1, v],
+          [u + 1, v + 1],
+          [u, v + 1]
+        ];
         const inside = corners2D.some(([pu, pv]) => inTriangle(pu, pv));
         if (!inside) continue;
         const nd = n.getComponent(dropAxis);
@@ -1098,7 +1132,12 @@ export function getPolygonVoxels(points: [number, number, number][]): [number, n
     for (let u = floorU; u <= ceilU; u++) {
       for (let v = floorV; v <= ceilV; v++) {
         // Include voxel if any corner is inside or on boundary (center alone misses right/top boundary voxels)
-        const corners: [number, number][] = [[u, v], [u + 1, v], [u + 1, v + 1], [u, v + 1]];
+        const corners: [number, number][] = [
+          [u, v],
+          [u + 1, v],
+          [u + 1, v + 1],
+          [u, v + 1]
+        ];
         const pip = corners.some(([cx, cy]) => pointInPolygon2D(cx, cy, polygon2D));
         if (!pip) continue;
         coord[uAxis] = u;

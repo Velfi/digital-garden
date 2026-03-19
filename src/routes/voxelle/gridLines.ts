@@ -16,18 +16,54 @@ export const CUBE_EDGES: number[][] = [
 ];
 
 export const EDGE_NEIGHBORS: [number, number, number][][] = [
-  [[0, -1, 0], [0, 0, -1]],
-  [[-1, 0, 0], [0, 0, -1]],
-  [[-1, 0, 0], [0, -1, 0]],
-  [[1, 0, 0], [0, 0, -1]],
-  [[1, 0, 0], [0, -1, 0]],
-  [[0, 1, 0], [0, 0, -1]],
-  [[-1, 0, 0], [0, 1, 0]],
-  [[0, -1, 0], [0, 0, 1]],
-  [[-1, 0, 0], [0, 0, 1]],
-  [[1, 0, 0], [0, 1, 0]],
-  [[1, 0, 0], [0, 0, 1]],
-  [[0, 1, 0], [0, 0, 1]]
+  [
+    [0, -1, 0],
+    [0, 0, -1]
+  ],
+  [
+    [-1, 0, 0],
+    [0, 0, -1]
+  ],
+  [
+    [-1, 0, 0],
+    [0, -1, 0]
+  ],
+  [
+    [1, 0, 0],
+    [0, 0, -1]
+  ],
+  [
+    [1, 0, 0],
+    [0, -1, 0]
+  ],
+  [
+    [0, 1, 0],
+    [0, 0, -1]
+  ],
+  [
+    [-1, 0, 0],
+    [0, 1, 0]
+  ],
+  [
+    [0, -1, 0],
+    [0, 0, 1]
+  ],
+  [
+    [-1, 0, 0],
+    [0, 0, 1]
+  ],
+  [
+    [1, 0, 0],
+    [0, 1, 0]
+  ],
+  [
+    [1, 0, 0],
+    [0, 0, 1]
+  ],
+  [
+    [0, 1, 0],
+    [0, 0, 1]
+  ]
 ];
 
 /** Returns flat position array for grid lines (x1,y1,z1,x2,y2,z2,...). Empty if no visible edges. */
@@ -43,14 +79,7 @@ export function buildGridPositions(v: Map<string, number>): number[] {
       const n2 = has(x + dx2, y + dy2, z + dz2);
       if (n1 && n2) continue;
       const edge = CUBE_EDGES[i];
-      positions.push(
-        x + edge[0],
-        y + edge[1],
-        z + edge[2],
-        x + edge[3],
-        y + edge[4],
-        z + edge[5]
-      );
+      positions.push(x + edge[0], y + edge[1], z + edge[2], x + edge[3], y + edge[4], z + edge[5]);
     }
   }
   return positions;

@@ -37,13 +37,12 @@ describe('rotatePositionAroundOrigin', () => {
     const pos: [number, number, number] = [5, -3, 2];
     expect(rotatePositionAroundOrigin(pos, [4, 4, 4])).toEqual(pos);
     expect(rotatePositionAroundOrigin(pos, [1, 1, 1])).not.toEqual(pos);
-    expect(rotatePositionAroundOrigin(rotatePositionAroundOrigin(pos, [1, 1, 1]), [1, 1, 1])).not.toEqual(pos);
+    expect(
+      rotatePositionAroundOrigin(rotatePositionAroundOrigin(pos, [1, 1, 1]), [1, 1, 1])
+    ).not.toEqual(pos);
     const rot4 = rotatePositionAroundOrigin(
       rotatePositionAroundOrigin(
-        rotatePositionAroundOrigin(
-          rotatePositionAroundOrigin(pos, [1, 0, 0]),
-          [1, 0, 0]
-        ),
+        rotatePositionAroundOrigin(rotatePositionAroundOrigin(pos, [1, 0, 0]), [1, 0, 0]),
         [1, 0, 0]
       ),
       [1, 0, 0]
@@ -119,11 +118,7 @@ describe('stamp positions (rotate + offset)', () => {
     expect(uncentered).toEqual([0, 0, 0]); // center at origin, single voxel stays
 
     const bounds = getBoundsFromPositions([uncentered])!;
-    const [dx, dy, dz] = getStampOffsetForFace(
-      [2, 0, 0],
-      [1, 0, 0] as FaceNormal,
-      bounds
-    );
+    const [dx, dy, dz] = getStampOffsetForFace([2, 0, 0], [1, 0, 0] as FaceNormal, bounds);
     const final = [uncentered[0] + dx, uncentered[1] + dy, uncentered[2] + dz];
     expect(final).toEqual([3, 0, 0]); // one voxel past target
   });

@@ -17,10 +17,16 @@
     if (left + tooltipRect.width > window.innerWidth - viewportPadding) {
       left = buttonRect.left - tooltipRect.width - gap;
     }
-    left = Math.max(viewportPadding, Math.min(left, window.innerWidth - tooltipRect.width - viewportPadding));
+    left = Math.max(
+      viewportPadding,
+      Math.min(left, window.innerWidth - tooltipRect.width - viewportPadding)
+    );
 
     let top = buttonRect.top + buttonRect.height / 2 - tooltipRect.height / 2;
-    top = Math.max(viewportPadding, Math.min(top, window.innerHeight - tooltipRect.height - viewportPadding));
+    top = Math.max(
+      viewportPadding,
+      Math.min(top, window.innerHeight - tooltipRect.height - viewportPadding)
+    );
 
     tooltipEl.style.left = `${left}px`;
     tooltipEl.style.top = `${top}px`;
@@ -47,7 +53,14 @@
     ⓘ
   </button>
 </span>
-<div bind:this={tooltipEl} {id} popover="auto" role="tooltip" class="param-tooltip" on:toggle={handleTooltipToggle}>
+<div
+  bind:this={tooltipEl}
+  {id}
+  popover="auto"
+  role="tooltip"
+  class="param-tooltip"
+  on:toggle={handleTooltipToggle}
+>
   {tip}
 </div>
 

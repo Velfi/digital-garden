@@ -314,9 +314,7 @@
         </button>
         <div class="menu-separator" role="separator"></div>
         <span class="menu-label">Import / Export</span>
-        <button type="button" role="menuitem" onclick={handleImportImage}>
-          Import image…
-        </button>
+        <button type="button" role="menuitem" onclick={handleImportImage}> Import image… </button>
         <button type="button" role="menuitem" onclick={handleShare} disabled={$voxels.size === 0}>
           Share link
         </button>

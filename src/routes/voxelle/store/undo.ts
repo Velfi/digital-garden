@@ -1,9 +1,6 @@
 import { writable, get } from 'svelte/store';
 import type { Writable } from 'svelte/store';
-import {
-  serializeVoxels,
-  deserializeVoxels
-} from './serialization';
+import { serializeVoxels, deserializeVoxels } from './serialization';
 
 const MAX_UNDO = 50;
 

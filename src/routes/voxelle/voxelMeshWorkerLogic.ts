@@ -52,7 +52,13 @@ function partitionByChunks(
 }
 
 function mergeChunkResults(
-  chunkResults: Array<{ color: number; positions: Float32Array; normals: Float32Array; colors: Float32Array; indices: Uint32Array }>
+  chunkResults: Array<{
+    color: number;
+    positions: Float32Array;
+    normals: Float32Array;
+    colors: Float32Array;
+    indices: Uint32Array;
+  }>
 ): VoxelMeshWorkerOutput['results'] {
   const byColor = new Map<
     number,
@@ -117,9 +123,7 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
   }
 
   const coreResults =
-    mode === 'marchingCubes'
-      ? computeMarchingCubes(voxels)
-      : computeGreedyMesh(voxels, options);
+    mode === 'marchingCubes' ? computeMarchingCubes(voxels) : computeGreedyMesh(voxels, options);
 
   const results: VoxelMeshWorkerOutput['results'] = [];
   for (const [color, data] of coreResults) {

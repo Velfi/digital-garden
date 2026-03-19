@@ -26,7 +26,14 @@ function getPlaneAxisNumber(): 0 | 1 | 2 {
   return pa === 'auto' ? 1 : pa;
 }
 
-function inPlane(nx: number, ny: number, nz: number, seedX: number, seedY: number, seedZ: number): boolean {
+function inPlane(
+  nx: number,
+  ny: number,
+  nz: number,
+  seedX: number,
+  seedY: number,
+  seedZ: number
+): boolean {
   const axis = getPlaneAxisNumber();
   if (axis === 0) return nx === seedX;
   if (axis === 1) return ny === seedY;
@@ -34,7 +41,12 @@ function inPlane(nx: number, ny: number, nz: number, seedX: number, seedY: numbe
 }
 
 const ADJ_6: [number, number, number][] = [
-  [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1]
 ];
 
 const ADJ_26: [number, number, number][] = (() => {
@@ -88,12 +100,7 @@ export function getFillSelectionAt(
   return next;
 }
 
-export function getFillEmptyAt(
-  x: number,
-  y: number,
-  z: number,
-  diagonals: boolean
-): Set<string> {
+export function getFillEmptyAt(x: number, y: number, z: number, diagonals: boolean): Set<string> {
   const v = get(voxels);
   const bounds = getEffectiveBoundsForSelection();
   const k0 = coordKey(x, y, z);

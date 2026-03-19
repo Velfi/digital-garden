@@ -197,7 +197,11 @@
       <button
         type="button"
         class="swatch"
-        class:active={selectedColors ? (sel.length > 0 ? sel.includes(swatch) : swatch === $color) : swatch === $color}
+        class:active={selectedColors
+          ? sel.length > 0
+            ? sel.includes(swatch)
+            : swatch === $color
+          : swatch === $color}
         style="background-color: {swatch}"
         data-swatch-index={i}
         title="{swatch} — Shift+click to multi-select; drag to select range; shift+drag to add range"
@@ -224,7 +228,10 @@
     {/each}
   </div>
   {#if selectedColors}
-    <p class="palette-hint">Shift+click to multi-select; drag to select a range; shift+drag to add a range. Painting uses selected colors randomly.</p>
+    <p class="palette-hint">
+      Shift+click to multi-select; drag to select a range; shift+drag to add a range. Painting uses
+      selected colors randomly.
+    </p>
   {/if}
 {/if}
 

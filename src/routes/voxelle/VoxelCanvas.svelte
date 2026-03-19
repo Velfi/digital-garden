@@ -354,7 +354,7 @@
         vertexColors: true,
         roughness: r,
         metalness: m,
-        envMap: envMap,
+        envMap: envMap
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = $enableShadows;
@@ -518,7 +518,10 @@
     normal: THREE.Vector3
   ): [number, number, number] | null {
     if (!camera || !raycaster) return null;
-    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal.clone().normalize(), planePoint);
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+      normal.clone().normalize(),
+      planePoint
+    );
     const target = new THREE.Vector3();
     const hit = raycaster.ray.intersectPlane(plane, target);
     if (!hit) return null;
@@ -597,11 +600,11 @@
     } else {
       const dist = getCameraDistance();
       const v = $voxels;
-      const b = v.size > 0 ? getBoundsFromPositions([...v.keys()].map((k) => parseCoordKey(k))) : null;
-      const baseDist =
-        b
-          ? Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) * 1.5 + 10
-          : $gridSize * 2.5;
+      const b =
+        v.size > 0 ? getBoundsFromPositions([...v.keys()].map((k) => parseCoordKey(k))) : null;
+      const baseDist = b
+        ? Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) * 1.5 + 10
+        : $gridSize * 2.5;
       zoomPercent = Math.round((baseDist / dist) * 100);
     }
   }
@@ -636,9 +639,7 @@
     const center = b
       ? [(b.minX + b.maxX + 1) / 2, (b.minY + b.maxY + 1) / 2, (b.minZ + b.maxZ + 1) / 2]
       : [0, 0, 0];
-    const extent = b
-      ? Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) + 2
-      : 64;
+    const extent = b ? Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) + 2 : 64;
     const dist = extent * 2.5;
     orbitControls.target.set(center[0], center[1], center[2]);
     camera.position.set(center[0] + dist * 0.6, center[1] + dist * 0.8, center[2] + dist);
@@ -672,10 +673,7 @@
     }
     fitHelperBox.getBoundingSphere(fitHelperSphere);
     if (camera instanceof THREE.OrthographicCamera) {
-      const baseHeight =
-        v.size > 0
-          ? Math.max(256, fitHelperSphere.radius * 2.5)
-          : sz * 2;
+      const baseHeight = v.size > 0 ? Math.max(256, fitHelperSphere.radius * 2.5) : sz * 2;
       const targetHeight = fitHelperSphere.radius * 3;
       camera.zoom = Math.max(0.1, baseHeight / targetHeight);
       camera.updateProjectionMatrix();
@@ -789,7 +787,16 @@
 
   function applyClayStroke(
     positions: [number, number, number][],
-    clayModeVal: 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'melt' | 'rope' | 'wall' | 'inflate',
+    clayModeVal:
+      | 'bulk'
+      | 'smooth'
+      | 'level'
+      | 'gouge'
+      | 'branch'
+      | 'melt'
+      | 'rope'
+      | 'wall'
+      | 'inflate',
     levelY: number
   ) {
     ensureGridFitsPositions(positions);
@@ -815,7 +822,12 @@
       });
       return;
     }
-    if (clayModeVal === 'bulk' || clayModeVal === 'branch' || clayModeVal === 'rope' || clayModeVal === 'wall') {
+    if (
+      clayModeVal === 'bulk' ||
+      clayModeVal === 'branch' ||
+      clayModeVal === 'rope' ||
+      clayModeVal === 'wall'
+    ) {
       updateVoxelsInStroke((next) => {
         for (const [x, y, z] of positions) {
           if (!inBounds(x, y, z, boundSize)) continue;
@@ -834,7 +846,12 @@
       return;
     }
     if (clayModeVal === 'inflate') {
-      const { toAdd, toRemove } = applyInflate(v, positions, clayBoundsOrSize, get(inflateStrength));
+      const { toAdd, toRemove } = applyInflate(
+        v,
+        positions,
+        clayBoundsOrSize,
+        get(inflateStrength)
+      );
       updateVoxelsInStroke((next) => {
         for (const key of toRemove) next.delete(key);
         for (const [key, c] of toAdd) next.set(key, c);
@@ -910,11 +927,7 @@
     };
   }
 
-  function placeRocks(
-    place: [number, number, number],
-    normal: FaceNormal,
-    placementSeed: number
-  ) {
+  function placeRocks(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
     const getCol = getPaintColorResolver();
     const size = get(rockSize) as number;
     const roughness = get(rockRoughness) as number;
@@ -929,9 +942,17 @@
     const N = sinkDir !== 'none' ? Math.min(5, Math.max(0, sinkAmount)) : 0;
     const surfaceTarget: [number, number, number] =
       sinkDir === 'under'
-        ? [place[0] - (1 + N) * normal[0], place[1] - (1 + N) * normal[1], place[2] - (1 + N) * normal[2]]
+        ? [
+            place[0] - (1 + N) * normal[0],
+            place[1] - (1 + N) * normal[1],
+            place[2] - (1 + N) * normal[2]
+          ]
         : sinkDir === 'over'
-          ? [place[0] + (N - 1) * normal[0], place[1] + (N - 1) * normal[1], place[2] + (N - 1) * normal[2]]
+          ? [
+              place[0] + (N - 1) * normal[0],
+              place[1] + (N - 1) * normal[1],
+              place[2] + (N - 1) * normal[2]
+            ]
           : [place[0] - normal[0], place[1] - normal[1], place[2] - normal[2]];
 
     for (let i = 0; i < count; i++) {
@@ -947,7 +968,9 @@
         getCol(),
         colorVariation
       );
-      const localPositions = [...rockMap.keys()].map((k) => parseCoordKey(k) as [number, number, number]);
+      const localPositions = [...rockMap.keys()].map(
+        (k) => parseCoordKey(k) as [number, number, number]
+      );
       const bounds = getBoundsFromPositions(localPositions);
       if (!bounds) continue;
       // Surface for normal axis (rock sits on plane); center on cursor in tangent plane (placeI - halfSize)
@@ -1128,7 +1151,9 @@
     // When placing (voxel/clay), put voxels on top of the clicked face; remove stays at clicked voxels.
     if (positions.length > 0 && ($tool === 'voxel' || $tool === 'clay') && polygonPlacementNormal) {
       const [nx, ny, nz] = polygonPlacementNormal;
-      positions = positions.map(([x, y, z]) => [x + nx, y + ny, z + nz] as [number, number, number]);
+      positions = positions.map(
+        ([x, y, z]) => [x + nx, y + ny, z + nz] as [number, number, number]
+      );
     }
     if (positions.length > 0) {
       if ($tool === 'select') {
@@ -1293,9 +1318,15 @@
           polygonPhase = polygonPoints.length > 0 ? 'placing' : null;
           updatePolygonPreview(polygonPoints);
           let fillPositions = polygonPoints.length >= 2 ? getPolygonVoxels(polygonPoints) : [];
-          if (fillPositions.length > 0 && ($tool === 'voxel' || $tool === 'clay') && polygonPlacementNormal) {
+          if (
+            fillPositions.length > 0 &&
+            ($tool === 'voxel' || $tool === 'clay') &&
+            polygonPlacementNormal
+          ) {
             const [nx, ny, nz] = polygonPlacementNormal;
-            fillPositions = fillPositions.map(([x, y, z]) => [x + nx, y + ny, z + nz] as [number, number, number]);
+            fillPositions = fillPositions.map(
+              ([x, y, z]) => [x + nx, y + ny, z + nz] as [number, number, number]
+            );
           }
           updatePreviewMesh(fillPositions);
         }
@@ -1318,9 +1349,15 @@
           }
           updatePolygonPreview(polygonPoints);
           let fillPositions = polygonPoints.length >= 2 ? getPolygonVoxels(polygonPoints) : [];
-          if (fillPositions.length > 0 && ($tool === 'voxel' || $tool === 'clay') && polygonPlacementNormal) {
+          if (
+            fillPositions.length > 0 &&
+            ($tool === 'voxel' || $tool === 'clay') &&
+            polygonPlacementNormal
+          ) {
             const [nx, ny, nz] = polygonPlacementNormal;
-            fillPositions = fillPositions.map(([x, y, z]) => [x + nx, y + ny, z + nz] as [number, number, number]);
+            fillPositions = fillPositions.map(
+              ([x, y, z]) => [x + nx, y + ny, z + nz] as [number, number, number]
+            );
           }
           updatePreviewMesh(fillPositions);
         }
@@ -1358,7 +1395,16 @@
     }
 
     // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/melt/wall)
-    if ($tool === 'clay' && (mode === 'bulk' || mode === 'smooth' || mode === 'level' || mode === 'gouge' || mode === 'melt' || mode === 'wall' || mode === 'inflate')) {
+    if (
+      $tool === 'clay' &&
+      (mode === 'bulk' ||
+        mode === 'smooth' ||
+        mode === 'level' ||
+        mode === 'gouge' ||
+        mode === 'melt' ||
+        mode === 'wall' ||
+        mode === 'inflate')
+    ) {
       // Start on voxel (grab surface) or face of voxel (extend outward)
       const pos = getVoxelPosition(hit) ?? getAddPosition(hit);
       if (pos) {
@@ -1386,18 +1432,26 @@
             airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
             airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
             airbrushConstrainToPlane: get(airbrushPlaneConstraint) !== 'none',
-            airbrushPlaneAxis: get(airbrushPlaneConstraint) === 'face' && dragFaceNormal ? getDominantAxisOfNormal(dragFaceNormal) : undefined,
-            airbrushPlaneNormal: get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
+            airbrushPlaneAxis:
+              get(airbrushPlaneConstraint) === 'face' && dragFaceNormal
+                ? getDominantAxisOfNormal(dragFaceNormal)
+                : undefined,
+            airbrushPlaneNormal:
+              get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
             wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
             wallHeight: get(wallHeight),
-            wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+            wallFaceNormal: dragFaceNormal
+              ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+              : undefined,
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize) * 0.5,
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+            drawBrushFaceNormal: dragFaceNormal
+              ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+              : undefined,
             seed: currentStrokeSeed
           })
         );
@@ -1433,18 +1487,26 @@
             airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
             airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
             airbrushConstrainToPlane: get(airbrushPlaneConstraint) !== 'none',
-            airbrushPlaneAxis: get(airbrushPlaneConstraint) === 'face' && dragFaceNormal ? getDominantAxisOfNormal(dragFaceNormal) : undefined,
-            airbrushPlaneNormal: get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
+            airbrushPlaneAxis:
+              get(airbrushPlaneConstraint) === 'face' && dragFaceNormal
+                ? getDominantAxisOfNormal(dragFaceNormal)
+                : undefined,
+            airbrushPlaneNormal:
+              get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
             wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
             wallHeight: get(wallHeight),
-            wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+            wallFaceNormal: dragFaceNormal
+              ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+              : undefined,
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize) * 0.5,
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+            drawBrushFaceNormal: dragFaceNormal
+              ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+              : undefined,
             seed: currentStrokeSeed
           })
         );
@@ -1457,7 +1519,11 @@
     }
 
     // Select tool + fill method: click voxel to select it and all connected same-color voxels
-    if ($tool === 'select' && get(effectiveStrokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
+    if (
+      $tool === 'select' &&
+      get(effectiveStrokeMode) === 'fill' &&
+      hit.object !== polygonPointsMesh
+    ) {
       const pos = getVoxelPosition(hit);
       if (pos) {
         const incoming = getFillSelectionAt(
@@ -1478,7 +1544,11 @@
     }
 
     // Paint tool + fill method: click voxel to flood-fill connected same-color region
-    if ($tool === 'paint' && get(effectiveStrokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
+    if (
+      $tool === 'paint' &&
+      get(effectiveStrokeMode) === 'fill' &&
+      hit.object !== polygonPointsMesh
+    ) {
       const pos = getVoxelPosition(hit);
       if (pos) {
         const fillRegion = getFillSelectionAt(
@@ -1505,7 +1575,11 @@
     }
 
     // Voxel tool + fill method: click face to flood-fill connected empty space with voxels
-    if ($tool === 'voxel' && get(effectiveStrokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
+    if (
+      $tool === 'voxel' &&
+      get(effectiveStrokeMode) === 'fill' &&
+      hit.object !== polygonPointsMesh
+    ) {
       const pos = getAddPosition(hit);
       if (pos && !$voxels.has(coordKey(pos[0], pos[1], pos[2]))) {
         const emptyRegion = getFillEmptyAt(pos[0], pos[1], pos[2], get(fillSelectDiagonals));
@@ -1526,7 +1600,11 @@
     }
 
     // Remove tool + fill method: click voxel to flood-remove connected region
-    if ($tool === 'remove' && get(effectiveStrokeMode) === 'fill' && hit.object !== polygonPointsMesh) {
+    if (
+      $tool === 'remove' &&
+      get(effectiveStrokeMode) === 'fill' &&
+      hit.object !== polygonPointsMesh
+    ) {
       const pos = getVoxelPosition(hit);
       if (pos) {
         const fillRegion = getFillSelectionAt(
@@ -1653,7 +1731,8 @@
     // Line (non-axis-aligned) and airbrush (constrain-to-plane): always use clicked face normal
     const lineOnFace = get(effectiveStrokeMode) === 'line' && !get(lineAxisAlign);
     const airbrushUseFaceNormal = get(effectiveStrokeMode) === 'airbrush';
-    dragFaceNormal = lineOnFace || pa === 'auto' || airbrushUseFaceNormal ? faceNormal : axisVector(pa);
+    dragFaceNormal =
+      lineOnFace || pa === 'auto' || airbrushUseFaceNormal ? faceNormal : axisVector(pa);
     dragPlaneAxisOverride = null;
     pendingStrokePositions = [startPos];
     const clayModeVal = get(clayMode);
@@ -1685,18 +1764,26 @@
       airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
       airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
       airbrushConstrainToPlane: get(airbrushPlaneConstraint) !== 'none',
-      airbrushPlaneAxis: get(airbrushPlaneConstraint) === 'face' && dragFaceNormal ? getDominantAxisOfNormal(dragFaceNormal) : undefined,
-      airbrushPlaneNormal: get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
+      airbrushPlaneAxis:
+        get(airbrushPlaneConstraint) === 'face' && dragFaceNormal
+          ? getDominantAxisOfNormal(dragFaceNormal)
+          : undefined,
+      airbrushPlaneNormal:
+        get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
       planeAxis: get(planeAxis),
       sprayDirection: get(sprayDirection),
       sprayStreakLength: get(sprayStreakLength),
       wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
       wallHeight: get(wallHeight),
-      wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+      wallFaceNormal: dragFaceNormal
+        ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+        : undefined,
       drawBrushShape: get(drawBrushShape),
       drawBrushSize: get(drawBrushSize) * 0.5,
       drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-      drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+      drawBrushFaceNormal: dragFaceNormal
+        ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+        : undefined,
       seed: currentStrokeSeed
     };
     updatePreviewMesh(thickenPathForStroke(pendingStrokePositions, strokeParams));
@@ -1739,7 +1826,7 @@
     if (isVoxelDrag && dragStartPos) {
       const clayPathMode = get(clayMode);
       if ($tool === 'clay' && clayPathMode === 'branch') {
-      // Branch: view-plane direction (drag up = grow up on screen, not into scene)
+        // Branch: view-plane direction (drag up = grow up on screen, not into scene)
         const currX = event?.clientX ?? branchPointerDownX;
         const currY = event?.clientY ?? branchPointerDownY;
         const dx = currX - branchPointerDownX;
@@ -1782,18 +1869,26 @@
             airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
             airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
             airbrushConstrainToPlane: get(airbrushPlaneConstraint) !== 'none',
-            airbrushPlaneAxis: get(airbrushPlaneConstraint) === 'face' && dragFaceNormal ? getDominantAxisOfNormal(dragFaceNormal) : undefined,
-            airbrushPlaneNormal: get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
+            airbrushPlaneAxis:
+              get(airbrushPlaneConstraint) === 'face' && dragFaceNormal
+                ? getDominantAxisOfNormal(dragFaceNormal)
+                : undefined,
+            airbrushPlaneNormal:
+              get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
             wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
             wallHeight: get(wallHeight),
-            wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+            wallFaceNormal: dragFaceNormal
+              ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+              : undefined,
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize) * 0.5,
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+            drawBrushFaceNormal: dragFaceNormal
+              ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+              : undefined,
             seed: currentStrokeSeed
           })
         );
@@ -1809,7 +1904,8 @@
         const hit = getIntersection();
         let currentPos: [number, number, number] | null = null;
         if (hit) {
-          currentPos = $tool === 'voxel' || $tool === 'clay' ? getAddPosition(hit) : getVoxelPosition(hit);
+          currentPos =
+            $tool === 'voxel' || $tool === 'clay' ? getAddPosition(hit) : getVoxelPosition(hit);
         }
         const strokeModeVal = get(effectiveStrokeMode);
         const clayPathMode = get(clayMode);
@@ -1867,9 +1963,14 @@
             dragStartPos[1] + 0.5,
             dragStartPos[2] + 0.5
           );
-          const normal = get(airbrushPlaneConstraint) === 'camera' && camera
-            ? (() => { const v = new THREE.Vector3(); camera.getWorldDirection(v); return v; })()
-            : dragFaceNormal!;
+          const normal =
+            get(airbrushPlaneConstraint) === 'camera' && camera
+              ? (() => {
+                  const v = new THREE.Vector3();
+                  camera.getWorldDirection(v);
+                  return v;
+                })()
+              : dragFaceNormal!;
           const planePos = getIntersectionWithPlane(planePoint, normal);
           if (planePos) currentPos = planePos;
         }
@@ -1902,12 +2003,13 @@
           } else {
             const normal = getEffectivePlaneNormal();
             if ((strokeModeVal === 'plane' || strokeModeVal === 'cuboid') && normal) {
-              pendingStrokePositions = getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, normal, get(planeCuboidHollow));
-            } else if (
-              strokeModeVal === 'line' &&
-              !get(lineAxisAlign) &&
-              dragFaceNormal
-            ) {
+              pendingStrokePositions = getAxisAlignedPlaneFromNormal(
+                dragStartPos,
+                currentPos,
+                normal,
+                get(planeCuboidHollow)
+              );
+            } else if (strokeModeVal === 'line' && !get(lineAxisAlign) && dragFaceNormal) {
               const projected = projectPointOntoPlane(currentPos, dragStartPos, {
                 x: dragFaceNormal.x,
                 y: dragFaceNormal.y,
@@ -1921,7 +2023,9 @@
           // Clay path modes: show thickened preview (brush radius); airbrush: sphere preview
           updatePreviewMesh(
             thickenPathForStroke(pendingStrokePositions, {
-              strokeMode: (isAirbrushPath && !isClayPathFollow ? 'airbrush' : strokeModeVal ?? get(strokeMode)) as string,
+              strokeMode: (isAirbrushPath && !isClayPathFollow
+                ? 'airbrush'
+                : (strokeModeVal ?? get(strokeMode))) as string,
               clayMode: isClayPathFollow ? clayPathMode : undefined,
               clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
               bulkBrushShape: get(bulkBrushShape),
@@ -1934,18 +2038,26 @@
               airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
               airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
               airbrushConstrainToPlane: get(airbrushPlaneConstraint) !== 'none',
-              airbrushPlaneAxis: get(airbrushPlaneConstraint) === 'face' && dragFaceNormal ? getDominantAxisOfNormal(dragFaceNormal) : undefined,
-              airbrushPlaneNormal: get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
+              airbrushPlaneAxis:
+                get(airbrushPlaneConstraint) === 'face' && dragFaceNormal
+                  ? getDominantAxisOfNormal(dragFaceNormal)
+                  : undefined,
+              airbrushPlaneNormal:
+                get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
               planeAxis: get(planeAxis),
               sprayDirection: get(sprayDirection),
               sprayStreakLength: get(sprayStreakLength),
               wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
               wallHeight: get(wallHeight),
-              wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+              wallFaceNormal: dragFaceNormal
+                ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+                : undefined,
               drawBrushShape: get(drawBrushShape),
               drawBrushSize: get(drawBrushSize) * 0.5,
               drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-              drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+              drawBrushFaceNormal: dragFaceNormal
+                ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+                : undefined,
               seed: currentStrokeSeed
             })
           );
@@ -2023,9 +2135,17 @@
           const N = sinkDir !== 'none' ? Math.min(5, Math.max(0, sinkAmount)) : 0;
           const surfaceTarget: [number, number, number] =
             sinkDir === 'under'
-              ? [place[0] - (1 + N) * normal[0], place[1] - (1 + N) * normal[1], place[2] - (1 + N) * normal[2]]
+              ? [
+                  place[0] - (1 + N) * normal[0],
+                  place[1] - (1 + N) * normal[1],
+                  place[2] - (1 + N) * normal[2]
+                ]
               : sinkDir === 'over'
-                ? [place[0] + (N - 1) * normal[0], place[1] + (N - 1) * normal[1], place[2] + (N - 1) * normal[2]]
+                ? [
+                    place[0] + (N - 1) * normal[0],
+                    place[1] + (N - 1) * normal[1],
+                    place[2] + (N - 1) * normal[2]
+                  ]
                 : [place[0] - normal[0], place[1] - normal[1], place[2] - normal[2]];
           const previewPositions: [number, number, number][] = [];
           for (let i = 0; i < count; i++) {
@@ -2144,7 +2264,10 @@
         const place = getAddPosition(hit);
         const normal = getFaceNormalFromHit(hit);
         if (place && normal) {
-          const seed = nextRockPlacementSeed === 0 ? Math.floor(Math.random() * 0xffffffff) : nextRockPlacementSeed;
+          const seed =
+            nextRockPlacementSeed === 0
+              ? Math.floor(Math.random() * 0xffffffff)
+              : nextRockPlacementSeed;
           placeRocks(place, normal, seed);
           nextRockPlacementSeed = Math.floor(Math.random() * 0xffffffff);
         }
@@ -2156,7 +2279,14 @@
       const clayModeVal = get(clayMode);
       const isClayPath =
         $tool === 'clay' &&
-        (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'melt' || clayModeVal === 'wall' || clayModeVal === 'inflate');
+        (clayModeVal === 'bulk' ||
+          clayModeVal === 'smooth' ||
+          clayModeVal === 'level' ||
+          clayModeVal === 'gouge' ||
+          clayModeVal === 'branch' ||
+          clayModeVal === 'melt' ||
+          clayModeVal === 'wall' ||
+          clayModeVal === 'inflate');
       const normal = getEffectivePlaneNormal();
       if (mode === 'cuboid' && dragStartPos && normal && !isClayPath) {
         // Enter depth phase: drag plane, then scroll for depth
@@ -2195,7 +2325,14 @@
         if (pendingStrokePositions.length > 0) {
           const isClayPath =
             $tool === 'clay' &&
-            (clayModeVal === 'bulk' || clayModeVal === 'smooth' || clayModeVal === 'level' || clayModeVal === 'gouge' || clayModeVal === 'branch' || clayModeVal === 'melt' || clayModeVal === 'wall' || clayModeVal === 'inflate');
+            (clayModeVal === 'bulk' ||
+              clayModeVal === 'smooth' ||
+              clayModeVal === 'level' ||
+              clayModeVal === 'gouge' ||
+              clayModeVal === 'branch' ||
+              clayModeVal === 'melt' ||
+              clayModeVal === 'wall' ||
+              clayModeVal === 'inflate');
           const toApply = thickenPathForStroke(pendingStrokePositions, {
             strokeMode: mode as string,
             clayMode: isClayPath ? clayModeVal : undefined,
@@ -2210,18 +2347,26 @@
             airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
             airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
             airbrushConstrainToPlane: get(airbrushPlaneConstraint) !== 'none',
-            airbrushPlaneAxis: get(airbrushPlaneConstraint) === 'face' && dragFaceNormal ? getDominantAxisOfNormal(dragFaceNormal) : undefined,
-            airbrushPlaneNormal: get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
+            airbrushPlaneAxis:
+              get(airbrushPlaneConstraint) === 'face' && dragFaceNormal
+                ? getDominantAxisOfNormal(dragFaceNormal)
+                : undefined,
+            airbrushPlaneNormal:
+              get(airbrushPlaneConstraint) === 'camera' ? getCameraPlaneNormal() : undefined,
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
             wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
             wallHeight: get(wallHeight),
-            wallFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+            wallFaceNormal: dragFaceNormal
+              ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+              : undefined,
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize) * 0.5,
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-            drawBrushFaceNormal: dragFaceNormal ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z } : undefined,
+            drawBrushFaceNormal: dragFaceNormal
+              ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+              : undefined,
             seed: currentStrokeSeed
           });
           if ($tool === 'select') {
@@ -2350,9 +2495,7 @@
     const v = $voxels;
     const b =
       v.size > 0 ? getBoundsFromPositions([...v.keys()].map((k) => parseCoordKey(k))) : null;
-    const extent = b
-      ? Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) + 2
-      : $gridSize;
+    const extent = b ? Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) + 2 : $gridSize;
     const frustumHeight = Math.max(extent * 2, 256);
     const frustumWidth = frustumHeight * aspect;
     orthographicCamera.left = -frustumWidth / 2;
@@ -3069,8 +3212,7 @@
           class="depth-btn"
           onpointerdown={(e) => e.stopPropagation()}
           onclick={() => ropeTension.set(Math.max(0, $ropeTension - 0.05))}
-          aria-label="Decrease tension"
-        >−</button
+          aria-label="Decrease tension">−</button
         >
         <span class="depth-slider-label">Tension: {Math.round($ropeTension * 100)}%</span>
         <button
@@ -3078,8 +3220,7 @@
           class="depth-btn"
           onpointerdown={(e) => e.stopPropagation()}
           onclick={() => ropeTension.set(Math.min(1, $ropeTension + 0.05))}
-          aria-label="Increase tension"
-        >+</button
+          aria-label="Increase tension">+</button
         >
       </div>
     </div>
@@ -3141,7 +3282,8 @@
         class="fit-btn"
         onclick={fitToView}
         title="Fit to view"
-        aria-label="Fit sculpture to view">Fit</button>
+        aria-label="Fit sculpture to view">Fit</button
+      >
       <button
         type="button"
         class="fit-btn"

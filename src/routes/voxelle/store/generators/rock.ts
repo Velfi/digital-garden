@@ -117,7 +117,7 @@ export function generateRockVoxels(
         if (d > rEffective) continue;
         // One angular facet: exclude voxels on one side of a plane
         if (doFacet) {
-          const dist = (x * (fnx / flen) + y * (fny / flen) + z * (fnz / flen));
+          const dist = x * (fnx / flen) + y * (fny / flen) + z * (fnz / flen);
           if (dist < -facetDepth) continue;
         }
         out.set(coordKey(x, y, z), 0);
@@ -134,8 +134,7 @@ export function generateRockVoxels(
 
   // Assign colors with variation
   for (const key of out.keys()) {
-    const tint =
-      1 + (rng() - 0.5) * 2 * Math.max(0, Math.min(1, colorVariation));
+    const tint = 1 + (rng() - 0.5) * 2 * Math.max(0, Math.min(1, colorVariation));
     out.set(key, applyColorVariation(baseColor, tint));
   }
 

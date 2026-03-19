@@ -35,9 +35,7 @@ function parseFullFormat(raw: unknown): VoxelleFileFormat | null {
 /** Parse BSON payload to VoxelleFileFormat. Used by worker and tests. */
 export function parseFormatPayload(bytes: Uint8Array): VoxelleFileFormat | null {
   try {
-    return parseFullFormat(
-      bsonDeserialize(bytes, { allowObjectSmallerThanBufferSize: true })
-    );
+    return parseFullFormat(bsonDeserialize(bytes, { allowObjectSmallerThanBufferSize: true }));
   } catch (e) {
     console.error('[Voxelle] Parse error:', e);
     return null;

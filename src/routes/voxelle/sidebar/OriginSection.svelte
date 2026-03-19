@@ -48,7 +48,10 @@
   <button
     type="button"
     class="shift-apply"
-    onclick={() => (hasSelection ? shiftSelection(shiftX, shiftY, shiftZ) : shiftVoxelsAndSelection(shiftX, shiftY, shiftZ))}
+    onclick={() =>
+      hasSelection
+        ? shiftSelection(shiftX, shiftY, shiftZ)
+        : shiftVoxelsAndSelection(shiftX, shiftY, shiftZ)}
     disabled={hasSelection ? $selection.size === 0 : $voxels.size === 0}
     title={hasSelection ? 'Move selected voxels' : 'Apply shift to all voxels and selection'}
   >
@@ -57,7 +60,6 @@
 </div>
 
 <style>
-
   .origin-hint {
     font-size: 0.8rem;
     opacity: 0.8;

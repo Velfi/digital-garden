@@ -130,14 +130,28 @@
 
 <h2>Tools</h2>
 <div class="tool-buttons">
-  <button type="button" class:active={$tool === 'paint'} onclick={() => tool.set('paint')}>Brush</button>
-  <button type="button" class:active={$tool === 'fill'} onclick={() => tool.set('fill')}>Fill</button>
-  <button type="button" class:active={$tool === 'origin'} onclick={() => tool.set('origin')}>Origin</button>
-  <button type="button" class:active={$tool === 'rotate'} onclick={() => tool.set('rotate')}>Rotate</button>
-  <button type="button" class:active={$tool === 'eyedropper'} onclick={() => tool.set('eyedropper')}>
+  <button type="button" class:active={$tool === 'paint'} onclick={() => tool.set('paint')}
+    >Brush</button
+  >
+  <button type="button" class:active={$tool === 'fill'} onclick={() => tool.set('fill')}
+    >Fill</button
+  >
+  <button type="button" class:active={$tool === 'origin'} onclick={() => tool.set('origin')}
+    >Origin</button
+  >
+  <button type="button" class:active={$tool === 'rotate'} onclick={() => tool.set('rotate')}
+    >Rotate</button
+  >
+  <button
+    type="button"
+    class:active={$tool === 'eyedropper'}
+    onclick={() => tool.set('eyedropper')}
+  >
     Eyedropper
   </button>
-  <button type="button" class:active={$tool === 'image'} onclick={() => tool.set('image')}>Image</button>
+  <button type="button" class:active={$tool === 'image'} onclick={() => tool.set('image')}
+    >Image</button
+  >
 </div>
 
 {#if $tool === 'image'}
@@ -293,7 +307,8 @@
         min="0"
         max="100"
         value={$brushSharpnessSoften * 100}
-        oninput={(e) => brushSharpnessSoften.set(Number((e.target as HTMLInputElement).value) / 100)}
+        oninput={(e) =>
+          brushSharpnessSoften.set(Number((e.target as HTMLInputElement).value) / 100)}
       />
       <span class="value">{Math.round($brushSharpnessSoften * 100)}%</span>
     </label>

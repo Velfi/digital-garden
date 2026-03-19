@@ -64,18 +64,35 @@ describe('initShape', () => {
 
 describe('getShapePositionsAt', () => {
   it('empty shape returns empty array', () => {
-    expect(getShapePositionsAt({ position: [0, 0, 0], rotation: [0, 0, 0], shape: 'empty', size: 8 })).toEqual([]);
+    expect(
+      getShapePositionsAt({ position: [0, 0, 0], rotation: [0, 0, 0], shape: 'empty', size: 8 })
+    ).toEqual([]);
   });
 
   it('positions are translated by position param', () => {
-    const pos = getShapePositionsAt({ position: [5, 5, 5], rotation: [0, 0, 0], shape: 'cube', size: 1 });
+    const pos = getShapePositionsAt({
+      position: [5, 5, 5],
+      rotation: [0, 0, 0],
+      shape: 'cube',
+      size: 1
+    });
     expect(pos).toHaveLength(1);
     expect(pos[0]).toEqual([5, 5, 5]);
   });
 
   it('rotated cube has different positions', () => {
-    const noRot = getShapePositionsAt({ position: [0, 0, 0], rotation: [0, 0, 0], shape: 'cube', size: 3 });
-    const rotY = getShapePositionsAt({ position: [0, 0, 0], rotation: [0, 1, 0], shape: 'cube', size: 3 });
+    const noRot = getShapePositionsAt({
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      shape: 'cube',
+      size: 3
+    });
+    const rotY = getShapePositionsAt({
+      position: [0, 0, 0],
+      rotation: [0, 1, 0],
+      shape: 'cube',
+      size: 3
+    });
     expect(noRot.length).toBe(rotY.length);
     expect(noRot).not.toEqual(rotY);
   });

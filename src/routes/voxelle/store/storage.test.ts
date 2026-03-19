@@ -1,12 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
-import {
-  voxels,
-  gridSize,
-  focalLength,
-  orthographic,
-  resetUndo
-} from './core';
+import { voxels, gridSize, focalLength, orthographic, resetUndo } from './core';
 import { loadFromStorage, saveToStorage, getSkipStartup, setSkipStartup } from './storage';
 
 const mockStorage: Record<string, string> = {};

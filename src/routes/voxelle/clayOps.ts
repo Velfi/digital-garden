@@ -15,7 +15,12 @@ function getFaceNeighbors(x: number, y: number, z: number): [number, number, num
 }
 
 /** Bounds check: either grid size (number) or explicit bounds. */
-function withinBounds(x: number, y: number, z: number, sizeOrBounds: number | SelectionBounds): boolean {
+function withinBounds(
+  x: number,
+  y: number,
+  z: number,
+  sizeOrBounds: number | SelectionBounds
+): boolean {
   if (typeof sizeOrBounds === 'number') return inBounds(x, y, z, sizeOrBounds);
   return inBoundsBox(x, y, z, sizeOrBounds);
 }
@@ -49,9 +54,7 @@ export function applySmooth(
     if (!filled && filledCount >= 4) {
       const avg =
         neighborColors.length > 0
-          ? Math.round(
-              neighborColors.reduce((a, c) => a + c, 0) / neighborColors.length
-            )
+          ? Math.round(neighborColors.reduce((a, c) => a + c, 0) / neighborColors.length)
           : 0x888888;
       toAdd.set(key, avg);
     } else if (filled && filledCount <= 2) {
@@ -132,8 +135,7 @@ export function applyMelt(
         return [x, y, z] as [number, number, number];
       })
       .filter(
-        ([x, y, z]) =>
-          brushSet.has(coordKey(x, y, z)) && withinBounds(x, y, z, gridSizeOrBounds)
+        ([x, y, z]) => brushSet.has(coordKey(x, y, z)) && withinBounds(x, y, z, gridSizeOrBounds)
       )
       .sort((a, b) => b[1] - a[1]); // Y descending
 

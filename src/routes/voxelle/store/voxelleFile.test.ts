@@ -15,7 +15,10 @@ import {
 } from './voxelleFormatCore';
 
 async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
-  const slice = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  const slice = data.buffer.slice(
+    data.byteOffset,
+    data.byteOffset + data.byteLength
+  ) as ArrayBuffer;
   const blob = new Blob([slice]);
   const stream = blob.stream().pipeThrough(new CompressionStream('gzip'));
   const buf = await new Response(stream).arrayBuffer();
@@ -23,7 +26,10 @@ async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
 }
 
 async function gzipDecompress(bytes: Uint8Array): Promise<Uint8Array> {
-  const slice = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const slice = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer;
   const stream = new Blob([slice]).stream().pipeThrough(new DecompressionStream('gzip'));
   const buf = await new Response(stream).arrayBuffer();
   return new Uint8Array(buf);

@@ -52,16 +52,21 @@
 
   const BRUSH_SIZE_MAX = MAX_BRUSH_SIZE - 1;
 
-  const STROKE_TOOLS = ['voxel', 'remove', 'paint', 'select', 'selectByColor', 'selectCoplanar'] as const;
+  const STROKE_TOOLS = [
+    'voxel',
+    'remove',
+    'paint',
+    'select',
+    'selectByColor',
+    'selectCoplanar'
+  ] as const;
   const isStrokeTool = (t: string) => STROKE_TOOLS.includes(t as (typeof STROKE_TOOLS)[number]);
 
   const drawBrushVisible = $derived($toolPane === 'draw' && isStrokeTool($tool));
   const planeAxisVisible = $derived(
     ($strokeMode === 'plane' || $strokeMode === 'cuboid') && isStrokeTool($tool)
   );
-  const lineAxisAlignVisible = $derived(
-    $strokeMode === 'line' && isStrokeTool($tool)
-  );
+  const lineAxisAlignVisible = $derived($strokeMode === 'line' && isStrokeTool($tool));
   const airbrushVisible = $derived($strokeMode === 'airbrush' && isStrokeTool($tool));
   const fillVisible = $derived($strokeMode === 'fill' && isStrokeTool($tool));
   const polygonVisible = $derived($strokeMode === 'polygon' && isStrokeTool($tool));
@@ -226,10 +231,10 @@
             <span class="tool-panel-label">Min</span>
             <input
               type="range"
-min="0"
-                max={BRUSH_SIZE_MAX}
-                step="1"
-                value={$airbrushRadiusMin}
+              min="0"
+              max={BRUSH_SIZE_MAX}
+              step="1"
+              value={$airbrushRadiusMin}
               oninput={(e) => {
                 const v = Number((e.target as HTMLInputElement).value);
                 airbrushRadiusMin.set(v);
@@ -242,10 +247,10 @@ min="0"
             <span class="tool-panel-label">Max</span>
             <input
               type="range"
-min="0"
-                max={BRUSH_SIZE_MAX}
-                step="1"
-                value={$airbrushRadiusMax}
+              min="0"
+              max={BRUSH_SIZE_MAX}
+              step="1"
+              value={$airbrushRadiusMax}
               oninput={(e) => {
                 const v = Number((e.target as HTMLInputElement).value);
                 airbrushRadiusMax.set(v);
@@ -341,7 +346,8 @@ min="0"
             max="3"
             step="1"
             value={$stampRotation.rotX}
-            oninput={(e) => updateStamp('rotX', clampRot(Number((e.target as HTMLInputElement).value)))}
+            oninput={(e) =>
+              updateStamp('rotX', clampRot(Number((e.target as HTMLInputElement).value)))}
             title="X (0–3 = 0°–270°)"
           />
           <input
@@ -350,7 +356,8 @@ min="0"
             max="3"
             step="1"
             value={$stampRotation.rotY}
-            oninput={(e) => updateStamp('rotY', clampRot(Number((e.target as HTMLInputElement).value)))}
+            oninput={(e) =>
+              updateStamp('rotY', clampRot(Number((e.target as HTMLInputElement).value)))}
             title="Y"
           />
           <input
@@ -359,7 +366,8 @@ min="0"
             max="3"
             step="1"
             value={$stampRotation.rotZ}
-            oninput={(e) => updateStamp('rotZ', clampRot(Number((e.target as HTMLInputElement).value)))}
+            oninput={(e) =>
+              updateStamp('rotZ', clampRot(Number((e.target as HTMLInputElement).value)))}
             title="Z"
           />
         </div>
@@ -400,10 +408,18 @@ min="0"
         </div>
         <div class="tool-panel-row tool-panel-roll">
           <span class="tool-panel-label">Roll</span>
-          <button type="button" onclick={() => updateStamp('rotZ', clampRot($stampRotation.rotZ - 1))} title="Roll left">
+          <button
+            type="button"
+            onclick={() => updateStamp('rotZ', clampRot($stampRotation.rotZ - 1))}
+            title="Roll left"
+          >
             ←
           </button>
-          <button type="button" onclick={() => updateStamp('rotZ', clampRot($stampRotation.rotZ + 1))} title="Roll right">
+          <button
+            type="button"
+            onclick={() => updateStamp('rotZ', clampRot($stampRotation.rotZ + 1))}
+            title="Roll right"
+          >
             →
           </button>
         </div>
@@ -446,7 +462,8 @@ min="0"
             max="100"
             step="1"
             value={Math.round($rockColorVariation * 100)}
-            oninput={(e) => rockColorVariation.set(Number((e.target as HTMLInputElement).value) / 100)}
+            oninput={(e) =>
+              rockColorVariation.set(Number((e.target as HTMLInputElement).value) / 100)}
             title="Per-voxel tint variation (0–100%)"
           />
           <span class="tool-panel-value">{Math.round($rockColorVariation * 100)}%</span>
@@ -602,7 +619,8 @@ min="0"
                   max={BRUSH_SIZE_MAX}
                   step="1"
                   value={$branchTaperStartSize}
-                  oninput={(e) => branchTaperStartSize.set(Number((e.target as HTMLInputElement).value))}
+                  oninput={(e) =>
+                    branchTaperStartSize.set(Number((e.target as HTMLInputElement).value))}
                   title="Taper start size (1–{MAX_BRUSH_SIZE} voxels)"
                 />
                 <span class="tool-panel-value">{$branchTaperStartSize + 1}</span>
@@ -615,7 +633,8 @@ min="0"
                   max={BRUSH_SIZE_MAX}
                   step="1"
                   value={$branchTaperEndSize}
-                  oninput={(e) => branchTaperEndSize.set(Number((e.target as HTMLInputElement).value))}
+                  oninput={(e) =>
+                    branchTaperEndSize.set(Number((e.target as HTMLInputElement).value))}
                   title="Taper end size (1–{MAX_BRUSH_SIZE} voxels)"
                 />
                 <span class="tool-panel-value">{$branchTaperEndSize + 1}</span>
@@ -645,7 +664,8 @@ min="0"
               class="tool-panel-select"
               value={$sprayDirection}
               title="Auto = face normal; or pick axis (e.g. Y− for rain)"
-              onchange={(e) => sprayDirection.set((e.target as HTMLSelectElement).value as SprayDirection)}
+              onchange={(e) =>
+                sprayDirection.set((e.target as HTMLSelectElement).value as SprayDirection)}
             >
               <option value="auto">Auto</option>
               <option value="none">None</option>
@@ -678,7 +698,8 @@ min="0"
               max="20"
               step="1"
               value={$wallHeight}
-              oninput={(e) => wallHeight.set(Math.max(2, Number((e.target as HTMLInputElement).value)))}
+              oninput={(e) =>
+                wallHeight.set(Math.max(2, Number((e.target as HTMLInputElement).value)))}
               title="Voxels to extend along direction (min 2)"
             />
             <span class="tool-panel-value">{$wallHeight}</span>

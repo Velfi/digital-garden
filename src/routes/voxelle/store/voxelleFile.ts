@@ -1,12 +1,6 @@
 import { get } from 'svelte/store';
 import { coordKey, parseCoordKey } from '../coordUtils';
-import {
-  voxels,
-  gridSize,
-  focalLength,
-  orthographic,
-  resetUndo
-} from './core';
+import { voxels, gridSize, focalLength, orthographic, resetUndo } from './core';
 import type { GridSize } from './core';
 import { parseFormatPayload, serializeFormatToBson } from './voxelleFormatCore';
 
@@ -80,10 +74,7 @@ function useWorker(): void {
 }
 
 /** Override parse/serialize for tests. Call with no args to restore worker. */
-export function setWorkerImpls(
-  parse?: ParsePayloadImpl,
-  serialize?: SerializeImpl
-): void {
+export function setWorkerImpls(parse?: ParsePayloadImpl, serialize?: SerializeImpl): void {
   if (parse && serialize) {
     parsePayloadImpl = parse;
     serializeImpl = serialize;
@@ -120,7 +111,10 @@ export function serializeToVoxelleFormat(): VoxelleFileFormat {
 }
 
 async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
-  const slice = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  const slice = data.buffer.slice(
+    data.byteOffset,
+    data.byteOffset + data.byteLength
+  ) as ArrayBuffer;
   const blob = new Blob([slice]);
   const stream = blob.stream().pipeThrough(new CompressionStream('gzip'));
   const buf = await new Response(stream).arrayBuffer();
@@ -128,7 +122,10 @@ async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
 }
 
 async function gzipDecompress(bytes: Uint8Array): Promise<Uint8Array> {
-  const slice = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const slice = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer;
   const stream = new Blob([slice]).stream().pipeThrough(new DecompressionStream('gzip'));
   const buf = await new Response(stream).arrayBuffer();
   return new Uint8Array(buf);

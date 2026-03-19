@@ -11,7 +11,9 @@ function createWorker(): Worker {
 function processInWorker(bitmap: ImageBitmap): Promise<[number, number, number][]> {
   return new Promise((resolve, reject) => {
     const worker = createWorker();
-    worker.onmessage = (e: MessageEvent<{ type: string; entries?: [number, number, number][] }>) => {
+    worker.onmessage = (
+      e: MessageEvent<{ type: string; entries?: [number, number, number][] }>
+    ) => {
       worker.terminate();
       if (e.data.type === 'done' && e.data.entries) {
         resolve(e.data.entries);

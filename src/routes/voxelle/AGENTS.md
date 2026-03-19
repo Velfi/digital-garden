@@ -6,7 +6,7 @@
 
 - **SM** – Selection Method
 - **AO** – Ambient Occlusion
-- 
+-
 
 ## Tech Stack
 
@@ -36,34 +36,34 @@ Central state in writable stores. Import from `'./store'` (resolves to `store/in
 
 ### Utilities
 
-| File | Role |
-|------|------|
-| `coordUtils.ts` | coordKey, parseCoordKey, positionsToVoxelMap, inBounds, getSelectionBounds, getVoxelBounds, etc. |
-| `strokeGeometry.ts` | getAxisAlignedLine, getAxisAlignedPlaneFromNormal, getAxisAlignedCuboid, getPolygonVoxels |
-| `gridLines.ts` | buildGridPositions, CUBE_EDGES, EDGE_NEIGHBORS |
-| `flyControls.ts` | createFlyMoveState, createFlyKeyHandlers, applyFlyMovement |
-| `greedyMesh.ts` | Culled meshing, vertex AO, `buildGreedyMesh()`, `PREVIEW_MESH_OPTIONS`, `buildPreviewGeometry()` |
-| `exportGltf.ts` | Export voxels to `.glb` |
+| File                | Role                                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------------ |
+| `coordUtils.ts`     | coordKey, parseCoordKey, positionsToVoxelMap, inBounds, getSelectionBounds, getVoxelBounds, etc. |
+| `strokeGeometry.ts` | getAxisAlignedLine, getAxisAlignedPlaneFromNormal, getAxisAlignedCuboid, getPolygonVoxels        |
+| `gridLines.ts`      | buildGridPositions, CUBE_EDGES, EDGE_NEIGHBORS                                                   |
+| `flyControls.ts`    | createFlyMoveState, createFlyKeyHandlers, applyFlyMovement                                       |
+| `greedyMesh.ts`     | Culled meshing, vertex AO, `buildGreedyMesh()`, `PREVIEW_MESH_OPTIONS`, `buildPreviewGeometry()` |
+| `exportGltf.ts`     | Export voxels to `.glb`                                                                          |
 
 ### Components
 
-| File | Role |
-|------|------|
-| `+page.svelte` | Layout, global shortcuts (Ctrl+Z/Y/A) |
-| `VoxelCanvas.svelte` | Three.js scene, raycasting, tools, greedy mesh, orbit/fly controls |
-| `Sidebar.svelte` | Shell; composes sidebar panel components |
-| `sidebar/ToolPicker.svelte` | Tool buttons |
-| `sidebar/StrokeModePicker.svelte` | Stroke mode + fill options + plane axis |
-| `sidebar/ColorSection.svelte` | Color picker + LospecPalette |
-| `sidebar/CameraSection.svelte` | Ortho, focal length |
-| `sidebar/SceneSection.svelte` | Grid, sky, background |
-| `sidebar/LightSection.svelte` | Ambient, color, angle, elevation, shadows, AO |
-| `sidebar/MaterialSection.svelte` | PBR (roughness, metalness, env) |
-| `sidebar/OriginSection.svelte` | Center controls, shift inputs |
-| `sidebar/ShareModal.svelte` | Share URL modal |
-| `sidebar/NewGridModal.svelte` | New grid size/shape modal |
-| `AddPanel.svelte` | Add shape modal (position, rotation, shape type, size) |
-| `OrbitGizmo.svelte` | View orientation widget |
+| File                              | Role                                                               |
+| --------------------------------- | ------------------------------------------------------------------ |
+| `+page.svelte`                    | Layout, global shortcuts (Ctrl+Z/Y/A)                              |
+| `VoxelCanvas.svelte`              | Three.js scene, raycasting, tools, greedy mesh, orbit/fly controls |
+| `Sidebar.svelte`                  | Shell; composes sidebar panel components                           |
+| `sidebar/ToolPicker.svelte`       | Tool buttons                                                       |
+| `sidebar/StrokeModePicker.svelte` | Stroke mode + fill options + plane axis                            |
+| `sidebar/ColorSection.svelte`     | Color picker + LospecPalette                                       |
+| `sidebar/CameraSection.svelte`    | Ortho, focal length                                                |
+| `sidebar/SceneSection.svelte`     | Grid, sky, background                                              |
+| `sidebar/LightSection.svelte`     | Ambient, color, angle, elevation, shadows, AO                      |
+| `sidebar/MaterialSection.svelte`  | PBR (roughness, metalness, env)                                    |
+| `sidebar/OriginSection.svelte`    | Center controls, shift inputs                                      |
+| `sidebar/ShareModal.svelte`       | Share URL modal                                                    |
+| `sidebar/NewGridModal.svelte`     | New grid size/shape modal                                          |
+| `AddPanel.svelte`                 | Add shape modal (position, rotation, shape type, size)             |
+| `OrbitGizmo.svelte`               | View orientation widget                                            |
 
 ### Tools
 

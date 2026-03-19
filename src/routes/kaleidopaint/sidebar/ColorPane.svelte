@@ -13,11 +13,19 @@
 <h2>Color</h2>
 <div class="brush-params-grid">
   <label class="brush-param">
-    <ParamLabel label="Foreground" tip="Primary paint color. Left click to paint" id="tip-foreground" />
+    <ParamLabel
+      label="Foreground"
+      tip="Primary paint color. Left click to paint"
+      id="tip-foreground"
+    />
     <input type="color" bind:value={$color} />
   </label>
   <label class="brush-param">
-    <ParamLabel label="Background" tip="Canvas background and erase color. Right click to erase." id="tip-background" />
+    <ParamLabel
+      label="Background"
+      tip="Canvas background and erase color. Right click to erase."
+      id="tip-background"
+    />
     <input type="color" bind:value={$backgroundColor} />
   </label>
   <button type="button" class="swap-btn" onclick={swapColors}>Swap FG/BG</button>

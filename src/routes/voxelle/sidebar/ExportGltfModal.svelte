@@ -42,9 +42,7 @@
         Greedy remesh (fewer triangles, merged faces)
       </label>
       <div class="modal-buttons">
-        <button type="button" onclick={handleExport} disabled={$voxels.size === 0}>
-          Export
-        </button>
+        <button type="button" onclick={handleExport} disabled={$voxels.size === 0}> Export </button>
         <button type="button" onclick={() => (open = false)}>Cancel</button>
       </div>
     </div>

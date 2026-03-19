@@ -14,8 +14,7 @@
   <select
     id="rendering-mode"
     value={$renderingMode}
-    onchange={(e) =>
-      renderingMode.set((e.target as HTMLSelectElement).value as RenderingMode)}
+    onchange={(e) => renderingMode.set((e.target as HTMLSelectElement).value as RenderingMode)}
   >
     <option value="greedy">Blocky (greedy mesh)</option>
     <option value="marchingCubes">Smooth (marching cubes)</option>

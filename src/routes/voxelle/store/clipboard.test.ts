@@ -34,8 +34,18 @@ describe('clipboard', () => {
     });
 
     it('writes valid JSON when selection has voxels', async () => {
-      voxels.set(makeVoxels([[0, 0, 0, 0xff0000], [1, 0, 0, 0x00ff00]]));
-      selection.set(makeVoxels([[0, 0, 0, 0xff0000], [1, 0, 0, 0x00ff00]]));
+      voxels.set(
+        makeVoxels([
+          [0, 0, 0, 0xff0000],
+          [1, 0, 0, 0x00ff00]
+        ])
+      );
+      selection.set(
+        makeVoxels([
+          [0, 0, 0, 0xff0000],
+          [1, 0, 0, 0x00ff00]
+        ])
+      );
       const result = await copySelection();
       expect(result).toBe(true);
       expect(writeText).toHaveBeenCalledTimes(1);
@@ -46,7 +56,12 @@ describe('clipboard', () => {
 
     it('skips selection entries with no voxel', async () => {
       voxels.set(makeVoxels([[0, 0, 0, 0xff0000]]));
-      selection.set(makeVoxels([[0, 0, 0, 0xff0000], [5, 5, 5, 0x00ff00]]));
+      selection.set(
+        makeVoxels([
+          [0, 0, 0, 0xff0000],
+          [5, 5, 5, 0x00ff00]
+        ])
+      );
       const result = await copySelection();
       expect(result).toBe(true);
       const written = JSON.parse(writeText.mock.calls[0][0]);

@@ -26,10 +26,7 @@ export function createFlyMoveState(): FlyMoveState {
   };
 }
 
-export function createFlyKeyHandlers(
-  state: FlyMoveState,
-  options: { isEnabled: () => boolean }
-) {
+export function createFlyKeyHandlers(state: FlyMoveState, options: { isEnabled: () => boolean }) {
   function onKeyDown(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey || !options.isEnabled()) return;
     switch (e.code) {
@@ -98,14 +95,7 @@ export function createFlyKeyHandlers(
 }
 
 export function resetFlyMoveState(state: FlyMoveState) {
-  state.forward =
-    state.back =
-    state.left =
-    state.right =
-    state.up =
-    state.down =
-    state.shift =
-      0;
+  state.forward = state.back = state.left = state.right = state.up = state.down = state.shift = 0;
 }
 
 /**

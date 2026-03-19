@@ -37,7 +37,16 @@ export type Tool =
   | 'clay'
   | 'rocks';
 
-export type ClayMode = 'bulk' | 'smooth' | 'level' | 'gouge' | 'branch' | 'melt' | 'rope' | 'wall' | 'inflate';
+export type ClayMode =
+  | 'bulk'
+  | 'smooth'
+  | 'level'
+  | 'gouge'
+  | 'branch'
+  | 'melt'
+  | 'rope'
+  | 'wall'
+  | 'inflate';
 
 export type RopeBrushShape = 'sphere' | 'cube';
 /** Rope mode: direction of gravity (sag). */
@@ -112,9 +121,8 @@ export const fillRespectsColor = writable<boolean>(true);
 export const fillConstrainToPlane = writable<boolean>(false);
 export const strokeMode = writable<StrokeMode>('airbrush');
 /** Stroke mode only when current tool uses it (draw tools). Null for clay/stamp/fly/eyedropper so selection method never applies. */
-export const effectiveStrokeMode = derived(
-  [tool, strokeMode],
-  ([t, sm]) => (DRAW_TOOLS_USING_STROKE_MODE.includes(t) ? sm : null)
+export const effectiveStrokeMode = derived([tool, strokeMode], ([t, sm]) =>
+  DRAW_TOOLS_USING_STROKE_MODE.includes(t) ? sm : null
 );
 /** When true (default), line stroke is axis-aligned; when false, line is drawn on the plane through the start voxel. */
 export const lineAxisAlign = writable<boolean>(true);
@@ -155,7 +163,15 @@ export const airbrushRadiusMax = writable<number>(4);
 export type AirbrushPlaneConstraint = 'none' | 'camera' | 'face';
 export const airbrushPlaneConstraint = writable<AirbrushPlaneConstraint>('none');
 /** Wall (and legacy): direction to extend voxels. Auto = use face normal (wall only). */
-export type SprayDirection = 'none' | 'auto' | 'down' | 'up' | 'forward' | 'back' | 'left' | 'right';
+export type SprayDirection =
+  | 'none'
+  | 'auto'
+  | 'down'
+  | 'up'
+  | 'forward'
+  | 'back'
+  | 'left'
+  | 'right';
 export const sprayDirection = writable<SprayDirection>('auto');
 /** Legacy: streak length. Wall uses wallHeight instead. */
 export const sprayStreakLength = writable<number>(0);
@@ -175,11 +191,21 @@ export const color = writable<string>('#ff5733');
 /** Palette colors selected for painting (shift+click). Empty = use color. */
 export const selectedColors = writable<string[]>([]);
 const DEFAULT_PALETTE = [
-  '#888888', '#ff5733', '#33ff57', '#3357ff', '#ff33f5', '#f5ff33', '#33fff5', '#000000', '#ffffff'
+  '#888888',
+  '#ff5733',
+  '#33ff57',
+  '#3357ff',
+  '#ff33f5',
+  '#f5ff33',
+  '#33fff5',
+  '#000000',
+  '#ffffff'
 ];
 export const palette = writable<string[]>([...DEFAULT_PALETTE]);
 export const sidebarOpen = writable<boolean>(true);
-export const modalRequest = writable<'newGrid' | 'share' | 'add' | 'help' | 'startup' | 'exportGltf' | null>(null);
+export const modalRequest = writable<
+  'newGrid' | 'share' | 'add' | 'help' | 'startup' | 'exportGltf' | null
+>(null);
 export const addPanelStore = writable<AddPanelState>({ ...defaultAddPanel });
 
 export type StampRotation = { rotX: number; rotY: number; rotZ: number };
@@ -341,10 +367,7 @@ export function resetCanvas(size: GridSize, shape: StartShape = 'cube') {
 }
 
 /** Map-like view that mirrors set/delete across symmetry axes. has/get delegate to underlying. */
-function createMirrorMap(
-  underlying: Map<string, number>,
-  axes: SymmetryAxes
-): Map<string, number> {
+function createMirrorMap(underlying: Map<string, number>, axes: SymmetryAxes): Map<string, number> {
   return {
     get(key: string) {
       return underlying.get(key);
@@ -400,8 +423,7 @@ export function updateVoxels(updater: (v: Map<string, number>) => void) {
       y: get(symmetryY),
       z: get(symmetryZ)
     };
-    const target =
-      axes.x || axes.y || axes.z ? createMirrorMap(next, axes) : next;
+    const target = axes.x || axes.y || axes.z ? createMirrorMap(next, axes) : next;
     updater(target);
     return next;
   });
@@ -419,8 +441,7 @@ export function updateVoxelsInStroke(updater: (v: Map<string, number>) => void) 
       y: get(symmetryY),
       z: get(symmetryZ)
     };
-    const target =
-      axes.x || axes.y || axes.z ? createMirrorMap(next, axes) : next;
+    const target = axes.x || axes.y || axes.z ? createMirrorMap(next, axes) : next;
     updater(target);
     return next;
   });
@@ -429,8 +450,7 @@ export function updateVoxelsInStroke(updater: (v: Map<string, number>) => void) 
 /** Returns a function that yields a paint color per voxel (random when multiple selected). */
 export function getPaintColorResolver(): () => number {
   const sel = get(selectedColors);
-  const colors =
-    sel.length > 0 ? sel.map(hexToInt) : [hexToInt(get(color))];
+  const colors = sel.length > 0 ? sel.map(hexToInt) : [hexToInt(get(color))];
   if (colors.length === 1) return () => colors[0];
   return () => colors[Math.floor(Math.random() * colors.length)];
 }

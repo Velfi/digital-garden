@@ -9,15 +9,31 @@ type Vec3 = [number, number, number];
 /** AO multiplier presets for states 0–3: 0=full occlusion, 3=no occlusion. */
 const AO_PRESETS: Record<1 | 2, number[]> = {
   1: [0.85, 0.92, 0.96, 1.0], // Subtle
-  2: [0.55, 0.72, 0.88, 1.0]  // Strong
+  2: [0.55, 0.72, 0.88, 1.0] // Strong
 };
 
 /** For each of 4 quad corners (u,v), (u+w,v), (u+w,v+h), (u,v+h): [du1,dv1, du2,dv2, du3,dv3] for the 3 neighbor (u,v) deltas in the slice; depth delta is +1 for +axis, -1 for -axis. */
 const AO_NEIGHBORS: [number, number][][] = [
-  [[-1, 0], [0, -1], [-1, -1]],
-  [[1, 0], [0, -1], [1, -1]],
-  [[1, 0], [0, 1], [1, 1]],
-  [[-1, 0], [0, 1], [-1, 1]]
+  [
+    [-1, 0],
+    [0, -1],
+    [-1, -1]
+  ],
+  [
+    [1, 0],
+    [0, -1],
+    [1, -1]
+  ],
+  [
+    [1, 0],
+    [0, 1],
+    [1, 1]
+  ],
+  [
+    [-1, 0],
+    [0, 1],
+    [-1, 1]
+  ]
 ];
 
 const FACE_OFFSETS: { n: Vec3; u: Vec3; v: Vec3 }[] = [
@@ -246,8 +262,7 @@ export function computeGreedyMesh(
   voxels: Map<string, number>,
   options: GreedyMeshCoreOptions = {}
 ): Map<number, GreedyMeshCoreResult> {
-  const strength: AOStrength =
-    options.aoStrength ?? (options.aoEnabled === false ? 0 : 2);
+  const strength: AOStrength = options.aoStrength ?? (options.aoEnabled === false ? 0 : 2);
   const aoEnabled = strength > 0;
   const aoValues = strength > 0 ? AO_PRESETS[strength as 1 | 2] : AO_PRESETS[2];
   const voxelSet = new Set(voxels.keys());

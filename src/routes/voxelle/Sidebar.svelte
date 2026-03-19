@@ -43,8 +43,7 @@
     if ($voxels.size === 0) return;
     try {
       const encoded = await encodeModelForUrl();
-      const isLocalhost =
-        typeof window !== 'undefined' && window.location.hostname === 'localhost';
+      const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
 
       if (isLocalhost) {
         const id = nanoid(12);
@@ -121,7 +120,11 @@
         aria-selected={$toolPane === 'draw'}
         onclick={() => {
           toolPane.set('draw');
-          tool.set($lastDrawTool === 'fly' || $lastDrawTool === 'clay' || $lastDrawTool === 'rocks' ? 'remove' : $lastDrawTool);
+          tool.set(
+            $lastDrawTool === 'fly' || $lastDrawTool === 'clay' || $lastDrawTool === 'rocks'
+              ? 'remove'
+              : $lastDrawTool
+          );
         }}
       >
         Draw
@@ -141,18 +144,6 @@
       <button
         type="button"
         role="tab"
-        class:active={$toolPane === 'fly'}
-        aria-selected={$toolPane === 'fly'}
-        onclick={() => {
-          toolPane.set('fly');
-          tool.set('fly');
-        }}
-      >
-        Fly
-      </button>
-      <button
-        type="button"
-        role="tab"
         class:active={$toolPane === 'generators'}
         aria-selected={$toolPane === 'generators'}
         onclick={() => {
@@ -161,6 +152,18 @@
         }}
       >
         Generators
+      </button>
+      <button
+        type="button"
+        role="tab"
+        class:active={$toolPane === 'fly'}
+        aria-selected={$toolPane === 'fly'}
+        onclick={() => {
+          toolPane.set('fly');
+          tool.set('fly');
+        }}
+      >
+        Fly
       </button>
     </div>
     {#if $toolPane === 'draw'}
@@ -181,7 +184,10 @@
       </div>
     {:else}
       <div role="tabpanel" class="fly-tab">
-        <p class="fly-hint">Click the canvas to capture the pointer, then WASD to move, E/Q up/down, Shift for 1/8 speed. Move mouse to look. Escape to exit.</p>
+        <p class="fly-hint">
+          Click the canvas to capture the pointer, then WASD to move, E/Q up/down, Shift for 1/8
+          speed. Move mouse to look. Escape to exit.
+        </p>
       </div>
     {/if}
   </div>

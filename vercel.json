@@ -2,15 +2,11 @@
   "headers": [
     {
       "source": "/kaleidopaint/:path*",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
-      ]
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
     },
     {
       "source": "/voxelle/:path*",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
-      ]
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
     }
   ]
 }

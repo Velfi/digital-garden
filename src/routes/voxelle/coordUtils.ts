@@ -22,12 +22,7 @@ export function positionsToVoxelMap(
 export type SymmetryAxes = { x: boolean; y: boolean; z: boolean };
 
 /** Returns coord keys for (x,y,z) and all mirror positions for the given axes. Deduplicated. */
-export function getMirrorCoordKeys(
-  x: number,
-  y: number,
-  z: number,
-  axes: SymmetryAxes
-): string[] {
+export function getMirrorCoordKeys(x: number, y: number, z: number, axes: SymmetryAxes): string[] {
   const keys = new Set<string>();
   const xi = Math.floor(x);
   const yi = Math.floor(y);
@@ -72,32 +67,15 @@ export function expandPositionsWithSymmetry(
 }
 
 /** Grid bounds: x,y,z in [-size/2, size/2). When size is undefined or null, always true (unbounded). */
-export function inBounds(
-  x: number,
-  y: number,
-  z: number,
-  size?: number | null
-): boolean {
+export function inBounds(x: number, y: number, z: number, size?: number | null): boolean {
   if (size == null || size === undefined) return true;
   const h = size / 2;
   return x >= -h && x < h && y >= -h && y < h && z >= -h && z < h;
 }
 
 /** Whether (x,y,z) is inside the given bounding box (inclusive on min/max). */
-export function inBoundsBox(
-  x: number,
-  y: number,
-  z: number,
-  b: SelectionBounds
-): boolean {
-  return (
-    x >= b.minX &&
-    x <= b.maxX &&
-    y >= b.minY &&
-    y <= b.maxY &&
-    z >= b.minZ &&
-    z <= b.maxZ
-  );
+export function inBoundsBox(x: number, y: number, z: number, b: SelectionBounds): boolean {
+  return x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY && z >= b.minZ && z <= b.maxZ;
 }
 
 /** Bounds for operations that need a finite search space. When unbounded, use voxel extent + margin; when empty use a large box around origin. */
@@ -218,8 +196,12 @@ export function getBoundsFromPositions(
   positions: [number, number, number][]
 ): SelectionBounds | null {
   if (positions.length === 0) return null;
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    minZ = Infinity;
+  let maxX = -Infinity,
+    maxY = -Infinity,
+    maxZ = -Infinity;
   for (const [x, y, z] of positions) {
     minX = Math.min(minX, x);
     minY = Math.min(minY, y);

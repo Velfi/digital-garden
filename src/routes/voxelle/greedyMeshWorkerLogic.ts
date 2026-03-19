@@ -19,9 +19,7 @@ export interface GreedyMeshWorkerOutput {
 }
 
 /** Parse worker input to voxel map. Testable without Worker APIs. */
-export function voxelsFromInput(
-  input: GreedyMeshWorkerInput['voxels']
-): Map<string, number> {
+export function voxelsFromInput(input: GreedyMeshWorkerInput['voxels']): Map<string, number> {
   if (Array.isArray(input)) {
     return new Map(input as [string, number][]);
   }

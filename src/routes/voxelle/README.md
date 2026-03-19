@@ -12,16 +12,16 @@ A 3D voxel sculpting tool that runs in the browser. Add, remove, and paint voxel
 
 ## Structure
 
-| Area | Purpose |
-|------|--------|
-| `+page.svelte` | App shell, global shortcuts |
-| `VoxelCanvas.svelte` | Three.js scene, raycasting, greedy-mesh rendering, orbit/fly controls |
-| `Sidebar.svelte` + `sidebar/*` | Tool picker, stroke mode, color, camera, lights, scene, modals |
-| `store/` | Central state: voxels, selection, tool, undo, clipboard, storage, `.voxelle` I/O, import |
-| `greedyMesh*.ts` | Culled meshing (only visible faces, merged quads); optional worker |
-| `coordUtils.ts`, `strokeGeometry.ts`, `flyControls.ts` | Coords, stroke shapes, fly movement |
-| `exportGltf.ts` | Voxels → GLB |
-| `VOXELLE_FORMAT.md` | `.voxelle` file format |
+| Area                                                   | Purpose                                                                                  |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `+page.svelte`                                         | App shell, global shortcuts                                                              |
+| `VoxelCanvas.svelte`                                   | Three.js scene, raycasting, greedy-mesh rendering, orbit/fly controls                    |
+| `Sidebar.svelte` + `sidebar/*`                         | Tool picker, stroke mode, color, camera, lights, scene, modals                           |
+| `store/`                                               | Central state: voxels, selection, tool, undo, clipboard, storage, `.voxelle` I/O, import |
+| `greedyMesh*.ts`                                       | Culled meshing (only visible faces, merged quads); optional worker                       |
+| `coordUtils.ts`, `strokeGeometry.ts`, `flyControls.ts` | Coords, stroke shapes, fly movement                                                      |
+| `exportGltf.ts`                                        | Voxels → GLB                                                                             |
+| `VOXELLE_FORMAT.md`                                    | `.voxelle` file format                                                                   |
 
 Tech: Svelte 5, SvelteKit, Three.js. See `AGENTS.md` for conventions and implementation notes.
 

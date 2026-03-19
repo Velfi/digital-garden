@@ -283,7 +283,11 @@ describe('thickenPathForStroke', () => {
 
 describe('puffPath with seeded RNG', () => {
   it('same seed and path produce identical output', () => {
-    const positions: [number, number, number][] = [[0, 0, 0], [1, 0, 0], [2, 1, 0]];
+    const positions: [number, number, number][] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [2, 1, 0]
+    ];
     const seed = 12345;
     const rng = createSeededRng(seed);
     const a = puffPath(positions, 1, 2, undefined, undefined, rng);
@@ -293,7 +297,10 @@ describe('puffPath with seeded RNG', () => {
   });
 
   it('different seeds produce different output when scatter > 0', () => {
-    const positions: [number, number, number][] = [[0, 0, 0], [1, 0, 0]];
+    const positions: [number, number, number][] = [
+      [0, 0, 0],
+      [1, 0, 0]
+    ];
     const out1 = puffPath(positions, 1, 2, undefined, undefined, createSeededRng(1));
     const out2 = puffPath(positions, 1, 2, undefined, undefined, createSeededRng(2));
     expect(out1).not.toEqual(out2);
@@ -321,7 +328,10 @@ describe('getSprayDirectionVector', () => {
 
 describe('thickenPath', () => {
   it('radius 0 returns positions unchanged', () => {
-    const path: [number, number, number][] = [[0, 0, 0], [1, 0, 0]];
+    const path: [number, number, number][] = [
+      [0, 0, 0],
+      [1, 0, 0]
+    ];
     expect(thickenPath(path, 0)).toEqual(path);
   });
 
@@ -407,12 +417,21 @@ describe('projectPointOntoPlane', () => {
 describe('getAxisAlignedLine', () => {
   it('along X: varies only x', () => {
     const result = getAxisAlignedLine([0, 1, 2], [3, 1, 2]);
-    expect(result).toEqual([[0, 1, 2], [1, 1, 2], [2, 1, 2], [3, 1, 2]]);
+    expect(result).toEqual([
+      [0, 1, 2],
+      [1, 1, 2],
+      [2, 1, 2],
+      [3, 1, 2]
+    ]);
   });
 
   it('along Y: varies only y', () => {
     const result = getAxisAlignedLine([0, 0, 0], [0, 2, 0]);
-    expect(result).toEqual([[0, 0, 0], [0, 1, 0], [0, 2, 0]]);
+    expect(result).toEqual([
+      [0, 0, 0],
+      [0, 1, 0],
+      [0, 2, 0]
+    ]);
   });
 
   it('along Z: varies only z', () => {
@@ -507,7 +526,10 @@ describe('getPolygonVoxels', () => {
   });
 
   it('two points returns line', () => {
-    const result = getPolygonVoxels([[0, 0, 0], [2, 0, 0]]);
+    const result = getPolygonVoxels([
+      [0, 0, 0],
+      [2, 0, 0]
+    ]);
     expect(result).toHaveLength(3);
     expect(result).toContainEqual([0, 0, 0]);
     expect(result).toContainEqual([2, 0, 0]);
@@ -613,7 +635,10 @@ describe('applyBrushAlongPath', () => {
   });
 
   it('radius 0 returns original path', () => {
-    const path: [number, number, number][] = [[0, 0, 0], [1, 0, 0]];
+    const path: [number, number, number][] = [
+      [0, 0, 0],
+      [1, 0, 0]
+    ];
     expect(applyBrushAlongPath(path, 'sphere', 0)).toEqual(path);
     expect(applyBrushAlongPath(path, 'cube', 0)).toEqual(path);
   });

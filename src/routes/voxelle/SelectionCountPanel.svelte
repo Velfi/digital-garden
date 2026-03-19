@@ -14,7 +14,8 @@
     onpointerup={(e) => e.stopPropagation()}
   >
     <span class="selection-text">
-      {$selection.size} {$selection.size === 1 ? 'voxel' : 'voxels'} selected
+      {$selection.size}
+      {$selection.size === 1 ? 'voxel' : 'voxels'} selected
     </span>
     <button
       type="button"
@@ -24,8 +25,8 @@
         deselectAll();
       }}
       title="Deselect all"
-      aria-label="Deselect all"
-    >×</button>
+      aria-label="Deselect all">×</button
+    >
   </div>
 {/if}
 

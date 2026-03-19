@@ -183,8 +183,7 @@ describe('getVoxelCenter', () => {
   it('returns center of 2x2x2 cube', () => {
     const v = new Map<string, number>();
     for (let x = 0; x < 2; x++)
-      for (let y = 0; y < 2; y++)
-        for (let z = 0; z < 2; z++) v.set(coordKey(x, y, z), 0xff);
+      for (let y = 0; y < 2; y++) for (let z = 0; z < 2; z++) v.set(coordKey(x, y, z), 0xff);
     expect(getVoxelCenter(v)).toEqual([1, 1, 1]);
   });
 });

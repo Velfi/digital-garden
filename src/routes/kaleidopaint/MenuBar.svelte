@@ -75,7 +75,6 @@
     history.redo();
     closeMenus();
   }
-
 </script>
 
 <svelte:window onclick={handleClickOutside} />
@@ -113,7 +112,13 @@
     </button>
     {#if editOpen}
       <div class="dropdown" role="menu">
-        <button type="button" role="menuitem" onclick={handleUndo} disabled={!$canUndo} title="Cmd/Ctrl+Z">
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleUndo}
+          disabled={!$canUndo}
+          title="Cmd/Ctrl+Z"
+        >
           Undo
         </button>
         <button
@@ -221,5 +226,4 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-
 </style>

@@ -156,9 +156,15 @@ export function computeMarchingCubes(
     for (let y = 0; y < ny; y++) {
       for (let x = 0; x < nx; x++) {
         const i = idx(x, y, z, nx, ny);
-        const gx = sampleField(values, x - 1, y, z, nx, ny, nz) - sampleField(values, x + 1, y, z, nx, ny, nz);
-        const gy = sampleField(values, x, y - 1, z, nx, ny, nz) - sampleField(values, x, y + 1, z, nx, ny, nz);
-        const gz = sampleField(values, x, y, z - 1, nx, ny, nz) - sampleField(values, x, y, z + 1, nx, ny, nz);
+        const gx =
+          sampleField(values, x - 1, y, z, nx, ny, nz) -
+          sampleField(values, x + 1, y, z, nx, ny, nz);
+        const gy =
+          sampleField(values, x, y - 1, z, nx, ny, nz) -
+          sampleField(values, x, y + 1, z, nx, ny, nz);
+        const gz =
+          sampleField(values, x, y, z - 1, nx, ny, nz) -
+          sampleField(values, x, y, z + 1, nx, ny, nz);
         const gl = Math.hypot(gx, gy, gz);
         if (gl > EPS) {
           gradX[i] = gx / gl;
@@ -261,21 +267,39 @@ export function computeMarchingCubes(
           const b2 = e2 * 3;
 
           rawPos.push(
-            edgePos[b0], edgePos[b0 + 1], edgePos[b0 + 2],
-            edgePos[b1], edgePos[b1 + 1], edgePos[b1 + 2],
-            edgePos[b2], edgePos[b2 + 1], edgePos[b2 + 2]
+            edgePos[b0],
+            edgePos[b0 + 1],
+            edgePos[b0 + 2],
+            edgePos[b1],
+            edgePos[b1 + 1],
+            edgePos[b1 + 2],
+            edgePos[b2],
+            edgePos[b2 + 1],
+            edgePos[b2 + 2]
           );
 
           rawNorm.push(
-            edgeNorm[b0], edgeNorm[b0 + 1], edgeNorm[b0 + 2],
-            edgeNorm[b1], edgeNorm[b1 + 1], edgeNorm[b1 + 2],
-            edgeNorm[b2], edgeNorm[b2 + 1], edgeNorm[b2 + 2]
+            edgeNorm[b0],
+            edgeNorm[b0 + 1],
+            edgeNorm[b0 + 2],
+            edgeNorm[b1],
+            edgeNorm[b1 + 1],
+            edgeNorm[b1 + 2],
+            edgeNorm[b2],
+            edgeNorm[b2 + 1],
+            edgeNorm[b2 + 2]
           );
 
           rawCol.push(
-            edgeColor[b0], edgeColor[b0 + 1], edgeColor[b0 + 2],
-            edgeColor[b1], edgeColor[b1 + 1], edgeColor[b1 + 2],
-            edgeColor[b2], edgeColor[b2 + 1], edgeColor[b2 + 2]
+            edgeColor[b0],
+            edgeColor[b0 + 1],
+            edgeColor[b0 + 2],
+            edgeColor[b1],
+            edgeColor[b1 + 1],
+            edgeColor[b1 + 2],
+            edgeColor[b2],
+            edgeColor[b2 + 1],
+            edgeColor[b2 + 2]
           );
         }
       }
