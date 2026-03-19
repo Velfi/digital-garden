@@ -1,17 +1,5 @@
 import { coordKey, parseCoordKey } from '../../coordUtils';
 
-/** Seeded RNG (mulberry32). Returns 0–1. */
-function createRng(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /** Hash three integers to a float in [0, 1]. Deterministic. */
 function hash3(seed: number, x: number, y: number, z: number): number {
   let h = (seed >>> 0) ^ (x * 73856093) ^ (y * 19349663) ^ (z * 83492791);
@@ -48,17 +36,6 @@ function noise3(seed: number, x: number, y: number, z: number): number {
   return nxy0 * (1 - w) + nxy1 * w;
 }
 
-function applyColorVariation(baseColor: number, tint: number): number {
-  const r = ((baseColor >> 16) & 0xff) * tint;
-  const g = ((baseColor >> 8) & 0xff) * tint;
-  const b = (baseColor & 0xff) * tint;
-  return (
-    (Math.min(255, Math.max(0, Math.round(r))) << 16) |
-    (Math.min(255, Math.max(0, Math.round(g))) << 8) |
-    Math.min(255, Math.max(0, Math.round(b)))
-  );
-}
-
 /** Derive a float in [lo, hi] from seed. */
 function seedToRange(seed: number, lo: number, hi: number): number {
   let h = (seed >>> 0) * 0x9e3779b9;
@@ -71,19 +48,17 @@ function seedToRange(seed: number, lo: number, hi: number): number {
  * Generate a single rock as a voxel map in local space (origin at center).
  * Shape: asymmetric lump – ellipsoid base (stretched/squashed by axis), 3D noise
  * for lumpiness, flat base (sitting face), and sometimes one angular facet.
- * Colors: baseColor with per-voxel tint variation (deterministic from seed).
+ * Colors: baseColor (use paint color / multi-color selection for variation).
  */
 export function generateRockVoxels(
   seed: number,
   size: number,
   roughness: number,
-  baseColor: number,
-  colorVariation: number
+  baseColor: number
 ): Map<string, number> {
   const out = new Map<string, number>();
   if (size < 1) return out;
 
-  const rng = createRng(seed);
   const r = Math.max(1, Math.floor(size));
   const lumpiness = Math.max(0, Math.min(1, roughness)) * 0.6;
   const scale = 2.5 / Math.max(r, 1);
@@ -132,10 +107,8 @@ export function generateRockVoxels(
     if (y < floorY) out.delete(key);
   }
 
-  // Assign colors with variation
   for (const key of out.keys()) {
-    const tint = 1 + (rng() - 0.5) * 2 * Math.max(0, Math.min(1, colorVariation));
-    out.set(key, applyColorVariation(baseColor, tint));
+    out.set(key, baseColor);
   }
 
   return out;
@@ -149,6 +122,6 @@ export function getRockPositions(
   size: number,
   roughness: number
 ): [number, number, number][] {
-  const map = generateRockVoxels(seed, size, roughness, 0x888888, 0);
+  const map = generateRockVoxels(seed, size, roughness, 0x888888);
   return [...map.keys()].map((k) => parseCoordKey(k) as [number, number, number]);
 }

@@ -12,6 +12,14 @@
   >
     Rocks
   </button>
+  <button
+    type="button"
+    class:active={$tool === 'grass'}
+    onclick={() => tool.set('grass')}
+    title="Paint grass or fuzz on surface"
+  >
+    Grass
+  </button>
 </div>
 
 <style>

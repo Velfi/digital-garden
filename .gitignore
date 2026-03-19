@@ -16,3 +16,5 @@ vite.config.ts.timestamp-*
 amplifyconfiguration*
 .vercel
 .env*.local
+
+/.cursor

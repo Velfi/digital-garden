@@ -35,7 +35,8 @@ export type Tool =
   | 'fly'
   | 'eyedropper'
   | 'clay'
-  | 'rocks';
+  | 'rocks'
+  | 'grass';
 
 export type ClayMode =
   | 'bulk'
@@ -215,8 +216,6 @@ export const stampRotation = writable<StampRotation>({ rotX: 0, rotY: 0, rotZ: 0
 export const rockSize = writable<number>(3);
 /** Rocks generator: surface irregularity 0–1. */
 export const rockRoughness = writable<number>(0.4);
-/** Rocks generator: per-voxel color variation 0–1 (tint range). */
-export const rockColorVariation = writable<number>(0.15);
 /** Rocks generator: number of rocks to place per click (1–5). */
 export const rockCount = writable<number>(1);
 /** Rocks generator: max voxel offset for cluster centers when rockCount > 1 (0–3). */
@@ -227,6 +226,12 @@ export const rockSinkDirection = writable<RockSinkDirection>('none');
 /** Rocks generator: sink amount in voxel layers (0–5). */
 export const rockSinkAmount = writable<number>(0);
 
+/** Grass generator: patch radius on surface (2–12 voxels). */
+export const grassRadius = writable<number>(4);
+/** Grass generator: density 0–1 (blade placement probability). */
+export const grassDensity = writable<number>(0.6);
+/** Grass generator: max blade height in voxels (1–6). */
+export const grassHeight = writable<number>(3);
 export const showGrid = writable<boolean>(false);
 export const renderingMode = writable<RenderingMode>('greedy');
 export const lightAngle = writable<number>(45);

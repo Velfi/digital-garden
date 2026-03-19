@@ -92,15 +92,18 @@
     symmetryZ,
     rockSize,
     rockRoughness,
-    rockColorVariation,
     rockCount,
     rockClusterRadius,
     rockSinkDirection,
     rockSinkAmount,
+    grassRadius,
+    grassDensity,
+    grassHeight,
     type Tool,
     type FaceNormal
   } from './store';
   import { generateRockVoxels, getRockPositions } from './store/generators/rock';
+  import { generateGrassVoxels, getGrassPositions } from './store/generators/grass';
   import { getShareFromIndexedDB } from './shareStorage';
   import {
     inBounds,
@@ -180,6 +183,8 @@
   let currentStrokeSeed = 0;
   /** Next rock placement seed (preview and apply match). */
   let nextRockPlacementSeed = $state(0);
+  /** Next grass placement seed (preview and apply match). */
+  let nextGrassPlacementSeed = $state(0);
   /** Clay bulk: last sampled position for path accumulation */
   let lastBulkPos: [number, number, number] | null = null;
   /** Branch: pointer down position for view-plane direction and length */
@@ -900,6 +905,7 @@
     }
     const bounds = getBoundsFromPositions(rotated);
     if (!bounds) return;
+    playPlaceSound();
     const [dx, dy, dz] = getStampOffsetForFace(target, normal, bounds);
     const stampPositions = rotated.map(
       ([x, y, z]) => [x + dx, y + dy, z + dz] as [number, number, number]
@@ -927,11 +933,15 @@
     };
   }
 
+  function playPlaceSound() {
+    const a = new Audio('/voxelle/pop.ogg');
+    a.play().catch(() => {});
+  }
+
   function placeRocks(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
     const getCol = getPaintColorResolver();
     const size = get(rockSize) as number;
     const roughness = get(rockRoughness) as number;
-    const colorVariation = get(rockColorVariation) as number;
     const count = get(rockCount) as number;
     const clusterR = get(rockClusterRadius) as number;
     const sinkDir = get(rockSinkDirection) as 'none' | 'under' | 'over';
@@ -965,8 +975,7 @@
         placementSeed + i,
         size,
         roughness,
-        getCol(),
-        colorVariation
+        getCol()
       );
       const localPositions = [...rockMap.keys()].map(
         (k) => parseCoordKey(k) as [number, number, number]
@@ -991,6 +1000,40 @@
     }
 
     if (allPositions.length === 0) return;
+    playPlaceSound();
+    ensureGridFitsPositions(allPositions);
+    const boundSize: number | undefined = undefined;
+    beginStroke();
+    updateVoxelsInStroke((v) => {
+      allPositions.forEach(([x, y, z], i) => {
+        if (!inBounds(x, y, z, boundSize)) return;
+        v.set(coordKey(x, y, z), allColors[i]);
+      });
+    });
+  }
+
+  function placeGrass(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
+    const getCol = getPaintColorResolver();
+    const radius = get(grassRadius) as number;
+    const density = get(grassDensity) as number;
+    const height = get(grassHeight) as number;
+    const grassMap = generateGrassVoxels(
+      placementSeed,
+      place,
+      normal,
+      radius,
+      density,
+      height,
+      getCol()
+    );
+    const allPositions: [number, number, number][] = [];
+    const allColors: number[] = [];
+    for (const [key, col] of grassMap) {
+      allPositions.push(parseCoordKey(key) as [number, number, number]);
+      allColors.push(col);
+    }
+    if (allPositions.length === 0) return;
+    playPlaceSound();
     ensureGridFitsPositions(allPositions);
     const boundSize: number | undefined = undefined;
     beginStroke();
@@ -1271,6 +1314,12 @@
     if (event.button === 2) {
       if ($tool === 'rocks') {
         nextRockPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+        event.preventDefault();
+        render();
+        return;
+      }
+      if ($tool === 'grass') {
+        nextGrassPlacementSeed = Math.floor(Math.random() * 0xffffffff);
         event.preventDefault();
         render();
         return;
@@ -1703,8 +1752,8 @@
       return;
     }
 
-    // Rocks generator: click places on pointerup; do not start stroke drag
-    if ($tool === 'rocks') {
+    // Rocks / Grass generator: click places on pointerup; do not start stroke drag
+    if ($tool === 'rocks' || $tool === 'grass') {
       requestAnimationFrame(() => render());
       return;
     }
@@ -2183,6 +2232,40 @@
       render();
       return;
     }
+    // Grass hover preview (same seed as placement so preview matches)
+    if ($tool === 'grass') {
+      const hit = getIntersection();
+      if (hit) {
+        const place = getAddPosition(hit);
+        const normal = getFaceNormalFromHit(hit);
+        if (place && normal) {
+          if (nextGrassPlacementSeed === 0) {
+            nextGrassPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+          }
+          const radius = get(grassRadius) as number;
+          const density = get(grassDensity) as number;
+          const height = get(grassHeight) as number;
+          const previewPositions = getGrassPositions(
+            nextGrassPlacementSeed,
+            place,
+            normal,
+            radius,
+            density,
+            height
+          );
+          updatePreviewMesh(previewPositions);
+          rollOverMesh.visible = false;
+        } else {
+          updatePreviewMesh([]);
+          rollOverMesh.visible = false;
+        }
+      } else {
+        updatePreviewMesh([]);
+        rollOverMesh.visible = false;
+      }
+      render();
+      return;
+    }
     if ($tool !== 'voxel' && $tool !== 'clay') {
       rollOverMesh.visible = false;
       updatePreviewMesh([]);
@@ -2270,6 +2353,21 @@
               : nextRockPlacementSeed;
           placeRocks(place, normal, seed);
           nextRockPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+        }
+      }
+    }
+    if (event.button === 0 && $tool === 'grass') {
+      const hit = getIntersection();
+      if (hit) {
+        const place = getAddPosition(hit);
+        const normal = getFaceNormalFromHit(hit);
+        if (place && normal) {
+          const seed =
+            nextGrassPlacementSeed === 0
+              ? Math.floor(Math.random() * 0xffffffff)
+              : nextGrassPlacementSeed;
+          placeGrass(place, normal, seed);
+          nextGrassPlacementSeed = Math.floor(Math.random() * 0xffffffff);
         }
       }
     }

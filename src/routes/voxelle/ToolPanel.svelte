@@ -39,11 +39,13 @@
     fillConstrainToPlane,
     rockSize,
     rockRoughness,
-    rockColorVariation,
     rockCount,
     rockClusterRadius,
     rockSinkDirection,
     rockSinkAmount,
+    grassRadius,
+    grassDensity,
+    grassHeight,
     MAX_BRUSH_SIZE,
     type DrawBrushShape,
     type StampRotation,
@@ -73,6 +75,7 @@
   const stampVisible = $derived($tool === 'stamp' && $selection.size > 0);
   const clayVisible = $derived($tool === 'clay');
   const rockVisible = $derived($tool === 'rocks');
+  const grassVisible = $derived($tool === 'grass');
 
   const show = $derived(
     drawBrushVisible ||
@@ -82,7 +85,8 @@
       fillVisible ||
       stampVisible ||
       clayVisible ||
-      rockVisible
+      rockVisible ||
+      grassVisible
   );
 
   const DRAW_BRUSH_SHAPES: { id: DrawBrushShape; label: string; title: string }[] = [
@@ -441,7 +445,7 @@
           />
           <span class="tool-panel-value">{$rockSize}</span>
         </div>
-        <div class="tool-panel-row">
+        <div class="tool-panel-row tool-panel-row--wide-label">
           <span class="tool-panel-label">Roughness</span>
           <input
             type="range"
@@ -453,20 +457,6 @@
             title="Surface irregularity (0–100%)"
           />
           <span class="tool-panel-value">{Math.round($rockRoughness * 100)}%</span>
-        </div>
-        <div class="tool-panel-row">
-          <span class="tool-panel-label">Color var</span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value={Math.round($rockColorVariation * 100)}
-            oninput={(e) =>
-              rockColorVariation.set(Number((e.target as HTMLInputElement).value) / 100)}
-            title="Per-voxel tint variation (0–100%)"
-          />
-          <span class="tool-panel-value">{Math.round($rockColorVariation * 100)}%</span>
         </div>
         <div class="tool-panel-row">
           <span class="tool-panel-label">Count</span>
@@ -501,6 +491,14 @@
           <div class="stroke-buttons" role="group" aria-label="Sink direction">
             <button
               type="button"
+              class:active={$rockSinkDirection === 'over'}
+              onclick={() => rockSinkDirection.set('over')}
+              title="Floating above surface"
+            >
+              Over
+            </button>
+            <button
+              type="button"
               class:active={$rockSinkDirection === 'none'}
               onclick={() => rockSinkDirection.set('none')}
               title="Place on surface"
@@ -514,14 +512,6 @@
               title="Buried in surface"
             >
               Under
-            </button>
-            <button
-              type="button"
-              class:active={$rockSinkDirection === 'over'}
-              onclick={() => rockSinkDirection.set('over')}
-              title="Floating above surface"
-            >
-              Over
             </button>
           </div>
         </div>
@@ -540,6 +530,50 @@
             <span class="tool-panel-value">{$rockSinkAmount}</span>
           </div>
         {/if}
+      </section>
+    {/if}
+
+    {#if grassVisible}
+      <section class="tool-panel-section" aria-label="Grass">
+        <div class="tool-panel-row">
+          <span class="tool-panel-label">Radius</span>
+          <input
+            type="range"
+            min="2"
+            max="12"
+            step="1"
+            value={$grassRadius}
+            oninput={(e) => grassRadius.set(Number((e.target as HTMLInputElement).value))}
+            title="Patch radius (2–12 voxels)"
+          />
+          <span class="tool-panel-value">{$grassRadius}</span>
+        </div>
+        <div class="tool-panel-row">
+          <span class="tool-panel-label">Density</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={Math.round($grassDensity * 100)}
+            oninput={(e) => grassDensity.set(Number((e.target as HTMLInputElement).value) / 100)}
+            title="Blade density (0–100%)"
+          />
+          <span class="tool-panel-value">{Math.round($grassDensity * 100)}%</span>
+        </div>
+        <div class="tool-panel-row">
+          <span class="tool-panel-label">Height</span>
+          <input
+            type="range"
+            min="1"
+            max="6"
+            step="1"
+            value={$grassHeight}
+            oninput={(e) => grassHeight.set(Number((e.target as HTMLInputElement).value))}
+            title="Max blade height (1–6 voxels)"
+          />
+          <span class="tool-panel-value">{$grassHeight}</span>
+        </div>
       </section>
     {/if}
 

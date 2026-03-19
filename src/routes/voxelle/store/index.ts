@@ -67,11 +67,13 @@ export {
   stampRotation,
   rockSize,
   rockRoughness,
-  rockColorVariation,
   rockCount,
   rockClusterRadius,
   rockSinkDirection,
   rockSinkAmount,
+  grassRadius,
+  grassDensity,
+  grassHeight,
   showGrid,
   renderingMode,
   lightAngle,
@@ -186,3 +188,4 @@ export type { VoxelleFileFormat } from './voxelleFile';
 
 // Generators
 export { generateRockVoxels, getRockPositions } from './generators/rock';
+export { generateGrassVoxels, getGrassPositions } from './generators/grass';
