@@ -5,7 +5,7 @@
     backgroundColor,
     renderingMode,
     type RenderingMode
-  } from '../store';
+  } from '../store/index';
 </script>
 
 <h2>Scene</h2>

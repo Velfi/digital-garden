@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { rotatePositionAroundOrigin } from './store/shapes';
 import { getStampOffsetForFace } from './store/core';
-import { getBoundsFromPositions } from './store';
-import type { FaceNormal } from './store';
+import { getBoundsFromPositions } from './store/index';
+import type { FaceNormal } from './store/index';
 
 /** Normalize -0 to 0 for comparison (Object.is(0, -0) is false). */
 function norm(arr: [number, number, number]): [number, number, number] {

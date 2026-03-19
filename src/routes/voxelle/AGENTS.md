@@ -18,7 +18,7 @@
 
 ### State (`store/`)
 
-Central state in writable stores. Import from `'./store'` (resolves to `store/index.ts`). Voxels and selection are `Map<string, number>`: key = `"x,y,z"` (from `coordKey`), value = hex color.
+Central state in writable stores. Import from `'./store/index'` (barrel at `store/index.ts`). Voxels and selection are `Map<string, number>`: key = `"x,y,z"` (from `coordKey`), value = hex color.
 
 - `store/core.ts` – voxels, selection, gridSize, tool, color, updateVoxels, updateVoxelsInStroke, etc.
 - `store/selection.ts` – growSelection, shrinkSelection, mergeSelection, getFillSelectionAt, etc.
@@ -45,12 +45,18 @@ Central state in writable stores. Import from `'./store'` (resolves to `store/in
 | `greedyMesh.ts`     | Culled meshing, vertex AO, `buildGreedyMesh()`, `PREVIEW_MESH_OPTIONS`, `buildPreviewGeometry()` |
 | `exportGltf.ts`     | Export voxels to `.glb`                                                                          |
 
+### Canvas layer (`canvas/`)
+
+- **`canvas/sceneSetup.ts`** – Creates the Three.js scene graph: scene, perspective/orthographic cameras, renderer, env map, voxel group, rollover mesh, preview/add-preview meshes, polygon/rope point meshes, lights (hemisphere, directional), sky, ground plane, grid group, orbit/fly controls, raycaster, pointer. No tool or pointer logic. Used by VoxelCanvas onMount and by MeshManager.
+- **`canvas/meshManager.ts`** – Manages voxel mesh rebuild (worker), grid geometry, selection overlay, and preview mesh geometry. Subscribes to store via getOptions callback; exposes `requestRebuildVoxelMeshes`, `rebuildSelectionOverlay`, `buildGrid`, `updatePreviewMesh`, `destroy`, `getMeshesByColor`. No tool or pointer logic.
+- **`canvas/handlers/`** – Pointer event handling by tool. `pointerHandler.ts` dispatches to per-tool handlers (e.g. `fly.ts`). VoxelCanvas calls `handlePointerDown` / `handlePointerMove` with a context; more tools can be moved here by extending `PointerHandlerContext` in `types.ts` and adding handlers.
+
 ### Components
 
 | File                              | Role                                                               |
 | --------------------------------- | ------------------------------------------------------------------ |
 | `+page.svelte`                    | Layout, global shortcuts (Ctrl+Z/Y/A)                              |
-| `VoxelCanvas.svelte`              | Three.js scene, raycasting, tools, greedy mesh, orbit/fly controls |
+| `VoxelCanvas.svelte`              | Composes scene via `createSceneSetup`, mesh via `createMeshManager`; owns render loop, orbit/fly, pointer events, and all tool/pointer logic (draw, clay, selection, stamp, generators). Delegates mesh rebuild/grid/selection/preview to MeshManager. |
 | `Sidebar.svelte`                  | Shell; composes sidebar panel components                           |
 | `sidebar/ToolPicker.svelte`       | Tool buttons                                                       |
 | `sidebar/StrokeModePicker.svelte` | Stroke mode + fill options + plane axis                            |
@@ -62,6 +68,7 @@ Central state in writable stores. Import from `'./store'` (resolves to `store/in
 | `sidebar/OriginSection.svelte`    | Center controls, shift inputs                                      |
 | `sidebar/ShareModal.svelte`       | Share URL modal                                                    |
 | `sidebar/NewGridModal.svelte`     | New grid size/shape modal                                          |
+| `ToolPanel.svelte`                | Shell; shows one of `toolPanel/DrawToolOptions`, `ClayToolOptions`, `StampToolOptions`, `GeneratorToolOptions` by tool/pane. |
 | `AddPanel.svelte`                 | Add shape modal (position, rotation, shape type, size)             |
 | `OrbitGizmo.svelte`               | View orientation widget                                            |
 
@@ -86,5 +93,6 @@ Central state in writable stores. Import from `'./store'` (resolves to `store/in
 1. Use `updateVoxels` or `updateVoxelsInStroke` for voxel changes; call `pushUndo()` before edits.
 2. Keep greedy mesh logic in `greedyMesh.ts`; VoxelCanvas consumes it.
 3. Selection is `Map<string, number>` like voxels; use `getSelectionBounds`, `getSelectionAnchor`, etc.
-4. Avoid touching `meshesByColor` internals except via `buildGreedyMesh`.
+4. Avoid touching `meshesByColor` internals; MeshManager owns them and exposes `getMeshesByColor()`.
 5. Run `greedyMesh.test.ts` after changes to meshing.
+6. **New tools / options**: Add pointer handling in VoxelCanvas (or future `canvas/handlers/`); add UI in ToolPanel (or `toolPanel/*Options.svelte`). Tool/stroke-mode lists (e.g. `DRAW_TOOLS_USING_STROKE_MODE`) are defined once in `store/core.ts` and imported elsewhere.

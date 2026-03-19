@@ -19,6 +19,7 @@ export {
   gridSize,
   MAX_GRID_SIZE,
   MAX_BRUSH_SIZE,
+  STROKE_TOOLS,
   voxels,
   tool,
   toolPane,

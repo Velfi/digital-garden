@@ -20,7 +20,7 @@
     gridSize,
     focalLength,
     orthographic
-  } from './store';
+  } from './store/index';
 
   let colorChangeMounted = false;
   $effect(() => {

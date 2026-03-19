@@ -105,7 +105,7 @@
     grassHeight,
     type Tool,
     type FaceNormal
-  } from './store';
+  } from './store/index';
   import { generateRockVoxels, getRockPositions, generateAshlarVoxels, getAshlarPositions } from './store/generators/rock';
   import { generateGrassVoxels, getGrassPositions } from './store/generators/grass';
   import { getShareFromIndexedDB } from './shareStorage';
@@ -129,7 +129,6 @@
     getSprayDirectionVector
   } from './strokeGeometry';
   import { applySmooth, applyLevel, applyMelt, applyInflate } from './clayOps';
-  import { buildGridPositions } from './gridLines';
   import {
     FLY_MOVE_SPEED,
     FLY_POINTER_SPEED,
@@ -138,11 +137,12 @@
     resetFlyMoveState,
     applyFlyMovement
   } from './flyControls';
-  import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
-  import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
   import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
   import { Sky } from 'three/addons/objects/Sky.js';
-  import { buildGreedyMesh, buildPreviewGeometry, PREVIEW_MESH_OPTIONS } from './greedyMesh';
+  import { buildPreviewGeometry } from './greedyMesh';
+  import { createSceneSetup, POLYGON_POINTS_MAX } from './canvas/sceneSetup';
+  import { createMeshManager } from './canvas/meshManager';
+  import { handlePointerDown as dispatchPointerDown, handlePointerMove as dispatchPointerMove } from './canvas/handlers/pointerHandler';
   import OrbitGizmo from './OrbitGizmo.svelte';
   import ToolPanel from './ToolPanel.svelte';
   import SelectionCountPanel from './SelectionCountPanel.svelte';
@@ -167,10 +167,7 @@
   let sky: InstanceType<typeof Sky> | null = null;
   let groundPlane: THREE.Mesh | null = null;
   let boxGeometry: THREE.BoxGeometry;
-  let meshesByColor: Map<
-    number,
-    { mesh: THREE.InstancedMesh | THREE.Mesh; positions: [number, number, number][] | null }
-  > = new Map();
+  let meshManager: ReturnType<typeof createMeshManager> | null = null;
   let animationFrameId: number;
   let isVoxelDrag = false;
   /** Selection mode for the current drag (set at pointer down when select tool); used so shift-drag extends selection. */
@@ -203,10 +200,6 @@
   let greedyMeshLoading = $state(false);
   /** Only show spinner after build has taken >2s */
   let showGreedyMeshSpinner = $state(false);
-  let greedyMeshSpinnerTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  let meshWorker: Worker | null = null;
-  let meshRebuildGen = 0;
 
   // Cuboid two-phase: first drag = plane, then scroll/drag = depth
   let cuboidPhase = $state<'plane' | 'depth' | null>(null);
@@ -232,7 +225,6 @@
   let polygonPointsMaterial: THREE.MeshBasicMaterial | null = null;
   /** When set, polygon commit (voxel/clay) places voxels one layer along this normal. */
   let polygonPlacementNormal = $state<FaceNormal | null>(null);
-  const POLYGON_POINTS_MAX = 64;
 
   // Rope: two-point + tension flow
   let ropePointA = $state<[number, number, number] | null>(null);
@@ -250,8 +242,6 @@
   let addPreviewMaterial: THREE.MeshBasicMaterial | null = null;
 
   let selectionGroup: THREE.Group | null = null;
-  let selectionMesh: THREE.Mesh | null = null;
-  let selectionMaterial: THREE.MeshBasicMaterial | null = null;
 
   let gridGroup: THREE.Group | null = null;
   let gridLineMaterial: InstanceType<typeof LineMaterial> | null = null;
@@ -306,142 +296,8 @@
   const fitHelperSphere = new THREE.Sphere();
   const worldQuaternion = new THREE.Quaternion();
 
-  function createEnvMap(): THREE.CubeTexture {
-    const size = 32;
-    const canvases: HTMLCanvasElement[] = [];
-    for (let i = 0; i < 6; i++) {
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d')!;
-      const gradient = ctx.createRadialGradient(
-        size / 2,
-        size / 2,
-        0,
-        size / 2,
-        size / 2,
-        size / 2
-      );
-      gradient.addColorStop(0, '#ffffff');
-      gradient.addColorStop(1, '#888888');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, size, size);
-      canvases.push(canvas);
-    }
-    const envMap = new THREE.CubeTexture(canvases);
-    envMap.colorSpace = THREE.SRGBColorSpace;
-    return envMap;
-  }
-
-  function applyVoxelMeshResults(
-    results: Array<{
-      color: number;
-      positions: Float32Array;
-      normals: Float32Array;
-      colors: Float32Array;
-      indices: Uint32Array;
-    }>
-  ) {
-    if (!voxelGroup) return;
-    for (const { mesh } of meshesByColor.values()) {
-      voxelGroup.remove(mesh);
-      (mesh.material as THREE.Material).dispose();
-      if (mesh instanceof THREE.Mesh && mesh.geometry) mesh.geometry.dispose();
-    }
-    meshesByColor.clear();
-
-    const envMap = scene?.environment ?? null;
-    const r = $roughness;
-    const m = $metalness;
-
-    for (const { color: col, positions, normals, colors, indices } of results) {
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      geo.setIndex(new THREE.BufferAttribute(indices, 1));
-      geo.computeVertexNormals();
-      geo.computeBoundingSphere();
-
-      const mat = new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: r,
-        metalness: m,
-        envMap: envMap
-      });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.castShadow = $enableShadows;
-      mesh.receiveShadow = $enableShadows && $renderingMode !== 'marchingCubes';
-      voxelGroup.add(mesh);
-      meshesByColor.set(col, { mesh, positions: null });
-    }
-  }
-
-  function requestRebuildVoxelMeshes(v: Map<string, number>, _size: number) {
-    if (!meshWorker || !voxelGroup) return;
-    const gen = ++meshRebuildGen;
-    greedyMeshLoading = true;
-    showGreedyMeshSpinner = false;
-    if (greedyMeshSpinnerTimeoutId) clearTimeout(greedyMeshSpinnerTimeoutId);
-    greedyMeshSpinnerTimeoutId = setTimeout(() => {
-      greedyMeshSpinnerTimeoutId = null;
-      if (greedyMeshLoading) showGreedyMeshSpinner = true;
-    }, 2000);
-    const voxelsArr: [string, number][] = [...v];
-    const CHUNK_THRESHOLD = 50000;
-    const chunkSize = v.size >= CHUNK_THRESHOLD ? 32 : 0;
-    meshWorker.postMessage({
-      voxels: voxelsArr,
-      mode: $renderingMode,
-      options: { aoStrength: $aoStrength, chunkSize },
-      gen
-    });
-  }
-
-  function setupMeshWorker() {
-    if (!browser) return;
-    meshWorker = new Worker(new URL('./voxelMeshWorker.ts', import.meta.url), {
-      type: 'module'
-    });
-    meshWorker.onmessage = (e: MessageEvent<{ results: unknown[]; gen?: number }>) => {
-      if (e.data.gen !== meshRebuildGen) return;
-      greedyMeshLoading = false;
-      showGreedyMeshSpinner = false;
-      if (greedyMeshSpinnerTimeoutId) {
-        clearTimeout(greedyMeshSpinnerTimeoutId);
-        greedyMeshSpinnerTimeoutId = null;
-      }
-      applyVoxelMeshResults(e.data.results as Parameters<typeof applyVoxelMeshResults>[0]);
-      render();
-    };
-  }
-
   function rebuildSelectionOverlay(sel: Map<string, number>) {
-    if (!selectionGroup || !scene) return;
-    if (selectionMesh) {
-      selectionGroup.remove(selectionMesh);
-      selectionMesh.geometry?.dispose();
-      selectionMaterial?.dispose();
-      selectionMesh = null;
-      selectionMaterial = null;
-    }
-    if (sel.size === 0) return;
-    const overlayMap = new Map<string, number>();
-    for (const key of sel.keys()) overlayMap.set(key, 0x3399ff);
-    const geoByColor = buildGreedyMesh(overlayMap, PREVIEW_MESH_OPTIONS);
-    const geo = geoByColor.get(0x3399ff);
-    if (!geo) return;
-    selectionMaterial = new THREE.MeshBasicMaterial({
-      color: 0x3399ff,
-      opacity: 0.35,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false
-    });
-    selectionMesh = new THREE.Mesh(geo, selectionMaterial);
-    selectionMesh.raycast = () => {};
-    selectionMesh.renderOrder = 1;
-    selectionGroup.add(selectionMesh);
+    meshManager?.rebuildSelectionOverlay(sel);
   }
 
   /** Snaps stamp to target voxel face so the correct side touches without overlapping. */
@@ -485,8 +341,11 @@
 
   function getRaycastTargets(): THREE.Object3D[] {
     const targets: THREE.Object3D[] = [];
-    for (const { mesh } of meshesByColor.values()) {
-      targets.push(mesh);
+    const byColor = meshManager?.getMeshesByColor();
+    if (byColor) {
+      for (const { mesh } of byColor.values()) {
+        targets.push(mesh);
+      }
     }
     if (polygonPhase && polygonPointsMesh) {
       targets.push(polygonPointsMesh);
@@ -576,21 +435,8 @@
     return { x: v.x, y: v.y, z: v.z };
   }
 
-  function buildGrid(_size: number, v: Map<string, number>) {
-    if (!gridGroup || !gridLineMaterial || !scene) return;
-    while (gridGroup.children.length > 0) {
-      const child = gridGroup.children[0];
-      gridGroup.remove(child);
-      const geom = (child as { geometry?: THREE.BufferGeometry }).geometry;
-      if (geom) geom.dispose();
-    }
-    const positions = buildGridPositions(v);
-    if (positions.length === 0) return;
-    const geom = new LineSegmentsGeometry();
-    geom.setPositions(positions);
-    const lines = new LineSegments2(geom, gridLineMaterial);
-    lines.raycast = () => {};
-    gridGroup.add(lines);
+  function buildGrid(sz: number, v: Map<string, number>) {
+    meshManager?.buildGrid(sz, v);
   }
 
   function getCameraDistance(): number {
@@ -1114,7 +960,7 @@
   }
 
   function updatePreviewMesh(positions: [number, number, number][]) {
-    if (!previewMesh || !previewMaterial) return;
+    if (!meshManager) return;
     const axes: SymmetryAxes = {
       x: get(symmetryX),
       y: get(symmetryY),
@@ -1126,24 +972,15 @@
       sel.size > 0 && ($tool === 'paint' || $tool === 'remove')
         ? positions.filter(([x, y, z]) => sel.has(coordKey(x, y, z)))
         : positions;
-    if (filtered.length === 0) {
-      previewMesh.visible = false;
-      return;
-    }
     const hex =
-      $tool === 'remove'
-        ? 0xff4444
-        : $tool === 'select' || $tool === 'selectByColor' || $tool === 'selectCoplanar'
-          ? 0x33aaff
-          : hexToInt($color);
-    const geo = buildPreviewGeometry(filtered, hex, $voxels);
-    if (geo) {
-      if (previewMesh.geometry) previewMesh.geometry.dispose();
-      previewMesh.geometry = geo;
-      previewMesh.visible = true;
-    } else {
-      previewMesh.visible = false;
-    }
+      filtered.length === 0
+        ? 0
+        : $tool === 'remove'
+          ? 0xff4444
+          : $tool === 'select' || $tool === 'selectByColor' || $tool === 'selectCoplanar'
+            ? 0x33aaff
+            : hexToInt($color);
+    meshManager.updatePreviewMesh(filtered, hex, filtered.length > 0 ? $voxels : undefined);
   }
 
   function updateCuboidFromDepth() {
@@ -1366,20 +1203,14 @@
     }
   }
 
+  const pointerHandlerContext = {
+    getTool: () => get(tool),
+    getFlyControls: () => flyControls,
+    getContainer: () => container
+  };
+
   function handlePointerDown(event: PointerEvent) {
-    if ((event.target as Element)?.closest?.('[data-voxelle-no-passthrough]')) return;
-    if ($tool === 'fly') {
-      if (event.button === 0 || event.button === 2) {
-        if (flyControls?.isLocked) {
-          flyControls.unlock();
-        } else {
-          flyControls?.lock(true); // unadjustedMovement for raw mouse input
-        }
-        event.preventDefault();
-      }
-      event.stopPropagation();
-      return;
-    }
+    if (dispatchPointerDown(pointerHandlerContext, event)) return;
     if (event.button === 2) {
       if ($tool === 'rocks') {
         nextRockPlacementSeed = Math.floor(Math.random() * 0xffffffff);
@@ -1974,7 +1805,7 @@
   }
 
   function handlePointerMove(event?: PointerEvent) {
-    if ($tool === 'fly') return; // PointerLockControls handles mouse look
+    if (dispatchPointerMove(pointerHandlerContext, event)) return;
     // Stamp drag: re-raycast so stamp follows cursor onto any surface
     if (isStampDrag && $selection.size > 0) {
       const hit = getIntersection();
@@ -2886,7 +2717,7 @@
     const sz = $gridSize;
     const _ao = $aoStrength;
     const _renderingMode = $renderingMode;
-    requestRebuildVoxelMeshes(v, sz);
+    meshManager?.requestRebuildVoxelMeshes(v);
     render();
   });
 
@@ -2900,9 +2731,12 @@
     const shadows = $enableShadows;
     if (renderer) renderer.shadowMap.enabled = shadows;
     if (dirLight) dirLight.castShadow = shadows;
-    for (const { mesh } of meshesByColor.values()) {
-      mesh.castShadow = shadows;
-      mesh.receiveShadow = shadows && $renderingMode !== 'marchingCubes';
+    const byColor = meshManager?.getMeshesByColor();
+    if (byColor) {
+      for (const { mesh } of byColor.values()) {
+        mesh.castShadow = shadows;
+        mesh.receiveShadow = shadows && $renderingMode !== 'marchingCubes';
+      }
     }
     render();
   });
@@ -2910,10 +2744,13 @@
   $effect(() => {
     const r = $roughness;
     const m = $metalness;
-    for (const { mesh } of meshesByColor.values()) {
-      const mat = mesh.material as THREE.MeshStandardMaterial;
-      mat.roughness = r;
-      mat.metalness = m;
+    const byColor = meshManager?.getMeshesByColor();
+    if (byColor) {
+      for (const { mesh } of byColor.values()) {
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        mat.roughness = r;
+        mat.metalness = m;
+      }
     }
     render();
   });
@@ -2954,201 +2791,76 @@
     if (!fromUrl && !loadFromStorage()) initCanvas(get(gridSize));
     const sz = get(gridSize);
 
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(hexToInt($backgroundColor));
-    envMap = createEnvMap();
-    scene.environment = envMap;
-
-    perspectiveCamera = new THREE.PerspectiveCamera(
-      focalLengthToFov(get(focalLength)),
-      1,
-      1,
-      10000
-    );
-    const dist = sz * 2.5;
-    perspectiveCamera.position.set(dist * 0.6, dist * 0.8, dist);
-    perspectiveCamera.lookAt(0, 0, 0);
-
-    const aspect = container ? container.clientWidth / container.clientHeight : 1;
-    const frustumHeight = sz * 2;
-    const frustumWidth = frustumHeight * aspect;
-    orthographicCamera = new THREE.OrthographicCamera(
-      -frustumWidth / 2,
-      frustumWidth / 2,
-      frustumHeight / 2,
-      -frustumHeight / 2,
-      1,
-      10000
-    );
-    orthographicCamera.position.copy(perspectiveCamera.position);
-    orthographicCamera.quaternion.copy(perspectiveCamera.quaternion);
-
+    const setupRefs = createSceneSetup(container, {
+      gridSize: sz,
+      colorHex: hexToInt($color),
+      lightColorHex: hexToInt($lightColor),
+      focalLength: get(focalLength),
+      backgroundColorHex: hexToInt($backgroundColor),
+      enableShadows: $enableShadows,
+      lightAngle: $lightAngle,
+      lightElevation: $lightElevation,
+      aspect: container ? container.clientWidth / container.clientHeight : 1
+    });
+    scene = setupRefs.scene;
+    perspectiveCamera = setupRefs.perspectiveCamera;
+    orthographicCamera = setupRefs.orthographicCamera;
     camera = get(orthographic) ? orthographicCamera : perspectiveCamera;
+    renderer = setupRefs.renderer;
+    envMap = setupRefs.envMap;
+    voxelGroup = setupRefs.voxelGroup;
+    rollOverMesh = setupRefs.rollOverMesh;
+    rollOverMaterial = setupRefs.rollOverMaterial;
+    boxGeometry = setupRefs.boxGeometry;
+    selectionGroup = setupRefs.selectionGroup;
 
-    rollOverMaterial = new THREE.MeshBasicMaterial({
-      color: hexToInt($color),
-      opacity: 0.5,
-      transparent: true
-    });
-    boxGeometry = new THREE.BoxGeometry(1, 1, 1);
-    rollOverMesh = new THREE.Mesh(boxGeometry, rollOverMaterial);
-    rollOverMesh.visible = false;
-    scene.add(rollOverMesh);
-
-    voxelGroup = new THREE.Group();
-    scene.add(voxelGroup);
-
-    setupMeshWorker();
-
-    selectionGroup = new THREE.Group();
-    scene.add(selectionGroup);
-
-    previewMaterial = new THREE.MeshBasicMaterial({
-      vertexColors: true,
-      color: 0xffffff,
-      opacity: 0.5,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false
-    });
-    previewMesh = new THREE.Mesh(new THREE.BufferGeometry(), previewMaterial);
-    previewMesh.visible = false;
-    previewMesh.raycast = () => {};
-    scene.add(previewMesh);
-
-    addPreviewMaterial = new THREE.MeshBasicMaterial({
-      vertexColors: true,
-      color: 0xffffff,
-      opacity: 0.5,
-      transparent: true,
-      depthTest: true,
-      depthWrite: false
-    });
-    addPreviewMesh = new THREE.Mesh(new THREE.BufferGeometry(), addPreviewMaterial);
-    addPreviewMesh.visible = false;
-    addPreviewMesh.raycast = () => {};
-    scene.add(addPreviewMesh);
-
-    polygonLineMaterial = new THREE.LineBasicMaterial({
-      color: 0x3399ff,
-      linewidth: 2,
-      depthTest: true,
-      depthWrite: false
-    });
-    polygonLineSegments = new THREE.LineSegments(new THREE.BufferGeometry(), polygonLineMaterial);
-    polygonLineSegments.raycast = () => {};
-    scene.add(polygonLineSegments);
-
-    polygonPointsMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffff00,
-      opacity: 0.9,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false
-    });
-    polygonPointsMesh = new THREE.InstancedMesh(
-      boxGeometry,
-      polygonPointsMaterial,
-      POLYGON_POINTS_MAX
-    );
-    polygonPointsMesh.count = 0;
-    polygonPointsMesh.visible = false;
-    polygonPointsMesh.renderOrder = 1;
-    polygonPointsMesh.frustumCulled = false;
-    scene.add(polygonPointsMesh);
-
-    ropePointsMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffff00,
-      opacity: 0.9,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false
-    });
-    ropePointsMesh = new THREE.InstancedMesh(boxGeometry, ropePointsMaterial, 2);
-    ropePointsMesh.count = 0;
-    ropePointsMesh.visible = false;
-    ropePointsMesh.renderOrder = 1;
-    ropePointsMesh.frustumCulled = false;
-    scene.add(ropePointsMesh);
-
-    // Hemisphere: sky (top) + ground (bottom) for natural ambient bounce
-    hemisphereLight = new THREE.HemisphereLight(0xb8d4e8, 0x4a5568, 1);
-    scene.add(hemisphereLight);
-    dirLight = new THREE.DirectionalLight(hexToInt($lightColor), 2);
-    dirLight.castShadow = $enableShadows;
-    dirLight.shadow.mapSize.set(4096, 4096);
-    dirLight.shadow.bias = -0.0002;
-    dirLight.shadow.normalBias = 0.02;
-    dirLight.target.position.set(0, 0, 0);
-    scene.add(dirLight.target);
-    updateDirLightPosition($lightAngle, $lightElevation, sz);
-    updateShadowCamera(sz);
-    scene.add(dirLight);
-
-    sky = new Sky();
-    sky.scale.setScalar(20000);
-    sky.renderOrder = -1;
-    (sky.material as THREE.ShaderMaterial).uniforms['cloudCoverage'].value = 0;
-    scene.add(sky);
-
-    const groundGeo = new THREE.CircleGeometry(1, 64);
-    const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x3d5c3d,
-      roughness: 1,
-      metalness: 0
-    });
-    groundPlane = new THREE.Mesh(groundGeo, groundMat);
-    groundPlane.rotation.x = -Math.PI / 2;
-    groundPlane.position.y = -sz * 0.6;
-    groundPlane.scale.set(sz * 3, sz * 3, 1);
-    groundPlane.receiveShadow = true;
-    groundPlane.renderOrder = -1;
-    scene.add(groundPlane);
-
-    gridLineMaterial = new LineMaterial({
-      color: 0x333333,
-      opacity: 0.5,
-      transparent: true,
-      depthTest: true,
-      depthWrite: false,
-      linewidth: 1.5,
-      worldUnits: false,
-      alphaToCoverage: true
-    });
-    gridGroup = new THREE.Group();
-    gridGroup.renderOrder = 1;
-    buildGrid(sz, $voxels);
-    gridGroup.visible = $showGrid;
-    scene.add(gridGroup);
-
-    renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.shadowMap.enabled = $enableShadows;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    container.appendChild(renderer.domElement);
-
-    orbitControls = new OrbitControls(camera, renderer.domElement);
-    orbitControls.enableDamping = true;
-    orbitControls.dampingFactor = 0.05;
+    previewMesh = setupRefs.previewMesh;
+    previewMaterial = setupRefs.previewMaterial;
+    addPreviewMesh = setupRefs.addPreviewMesh;
+    addPreviewMaterial = setupRefs.addPreviewMaterial;
+    polygonLineMaterial = setupRefs.polygonLineMaterial;
+    polygonLineSegments = setupRefs.polygonLineSegments;
+    polygonPointsMesh = setupRefs.polygonPointsMesh;
+    polygonPointsMaterial = setupRefs.polygonPointsMaterial;
+    ropePointsMesh = setupRefs.ropePointsMesh;
+    ropePointsMaterial = setupRefs.ropePointsMaterial;
+    hemisphereLight = setupRefs.hemisphereLight;
+    dirLight = setupRefs.dirLight;
+    sky = setupRefs.sky;
+    groundPlane = setupRefs.groundPlane;
+    gridGroup = setupRefs.gridGroup;
+    gridLineMaterial = setupRefs.gridLineMaterial;
+    orbitControls = setupRefs.orbitControls;
+    flyControls = setupRefs.flyControls;
+    raycaster = setupRefs.raycaster;
+    pointer = setupRefs.pointer;
+    flyControls.pointerSpeed = FLY_POINTER_SPEED;
     orbitControls.addEventListener('change', updateZoomPercent);
 
-    flyControls = new PointerLockControls(camera, container);
-    flyControls.pointerSpeed = FLY_POINTER_SPEED;
-    flyControls.enabled = false;
+    meshManager = createMeshManager(
+      setupRefs,
+      () => ({
+        roughness: $roughness,
+        metalness: $metalness,
+        enableShadows: $enableShadows,
+        renderingMode: $renderingMode,
+        aoStrength: $aoStrength
+      }),
+      {
+        onLoadingChange: (v) => (greedyMeshLoading = v),
+        onSpinnerChange: (v) => (showGreedyMeshSpinner = v),
+        render
+      }
+    );
+    meshManager.buildGrid(sz, $voxels);
+    gridGroup.visible = $showGrid;
 
     window.addEventListener('keydown', handleFlyKeyDown, true);
     window.addEventListener('keydown', onEscapeKeyDown, true);
     window.addEventListener('keydown', onFullscreenKey);
     window.addEventListener('fullscreenchange', onFullscreenChange);
     window.addEventListener('keyup', handleFlyKeyUp, true);
-
     updateZoomPercent();
-
-    raycaster = new THREE.Raycaster();
-    pointer = new THREE.Vector2();
 
     container.addEventListener('pointermove', onPointerMove);
     container.addEventListener('pointerdown', onPointerDown, true);
@@ -3160,7 +2872,7 @@
     container.addEventListener('wheel', onWheel, { passive: false, capture: true });
     window.addEventListener('resize', onWindowResize);
 
-    requestRebuildVoxelMeshes($voxels, sz);
+    meshManager?.requestRebuildVoxelMeshes($voxels);
     onWindowResize();
     animate();
   });
@@ -3320,8 +3032,6 @@
     if (!browser) return;
     saveToStorage();
     cancelAnimationFrame(animationFrameId);
-    meshWorker?.terminate();
-    meshWorker = null;
     container?.removeEventListener('pointermove', onPointerMove);
     container?.removeEventListener('pointerdown', onPointerDown, true);
     container?.removeEventListener('pointerup', onFlyPointerCapture, true);
@@ -3344,16 +3054,11 @@
     flyControls?.dispose();
     renderer?.dispose();
     envMap?.dispose();
-    for (const { mesh } of meshesByColor.values()) {
-      mesh.geometry.dispose();
-      (mesh.material as THREE.Material).dispose();
-    }
     boxGeometry?.dispose();
     rollOverMaterial?.dispose();
     previewMaterial?.dispose();
     addPreviewMesh?.geometry?.dispose();
     addPreviewMaterial?.dispose();
-    selectionMaterial?.dispose();
     gridGroup?.traverse((obj) => {
       const geom = (obj as { geometry?: THREE.BufferGeometry }).geometry;
       if (geom) geom.dispose();
@@ -3363,6 +3068,7 @@
     polygonLineMaterial?.dispose();
     polygonPointsMaterial?.dispose();
     ropePointsMaterial?.dispose();
+    meshManager?.destroy();
   });
 </script>
 

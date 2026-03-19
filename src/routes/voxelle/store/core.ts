@@ -65,7 +65,7 @@ export const MAX_BRUSH_SIZE = 25;
 export type StrokeMode = 'line' | 'plane' | 'cuboid' | 'polygon' | 'fill' | 'airbrush';
 
 /** Tools that use stroke mode (selection method). Clay/stamp/fly/eyedropper use their own flows. */
-const DRAW_TOOLS_USING_STROKE_MODE: Tool[] = [
+export const STROKE_TOOLS: readonly Tool[] = [
   'voxel',
   'remove',
   'paint',
@@ -73,6 +73,7 @@ const DRAW_TOOLS_USING_STROKE_MODE: Tool[] = [
   'selectByColor',
   'selectCoplanar'
 ];
+const DRAW_TOOLS_USING_STROKE_MODE = STROKE_TOOLS;
 
 export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect' | 'toggle';
 

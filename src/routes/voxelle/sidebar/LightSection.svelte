@@ -6,7 +6,7 @@
     lightElevation,
     enableShadows,
     aoStrength
-  } from '../store';
+  } from '../store/index';
 </script>
 
 <h2>Light</h2>

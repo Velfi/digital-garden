@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { selection, sidebarOpen, deselectAll } from './store';
+  import { selection, sidebarOpen, deselectAll } from './store/index';
 </script>
 
 {#if $selection.size > 0}

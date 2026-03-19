@@ -6,7 +6,7 @@
     centerOriginOnSelection,
     shiftVoxelsAndSelection,
     shiftSelection
-  } from '../store';
+  } from '../store/index';
 
   let shiftX = $state(0);
   let shiftY = $state(0);

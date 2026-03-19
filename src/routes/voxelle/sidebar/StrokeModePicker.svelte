@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { strokeMode } from '../store';
+  import { strokeMode } from '../store/index';
 </script>
 
 <div class="stroke-mode" role="group" aria-labelledby="stroke-label">

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { buildGreedyMesh, getGreedyMeshFaceArea } from './greedyMesh';
-import { coordKey } from './store';
-import { initShape } from './store';
+import { coordKey } from './store/index';
+import { initShape } from './store/index';
 
 /** Count visible faces (no neighbor in that direction) for a voxel set. */
 function countVisibleFaces(voxels: Map<string, number>): number {

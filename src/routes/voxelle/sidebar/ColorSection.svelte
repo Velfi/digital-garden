@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { color, palette, selectedColors } from '../store';
+  import { color, palette, selectedColors } from '../store/index';
   import LospecPalette from '$lib/components/LospecPalette.svelte';
 </script>
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { symmetryX, symmetryY, symmetryZ } from '../store';
+  import { symmetryX, symmetryY, symmetryZ } from '../store/index';
 </script>
 
 <div class="symmetry-section" role="group" aria-labelledby="symmetry-label">

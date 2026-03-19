@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { clayMode } from '../store';
+  import { clayMode } from '../store/index';
 </script>
 
 <div class="clay-mode" role="group" aria-labelledby="clay-label">

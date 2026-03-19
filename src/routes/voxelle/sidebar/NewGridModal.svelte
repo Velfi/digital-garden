@@ -1,7 +1,7 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { gridSize, resetCanvas, MAX_GRID_SIZE } from '../store';
-  import type { StartShape } from '../store';
+  import { gridSize, resetCanvas, MAX_GRID_SIZE } from '../store/index';
+  import type { StartShape } from '../store/index';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 

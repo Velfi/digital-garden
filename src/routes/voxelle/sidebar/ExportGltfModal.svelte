@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { voxels } from '../store';
+  import { voxels } from '../store/index';
   import { exportVoxelsToGltf } from '../exportGltf';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();

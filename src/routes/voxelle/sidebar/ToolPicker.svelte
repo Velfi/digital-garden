@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tool, selection, lastDrawTool } from '../store';
+  import { tool, selection, lastDrawTool } from '../store/index';
 </script>
 
 <h2>Tool</h2>

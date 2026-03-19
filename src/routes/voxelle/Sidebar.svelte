@@ -9,7 +9,7 @@
     toolPane,
     lastDrawTool,
     encodeModelForUrl
-  } from './store';
+  } from './store/index';
   import { nanoid } from 'nanoid';
   import { storeShareInIndexedDB } from './shareStorage';
   import ArtSidebar from '$lib/components/ArtSidebar.svelte';

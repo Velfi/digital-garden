@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { roughness, metalness } from '../store';
+  import { roughness, metalness } from '../store/index';
 </script>
 
 <h2>Material (PBR)</h2>

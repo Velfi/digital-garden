@@ -6,7 +6,7 @@
     sidebarOpen,
     MAX_GRID_SIZE,
     type StartShape
-  } from './store';
+  } from './store/index';
 
   const ADD_SHAPE_MAX_SIZE = Math.min(1024, MAX_GRID_SIZE);
 

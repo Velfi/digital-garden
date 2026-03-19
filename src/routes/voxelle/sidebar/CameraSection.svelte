@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { orthographic, focalLength } from '../store';
+  import { orthographic, focalLength } from '../store/index';
 </script>
 
 <h2>Camera</h2>

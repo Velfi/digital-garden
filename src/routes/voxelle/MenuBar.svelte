@@ -26,8 +26,8 @@
     saveToFile,
     loadFromFile,
     importImageFromFile
-  } from './store';
-  import type { SelectionMode } from './store';
+  } from './store/index';
+  import type { SelectionMode } from './store/index';
 
   let fileOpen = $state(false);
   let editOpen = $state(false);

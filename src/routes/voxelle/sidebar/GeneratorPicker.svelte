@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tool } from '../store';
+  import { tool } from '../store/index';
 </script>
 
 <h2>Generators</h2>
