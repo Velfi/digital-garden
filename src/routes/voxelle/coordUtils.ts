@@ -7,6 +7,18 @@ export function parseCoordKey(key: string): [number, number, number] {
   return [x, y, z];
 }
 
+/** Build a voxel Map from a list of positions and a single color. */
+export function positionsToVoxelMap(
+  positions: [number, number, number][],
+  color: number
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const [x, y, z] of positions) {
+    map.set(coordKey(x, y, z), color);
+  }
+  return map;
+}
+
 export type SymmetryAxes = { x: boolean; y: boolean; z: boolean };
 
 /** Returns coord keys for (x,y,z) and all mirror positions for the given axes. Deduplicated. */

@@ -141,6 +141,19 @@ describe('buildGreedyMesh', () => {
     expect(getVertexCount(geo)).toBe(24);
   });
 
+  it('skipMerge emits one quad per visible face (no merging)', () => {
+    const voxels = new Map<string, number>([
+      [coordKey(0, 0, 0), 0x888888],
+      [coordKey(1, 0, 0), 0x888888]
+    ]);
+    expect(countVisibleFaces(voxels)).toBe(10);
+    const result = buildGreedyMesh(voxels, { aoEnabled: false, skipMerge: true });
+    const geo = result.get(0x888888)!;
+    expect(geo).toBeDefined();
+    // 10 faces = 10 quads = 20 tris
+    expect(getTriangleCount(geo)).toBe(20);
+  });
+
   it('2×2×2 cube has 24 visible faces, merged to 6 quads', () => {
     const voxels = new Map<string, number>();
     for (let x = 0; x < 2; x++)

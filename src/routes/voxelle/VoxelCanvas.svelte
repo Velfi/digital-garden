@@ -124,7 +124,7 @@
   import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
   import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
   import { Sky } from 'three/addons/objects/Sky.js';
-  import { buildGreedyMesh } from './greedyMesh';
+  import { buildGreedyMesh, buildPreviewGeometry, PREVIEW_MESH_OPTIONS } from './greedyMesh';
   import OrbitGizmo from './OrbitGizmo.svelte';
   import ToolPanel from './ToolPanel.svelte';
   import SelectionCountPanel from './SelectionCountPanel.svelte';
@@ -400,7 +400,7 @@
     if (sel.size === 0) return;
     const overlayMap = new Map<string, number>();
     for (const key of sel.keys()) overlayMap.set(key, 0x3399ff);
-    const geoByColor = buildGreedyMesh(overlayMap, { aoEnabled: false });
+    const geoByColor = buildGreedyMesh(overlayMap, PREVIEW_MESH_OPTIONS);
     const geo = geoByColor.get(0x3399ff);
     if (!geo) return;
     selectionMaterial = new THREE.MeshBasicMaterial({
@@ -882,12 +882,7 @@
         : $tool === 'select' || $tool === 'selectByColor' || $tool === 'selectCoplanar'
           ? 0x33aaff
           : hexToInt($color);
-    const voxelMap = new Map<string, number>();
-    for (const [x, y, z] of filtered) {
-      voxelMap.set(coordKey(x, y, z), hex);
-    }
-    const geoByColor = buildGreedyMesh(voxelMap, { aoEnabled: false });
-    const geo = geoByColor.get(hex);
+    const geo = buildPreviewGeometry(filtered, hex);
     if (geo) {
       if (previewMesh.geometry) previewMesh.geometry.dispose();
       previewMesh.geometry = geo;
@@ -2632,12 +2627,7 @@
     });
     const sel = $selectedColors;
     const col = hexToInt(sel.length > 0 ? sel[0] : $color);
-    const voxelMap = new Map<string, number>();
-    for (const [x, y, z] of positions) {
-      voxelMap.set(coordKey(x, y, z), col);
-    }
-    const geoByColor = buildGreedyMesh(voxelMap, { aoEnabled: false });
-    const geo = geoByColor.get(col);
+    const geo = buildPreviewGeometry(positions, col);
     if (geo) {
       if (addPreviewMesh.geometry) addPreviewMesh.geometry.dispose();
       addPreviewMesh.geometry = geo;

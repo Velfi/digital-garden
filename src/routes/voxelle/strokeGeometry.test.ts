@@ -427,6 +427,28 @@ describe('getPolygonVoxels', () => {
     expect(result).toContainEqual([0, 0, 0]);
     expect(result).toContainEqual([2, 0, 0]);
   });
+
+  it('three points at different elevations produce a single layer on the plane, not a stair/slab', () => {
+    const a: [number, number, number] = [0, 0, 0];
+    const b: [number, number, number] = [2, 0, 0];
+    const c: [number, number, number] = [1, 1, 1];
+    const result = getPolygonVoxels([a, b, c]);
+    // Plane n·p + d = 0 through a,b,c: n = (b-a)×(c-a), d = -n·a (n normalized)
+    const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    const nx = ab[1] * ac[2] - ab[2] * ac[1];
+    const ny = ab[2] * ac[0] - ab[0] * ac[2];
+    const nz = ab[0] * ac[1] - ab[1] * ac[0];
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    const n = [nx / len, ny / len, nz / len];
+    const d = -(n[0] * a[0] + n[1] * a[1] + n[2] * a[2]);
+    for (const p of result) {
+      const dist = Math.abs(n[0] * p[0] + n[1] * p[1] + n[2] * p[2] + d);
+      expect(dist).toBeLessThan(1); // voxel corners can sit up to ~0.7 from plane
+    }
+    // Slab bug would fill many voxels (full column per (u,v)); thin triangle should be small
+    expect(result.length).toBeLessThanOrEqual(10);
+  });
 });
 
 describe('getRopeCurveVoxels', () => {

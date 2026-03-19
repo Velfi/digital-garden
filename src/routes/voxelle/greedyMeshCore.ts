@@ -29,6 +29,21 @@ const FACE_OFFSETS: { n: Vec3; u: Vec3; v: Vec3 }[] = [
   { n: [0, 0, -1], u: [1, 0, 0], v: [0, 1, 0] }
 ];
 
+function quadPositionFromSlice(
+  axis: number,
+  sign: number,
+  depth: number,
+  u: number,
+  v: number,
+  w: number,
+  h: number
+): Vec3 {
+  const faceOffset = 0.5 * sign;
+  if (axis === 0) return [depth + faceOffset, u - 0.5, v - 0.5];
+  if (axis === 1) return [u - 0.5, depth + faceOffset, v - 0.5];
+  return [u - 0.5, v - 0.5, depth + faceOffset];
+}
+
 function hasNeighbor(pos: Vec3, axis: number, sign: number, voxelSet: Set<string>): boolean {
   const [x, y, z] = pos;
   let nx = x,
@@ -212,6 +227,8 @@ export interface GreedyMeshCoreOptions {
   aoEnabled?: boolean;
   /** 0 = off, 1 = subtle, 2 = strong. Default 2 when aoEnabled was used. */
   aoStrength?: AOStrength;
+  /** When true, emit one quad per visible face (no slice/merge). Faster for previews. */
+  skipMerge?: boolean;
 }
 
 export interface GreedyMeshCoreResult {
@@ -255,51 +272,56 @@ export function computeGreedyMesh(
       }
     }
 
-    const vertexAO = precomputeVertexAO(faces, voxelSet);
-
-    const slices = new Map<string, { depth: number; cells: Set<string> }>();
-    for (const f of faces) {
-      const [x, y, z] = f.pos;
-      const depth = f.axis === 0 ? x : f.axis === 1 ? y : z;
-      const u = f.axis === 0 ? y : f.axis === 1 ? x : x;
-      const v = f.axis === 0 ? z : f.axis === 1 ? z : y;
-      const key = `${f.axis},${f.sign},${depth}`;
-      if (!slices.has(key)) slices.set(key, { depth, cells: new Set() });
-      slices.get(key)!.cells.add(`${u},${v}`);
-    }
+    const vertexAO = aoEnabled ? precomputeVertexAO(faces, voxelSet) : new Map<string, number>();
 
     const quads: { n: Vec3; u: Vec3; v: Vec3; p: Vec3; w: number; h: number }[] = [];
-    for (const [key, slice] of slices) {
-      const [axis, sign, depth] = key.split(',').map(Number);
-      const fo = FACE_OFFSETS[axis * 2 + (sign === 1 ? 0 : 1)];
-      const cells = Array.from(slice.cells).map(
-        (c) => c.split(',').map(Number) as [number, number]
-      );
-      const merged = greedyMerge(cells);
-      const faceOffset = 0.5 * sign;
-      for (const { u, v, w, h } of merged) {
-        let px: number, py: number, pz: number;
-        if (axis === 0) {
-          px = depth + faceOffset;
-          py = u - 0.5;
-          pz = v - 0.5;
-        } else if (axis === 1) {
-          px = u - 0.5;
-          py = depth + faceOffset;
-          pz = v - 0.5;
-        } else {
-          px = u - 0.5;
-          py = v - 0.5;
-          pz = depth + faceOffset;
-        }
+
+    if (options.skipMerge) {
+      for (const f of faces) {
+        const [x, y, z] = f.pos;
+        const { axis, sign } = f;
+        const depth = axis === 0 ? x : axis === 1 ? y : z;
+        const u = axis === 0 ? y : axis === 1 ? x : x;
+        const v = axis === 0 ? z : axis === 1 ? z : y;
+        const fo = FACE_OFFSETS[axis * 2 + (sign === 1 ? 0 : 1)];
         quads.push({
           n: fo.n,
           u: fo.u,
           v: fo.v,
-          p: [px, py, pz],
-          w,
-          h
+          p: quadPositionFromSlice(axis, sign, depth, u, v, 1, 1),
+          w: 1,
+          h: 1
         });
+      }
+    } else {
+      const slices = new Map<string, { depth: number; cells: Set<string> }>();
+      for (const f of faces) {
+        const [x, y, z] = f.pos;
+        const depth = f.axis === 0 ? x : f.axis === 1 ? y : z;
+        const u = f.axis === 0 ? y : f.axis === 1 ? x : x;
+        const v = f.axis === 0 ? z : f.axis === 1 ? z : y;
+        const key = `${f.axis},${f.sign},${depth}`;
+        if (!slices.has(key)) slices.set(key, { depth, cells: new Set() });
+        slices.get(key)!.cells.add(`${u},${v}`);
+      }
+
+      for (const [key, slice] of slices) {
+        const [axis, sign, depth] = key.split(',').map(Number);
+        const fo = FACE_OFFSETS[axis * 2 + (sign === 1 ? 0 : 1)];
+        const cells = Array.from(slice.cells).map(
+          (c) => c.split(',').map(Number) as [number, number]
+        );
+        const merged = greedyMerge(cells);
+        for (const { u, v, w, h } of merged) {
+          quads.push({
+            n: fo.n,
+            u: fo.u,
+            v: fo.v,
+            p: quadPositionFromSlice(axis, sign, depth, u, v, w, h),
+            w,
+            h
+          });
+        }
       }
     }
 
@@ -405,12 +427,14 @@ export function computeGreedyMesh(
           }
         }
       } else {
-        const aos: number[] = [
-          getAO(u0, v0, 0),
-          getAO(u0 + q.w, v0, 1),
-          getAO(u0 + q.w, v0 + q.h, 2),
-          getAO(u0, v0 + q.h, 3)
-        ];
+        const aos: number[] = aoEnabled
+          ? [
+              getAO(u0, v0, 0),
+              getAO(u0 + q.w, v0, 1),
+              getAO(u0 + q.w, v0 + q.h, 2),
+              getAO(u0, v0 + q.h, 3)
+            ]
+          : [0, 0, 0, 0];
 
         const v0p = [px, py, pz];
         const v1p = [px + ux * q.w, py + uy * q.w, pz + uz * q.w];

@@ -832,9 +832,33 @@ export function getAxisAlignedCuboid(
   return positions;
 }
 
-/** Ray-casting point-in-polygon (2D). Point is inside if ray in +x crosses odd number of edges. */
+const PIP_EDGE_TOL = 1e-6;
+
+/** Point (px,py) on segment from (x0,y0) to (x1,y1) (within tolerance). */
+function pointOnSegment(px: number, py: number, x0: number, y0: number, x1: number, y1: number): boolean {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < PIP_EDGE_TOL * PIP_EDGE_TOL) return Math.abs(px - x0) < PIP_EDGE_TOL && Math.abs(py - y0) < PIP_EDGE_TOL;
+  let t = ((px - x0) * dx + (py - y0) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const projX = x0 + t * dx;
+  const projY = y0 + t * dy;
+  return Math.abs(px - projX) <= PIP_EDGE_TOL && Math.abs(py - projY) <= PIP_EDGE_TOL;
+}
+
+/** Ray-casting point-in-polygon (2D). Point is inside if ray in +x crosses odd number of edges. Boundary (edge or vertex) counts as inside. */
 function pointInPolygon2D(px: number, py: number, polygon: [number, number][]): boolean {
   const n = polygon.length;
+  for (let i = 0; i < n; i++) {
+    const [xi, yi] = polygon[i];
+    if (Math.abs(px - xi) <= PIP_EDGE_TOL && Math.abs(py - yi) <= PIP_EDGE_TOL) return true;
+  }
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    if (pointOnSegment(px, py, xj, yj, xi, yi)) return true;
+  }
   let inside = false;
   for (let i = 0, j = n - 1; i < n; j = i++) {
     const [xi, yi] = polygon[i];
@@ -894,30 +918,40 @@ export function getPolygonVoxels(points: [number, number, number][]): [number, n
     const v1y = c2[1] - a2[1];
     const denom = v0x * v1y - v0y * v1x;
     if (Math.abs(denom) < 1e-9) return getAxisAlignedLine(a, b);
-    const minX = Math.floor(Math.min(a[0], b[0], c[0]));
-    const maxX = Math.ceil(Math.max(a[0], b[0], c[0]));
-    const minY = Math.floor(Math.min(a[1], b[1], c[1]));
-    const maxY = Math.ceil(Math.max(a[1], b[1], c[1]));
-    const minZ = Math.floor(Math.min(a[2], b[2], c[2]));
-    const maxZ = Math.ceil(Math.max(a[2], b[2], c[2]));
+    const triTol = 1e-6;
+    const inTriangle = (pu: number, pv: number) => {
+      const px = pu - a2[0];
+      const py = pv - a2[1];
+      const s = (px * v1y - py * v1x) / denom;
+      const t = (py * v0x - px * v0y) / denom;
+      return s >= -triTol && t >= -triTol && s + t <= 1 + triTol;
+    };
+    const n = normal.clone().normalize();
+    const d = -n.x * a[0] - n.y * a[1] - n.z * a[2];
+    const minU = Math.min(a2[0], b2[0], c2[0]);
+    const maxU = Math.max(a2[0], b2[0], c2[0]);
+    const minV = Math.min(a2[1], b2[1], c2[1]);
+    const maxV = Math.max(a2[1], b2[1], c2[1]);
+    const floorU = Math.floor(minU);
+    const ceilU = Math.ceil(maxU);
+    const floorV = Math.floor(minV);
+    const ceilV = Math.ceil(maxV);
     const positions: [number, number, number][] = [];
-    for (let x = minX; x <= maxX; x++) {
-      for (let y = minY; y <= maxY; y++) {
-        for (let z = minZ; z <= maxZ; z++) {
-          const cx = x + 0.5;
-          const cy = y + 0.5;
-          const cz = z + 0.5;
-          const p2: [number, number] = [0, 0];
-          p2[0] = [cx, cy, cz][uAxis];
-          p2[1] = [cx, cy, cz][vAxis];
-          const px = p2[0] - a2[0];
-          const py = p2[1] - a2[1];
-          const s = (px * v1y - py * v1x) / denom;
-          const t = (py * v0x - px * v0y) / denom;
-          if (s >= -1e-6 && t >= -1e-6 && s + t <= 1 + 1e-6) {
-            positions.push([x, y, z]);
-          }
-        }
+    const coord: [number, number, number] = [0, 0, 0];
+    for (let u = floorU; u <= ceilU; u++) {
+      for (let v = floorV; v <= ceilV; v++) {
+        const corners2D: [number, number][] = [[u, v], [u + 1, v], [u + 1, v + 1], [u, v + 1]];
+        const inside = corners2D.some(([pu, pv]) => inTriangle(pu, pv));
+        if (!inside) continue;
+        const nd = n.getComponent(dropAxis);
+        if (Math.abs(nd) < 1e-9) continue;
+        const cu = u + 0.5;
+        const cv = v + 0.5;
+        const third = -(d + n.getComponent(uAxis) * cu + n.getComponent(vAxis) * cv) / nd;
+        coord[uAxis] = u;
+        coord[vAxis] = v;
+        coord[dropAxis] = Math.round(third);
+        positions.push([...coord]);
       }
     }
     return positions;
@@ -952,13 +986,16 @@ export function getPolygonVoxels(points: [number, number, number][]): [number, n
     const coord = [0, 0, 0] as [number, number, number];
     for (let u = floorU; u <= ceilU; u++) {
       for (let v = floorV; v <= ceilV; v++) {
-        const cx = u + 0.5;
-        const cy = v + 0.5;
-        if (!pointInPolygon2D(cx, cy, polygon2D)) continue;
+        // Include voxel if any corner is inside or on boundary (center alone misses right/top boundary voxels)
+        const corners: [number, number][] = [[u, v], [u + 1, v], [u + 1, v + 1], [u, v + 1]];
+        const pip = corners.some(([cx, cy]) => pointInPolygon2D(cx, cy, polygon2D));
+        if (!pip) continue;
         coord[uAxis] = u;
         coord[vAxis] = v;
         const nd = n.getComponent(dropAxis);
         if (Math.abs(nd) < 1e-9) continue;
+        const cx = u + 0.5;
+        const cy = v + 0.5;
         const third = -(d + n.getComponent(uAxis) * cx + n.getComponent(vAxis) * cy) / nd;
         coord[dropAxis] = Math.round(third);
         positions.push([...coord]);

@@ -38,11 +38,11 @@ Central state in writable stores. Import from `'./store'` (resolves to `store/in
 
 | File | Role |
 |------|------|
-| `coordUtils.ts` | coordKey, parseCoordKey, inBounds, getSelectionBounds, getVoxelBounds, etc. |
+| `coordUtils.ts` | coordKey, parseCoordKey, positionsToVoxelMap, inBounds, getSelectionBounds, getVoxelBounds, etc. |
 | `strokeGeometry.ts` | getAxisAlignedLine, getAxisAlignedPlaneFromNormal, getAxisAlignedCuboid, getPolygonVoxels |
 | `gridLines.ts` | buildGridPositions, CUBE_EDGES, EDGE_NEIGHBORS |
 | `flyControls.ts` | createFlyMoveState, createFlyKeyHandlers, applyFlyMovement |
-| `greedyMesh.ts` | Culled meshing, vertex AO, `buildGreedyMesh()` |
+| `greedyMesh.ts` | Culled meshing, vertex AO, `buildGreedyMesh()`, `PREVIEW_MESH_OPTIONS`, `buildPreviewGeometry()` |
 | `exportGltf.ts` | Export voxels to `.glb` |
 
 ### Components
@@ -71,7 +71,7 @@ Central state in writable stores. Import from `'./store'` (resolves to `store/in
 
 ### Greedy Meshing
 
-`buildGreedyMesh(voxels, options)` returns meshes by color. Options include `enableAO` and `aoIntensity`. Only visible faces; merges coplanar quads. Uses Minecraft-style corner AO.
+`buildGreedyMesh(voxels, options)` returns meshes by color. Options: `aoEnabled` (deprecated), `aoStrength` (0/1/2), `skipMerge`. Only visible faces; merges coplanar quads. Uses Minecraft-style corner AO. Use `PREVIEW_MESH_OPTIONS` or `buildPreviewGeometry(positions, color)` for preview/overlay meshes.
 
 ## Conventions
 
