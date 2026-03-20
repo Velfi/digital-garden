@@ -3,13 +3,18 @@
  */
 import * as THREE from 'three';
 import { get } from 'svelte/store';
-import { getSelectionCenter } from '../coordUtils';
+import {
+  getSelectionCenter,
+  VOXELLE_SELECTION_BBOX_WIREFRAME_KEY,
+  VOXELLE_SELECTION_PIVOT_CHILD_KEY
+} from '../coordUtils';
 import { clampQuarterTurn } from '../store/shapes';
 import { addPanelStore, selectionGizmoMode, type Tool } from '../store/index';
 import { previewOccludedTintInto } from './previewMeshUtils';
 
 export type SelectionGizmoDeps = {
   getTool: () => Tool;
+  getIsDrawing: () => boolean;
   getSelection: () => Map<string, number>;
   getPointer: () => THREE.Vector2;
   getCamera: () => THREE.PerspectiveCamera | THREE.OrthographicCamera | null;
@@ -18,6 +23,10 @@ export type SelectionGizmoDeps = {
   getRotateGroup: () => THREE.Group | null;
   getSelectionGroup: () => THREE.Group | null;
   getVoxelGroup: () => THREE.Group | null;
+  getMoveDragLine: () => THREE.LineSegments | null;
+  getShowDragDeltaHint: () => boolean;
+  /** When true, skip dual visible/occluded gizmo passes and draw handles on top of the scene. */
+  getGizmosAlwaysOnTop: () => boolean;
   getContainer: () => HTMLDivElement | null;
   render: () => void;
 };
@@ -35,7 +44,11 @@ function axisVector(axis: 0 | 1 | 2): THREE.Vector3 {
   return v;
 }
 
+const GIZMO_RENDER_ORDER_VISIBLE = 1001;
+const GIZMO_RENDER_ORDER_ON_TOP = 9999;
+
 export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
+  let appliedGizmosAlwaysOnTop: boolean | undefined;
   let isGizmoDrag = false;
   let isPlacementGizmoDrag = false;
   let placementGizmoBasePos: [number, number, number] | null = null;
@@ -49,8 +62,10 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
   const gizmoRotatePivotScratch = new THREE.Vector3();
   const gizmoRotateE1 = new THREE.Vector3();
   const gizmoRotateE2 = new THREE.Vector3();
-  const gizmoSavedMeshPos = new THREE.Vector3();
   const gizmoSavedGroupPos = new THREE.Vector3();
+  const gizmoRotatePivotSavedPositions = new Map<string, THREE.Vector3>();
+  const gizmoDragLineFrom = new THREE.Vector3();
+  const gizmoDragLineTo = new THREE.Vector3();
   let gizmoRotatePreviewActive = false;
   const gizmoWorldStart = new THREE.Vector3();
   const gizmoDragPlane = new THREE.Plane();
@@ -110,6 +125,8 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
       cone.renderOrder = ordVis;
       shaftOcc.renderOrder = ordOcc;
       coneOcc.renderOrder = ordOcc;
+      shaftOcc.userData.voxelleGizmoOccluded = true;
+      coneOcc.userData.voxelleGizmoOccluded = true;
       shaftOcc.raycast = () => {};
       coneOcc.raycast = () => {};
 
@@ -163,6 +180,7 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
       const meshOcc = new THREE.Mesh(geo, matOcc);
       mesh.renderOrder = ordVis;
       meshOcc.renderOrder = ordOcc;
+      meshOcc.userData.voxelleGizmoOccluded = true;
       meshOcc.raycast = () => {};
       const arm = new THREE.Group();
       arm.userData.axis = axis as 0 | 1 | 2;
@@ -175,19 +193,56 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
     return group;
   }
 
+  function syncGizmoAlwaysOnTopStyle() {
+    const onTop = deps.getGizmosAlwaysOnTop();
+    if (onTop === appliedGizmosAlwaysOnTop) return;
+    appliedGizmosAlwaysOnTop = onTop;
+    const moveGizmoGroup = deps.getMoveGroup();
+    const rotateGizmoGroup = deps.getRotateGroup();
+    for (const root of [moveGizmoGroup, rotateGizmoGroup]) {
+      if (!root) continue;
+      root.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) return;
+        if (obj.userData.voxelleGizmoOccluded === true) {
+          obj.visible = !onTop;
+          return;
+        }
+        const mat = obj.material;
+        if (!(mat instanceof THREE.MeshBasicMaterial)) return;
+        if (onTop) {
+          mat.depthTest = false;
+          mat.depthFunc = THREE.LessEqualDepth;
+          obj.renderOrder = GIZMO_RENDER_ORDER_ON_TOP;
+        } else {
+          mat.depthTest = true;
+          mat.depthFunc = THREE.LessEqualDepth;
+          obj.renderOrder = GIZMO_RENDER_ORDER_VISIBLE;
+        }
+      });
+    }
+  }
+
   function updateMoveGizmoTransform() {
+    syncGizmoAlwaysOnTopStyle();
     const moveGizmoGroup = deps.getMoveGroup();
     const rotateGizmoGroup = deps.getRotateGroup();
     const camera = deps.getCamera();
     if (!moveGizmoGroup || !rotateGizmoGroup || !camera) return;
     const mode = get(selectionGizmoMode);
     const tool = deps.getTool();
+    const isDrawing = deps.getIsDrawing();
     const addOpen = get(addPanelStore).open;
     const sel = deps.getSelection();
     let gx = 0;
     let gy = 0;
     let gz = 0;
     let show = false;
+
+    if (isDrawing) {
+      moveGizmoGroup.visible = false;
+      rotateGizmoGroup.visible = false;
+      return;
+    }
 
     if (addOpen && tool !== 'fly') {
       const s = get(addPanelStore);
@@ -245,6 +300,8 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
         axisVector(gizmoDragAxis),
         gizmoAppliedSteps * (Math.PI / 2)
       );
+      const dl = deps.getMoveDragLine();
+      if (dl) dl.visible = false;
       return;
     }
     gizmoOffsetScratch.set(0, 0, 0);
@@ -259,6 +316,52 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
     }
     selectionGroup?.position.copy(gizmoOffsetScratch);
     selectionGroup?.rotation.set(0, 0, 0);
+
+    if (selectionGroup) {
+      for (const child of selectionGroup.children) {
+        if (!child.userData[VOXELLE_SELECTION_BBOX_WIREFRAME_KEY]) continue;
+        const holdBboxAtSource =
+          isGizmoDrag &&
+          !isPlacementGizmoDrag &&
+          gizmoDragKind === 'move' &&
+          gizmoDragAxis !== null &&
+          gizmoAppliedSteps !== 0;
+        if (holdBboxAtSource) {
+          child.position.set(
+            -gizmoOffsetScratch.x,
+            -gizmoOffsetScratch.y,
+            -gizmoOffsetScratch.z
+          );
+        } else {
+          child.position.set(0, 0, 0);
+        }
+      }
+    }
+
+    const dragLine = deps.getMoveDragLine();
+    if (dragLine) {
+      if (
+        deps.getShowDragDeltaHint() &&
+        isGizmoDrag &&
+        !isPlacementGizmoDrag &&
+        gizmoDragKind === 'move' &&
+        gizmoDragAxis !== null &&
+        gizmoAppliedSteps !== 0
+      ) {
+        const c = getSelectionCenter(deps.getSelection());
+        if (c) {
+          gizmoDragLineFrom.set(c[0], c[1], c[2]);
+          gizmoDragLineTo.copy(gizmoDragLineFrom);
+          gizmoDragLineTo.setComponent(gizmoDragAxis, gizmoDragLineTo.getComponent(gizmoDragAxis) + gizmoAppliedSteps);
+          dragLine.geometry.setFromPoints([gizmoDragLineFrom, gizmoDragLineTo]);
+          dragLine.visible = true;
+        } else {
+          dragLine.visible = false;
+        }
+      } else {
+        dragLine.visible = false;
+      }
+    }
   }
 
   function pickMoveGizmoAxis(): 0 | 1 | 2 | null {
@@ -383,11 +486,13 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
   function restoreGizmoRotateSelectionPreview() {
     const selectionGroup = deps.getSelectionGroup();
     if (!gizmoRotatePreviewActive || !selectionGroup) return;
-    const mesh = selectionGroup.children[0];
-    if (mesh) {
-      mesh.position.copy(gizmoSavedMeshPos);
-      mesh.rotation.set(0, 0, 0);
+    for (const child of selectionGroup.children) {
+      if (!child.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY]) continue;
+      const saved = gizmoRotatePivotSavedPositions.get(child.uuid);
+      if (saved) child.position.copy(saved);
+      child.rotation.set(0, 0, 0);
     }
+    gizmoRotatePivotSavedPositions.clear();
     selectionGroup.position.copy(gizmoSavedGroupPos);
     selectionGroup.rotation.set(0, 0, 0);
     gizmoRotatePreviewActive = false;
@@ -483,11 +588,16 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
         );
         const selectionGroup = deps.getSelectionGroup();
         if (!isPlacementGizmoDrag && selectionGroup) {
-          const mesh = selectionGroup.children[0];
-          if (mesh) {
-            gizmoSavedMeshPos.copy(mesh.position);
-            gizmoSavedGroupPos.copy(selectionGroup.position);
-            mesh.position.set(-center[0], -center[1], -center[2]);
+          let anyPivot = false;
+          gizmoRotatePivotSavedPositions.clear();
+          gizmoSavedGroupPos.copy(selectionGroup.position);
+          for (const child of selectionGroup.children) {
+            if (!child.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY]) continue;
+            anyPivot = true;
+            gizmoRotatePivotSavedPositions.set(child.uuid, child.position.clone());
+            child.position.set(-center[0], -center[1], -center[2]);
+          }
+          if (anyPivot) {
             selectionGroup.position.set(center[0], center[1], center[2]);
             selectionGroup.rotation.set(0, 0, 0);
             gizmoRotatePreviewActive = true;
@@ -553,6 +663,22 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
     return true;
   }
 
+  /** Integer Δx,Δy,Δz during move gizmo drag (one axis may be non-zero); null when not showing. */
+  function getMoveDragDeltaLabel(): { dx: number; dy: number; dz: number } | null {
+    if (
+      !isGizmoDrag ||
+      isPlacementGizmoDrag ||
+      gizmoDragKind !== 'move' ||
+      gizmoDragAxis === null
+    ) {
+      return null;
+    }
+    const dx = gizmoDragAxis === 0 ? gizmoAppliedSteps : 0;
+    const dy = gizmoDragAxis === 1 ? gizmoAppliedSteps : 0;
+    const dz = gizmoDragAxis === 2 ? gizmoAppliedSteps : 0;
+    return { dx, dy, dz };
+  }
+
   function tryPrimaryPointerUp(event: PointerEvent): GizmoPointerUpCommit | null {
     if (event.button !== 0 || !isGizmoDrag || gizmoPointerId !== event.pointerId) return null;
     const wasPlacement = isPlacementGizmoDrag;
@@ -575,6 +701,7 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
     tryPrimaryPointerUp,
     cancelWithPlacementRestore,
     endGizmoDrag,
+    getMoveDragDeltaLabel,
     get isGizmoDrag() {
       return isGizmoDrag;
     }

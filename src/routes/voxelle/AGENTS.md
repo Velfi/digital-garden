@@ -30,6 +30,7 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 - `api/voxelle/model/[id]` (GET) – fetches stored model by id
 - `store/clipboard.ts` – copySelection, cutSelection, pasteFromClipboard
 - `store/storage.ts` – loadFromStorage, saveToStorage
+- `store/preferences.ts` – `loadPreferences`, `savePreferences`, reactive `voxellePreferences` store (`localStorage` key `voxelle-preferences`; `showMovementDeltaHint`, `showDragDeltaHint`, `gizmosAlwaysOnTop`)
 - `store/voxelleFile.ts` – saveToFile, loadFromFile, .voxelle format (BSON + gzip; full key names for versioning)
 - `VOXELLE_FORMAT.md` – .voxelle file format specification
 - Undo/redo via `history.undo()`, `history.redo()`; call `pushUndo()` before mutating voxels or selection.
@@ -48,9 +49,9 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 ### Canvas layer (`canvas/`)
 
 - **`canvas/sceneSetup.ts`** – Creates the Three.js scene graph: scene, perspective/orthographic cameras, renderer, env map, voxel group, rollover mesh, preview mesh, **add-shape preview** (two meshes sharing one `BufferGeometry`: visible pass default depth test; occluded pass `depthFunc: GreaterDepth` + distinct tint), polygon/rope point meshes, lights (hemisphere, directional), sky, ground plane, grid group, orbit/fly controls, raycaster, pointer. No tool or pointer logic. Used by VoxelCanvas onMount and by MeshManager.
-- **`canvas/meshManager.ts`** – Manages voxel mesh rebuild (worker), grid geometry, **selection overlay** (two meshes sharing geometry: visible `depthTest` + occluded `GreaterDepth` tint, same idea as add-shape preview), and preview mesh geometry. Subscribes to store via getOptions callback; exposes `requestRebuildVoxelMeshes`, `rebuildSelectionOverlay`, `buildGrid`, `updatePreviewMesh`, `destroy`, `getMeshesByColor`. No tool or pointer logic.
+- **`canvas/meshManager.ts`** – Manages voxel mesh rebuild (worker), grid geometry, **selection overlay** (two meshes sharing geometry: visible `depthTest` + occluded `GreaterDepth` tint, same idea as add-shape preview), **faint AABB wireframe** around the selection (`selectionAabbWireframePositions` in `coordUtils`; during move-gizmo drag it stays at the pre-drag world position until release while the overlay previews the offset), and preview mesh geometry. Subscribes to store via getOptions callback; exposes `requestRebuildVoxelMeshes`, `rebuildSelectionOverlay`, `buildGrid`, `updatePreviewMesh`, `destroy`, `getMeshesByColor`. No tool or pointer logic.
 - **`canvas/previewMeshUtils.ts`** – Occluded-pass tint shared by add-shape ghost and gizmo materials; `assignSharedDualPreviewGeometry` for two meshes sharing one `BufferGeometry`.
-- **`canvas/selectionGizmo.ts`** – `createSelectionGizmoController`: move/rotate handle meshes, raycast, drag preview on `selectionGroup`, placement updates to `addPanelStore`, commit callbacks wired from VoxelCanvas pointer-up.
+- **`canvas/selectionGizmo.ts`** – `createSelectionGizmoController`: move/rotate handle meshes, raycast, drag preview on `selectionGroup`, **world-space centroid line** while moving a selection (original bbox center → preview center), **`getMoveDragDeltaLabel`** for integer Δx,Δy,Δz (VoxelCanvas projects the original centroid and shows a HUD label), placement updates to `addPanelStore`, commit callbacks wired from VoxelCanvas pointer-up. Rotate preview pivots all `userData.voxelleSelectionPivotChild` children (overlay meshes + bbox wireframe).
 - **`canvas/handlers/`** – Pointer event handling by tool. `pointerHandler.ts` dispatches to per-tool handlers (e.g. `fly.ts`). VoxelCanvas calls `handlePointerDown` / `handlePointerMove` with a context; more tools can be moved here by extending `PointerHandlerContext` in `types.ts` and adding handlers.
 
 ### Components
@@ -69,6 +70,7 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 | `sidebar/MaterialSection.svelte`  | PBR (roughness, metalness, env)                                    |
 | `sidebar/OriginSection.svelte`    | Center controls, shift inputs                                      |
 | `sidebar/ShareModal.svelte`       | Share URL modal                                                    |
+| `sidebar/PreferencesModal.svelte` | Preferences (File menu); settings in `localStorage` via `store/preferences.ts` |
 | `sidebar/NewGridModal.svelte`     | New grid size/shape modal                                          |
 | `ToolPanel.svelte`                | Shell; shows `toolPanel/SelectionGizmoTabs` when a selection exists or Add panel is open; plus `DrawToolOptions`, `ClayToolOptions`, etc. by tool/pane. |
 | `AddPanel.svelte`                 | Add shape modal: ghost preview in scene; Done runs `addShapeAt`; position/rotation/size fields + canvas gizmo / wheel shortcuts |

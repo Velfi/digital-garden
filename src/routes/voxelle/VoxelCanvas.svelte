@@ -112,7 +112,8 @@
     grassDensity,
     grassHeight,
     type Tool,
-    type FaceNormal
+    type FaceNormal,
+    voxellePreferences
   } from './store/index';
   import { generateRockVoxels, getRockPositions, generateAshlarVoxels, getAshlarPositions } from './store/generators/rock';
   import { generateGrassVoxels, getGrassPositions } from './store/generators/grass';
@@ -161,6 +162,10 @@
   import SelectionCountPanel from './SelectionCountPanel.svelte';
 
   const LARGE_UNCONSTRAINED_FILL_MSG = `This fill will affect a large number of blocks and will take some time to complete. Continue?`;
+
+  function formatSignedDelta(n: number): string {
+    return n > 0 ? `+${n}` : String(n);
+  }
 
   /** Voxel tool + fill only: capped BFS when plane unconstrained; full flood after confirm. */
   function resolveFillEmptyForUnconstrainedPlane(
@@ -280,6 +285,7 @@
 
   let moveGizmoGroup: THREE.Group | null = null;
   let rotateGizmoGroup: THREE.Group | null = null;
+  let moveDragLine: THREE.LineSegments | null = null;
   let selectionGizmo: ReturnType<typeof createSelectionGizmoController> | null = null;
 
   let gridGroup: THREE.Group | null = null;
@@ -290,6 +296,14 @@
   /** For Add panel open/close transitions (tool preview hide / restore). */
   let wasAddShapePanelOpen = false;
   let deltaDisplay = $state<{ dx: number; dy: number; dz: number } | null>(null);
+  /** Move gizmo: Δx,Δy,Δz label at projected original selection centroid (screen px in container). */
+  let moveGizmoDragLabel = $state<{
+    dx: number;
+    dy: number;
+    dz: number;
+    x: number;
+    y: number;
+  } | null>(null);
   let pointerScreen = $state({ x: 0, y: 0 });
   const ZOOM_FACTOR_IN = 1 / 1.2;
   const ZOOM_FACTOR_OUT = 1.2;
@@ -303,6 +317,7 @@
 
   const pointerHelper = new THREE.Vector3();
   const axisNormalHelper = new THREE.Vector3();
+  const centroidToCameraScratch = new THREE.Vector3();
   const fitHelperBox = new THREE.Box3();
   const flyMoveState = createFlyMoveState();
   const { onKeyDown: onFlyKeyDown, onKeyUp: onFlyKeyUp } = createFlyKeyHandlers(flyMoveState, {
@@ -2823,10 +2838,43 @@
   }
 
   function render() {
+    moveGizmoDragLabel = null;
     if (renderer && scene && camera) {
       selectionGizmo?.updateGizmoPreviewOffset();
       selectionGizmo?.updateMoveGizmoTransform();
       scene.updateMatrixWorld(true);
+
+      const dragDelta =
+        get(voxellePreferences).showDragDeltaHint && selectionGizmo?.getMoveDragDeltaLabel();
+      if (dragDelta && container) {
+        const c = getSelectionCenter(get(selection));
+        if (c) {
+          pointerHelper.set(c[0], c[1], c[2]);
+          axisNormalHelper.set(0, 0, -1).applyQuaternion(camera.quaternion);
+          centroidToCameraScratch.subVectors(pointerHelper, camera.position);
+          if (centroidToCameraScratch.dot(axisNormalHelper) > 0) {
+            pointerHelper.set(c[0], c[1], c[2]);
+            pointerHelper.project(camera);
+            const rect = renderer.domElement.getBoundingClientRect();
+            const cr = container.getBoundingClientRect();
+            const px =
+              (pointerHelper.x * 0.5 + 0.5) * rect.width + (rect.left - cr.left);
+            const py =
+              (-pointerHelper.y * 0.5 + 0.5) * rect.height + (rect.top - cr.top);
+            const pad = 10;
+            const halfW = 72;
+            const halfH = 18;
+            moveGizmoDragLabel = {
+              dx: dragDelta.dx,
+              dy: dragDelta.dy,
+              dz: dragDelta.dz,
+              x: Math.max(halfW + pad, Math.min(cr.width - halfW - pad, px)),
+              y: Math.max(halfH + pad, Math.min(cr.height - halfH - pad, py))
+            };
+          }
+        }
+      }
+
       renderer.render(scene, camera);
     }
     gizmoRef?.draw();
@@ -3032,8 +3080,27 @@
     meshManager.buildGrid(sz, $voxels);
     gridGroup.visible = $showGrid;
 
+    const moveDragLineMat = new THREE.LineBasicMaterial({
+      color: 0x9fd8ff,
+      transparent: true,
+      opacity: 0.52,
+      depthTest: true,
+      depthWrite: false
+    });
+    moveDragLine = new THREE.LineSegments(new THREE.BufferGeometry(), moveDragLineMat);
+    moveDragLine.visible = false;
+    moveDragLine.frustumCulled = false;
+    moveDragLine.raycast = () => {};
+    moveDragLine.geometry.setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+
     selectionGizmo = createSelectionGizmoController({
       getTool: () => get(tool),
+      getIsDrawing: () =>
+        isVoxelDrag ||
+        isStampDrag ||
+        cuboidPhase !== null ||
+        polygonPhase !== null ||
+        ropePhase !== null,
       getSelection: () => get(selection),
       getPointer: () => pointer,
       getCamera: () => camera ?? null,
@@ -3042,12 +3109,15 @@
       getRotateGroup: () => rotateGizmoGroup,
       getSelectionGroup: () => selectionGroup,
       getVoxelGroup: () => voxelGroup,
+      getMoveDragLine: () => moveDragLine,
+      getShowDragDeltaHint: () => get(voxellePreferences).showDragDeltaHint,
+      getGizmosAlwaysOnTop: () => get(voxellePreferences).gizmosAlwaysOnTop,
       getContainer: () => container,
       render
     });
     moveGizmoGroup = selectionGizmo.createMoveGizmo();
     rotateGizmoGroup = selectionGizmo.createRotateGizmo();
-    scene.add(moveGizmoGroup, rotateGizmoGroup);
+    scene.add(moveGizmoGroup, rotateGizmoGroup, moveDragLine);
 
     window.addEventListener('keydown', handleFlyKeyDown, true);
     window.addEventListener('keydown', onEscapeKeyDown, true);
@@ -3295,6 +3365,12 @@
     polygonPointsMaterial?.dispose();
     ropePointsMaterial?.dispose();
     meshManager?.destroy();
+    if (moveDragLine && scene) {
+      scene.remove(moveDragLine);
+      moveDragLine.geometry.dispose();
+      (moveDragLine.material as THREE.Material).dispose();
+      moveDragLine = null;
+    }
     const gizmoGeos = new Set<THREE.BufferGeometry>();
     for (const gg of [moveGizmoGroup, rotateGizmoGroup]) {
       gg?.traverse((obj) => {
@@ -3500,13 +3576,23 @@
       </button>
     </div>
   {/if}
-  {#if deltaDisplay}
+  {#if deltaDisplay && $voxellePreferences.showMovementDeltaHint}
     <div
       class="delta-display"
       aria-live="polite"
       style="left: {pointerScreen.x}px; top: {pointerScreen.y}px;"
     >
-      Δ {deltaDisplay.dx}, {deltaDisplay.dy}, {deltaDisplay.dz}
+      Δ {formatSignedDelta(deltaDisplay.dx)}, {formatSignedDelta(deltaDisplay.dy)}, {formatSignedDelta(deltaDisplay.dz)}
+    </div>
+  {/if}
+  {#if moveGizmoDragLabel}
+    <div
+      class="move-gizmo-delta-label"
+      role="status"
+      aria-live="polite"
+      style="left: {moveGizmoDragLabel.x}px; top: {moveGizmoDragLabel.y}px;"
+    >
+      {formatSignedDelta(moveGizmoDragLabel.dx)}, {formatSignedDelta(moveGizmoDragLabel.dy)}, {formatSignedDelta(moveGizmoDragLabel.dz)}
     </div>
   {/if}
   <ToolPanel />
@@ -3783,5 +3869,19 @@
     color: rgba(255, 255, 255, 0.9);
     pointer-events: none;
     z-index: 1;
+  }
+
+  .move-gizmo-delta-label {
+    position: absolute;
+    padding: 0.25rem 0.5rem;
+    background: rgba(0, 0, 0, 0.65);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-family: monospace;
+    color: rgba(159, 216, 255, 0.95);
+    pointer-events: none;
+    z-index: 2;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
   }
 </style>

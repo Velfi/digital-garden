@@ -212,7 +212,14 @@ const DEFAULT_PALETTE = [
 export const palette = writable<string[]>([...DEFAULT_PALETTE]);
 export const sidebarOpen = writable<boolean>(true);
 export const modalRequest = writable<
-  'newGrid' | 'share' | 'add' | 'help' | 'startup' | 'exportGltf' | null
+  | 'newGrid'
+  | 'share'
+  | 'add'
+  | 'help'
+  | 'startup'
+  | 'exportGltf'
+  | 'preferences'
+  | null
 >(null);
 export const addPanelStore = writable<AddPanelState>({ ...defaultAddPanel });
 

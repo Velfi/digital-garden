@@ -27,6 +27,7 @@
   import ShareModal from './sidebar/ShareModal.svelte';
   import NewGridModal from './sidebar/NewGridModal.svelte';
   import ExportGltfModal from './sidebar/ExportGltfModal.svelte';
+  import PreferencesModal from './sidebar/PreferencesModal.svelte';
   import StartupScreen from './StartupScreen.svelte';
 
   const STARTUP_URL = '/voxelle/STARTUP.md';
@@ -35,6 +36,7 @@
   let showShareModal = $state(false);
   let showNewGridModal = $state(false);
   let showExportGltfModal = $state(false);
+  let showPreferencesModal = $state(false);
   let showStartupScreen = $state(false);
   let startupContentUrl = $state(STARTUP_URL);
   let shareUrl = $state('');
@@ -98,6 +100,9 @@
       modalRequest.set(null);
     } else if (req === 'exportGltf') {
       showExportGltfModal = true;
+      modalRequest.set(null);
+    } else if (req === 'preferences') {
+      showPreferencesModal = true;
       modalRequest.set(null);
     } else if (req === 'help') {
       startupContentUrl = HELP_URL;
@@ -202,6 +207,7 @@
   <ShareModal bind:open={showShareModal} {shareUrl} />
   <NewGridModal bind:open={showNewGridModal} />
   <ExportGltfModal bind:open={showExportGltfModal} />
+  <PreferencesModal bind:open={showPreferencesModal} />
   <StartupScreen
     bind:open={showStartupScreen}
     contentUrl={startupContentUrl}

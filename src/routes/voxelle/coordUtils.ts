@@ -126,6 +126,99 @@ export type SelectionBounds = {
   maxZ: number;
 };
 
+/**
+ * Line segment vertices (pairs) for an axis-aligned box around voxels in [min, max]
+ * treating each voxel as the unit cube [i, i+1]³. For THREE.LineSegments.
+ */
+export function selectionAabbWireframePositions(b: SelectionBounds): Float32Array {
+  const x0 = b.minX;
+  const y0 = b.minY;
+  const z0 = b.minZ;
+  const x1 = b.maxX + 1;
+  const y1 = b.maxY + 1;
+  const z1 = b.maxZ + 1;
+  return new Float32Array([
+    x0,
+    y0,
+    z0,
+    x1,
+    y0,
+    z0,
+    x1,
+    y0,
+    z0,
+    x1,
+    y0,
+    z1,
+    x1,
+    y0,
+    z1,
+    x0,
+    y0,
+    z1,
+    x0,
+    y0,
+    z1,
+    x0,
+    y0,
+    z0,
+    x0,
+    y1,
+    z0,
+    x1,
+    y1,
+    z0,
+    x1,
+    y1,
+    z0,
+    x1,
+    y1,
+    z1,
+    x1,
+    y1,
+    z1,
+    x0,
+    y1,
+    z1,
+    x0,
+    y1,
+    z1,
+    x0,
+    y1,
+    z0,
+    x0,
+    y0,
+    z0,
+    x0,
+    y1,
+    z0,
+    x1,
+    y0,
+    z0,
+    x1,
+    y1,
+    z0,
+    x1,
+    y0,
+    z1,
+    x1,
+    y1,
+    z1,
+    x0,
+    y0,
+    z1,
+    x0,
+    y1,
+    z1
+  ]);
+}
+
+/** Set on selection overlay meshes + bbox wireframe; rotate gizmo pivots all marked children together. */
+export const VOXELLE_SELECTION_PIVOT_CHILD_KEY = 'voxelleSelectionPivotChild';
+
+/** Set only on the bbox wireframe; move-drag preview offsets the group, so this child is counter-shifted to stay put in world space until release. */
+export const VOXELLE_SELECTION_BBOX_WIREFRAME_KEY = 'voxelleSelectionBboxWireframe';
+
 /** Bounding box of selection; null if empty. */
 export function getSelectionBounds(sel: Map<string, number>): SelectionBounds | null {
   if (sel.size === 0) return null;

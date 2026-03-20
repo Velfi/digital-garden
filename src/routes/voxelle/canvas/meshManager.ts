@@ -5,6 +5,12 @@
 import * as THREE from 'three';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import {
+  getSelectionBounds,
+  selectionAabbWireframePositions,
+  VOXELLE_SELECTION_BBOX_WIREFRAME_KEY,
+  VOXELLE_SELECTION_PIVOT_CHILD_KEY
+} from '../coordUtils';
 import { buildGridPositions } from '../gridLines';
 import { buildGreedyMesh, buildPreviewGeometry, PREVIEW_MESH_OPTIONS } from '../greedyMesh';
 import type { SceneSetupRefs } from './sceneSetup';
@@ -52,6 +58,8 @@ export function createMeshManager(
   let selectionMaterial: THREE.MeshBasicMaterial | null = null;
   let selectionOccludedMesh: THREE.Mesh | null = null;
   let selectionOccludedMaterial: THREE.MeshBasicMaterial | null = null;
+  let selectionWireframe: THREE.LineSegments | null = null;
+  let selectionWireframeMaterial: THREE.LineBasicMaterial | null = null;
   let spinnerTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   function applyVoxelMeshResults(
@@ -138,9 +146,10 @@ export function createMeshManager(
 
   function rebuildSelectionOverlay(sel: Map<string, number>) {
     if (!selectionGroup || !scene) return;
-    if (selectionMesh || selectionOccludedMesh) {
+    if (selectionMesh || selectionOccludedMesh || selectionWireframe) {
       if (selectionMesh) selectionGroup.remove(selectionMesh);
       if (selectionOccludedMesh) selectionGroup.remove(selectionOccludedMesh);
+      if (selectionWireframe) selectionGroup.remove(selectionWireframe);
       const sharedGeo = selectionMesh?.geometry ?? selectionOccludedMesh?.geometry;
       if (sharedGeo) sharedGeo.dispose();
       selectionMaterial?.dispose();
@@ -149,6 +158,12 @@ export function createMeshManager(
       selectionOccludedMesh = null;
       selectionMaterial = null;
       selectionOccludedMaterial = null;
+      if (selectionWireframe) {
+        selectionWireframe.geometry.dispose();
+        selectionWireframeMaterial?.dispose();
+        selectionWireframe = null;
+        selectionWireframeMaterial = null;
+      }
     }
     if (sel.size === 0) return;
     const overlayMap = new Map<string, number>();
@@ -168,6 +183,7 @@ export function createMeshManager(
     selectionMesh = new THREE.Mesh(geo, selectionMaterial);
     selectionMesh.raycast = () => {};
     selectionMesh.renderOrder = 1001;
+    selectionMesh.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
     selectionGroup.add(selectionMesh);
 
     const occRgb = new THREE.Color(SELECTION_OVERLAY_HEX);
@@ -188,7 +204,28 @@ export function createMeshManager(
     selectionOccludedMesh = new THREE.Mesh(geo, selectionOccludedMaterial);
     selectionOccludedMesh.raycast = () => {};
     selectionOccludedMesh.renderOrder = 1000;
+    selectionOccludedMesh.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
     selectionGroup.add(selectionOccludedMesh);
+
+    const bounds = getSelectionBounds(sel);
+    if (bounds) {
+      const wfPos = selectionAabbWireframePositions(bounds);
+      const wfGeo = new THREE.BufferGeometry();
+      wfGeo.setAttribute('position', new THREE.BufferAttribute(wfPos, 3));
+      selectionWireframeMaterial = new THREE.LineBasicMaterial({
+        color: 0x9fd8ff,
+        transparent: true,
+        opacity: 0.52,
+        depthTest: true,
+        depthWrite: false
+      });
+      selectionWireframe = new THREE.LineSegments(wfGeo, selectionWireframeMaterial);
+      selectionWireframe.raycast = () => {};
+      selectionWireframe.renderOrder = 1002;
+      selectionWireframe.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
+      selectionWireframe.userData[VOXELLE_SELECTION_BBOX_WIREFRAME_KEY] = true;
+      selectionGroup.add(selectionWireframe);
+    }
   }
 
   function buildGrid(_size: number, v: Map<string, number>) {
@@ -242,6 +279,12 @@ export function createMeshManager(
       if (sharedGeo) sharedGeo.dispose();
       selectionMaterial?.dispose();
       selectionOccludedMaterial?.dispose();
+    }
+    if (selectionWireframe) {
+      selectionWireframe.geometry.dispose();
+      selectionWireframeMaterial?.dispose();
+      selectionWireframe = null;
+      selectionWireframeMaterial = null;
     }
     gridGroup?.traverse((obj) => {
       const geom = (obj as { geometry?: THREE.BufferGeometry }).geometry;

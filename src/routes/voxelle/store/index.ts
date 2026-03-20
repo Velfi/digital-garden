@@ -189,6 +189,10 @@ export type { VoxelleClipboard } from './clipboard';
 // Storage
 export { loadFromStorage, saveToStorage, getSkipStartup, setSkipStartup } from './storage';
 
+// Preferences (localStorage)
+export { loadPreferences, savePreferences, voxellePreferences } from './preferences';
+export type { VoxellePreferences } from './preferences';
+
 // Voxelle file format
 export {
   saveToFile,

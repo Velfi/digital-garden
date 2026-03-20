@@ -137,6 +137,11 @@
     closeMenus();
   }
 
+  function handlePreferences() {
+    modalRequest.set('preferences');
+    closeMenus();
+  }
+
   function handleOpen() {
     fileInputRef?.click();
     closeMenus();
@@ -318,6 +323,7 @@
         <button type="button" role="menuitem" onclick={handleSave} disabled={$voxels.size === 0}>
           Save .voxelle
         </button>
+        <button type="button" role="menuitem" onclick={handlePreferences}> Preferences… </button>
         <div class="menu-separator" role="separator"></div>
         <span class="menu-label">Import / Export</span>
         <button type="button" role="menuitem" onclick={handleImportImage}> Import image… </button>

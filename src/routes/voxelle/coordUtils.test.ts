@@ -11,7 +11,8 @@ import {
   getVoxelCenter,
   defaultAddShapePlacementAnchor,
   getBoundsFromPositions,
-  getSelectionCenter
+  getSelectionCenter,
+  selectionAabbWireframePositions
 } from './coordUtils';
 
 describe('coordKey', () => {
@@ -221,6 +222,21 @@ describe('getSelectionCenter', () => {
       ['2,2,2', 0xff]
     ]);
     expect(getSelectionCenter(sel)).toEqual([1.5, 1.5, 1.5]);
+  });
+});
+
+describe('selectionAabbWireframePositions', () => {
+  it('emits 12 edges (72 floats) for unit box at origin', () => {
+    const p = selectionAabbWireframePositions({
+      minX: 0,
+      minY: 0,
+      minZ: 0,
+      maxX: 0,
+      maxY: 0,
+      maxZ: 0
+    });
+    expect(p.length).toBe(72);
+    expect(Array.from(p.slice(0, 6))).toEqual([0, 0, 0, 1, 0, 0]);
   });
 });
 
