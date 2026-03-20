@@ -37,6 +37,9 @@ export interface SceneSetupRefs {
   previewMaterial: THREE.MeshBasicMaterial;
   addPreviewMesh: THREE.Mesh;
   addPreviewMaterial: THREE.MeshBasicMaterial;
+  /** Same geometry as addPreviewMesh; draws only where preview is behind scene depth (occluded). */
+  addPreviewOccludedMesh: THREE.Mesh;
+  addPreviewOccludedMaterial: THREE.MeshBasicMaterial;
   polygonLineSegments: THREE.LineSegments;
   polygonLineMaterial: THREE.LineBasicMaterial;
   polygonPointsMesh: THREE.InstancedMesh;
@@ -167,10 +170,30 @@ export function createSceneSetup(
     depthTest: true,
     depthWrite: false
   });
-  const addPreviewMesh = new THREE.Mesh(new THREE.BufferGeometry(), addPreviewMaterial);
+  const addPreviewSharedGeometry = new THREE.BufferGeometry();
+  const addPreviewMesh = new THREE.Mesh(addPreviewSharedGeometry, addPreviewMaterial);
   addPreviewMesh.visible = false;
+  addPreviewMesh.renderOrder = 1001;
   addPreviewMesh.raycast = () => {};
   scene.add(addPreviewMesh);
+
+  const addPreviewOccludedMaterial = new THREE.MeshBasicMaterial({
+    vertexColors: false,
+    color: 0x5577cc,
+    opacity: 0.4,
+    transparent: true,
+    depthTest: true,
+    depthWrite: false,
+    depthFunc: THREE.GreaterDepth,
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1
+  });
+  const addPreviewOccludedMesh = new THREE.Mesh(addPreviewSharedGeometry, addPreviewOccludedMaterial);
+  addPreviewOccludedMesh.visible = false;
+  addPreviewOccludedMesh.renderOrder = 1000;
+  addPreviewOccludedMesh.raycast = () => {};
+  scene.add(addPreviewOccludedMesh);
 
   const polygonLineMaterial = new THREE.LineBasicMaterial({
     color: 0x3399ff,
@@ -314,6 +337,8 @@ export function createSceneSetup(
     previewMaterial,
     addPreviewMesh,
     addPreviewMaterial,
+    addPreviewOccludedMesh,
+    addPreviewOccludedMaterial,
     polygonLineSegments,
     polygonLineMaterial,
     polygonPointsMesh,

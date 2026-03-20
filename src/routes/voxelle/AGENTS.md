@@ -20,8 +20,8 @@
 
 Central state in writable stores. Import from `'./store/index'` (barrel at `store/index.ts`). Voxels and selection are `Map<string, number>`: key = `"x,y,z"` (from `coordKey`), value = hex color.
 
-- `store/core.ts` – voxels, selection, gridSize, tool, color, updateVoxels, updateVoxelsInStroke, etc.
-- `store/selection.ts` – growSelection, shrinkSelection, mergeSelection, getFillSelectionAt, etc.
+- `store/core.ts` – voxels, selection, gridSize, tool, color, updateVoxels, updateVoxelsInStroke, `applySelectionTranslationInStroke`, `applySelectionRotationInStroke` (90° about selection bbox center), `selectionGizmoMode` (`move` \| `rotate`), etc.
+- `store/selection.ts` – growSelection, shrinkSelection, mergeSelection, getFillSelectionAt / getFillEmptyAt (return `{ region, truncated }`; optional max caps BFS for large-fill warnings), etc.
 - `store/shapes.ts` – initShape, getShapePositionsAt
 - `store/undo.ts` – pushUndo, history
 - `store/url.ts` – encodeModelForUrl (delegate to voxelleFile encodeForTransport)
@@ -47,8 +47,8 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 
 ### Canvas layer (`canvas/`)
 
-- **`canvas/sceneSetup.ts`** – Creates the Three.js scene graph: scene, perspective/orthographic cameras, renderer, env map, voxel group, rollover mesh, preview/add-preview meshes, polygon/rope point meshes, lights (hemisphere, directional), sky, ground plane, grid group, orbit/fly controls, raycaster, pointer. No tool or pointer logic. Used by VoxelCanvas onMount and by MeshManager.
-- **`canvas/meshManager.ts`** – Manages voxel mesh rebuild (worker), grid geometry, selection overlay, and preview mesh geometry. Subscribes to store via getOptions callback; exposes `requestRebuildVoxelMeshes`, `rebuildSelectionOverlay`, `buildGrid`, `updatePreviewMesh`, `destroy`, `getMeshesByColor`. No tool or pointer logic.
+- **`canvas/sceneSetup.ts`** – Creates the Three.js scene graph: scene, perspective/orthographic cameras, renderer, env map, voxel group, rollover mesh, preview mesh, **add-shape preview** (two meshes sharing one `BufferGeometry`: visible pass default depth test; occluded pass `depthFunc: GreaterDepth` + distinct tint), polygon/rope point meshes, lights (hemisphere, directional), sky, ground plane, grid group, orbit/fly controls, raycaster, pointer. No tool or pointer logic. Used by VoxelCanvas onMount and by MeshManager.
+- **`canvas/meshManager.ts`** – Manages voxel mesh rebuild (worker), grid geometry, **selection overlay** (two meshes sharing geometry: visible `depthTest` + occluded `GreaterDepth` tint, same idea as add-shape preview), and preview mesh geometry. Subscribes to store via getOptions callback; exposes `requestRebuildVoxelMeshes`, `rebuildSelectionOverlay`, `buildGrid`, `updatePreviewMesh`, `destroy`, `getMeshesByColor`. No tool or pointer logic.
 - **`canvas/handlers/`** – Pointer event handling by tool. `pointerHandler.ts` dispatches to per-tool handlers (e.g. `fly.ts`). VoxelCanvas calls `handlePointerDown` / `handlePointerMove` with a context; more tools can be moved here by extending `PointerHandlerContext` in `types.ts` and adding handlers.
 
 ### Components
@@ -56,7 +56,7 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 | File                              | Role                                                               |
 | --------------------------------- | ------------------------------------------------------------------ |
 | `+page.svelte`                    | Layout, global shortcuts (Ctrl+Z/Y/A)                              |
-| `VoxelCanvas.svelte`              | Composes scene via `createSceneSetup`, mesh via `createMeshManager`; owns render loop, orbit/fly, pointer events, and all tool/pointer logic (draw, clay, selection, stamp, generators). Delegates mesh rebuild/grid/selection/preview to MeshManager. |
+| `VoxelCanvas.svelte`              | Composes scene via `createSceneSetup`, mesh via `createMeshManager`; owns render loop, orbit/fly, pointer events, and all tool/pointer logic (draw, clay, selection, stamp, generators). **Transform gizmo** at selection (or add-shape) anchor: **Move** (arrows) — drag previews offset on `selectionGroup`, pointer-up commits via `beginStroke` + `applySelectionTranslationInStroke`. **Rotate** (rings) — 90° steps about X/Y/Z through selection center; preview rotates `selectionGroup`; commit via `applySelectionRotationInStroke`. Mode from `selectionGizmoMode` store; tool panel tabs (`SelectionGizmoTabs`). **Add shape** (when `AddPanel` open): move/rotate gizmos update `addPanelStore` pos/rot (no voxel writes until Done). Primary-click sculpting blocked while Add panel is open. Default anchor: `defaultAddShapePlacementAnchor`. Canvas wheel on add panel: Ctrl±size, Shift/Alt/Shift+Alt ± quarter-turns on X/Y/Z. |
 | `Sidebar.svelte`                  | Shell; composes sidebar panel components                           |
 | `sidebar/ToolPicker.svelte`       | Tool buttons                                                       |
 | `sidebar/StrokeModePicker.svelte` | Stroke mode + fill options + plane axis                            |
@@ -68,8 +68,8 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 | `sidebar/OriginSection.svelte`    | Center controls, shift inputs                                      |
 | `sidebar/ShareModal.svelte`       | Share URL modal                                                    |
 | `sidebar/NewGridModal.svelte`     | New grid size/shape modal                                          |
-| `ToolPanel.svelte`                | Shell; shows one of `toolPanel/DrawToolOptions`, `ClayToolOptions`, `StampToolOptions`, `GeneratorToolOptions` by tool/pane. |
-| `AddPanel.svelte`                 | Add shape modal (position, rotation, shape type, size)             |
+| `ToolPanel.svelte`                | Shell; shows `toolPanel/SelectionGizmoTabs` when a selection exists or Add panel is open; plus `DrawToolOptions`, `ClayToolOptions`, etc. by tool/pane. |
+| `AddPanel.svelte`                 | Add shape modal: ghost preview in scene; Done runs `addShapeAt`; position/rotation/size fields + canvas gizmo / wheel shortcuts |
 | `OrbitGizmo.svelte`               | View orientation widget                                            |
 
 ### Tools

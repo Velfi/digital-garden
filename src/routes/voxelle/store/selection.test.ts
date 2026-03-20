@@ -104,8 +104,9 @@ describe('getFillSelectionAt', () => {
 
   it('returns empty when target is empty', () => {
     voxels.set(makeVoxels([[1, 1, 1, 0xff0000]]));
-    const result = getFillSelectionAt(0, 0, 0, false);
-    expect(result.size).toBe(0);
+    const { region, truncated } = getFillSelectionAt(0, 0, 0, false);
+    expect(region.size).toBe(0);
+    expect(truncated).toBe(false);
   });
 
   it('returns connected region with 6-adj', () => {
@@ -116,11 +117,12 @@ describe('getFillSelectionAt', () => {
         [2, 0, 0, 0xff0000]
       ])
     );
-    const result = getFillSelectionAt(0, 0, 0, false);
-    expect(result.size).toBe(3);
-    expect(result.has('0,0,0')).toBe(true);
-    expect(result.has('1,0,0')).toBe(true);
-    expect(result.has('2,0,0')).toBe(true);
+    const { region, truncated } = getFillSelectionAt(0, 0, 0, false);
+    expect(region.size).toBe(3);
+    expect(truncated).toBe(false);
+    expect(region.has('0,0,0')).toBe(true);
+    expect(region.has('1,0,0')).toBe(true);
+    expect(region.has('2,0,0')).toBe(true);
   });
 
   it('respects color when respectsColor=true', () => {
@@ -130,9 +132,10 @@ describe('getFillSelectionAt', () => {
         [1, 0, 0, 0x00ff00]
       ])
     );
-    const result = getFillSelectionAt(0, 0, 0, false, true);
-    expect(result.size).toBe(1);
-    expect(result.has('0,0,0')).toBe(true);
+    const { region, truncated } = getFillSelectionAt(0, 0, 0, false, true);
+    expect(region.size).toBe(1);
+    expect(truncated).toBe(false);
+    expect(region.has('0,0,0')).toBe(true);
   });
 
   it('ignores color when respectsColor=false', () => {
@@ -142,8 +145,9 @@ describe('getFillSelectionAt', () => {
         [1, 0, 0, 0x00ff00]
       ])
     );
-    const result = getFillSelectionAt(0, 0, 0, false, false);
-    expect(result.size).toBe(2);
+    const { region, truncated } = getFillSelectionAt(0, 0, 0, false, false);
+    expect(region.size).toBe(2);
+    expect(truncated).toBe(false);
   });
 
   it('26-adj connects diagonally', () => {
@@ -155,8 +159,8 @@ describe('getFillSelectionAt', () => {
     );
     const result6 = getFillSelectionAt(0, 0, 0, false);
     const result26 = getFillSelectionAt(0, 0, 0, true);
-    expect(result6.size).toBe(1);
-    expect(result26.size).toBe(2);
+    expect(result6.region.size).toBe(1);
+    expect(result26.region.size).toBe(2);
   });
 
   it('ignores gridSize: same flood for different nominal grids', () => {
@@ -170,8 +174,8 @@ describe('getFillSelectionAt', () => {
     gridSize.set(1024);
     voxels.set(new Map(layout));
     const largeGrid = getFillSelectionAt(0, 0, 0, false);
-    expect(smallGrid.size).toBe(largeGrid.size);
-    expect([...smallGrid.keys()].sort()).toEqual([...largeGrid.keys()].sort());
+    expect(smallGrid.region.size).toBe(largeGrid.region.size);
+    expect([...smallGrid.region.keys()].sort()).toEqual([...largeGrid.region.keys()].sort());
   });
 
   it('works when content is far from origin (content-derived bbox)', () => {
@@ -183,9 +187,22 @@ describe('getFillSelectionAt', () => {
         [ox + 2, 0, 0, 0xff0000]
       ])
     );
-    const result = getFillSelectionAt(ox, 0, 0, false);
-    expect(result.size).toBe(3);
-    expect(result.has(`${ox + 2},0,0`)).toBe(true);
+    const { region, truncated } = getFillSelectionAt(ox, 0, 0, false);
+    expect(region.size).toBe(3);
+    expect(truncated).toBe(false);
+    expect(region.has(`${ox + 2},0,0`)).toBe(true);
+  });
+
+  it('stops BFS once region exceeds maxRegionSize', () => {
+    const cells: [number, number, number, number][] = [];
+    for (let i = 0; i < 400; i++) cells.push([i, 0, 0, 0xff0000]);
+    voxels.set(makeVoxels(cells));
+    const capped = getFillSelectionAt(0, 0, 0, false, true, 256);
+    expect(capped.truncated).toBe(true);
+    expect(capped.region.size).toBe(257);
+    const full = getFillSelectionAt(0, 0, 0, false, true);
+    expect(full.truncated).toBe(false);
+    expect(full.region.size).toBe(400);
   });
 });
 
@@ -201,8 +218,9 @@ describe('getFillEmptyAt', () => {
 
   it('returns empty when target has voxel', () => {
     voxels.set(makeVoxels([[0, 0, 0, 0xff0000]]));
-    const result = getFillEmptyAt(0, 0, 0, false);
-    expect(result.size).toBe(0);
+    const { region, truncated } = getFillEmptyAt(0, 0, 0, false);
+    expect(region.size).toBe(0);
+    expect(truncated).toBe(false);
   });
 
   it('fills all empty cells inside voxel bbox ± margin (two pillars)', () => {
@@ -212,13 +230,14 @@ describe('getFillEmptyAt', () => {
         [1, 0, 0, 0xff0000]
       ])
     );
-    const result = getFillEmptyAt(0, 0, 0, false);
+    const { region, truncated } = getFillEmptyAt(0, 0, 0, false);
     const xSpan = 2 + 2 * m + 1;
     const ySpan = 2 * m + 1;
     const zSpan = 2 * m + 1;
-    expect(result.size).toBe(xSpan * ySpan * zSpan - 2);
-    expect(result.has('0,0,0')).toBe(true);
-    expect(result.has(`${m + 2},0,0`)).toBe(false);
+    expect(region.size).toBe(xSpan * ySpan * zSpan - 2);
+    expect(truncated).toBe(false);
+    expect(region.has('0,0,0')).toBe(true);
+    expect(region.has(`${m + 2},0,0`)).toBe(false);
   });
 
   it('bounds empty region by voxels', () => {
@@ -232,8 +251,9 @@ describe('getFillEmptyAt', () => {
         [0, 0, 1, 0xff0000]
       ])
     );
-    const result = getFillEmptyAt(0, 0, 0, false);
-    expect(result.size).toBe(1);
+    const { region, truncated } = getFillEmptyAt(0, 0, 0, false);
+    expect(region.size).toBe(1);
+    expect(truncated).toBe(false);
   });
 
   it('ignores gridSize when flood is cage-limited (O(1) region)', () => {
@@ -251,16 +271,17 @@ describe('getFillEmptyAt', () => {
     gridSize.set(512);
     voxels.set(new Map(cage));
     const wide = getFillEmptyAt(0, 0, 0, false);
-    expect(tight.size).toBe(1);
-    expect(wide.size).toBe(1);
+    expect(tight.region.size).toBe(1);
+    expect(wide.region.size).toBe(1);
   });
 
   it('with no voxels, empty fill reaches ±margin from origin only', () => {
     voxels.set(new Map());
-    const result = getFillEmptyAt(0, 0, 0, false);
-    expect(result.has('0,0,0')).toBe(true);
-    expect(result.has(`${m},0,0`)).toBe(true);
-    expect(result.has(`${m + 1},0,0`)).toBe(false);
+    const { region, truncated } = getFillEmptyAt(0, 0, 0, false);
+    expect(truncated).toBe(false);
+    expect(region.has('0,0,0')).toBe(true);
+    expect(region.has(`${m},0,0`)).toBe(true);
+    expect(region.has(`${m + 1},0,0`)).toBe(false);
   });
 
   it('empty fill between bookends offset in workspace', () => {
@@ -271,9 +292,22 @@ describe('getFillEmptyAt', () => {
         [ox + 1, 0, 0, 0xff0000]
       ])
     );
-    const result = getFillEmptyAt(ox, 0, 0, false);
-    expect(result.has(`${ox},0,0`)).toBe(true);
-    expect(result.has(`${ox + m + 2},0,0`)).toBe(false);
+    const { region, truncated } = getFillEmptyAt(ox, 0, 0, false);
+    expect(truncated).toBe(false);
+    expect(region.has(`${ox},0,0`)).toBe(true);
+    expect(region.has(`${ox + m + 2},0,0`)).toBe(false);
+  });
+
+  it('stops empty BFS once region exceeds maxRegionSize', () => {
+    voxels.set(
+      makeVoxels([
+        [-1, 0, 0, 0xff0000],
+        [400, 0, 0, 0xff0000]
+      ])
+    );
+    const capped = getFillEmptyAt(0, 0, 0, false, 256);
+    expect(capped.truncated).toBe(true);
+    expect(capped.region.size).toBe(257);
   });
 });
 

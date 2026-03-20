@@ -22,6 +22,20 @@ import type { FaceNormal, SelectionMode } from './core';
  */
 export const SELECTION_BOUNDS_MARGIN = 48;
 
+/** When fill "constrain to plane" is off, warn before applying if the region is larger than this. */
+export const FILL_UNCONSTRAINED_LARGE_THRESHOLD = 256;
+
+export type FillSelectionResult = {
+  region: Map<string, number>;
+  /** BFS stopped early because optional max region size was exceeded (actual region may be larger). */
+  truncated: boolean;
+};
+
+export type FillEmptyResult = {
+  region: Set<string>;
+  truncated: boolean;
+};
+
 function getEffectiveBoundsForSelection(): ReturnType<typeof getEffectiveBounds> {
   return getEffectiveBounds(get(voxels), SELECTION_BOUNDS_MARGIN);
 }
@@ -71,13 +85,14 @@ export function getFillSelectionAt(
   y: number,
   z: number,
   diagonals: boolean,
-  respectsColor: boolean = true
-): Map<string, number> {
+  respectsColor: boolean = true,
+  maxRegionSize?: number
+): FillSelectionResult {
   const v = get(voxels);
   const bounds = getEffectiveBoundsForSelection();
   const k0 = coordKey(x, y, z);
   const targetColor = v.get(k0);
-  if (targetColor === undefined) return new Map();
+  if (targetColor === undefined) return { region: new Map(), truncated: false };
   const adj = diagonals ? ADJ_26 : ADJ_6;
   const visited = new Set<string>();
   const stack: [number, number, number][] = [[x, y, z]];
@@ -91,6 +106,9 @@ export function getFillSelectionAt(
     if (col === undefined) continue;
     if (respectsColor && col !== targetColor) continue;
     next.set(ck, col);
+    if (maxRegionSize !== undefined && next.size > maxRegionSize) {
+      return { region: next, truncated: true };
+    }
     for (const [dx, dy, dz] of adj) {
       const nx = cx + dx;
       const ny = cy + dy;
@@ -102,14 +120,20 @@ export function getFillSelectionAt(
       }
     }
   }
-  return next;
+  return { region: next, truncated: false };
 }
 
-export function getFillEmptyAt(x: number, y: number, z: number, diagonals: boolean): Set<string> {
+export function getFillEmptyAt(
+  x: number,
+  y: number,
+  z: number,
+  diagonals: boolean,
+  maxRegionSize?: number
+): FillEmptyResult {
   const v = get(voxels);
   const bounds = getEffectiveBoundsForSelection();
   const k0 = coordKey(x, y, z);
-  if (v.has(k0)) return new Set();
+  if (v.has(k0)) return { region: new Set(), truncated: false };
   const adj = diagonals ? ADJ_26 : ADJ_6;
   const visited = new Set<string>();
   const stack: [number, number, number][] = [[x, y, z]];
@@ -121,6 +145,9 @@ export function getFillEmptyAt(x: number, y: number, z: number, diagonals: boole
     visited.add(ck);
     if (v.has(ck)) continue;
     next.add(ck);
+    if (maxRegionSize !== undefined && next.size > maxRegionSize) {
+      return { region: next, truncated: true };
+    }
     for (const [dx, dy, dz] of adj) {
       const nx = cx + dx;
       const ny = cy + dy;
@@ -132,7 +159,7 @@ export function getFillEmptyAt(x: number, y: number, z: number, diagonals: boole
       }
     }
   }
-  return next;
+  return { region: next, truncated: false };
 }
 
 export function mergeSelection(

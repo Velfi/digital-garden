@@ -12,13 +12,17 @@ import {
   cloneVoxels,
   ensureGridFitsPositions,
   shiftVoxelsAndSelection,
+  scaleProjectBy2,
   shiftSelection,
   centerOriginOnObject,
   centerOriginOnSelection,
   addShapeAt,
   getPaintColorResolver,
   color,
-  selectedColors
+  selectedColors,
+  beginStroke,
+  applySelectionTranslationInStroke,
+  applySelectionRotationInStroke
 } from './core';
 
 describe('core', () => {
@@ -136,6 +140,41 @@ describe('core', () => {
     });
   });
 
+  describe('scaleProjectBy2', () => {
+    it('replaces each voxel with a 2×2×2 block of the same color', () => {
+      voxels.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      scaleProjectBy2();
+      const v = get(voxels);
+      expect(v.size).toBe(8);
+      for (let dx = 0; dx < 2; dx++) {
+        for (let dy = 0; dy < 2; dy++) {
+          for (let dz = 0; dz < 2; dz++) {
+            expect(v.get(coordKey(dx, dy, dz))).toBe(0xff0000);
+          }
+        }
+      }
+      expect(get(selection).size).toBe(8);
+    });
+    it('keeps adjacent unit voxels as separate 2×2×2 blocks', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), 0xff0000],
+          [coordKey(1, 0, 0), 0x00ff00]
+        ])
+      );
+      scaleProjectBy2();
+      const v = get(voxels);
+      expect(v.size).toBe(16);
+      expect(v.get(coordKey(0, 0, 0))).toBe(0xff0000);
+      expect(v.get(coordKey(2, 0, 0))).toBe(0x00ff00);
+    });
+    it('no-op when voxels empty', () => {
+      scaleProjectBy2();
+      expect(get(voxels).size).toBe(0);
+    });
+  });
+
   describe('shiftSelection', () => {
     it('shifts only selected voxels', () => {
       voxels.set(
@@ -229,6 +268,109 @@ describe('core', () => {
         getColor: () => 0xff0000
       });
       expect(get(voxels).size).toBe(0);
+    });
+  });
+
+  describe('applySelectionTranslationInStroke', () => {
+    it('moves selected voxel through wall, overwrites destination, leaves no duplicate', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), 0xff0000],
+          [coordKey(1, 0, 0), 0x0000ff]
+        ])
+      );
+      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      beginStroke();
+      applySelectionTranslationInStroke(1, 0, 0);
+      const v = get(voxels);
+      expect(v.has(coordKey(0, 0, 0))).toBe(false);
+      expect(v.get(coordKey(1, 0, 0))).toBe(0xff0000);
+      expect(get(selection).has(coordKey(1, 0, 0))).toBe(true);
+    });
+
+    it('translates all selected voxels together', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), 0xff0000],
+          [coordKey(2, 0, 0), 0x00ff00]
+        ])
+      );
+      selection.set(
+        new Map([
+          [coordKey(0, 0, 0), 0xff0000],
+          [coordKey(2, 0, 0), 0x00ff00]
+        ])
+      );
+      beginStroke();
+      applySelectionTranslationInStroke(0, 1, 0);
+      const v = get(voxels);
+      expect(v.has(coordKey(0, 0, 0))).toBe(false);
+      expect(v.has(coordKey(2, 0, 0))).toBe(false);
+      expect(v.get(coordKey(0, 1, 0))).toBe(0xff0000);
+      expect(v.get(coordKey(2, 1, 0))).toBe(0x00ff00);
+      const s = get(selection);
+      expect(s.has(coordKey(0, 1, 0))).toBe(true);
+      expect(s.has(coordKey(2, 1, 0))).toBe(true);
+    });
+
+    it('translates selection keys when no voxels at keys (no voxel map change)', () => {
+      selection.set(new Map([[coordKey(5, 5, 5), 0xff0000]]));
+      beginStroke();
+      applySelectionTranslationInStroke(-1, 0, 2);
+      const s = get(selection);
+      expect(s.has(coordKey(4, 5, 7))).toBe(true);
+      expect(get(voxels).size).toBe(0);
+    });
+
+    it('no-op for zero delta', () => {
+      voxels.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      beginStroke();
+      applySelectionTranslationInStroke(0, 0, 0);
+      expect(get(voxels).get(coordKey(0, 0, 0))).toBe(0xff0000);
+      expect(get(selection).has(coordKey(0, 0, 0))).toBe(true);
+    });
+  });
+
+  describe('applySelectionRotationInStroke', () => {
+    it('keeps a single selected voxel on the same cell after 90° Z (re-centered after round)', () => {
+      voxels.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      beginStroke();
+      applySelectionRotationInStroke(2, 1);
+      expect(get(voxels).get(coordKey(0, 0, 0))).toBe(0xff0000);
+      expect(get(selection).has(coordKey(0, 0, 0))).toBe(true);
+    });
+
+    it('no-op when re-centered rotation would overlap non-selected solid voxels', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), 0xff0000],
+          [coordKey(1, 0, 0), 0xff0000],
+          [coordKey(1, 1, 0), 0x00ff00]
+        ])
+      );
+      selection.set(
+        new Map([
+          [coordKey(0, 0, 0), 0xff0000],
+          [coordKey(1, 0, 0), 0xff0000]
+        ])
+      );
+      beginStroke();
+      applySelectionRotationInStroke(2, 1);
+      expect(get(voxels).get(coordKey(0, 0, 0))).toBe(0xff0000);
+      expect(get(voxels).get(coordKey(1, 0, 0))).toBe(0xff0000);
+      expect(get(voxels).get(coordKey(1, 1, 0))).toBe(0x00ff00);
+      expect(get(selection).has(coordKey(0, 0, 0))).toBe(true);
+      expect(get(selection).has(coordKey(1, 0, 0))).toBe(true);
+    });
+
+    it('no-op for zero quarter steps', () => {
+      voxels.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      beginStroke();
+      applySelectionRotationInStroke(1, 0);
+      expect(get(voxels).get(coordKey(0, 0, 0))).toBe(0xff0000);
     });
   });
 

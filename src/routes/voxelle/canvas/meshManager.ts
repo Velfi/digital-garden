@@ -25,6 +25,7 @@ export interface MeshManagerCallbacks {
 
 const CHUNK_THRESHOLD = 50000;
 const SPINNER_DELAY_MS = 2000;
+const SELECTION_OVERLAY_HEX = 0x3399ff;
 
 export function createMeshManager(
   refs: SceneSetupRefs,
@@ -49,6 +50,8 @@ export function createMeshManager(
   >();
   let selectionMesh: THREE.Mesh | null = null;
   let selectionMaterial: THREE.MeshBasicMaterial | null = null;
+  let selectionOccludedMesh: THREE.Mesh | null = null;
+  let selectionOccludedMaterial: THREE.MeshBasicMaterial | null = null;
   let spinnerTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   function applyVoxelMeshResults(
@@ -135,30 +138,57 @@ export function createMeshManager(
 
   function rebuildSelectionOverlay(sel: Map<string, number>) {
     if (!selectionGroup || !scene) return;
-    if (selectionMesh) {
-      selectionGroup.remove(selectionMesh);
-      selectionMesh.geometry?.dispose();
+    if (selectionMesh || selectionOccludedMesh) {
+      if (selectionMesh) selectionGroup.remove(selectionMesh);
+      if (selectionOccludedMesh) selectionGroup.remove(selectionOccludedMesh);
+      const sharedGeo = selectionMesh?.geometry ?? selectionOccludedMesh?.geometry;
+      if (sharedGeo) sharedGeo.dispose();
       selectionMaterial?.dispose();
+      selectionOccludedMaterial?.dispose();
       selectionMesh = null;
+      selectionOccludedMesh = null;
       selectionMaterial = null;
+      selectionOccludedMaterial = null;
     }
     if (sel.size === 0) return;
     const overlayMap = new Map<string, number>();
-    for (const key of sel.keys()) overlayMap.set(key, 0x3399ff);
+    for (const key of sel.keys()) overlayMap.set(key, SELECTION_OVERLAY_HEX);
     const geoByColor = buildGreedyMesh(overlayMap, PREVIEW_MESH_OPTIONS);
-    const geo = geoByColor.get(0x3399ff);
+    const geo = geoByColor.get(SELECTION_OVERLAY_HEX);
     if (!geo) return;
+
     selectionMaterial = new THREE.MeshBasicMaterial({
-      color: 0x3399ff,
+      color: 0xffffff,
+      vertexColors: true,
       opacity: 0.35,
       transparent: true,
-      depthTest: false,
+      depthTest: true,
       depthWrite: false
     });
     selectionMesh = new THREE.Mesh(geo, selectionMaterial);
     selectionMesh.raycast = () => {};
-    selectionMesh.renderOrder = 1;
+    selectionMesh.renderOrder = 1001;
     selectionGroup.add(selectionMesh);
+
+    const occRgb = new THREE.Color(SELECTION_OVERLAY_HEX);
+    occRgb.multiplyScalar(0.48);
+    occRgb.lerp(new THREE.Color(0x5577ee), 0.42);
+    selectionOccludedMaterial = new THREE.MeshBasicMaterial({
+      vertexColors: false,
+      color: occRgb,
+      opacity: 0.32,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+      depthFunc: THREE.GreaterDepth,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1
+    });
+    selectionOccludedMesh = new THREE.Mesh(geo, selectionOccludedMaterial);
+    selectionOccludedMesh.raycast = () => {};
+    selectionOccludedMesh.renderOrder = 1000;
+    selectionGroup.add(selectionOccludedMesh);
   }
 
   function buildGrid(_size: number, v: Map<string, number>) {
@@ -207,9 +237,11 @@ export function createMeshManager(
       (mesh.material as THREE.Material).dispose();
     }
     meshesByColor.clear();
-    if (selectionMesh) {
-      selectionMesh.geometry?.dispose();
+    if (selectionMesh || selectionOccludedMesh) {
+      const sharedGeo = selectionMesh?.geometry ?? selectionOccludedMesh?.geometry;
+      if (sharedGeo) sharedGeo.dispose();
       selectionMaterial?.dispose();
+      selectionOccludedMaterial?.dispose();
     }
     gridGroup?.traverse((obj) => {
       const geom = (obj as { geometry?: THREE.BufferGeometry }).geometry;

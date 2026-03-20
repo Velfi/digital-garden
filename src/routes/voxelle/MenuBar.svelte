@@ -23,6 +23,7 @@
     cutSelection,
     pasteFromClipboard,
     hollowOut,
+    scaleProjectBy2,
     saveToFile,
     loadFromFile,
     importImageFromFile
@@ -117,6 +118,11 @@
 
   function handleHollowOut() {
     hollowOut();
+    closeMenus();
+  }
+
+  function handleScaleProjectBy2() {
+    scaleProjectBy2();
     closeMenus();
   }
 
@@ -371,6 +377,15 @@
           disabled={$voxels.size === 0}
         >
           Hollow out
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleScaleProjectBy2}
+          disabled={$voxels.size === 0}
+          title="Each voxel becomes a 2×2×2 block (coordinates double)"
+        >
+          Scale project up by 2×
         </button>
       </div>
     {/if}

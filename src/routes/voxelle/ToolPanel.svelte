@@ -1,9 +1,18 @@
 <script lang="ts">
-  import { tool, toolPane, strokeMode, selection, sidebarOpen, STROKE_TOOLS } from './store/index';
+  import {
+    tool,
+    toolPane,
+    strokeMode,
+    selection,
+    sidebarOpen,
+    addPanelStore,
+    STROKE_TOOLS
+  } from './store/index';
   import DrawToolOptions from './toolPanel/DrawToolOptions.svelte';
   import ClayToolOptions from './toolPanel/ClayToolOptions.svelte';
   import StampToolOptions from './toolPanel/StampToolOptions.svelte';
   import GeneratorToolOptions from './toolPanel/GeneratorToolOptions.svelte';
+  import SelectionGizmoTabs from './toolPanel/SelectionGizmoTabs.svelte';
 
   const isStrokeTool = (t: string) => STROKE_TOOLS.includes(t as (typeof STROKE_TOOLS)[number]);
   const drawBrushVisible = $derived($toolPane === 'draw' && isStrokeTool($tool));
@@ -19,8 +28,12 @@
   const rockVisible = $derived($tool === 'rocks');
   const grassVisible = $derived($tool === 'grass');
   const ashlarVisible = $derived($tool === 'ashlar');
+  const gizmoTabsVisible = $derived(
+    $tool !== 'fly' && ($selection.size > 0 || $addPanelStore.open)
+  );
 
   const show = $derived(
+    gizmoTabsVisible ||
     drawBrushVisible ||
       planeAxisVisible ||
       lineAxisAlignVisible ||
@@ -48,6 +61,9 @@
     aria-label="Tool options"
     tabindex="-1"
   >
+    {#if gizmoTabsVisible}
+      <SelectionGizmoTabs />
+    {/if}
     <DrawToolOptions />
     <StampToolOptions />
     <GeneratorToolOptions />

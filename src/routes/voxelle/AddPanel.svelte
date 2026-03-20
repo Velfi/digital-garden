@@ -23,11 +23,11 @@
       size,
       getColor: getPaintColorResolver()
     });
-    addPanelStore.update((x) => ({ ...x, open: false }));
+    addPanelStore.update((x) => ({ ...x, open: false, placementAnchorPending: false }));
   }
 
   function handleCancel() {
-    addPanelStore.update((x) => ({ ...x, open: false }));
+    addPanelStore.update((x) => ({ ...x, open: false, placementAnchorPending: false }));
   }
 
   function update<K extends keyof typeof $addPanelStore>(k: K, v: (typeof $addPanelStore)[K]) {
@@ -47,6 +47,10 @@
     onkeydown={(e) => e.key === 'Escape' && handleCancel()}
   >
     <h3 id="add-panel-title">Add shape</h3>
+    <p class="add-panel-hint">
+      Ghost preview only until Done. Drag RGB axes to move. Wheel: <kbd>Ctrl</kbd> size,
+      <kbd>Shift</kbd>/<kbd>Alt</kbd>/<kbd>Shift</kbd>+<kbd>Alt</kbd> rotate X / Y / Z (90° steps).
+    </p>
     <div class="add-panel-row">
       <span class="add-panel-label">Pos</span>
       <input
@@ -131,6 +135,20 @@
 {/if}
 
 <style>
+  .add-panel-hint {
+    font-size: 0.75rem;
+    opacity: 0.85;
+    margin: 0 0 0.75rem;
+    line-height: 1.35;
+  }
+
+  .add-panel-hint kbd {
+    font-size: 0.7rem;
+    padding: 0.05em 0.35em;
+    border-radius: 3px;
+    border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  }
+
   .add-panel-row select {
     flex: 1;
   }

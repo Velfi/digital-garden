@@ -175,6 +175,25 @@ export function getVoxelCenter(v: Map<string, number>): [number, number, number]
   return [(b.minX + b.maxX + 1) / 2, (b.minY + b.maxY + 1) / 2, (b.minZ + b.maxZ + 1) / 2];
 }
 
+/**
+ * Integer voxel position when opening Add shape: model center if voxels exist,
+ * otherwise rounded orbit / camera target.
+ */
+export function defaultAddShapePlacementAnchor(
+  voxelMap: Map<string, number>,
+  orbitTarget: { x: number; y: number; z: number }
+): [number, number, number] {
+  const c = getVoxelCenter(voxelMap);
+  if (c) {
+    return [Math.round(c[0]), Math.round(c[1]), Math.round(c[2])];
+  }
+  return [
+    Math.round(orbitTarget.x),
+    Math.round(orbitTarget.y),
+    Math.round(orbitTarget.z)
+  ];
+}
+
 /** Bounding box of positions array; null if empty. */
 export function getBoundsFromPositions(
   positions: [number, number, number][]

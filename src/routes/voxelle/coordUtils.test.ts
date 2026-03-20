@@ -9,6 +9,7 @@ import {
   getSelectionBounds,
   getVoxelBounds,
   getVoxelCenter,
+  defaultAddShapePlacementAnchor,
   getBoundsFromPositions,
   getSelectionCenter
 } from './coordUtils';
@@ -220,5 +221,21 @@ describe('getSelectionCenter', () => {
       ['2,2,2', 0xff]
     ]);
     expect(getSelectionCenter(sel)).toEqual([1.5, 1.5, 1.5]);
+  });
+});
+
+describe('defaultAddShapePlacementAnchor', () => {
+  it('uses rounded voxel bounds center when map is non-empty (ignores orbit target)', () => {
+    const v = new Map<string, number>([
+      ['0,0,0', 1],
+      ['1,0,0', 1]
+    ]);
+    expect(defaultAddShapePlacementAnchor(v, { x: 99, y: 99, z: 99 })).toEqual([1, 1, 1]);
+  });
+
+  it('uses rounded orbit target when map is empty', () => {
+    expect(
+      defaultAddShapePlacementAnchor(new Map(), { x: 3.2, y: -1.6, z: 0.4 })
+    ).toEqual([3, -2, 0]);
   });
 });

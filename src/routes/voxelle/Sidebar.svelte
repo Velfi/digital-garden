@@ -73,6 +73,7 @@
   function openAddPanel() {
     addPanelStore.set({
       open: true,
+      placementAnchorPending: true,
       posX: 0,
       posY: 0,
       posZ: 0,

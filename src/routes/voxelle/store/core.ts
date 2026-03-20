@@ -14,7 +14,8 @@ import {
   type StartShape,
   type AddShapeParams,
   getShapePositionsAt,
-  rotatePositionAroundOrigin
+  rotatePositionAroundOrigin,
+  rotateVectorByAxisQuarters
 } from './shapes';
 import {
   cloneVoxels as cloneVoxelsImpl,
@@ -84,6 +85,8 @@ export type RenderingMode = 'greedy' | 'marchingCubes';
 
 export type AddPanelState = {
   open: boolean;
+  /** When true, VoxelCanvas seeds pos once from model center or orbit target. */
+  placementAnchorPending: boolean;
   posX: number;
   posY: number;
   posZ: number;
@@ -96,6 +99,7 @@ export type AddPanelState = {
 
 const defaultAddPanel: AddPanelState = {
   open: false,
+  placementAnchorPending: false,
   posX: 0,
   posY: 0,
   posZ: 0,
@@ -211,6 +215,10 @@ export const modalRequest = writable<
 >(null);
 export const addPanelStore = writable<AddPanelState>({ ...defaultAddPanel });
 
+/** Move vs rotate rings on the in-scene transform gizmo (selection / add-shape placement). */
+export type SelectionGizmoMode = 'move' | 'rotate';
+export const selectionGizmoMode = writable<SelectionGizmoMode>('move');
+
 export type StampRotation = { rotX: number; rotY: number; rotZ: number };
 export const stampRotation = writable<StampRotation>({ rotX: 0, rotY: 0, rotZ: 0 });
 
@@ -273,7 +281,7 @@ export const canUndoStore = undo.canUndoStore;
 export const canRedoStore = undo.canRedoStore;
 
 // Re-exports
-export { initShape, getShapePositionsAt, rotatePositionAroundOrigin };
+export { initShape, getShapePositionsAt, rotatePositionAroundOrigin, rotateVectorByAxisQuarters };
 export type { StartShape, AddShapeParams };
 
 export function ensureGridFitsPositions(positions: Iterable<[number, number, number]>): void {
@@ -309,6 +317,49 @@ export function shiftVoxelsAndSelection(dx: number, dy: number, dz: number): voi
   ensureGridFitsPositions(positions);
   voxels.set(newVoxels);
   selection.set(newSel);
+}
+
+/**
+ * Scale the whole model by 2× about the origin: each voxel at (x,y,z) becomes a 2×2×2 block
+ * with the same color, occupying [2x,2x+1]×[2y,2y+1]×[2z,2z+1]. Selection is scaled the same way.
+ */
+export function scaleProjectBy2(): void {
+  const v = get(voxels);
+  if (v.size === 0) return;
+  pushUndo();
+  const next = new Map<string, number>();
+  for (const [key, col] of v) {
+    const [x, y, z] = parseCoordKey(key);
+    const bx = 2 * x;
+    const by = 2 * y;
+    const bz = 2 * z;
+    for (let dx = 0; dx < 2; dx++) {
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dz = 0; dz < 2; dz++) {
+          next.set(coordKey(bx + dx, by + dy, bz + dz), col);
+        }
+      }
+    }
+  }
+  const sel = get(selection);
+  const nextSel = new Map<string, number>();
+  for (const [key, col] of sel) {
+    const [x, y, z] = parseCoordKey(key);
+    const bx = 2 * x;
+    const by = 2 * y;
+    const bz = 2 * z;
+    for (let dx = 0; dx < 2; dx++) {
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dz = 0; dz < 2; dz++) {
+          nextSel.set(coordKey(bx + dx, by + dy, bz + dz), col);
+        }
+      }
+    }
+  }
+  const positions = [...next.keys()].map((k) => parseCoordKey(k));
+  ensureGridFitsPositions(positions);
+  voxels.set(next);
+  selection.set(nextSel);
 }
 
 /** Shift only the selected voxels (and the selection). Call when selection is active. */
@@ -459,6 +510,138 @@ export function updateVoxelsInStroke(updater: (v: Map<string, number>) => void) 
     updater(target);
     return next;
   });
+}
+
+/**
+ * Rigid translate of selected occupied voxels (delete sources, write destinations; overwrites targets).
+ * Intended after beginStroke(); updates selection keys the same way. No-op if delta is zero.
+ */
+export function applySelectionTranslationInStroke(dx: number, dy: number, dz: number): void {
+  const nx = Math.round(dx);
+  const ny = Math.round(dy);
+  const nz = Math.round(dz);
+  if (nx === 0 && ny === 0 && nz === 0) return;
+
+  const v = get(voxels);
+  const sel = get(selection);
+
+  const toMove: [string, number][] = [];
+  for (const [key] of sel) {
+    const col = v.get(key);
+    if (col !== undefined) {
+      toMove.push([key, col]);
+    }
+  }
+
+  const newPositions: [number, number, number][] = [];
+  for (const [key] of toMove) {
+    const [x, y, z] = parseCoordKey(key);
+    newPositions.push([x + nx, y + ny, z + nz]);
+  }
+  if (newPositions.length > 0) {
+    ensureGridFitsPositions(newPositions);
+  }
+
+  if (toMove.length > 0) {
+    updateVoxelsInStroke((target) => {
+      for (const [key] of toMove) {
+        target.delete(key);
+      }
+      for (const [key, col] of toMove) {
+        const [x, y, z] = parseCoordKey(key);
+        target.set(coordKey(x + nx, y + ny, z + nz), col);
+      }
+    });
+  }
+
+  const newSel = new Map<string, number>();
+  for (const [key, col] of sel) {
+    const [x, y, z] = parseCoordKey(key);
+    newSel.set(coordKey(x + nx, y + ny, z + nz), col);
+  }
+  selection.set(newSel);
+}
+
+/**
+ * Rigid 90° rotation of selected keys (and occupied voxels) about the selection bounding-box center
+ * (`getSelectionCenter`). After per-voxel rounding, an integer translation recenters the selection so
+ * its bbox center matches the pre-rotation center (avoids a 1-voxel “slide” common with round-alone).
+ * Skips if rounding + recenter would collapse two voxels onto one cell or intrude on non-selected solids.
+ */
+export function applySelectionRotationInStroke(axis: 0 | 1 | 2, deltaQuarters: number): void {
+  let q = deltaQuarters % 4;
+  if (q < 0) q += 4;
+  if (q === 0) return;
+
+  const sel = get(selection);
+  const pivot = getSelectionCenter(sel);
+  if (!pivot) return;
+
+  const rawRotatedKey = (key: string) => {
+    const [x, y, z] = parseCoordKey(key);
+    const rel: [number, number, number] = [x - pivot[0], y - pivot[1], z - pivot[2]];
+    const [rx, ry, rz] = rotateVectorByAxisQuarters(rel, axis, q);
+    return coordKey(
+      Math.round(pivot[0] + rx),
+      Math.round(pivot[1] + ry),
+      Math.round(pivot[2] + rz)
+    );
+  };
+
+  const selEntries = [...sel.entries()];
+  const rawKeys = selEntries.map(([k]) => rawRotatedKey(k));
+  if (new Set(rawKeys).size !== rawKeys.length) return;
+
+  const provisional = new Map<string, number>();
+  for (let i = 0; i < selEntries.length; i++) {
+    provisional.set(rawKeys[i], selEntries[i][1]);
+  }
+  const pivotAfter = getSelectionCenter(provisional);
+  if (!pivotAfter) return;
+
+  const tx = Math.round(pivot[0] - pivotAfter[0]);
+  const ty = Math.round(pivot[1] - pivotAfter[1]);
+  const tz = Math.round(pivot[2] - pivotAfter[2]);
+
+  const newSelKeys = rawKeys.map((k) => {
+    const [x, y, z] = parseCoordKey(k);
+    return coordKey(x + tx, y + ty, z + tz);
+  });
+  if (new Set(newSelKeys).size !== newSelKeys.length) return;
+
+  const v = get(voxels);
+  const toMove: [string, number][] = [];
+  for (const [key] of sel) {
+    const col = v.get(key);
+    if (col !== undefined) toMove.push([key, col]);
+  }
+
+  const sourceKeys = new Set(toMove.map((t) => t[0]));
+  const destKeys = toMove.map(([key]) => {
+    const rk = rawRotatedKey(key);
+    const [x, y, z] = parseCoordKey(rk);
+    return coordKey(x + tx, y + ty, z + tz);
+  });
+
+  for (const nk of destKeys) {
+    if (v.has(nk) && !sourceKeys.has(nk)) return;
+  }
+
+  if (toMove.length > 0) {
+    ensureGridFitsPositions(destKeys.map((k) => parseCoordKey(k)));
+    updateVoxelsInStroke((target) => {
+      for (const [key] of toMove) target.delete(key);
+      for (let i = 0; i < toMove.length; i++) {
+        target.set(destKeys[i], toMove[i][1]);
+      }
+    });
+  }
+
+  const newSel = new Map<string, number>();
+  for (let i = 0; i < selEntries.length; i++) {
+    newSel.set(newSelKeys[i], selEntries[i][1]);
+  }
+  selection.set(newSel);
 }
 
 /** Returns a function that yields a paint color per voxel (random when multiple selected). */

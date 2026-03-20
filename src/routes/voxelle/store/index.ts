@@ -7,6 +7,7 @@ export {
   getBoundsFromPositions,
   getVoxelBounds,
   getVoxelCenter,
+  defaultAddShapePlacementAnchor,
   getSelectionCenter,
   inBounds,
   inBoundsBox,
@@ -65,6 +66,7 @@ export {
   sidebarOpen,
   modalRequest,
   addPanelStore,
+  selectionGizmoMode,
   stampRotation,
   rockSize,
   rockRoughness,
@@ -103,6 +105,7 @@ export {
   canRedoStore,
   ensureGridFitsPositions,
   shiftVoxelsAndSelection,
+  scaleProjectBy2,
   shiftSelection,
   centerOriginOnObject,
   centerOriginOnSelection,
@@ -115,10 +118,13 @@ export {
   updateVoxels,
   beginStroke,
   updateVoxelsInStroke,
+  applySelectionTranslationInStroke,
+  applySelectionRotationInStroke,
   addShapeAt,
   initShape,
   getShapePositionsAt,
   rotatePositionAroundOrigin,
+  rotateVectorByAxisQuarters,
   hexToInt,
   intToHex,
   getPaintColorResolver
@@ -142,15 +148,19 @@ export type {
   StampRotation,
   RockSinkDirection,
   StartShape,
-  AddShapeParams
+  AddShapeParams,
+  SelectionGizmoMode
 } from './core';
 
 // canUndo, canRedo as aliases
 export { canUndoStore as canUndo, canRedoStore as canRedo } from './core';
 
 // Selection
+export type { FillSelectionResult, FillEmptyResult } from './selection';
+
 export {
   SELECTION_BOUNDS_MARGIN,
+  FILL_UNCONSTRAINED_LARGE_THRESHOLD,
   getFillSelectionAt,
   getFillEmptyAt,
   getCoplanarFacesSelectionAt,

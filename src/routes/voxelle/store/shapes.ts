@@ -78,6 +78,20 @@ function rotateZ([x, y, z]: [number, number, number], quarters: number): [number
   return out;
 }
 
+/** 90° steps about +X, +Y, or +Z through the origin. `quarters` may be negative. */
+export function rotateVectorByAxisQuarters(
+  v: [number, number, number],
+  axis: 0 | 1 | 2,
+  quarters: number
+): [number, number, number] {
+  let q = quarters % 4;
+  if (q < 0) q += 4;
+  if (q === 0) return [v[0], v[1], v[2]];
+  if (axis === 0) return rotateX(v, q);
+  if (axis === 1) return rotateY(v, q);
+  return rotateZ(v, q);
+}
+
 export type AddShapeParams = {
   position: [number, number, number];
   rotation: [number, number, number];
