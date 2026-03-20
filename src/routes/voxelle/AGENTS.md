@@ -95,4 +95,5 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 3. Selection is `Map<string, number>` like voxels; use `getSelectionBounds`, `getSelectionAnchor`, etc.
 4. Avoid touching `meshesByColor` internals; MeshManager owns them and exposes `getMeshesByColor()`.
 5. Run `greedyMesh.test.ts` after changes to meshing.
-6. **New tools / options**: Add pointer handling in VoxelCanvas (or future `canvas/handlers/`); add UI in ToolPanel (or `toolPanel/*Options.svelte`). Tool/stroke-mode lists (e.g. `DRAW_TOOLS_USING_STROKE_MODE`) are defined once in `store/core.ts` and imported elsewhere.
+6. **Workers**: Heavy logic lives in `*WorkerLogic.ts` (unit-tested). Thin `*.worker.ts` / `*Worker.ts` files call `attach*Worker(self)` from `*Worker.bind.ts`; `webWorkerBindings.test.ts` mocks `self` to assert `postMessage` payloads and transfer lists (Node has no `Worker` global).
+7. **New tools / options**: Add pointer handling in VoxelCanvas (or future `canvas/handlers/`); add UI in ToolPanel (or `toolPanel/*Options.svelte`). Tool/stroke-mode lists (e.g. `DRAW_TOOLS_USING_STROKE_MODE`) are defined once in `store/core.ts` and imported elsewhere.

@@ -9,7 +9,6 @@ import {
 import {
   voxels,
   selection,
-  gridSize,
   pushUndo,
   updateVoxels,
   planeAxis,
@@ -17,8 +16,14 @@ import {
 } from './core';
 import type { FaceNormal, SelectionMode } from './core';
 
+/**
+ * Isotropic padding around content for flood fills. Large margins balloon empty-region BFS
+ * (runtime + JS Set max size ~2²⁴).
+ */
+export const SELECTION_BOUNDS_MARGIN = 48;
+
 function getEffectiveBoundsForSelection(): ReturnType<typeof getEffectiveBounds> {
-  return getEffectiveBounds(get(voxels), get(gridSize), true, 512);
+  return getEffectiveBounds(get(voxels), SELECTION_BOUNDS_MARGIN);
 }
 
 function getPlaneAxisNumber(): 0 | 1 | 2 {

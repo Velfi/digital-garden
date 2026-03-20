@@ -78,24 +78,8 @@ export function inBoundsBox(x: number, y: number, z: number, b: SelectionBounds)
   return x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY && z >= b.minZ && z <= b.maxZ;
 }
 
-/** Bounds for operations that need a finite search space. When unbounded, use voxel extent + margin; when empty use a large box around origin. */
-export function getEffectiveBounds(
-  voxels: Map<string, number>,
-  gridSize: number | undefined | null,
-  unbounded: boolean,
-  margin: number = 256
-): SelectionBounds {
-  if (!unbounded && gridSize != null && gridSize > 0) {
-    const h = gridSize / 2;
-    return {
-      minX: -Math.floor(h),
-      minY: -Math.floor(h),
-      minZ: -Math.floor(h),
-      maxX: Math.ceil(h) - 1,
-      maxY: Math.ceil(h) - 1,
-      maxZ: Math.ceil(h) - 1
-    };
-  }
+/** Bounds for operations that need a finite search space: voxel extent ± margin per axis, or ±margin around origin when empty. */
+export function getEffectiveBounds(voxels: Map<string, number>, margin: number = 256): SelectionBounds {
   const b = getVoxelBounds(voxels);
   if (b) {
     return {

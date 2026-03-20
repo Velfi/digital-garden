@@ -173,7 +173,7 @@
   /** Selection mode for the current drag (set at pointer down when select tool); used so shift-drag extends selection. */
   let selectionModeForCurrentGesture: SelectionMode | null = null;
   let isStampDrag = false;
-  let lastStampTarget: [number, number, number] | null = null;
+  let lastStampPlace: [number, number, number] | null = null;
   let lastStampNormal: FaceNormal | null = null;
   /** During stamp drag: re-raycast each frame so stamp follows cursor across surfaces */
   let dragStartPos: [number, number, number] | null = null;
@@ -300,9 +300,30 @@
     meshManager?.rebuildSelectionOverlay(sel);
   }
 
-  /** Snaps stamp to target voxel face so the correct side touches without overlapping. */
+  /** Same face anchor as rocks/ashlar: `place` from getAddPosition (+0.5 along normal), tangent axes centered on placement cell. */
+  function getStampTargetForPlaceOnFace(
+    place: [number, number, number],
+    normal: FaceNormal,
+    bounds: NonNullable<ReturnType<typeof getBoundsFromPositions>>
+  ): [number, number, number] {
+    const halfW = (bounds.maxX - bounds.minX) / 2;
+    const halfH = (bounds.maxY - bounds.minY) / 2;
+    const halfD = (bounds.maxZ - bounds.minZ) / 2;
+    const surfaceTarget: [number, number, number] = [
+      place[0] - normal[0],
+      place[1] - normal[1],
+      place[2] - normal[2]
+    ];
+    return [
+      normal[0] ? surfaceTarget[0] : place[0] - halfW,
+      normal[1] ? surfaceTarget[1] : place[1] - halfH,
+      normal[2] ? surfaceTarget[2] : place[2] - halfD
+    ];
+  }
+
+  /** Snaps stamp to face under cursor (placement cell + tangent centering match generators). */
   function getStampPositionsForFace(
-    target: [number, number, number],
+    place: [number, number, number],
     normal: FaceNormal
   ): [number, number, number][] {
     const sel = $selection;
@@ -319,7 +340,8 @@
     }
     const bounds = getBoundsFromPositions(rotated);
     if (!bounds) return [];
-    const [dx, dy, dz] = getStampOffsetForFace(target, normal, bounds);
+    const targetForStamp = getStampTargetForPlaceOnFace(place, normal, bounds);
+    const [dx, dy, dz] = getStampOffsetForFace(targetForStamp, normal, bounds);
     return rotated.map(([x, y, z]) => [x + dx, y + dy, z + dz]);
   }
 
@@ -659,8 +681,7 @@
     levelY: number
   ) {
     ensureGridFitsPositions(positions);
-    const sz = $gridSize;
-    const clayBoundsOrSize = getEffectiveBounds($voxels, sz, true, 512);
+    const clayBoundsOrSize = getEffectiveBounds($voxels, 512);
     const boundSize: number | undefined = undefined;
     const getCol = getPaintColorResolver();
     const v = $voxels;
@@ -742,7 +763,7 @@
     selection.set(next);
   }
 
-  function placeStamp(target: [number, number, number], normal: FaceNormal) {
+  function placeStamp(place: [number, number, number], normal: FaceNormal) {
     const sel = $selection;
     const center = getSelectionCenter(sel);
     if (!center) return;
@@ -760,7 +781,8 @@
     const bounds = getBoundsFromPositions(rotated);
     if (!bounds) return;
     playPlaceSound();
-    const [dx, dy, dz] = getStampOffsetForFace(target, normal, bounds);
+    const targetForStamp = getStampTargetForPlaceOnFace(place, normal, bounds);
+    const [dx, dy, dz] = getStampOffsetForFace(targetForStamp, normal, bounds);
     const stampPositions = rotated.map(
       ([x, y, z]) => [x + dx, y + dy, z + dz] as [number, number, number]
     );
@@ -1180,7 +1202,7 @@
     }
     if (isStampDrag) {
       isStampDrag = false;
-      lastStampTarget = null;
+      lastStampPlace = null;
       lastStampNormal = null;
       updatePreviewMesh([]);
     }
@@ -1700,15 +1722,15 @@
       return;
     }
 
-    // Stamp tool: snap stamp's side to target voxel face (works on all 6 faces)
+    // Stamp tool: placement cell from ray (+0.5 along normal), same anchor as generators
     if ($tool === 'stamp' && $selection.size > 0) {
-      const target = getVoxelPosition(hit);
+      const place = getAddPosition(hit);
       const normal = getFaceNormalFromHit(hit);
-      if (target && normal) {
+      if (place && normal) {
         isStampDrag = true;
-        lastStampTarget = target;
+        lastStampPlace = place;
         lastStampNormal = normal;
-        updatePreviewMesh(getStampPositionsForFace(target, normal));
+        updatePreviewMesh(getStampPositionsForFace(place, normal));
       }
       requestAnimationFrame(() => render());
       return;
@@ -1810,12 +1832,12 @@
     if (isStampDrag && $selection.size > 0) {
       const hit = getIntersection();
       if (hit) {
-        const target = getVoxelPosition(hit);
+        const place = getAddPosition(hit);
         const normal = getFaceNormalFromHit(hit);
-        if (target && normal) {
-          lastStampTarget = target;
+        if (place && normal) {
+          lastStampPlace = place;
           lastStampNormal = normal;
-          updatePreviewMesh(getStampPositionsForFace(target, normal));
+          updatePreviewMesh(getStampPositionsForFace(place, normal));
         }
       }
       render();
@@ -2114,10 +2136,10 @@
     if ($tool === 'stamp' && $selection.size > 0 && !isStampDrag) {
       const hit = getIntersection();
       if (hit) {
-        const target = getVoxelPosition(hit);
+        const place = getAddPosition(hit);
         const normal = getFaceNormalFromHit(hit);
-        if (target && normal) {
-          updatePreviewMesh(getStampPositionsForFace(target, normal));
+        if (place && normal) {
+          updatePreviewMesh(getStampPositionsForFace(place, normal));
           rollOverMesh.visible = false;
         } else {
           updatePreviewMesh([]);
@@ -2356,11 +2378,11 @@
       cancelDrag();
     }
     if (event.button === 0 && isStampDrag) {
-      if (lastStampTarget && lastStampNormal) {
-        placeStamp(lastStampTarget, lastStampNormal);
+      if (lastStampPlace && lastStampNormal) {
+        placeStamp(lastStampPlace, lastStampNormal);
       }
       isStampDrag = false;
-      lastStampTarget = null;
+      lastStampPlace = null;
       lastStampNormal = null;
       updatePreviewMesh([]);
     }

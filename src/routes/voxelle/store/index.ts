@@ -150,6 +150,7 @@ export { canUndoStore as canUndo, canRedoStore as canRedo } from './core';
 
 // Selection
 export {
+  SELECTION_BOUNDS_MARGIN,
   getFillSelectionAt,
   getFillEmptyAt,
   getCoplanarFacesSelectionAt,

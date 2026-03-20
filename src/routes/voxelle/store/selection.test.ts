@@ -13,7 +13,8 @@ import {
   selectConnected,
   deselectVoxels,
   deselectEmptySpaces,
-  invertSelection
+  invertSelection,
+  SELECTION_BOUNDS_MARGIN
 } from './selection';
 
 function makeSel(entries: [number, number, number][]): Map<string, number> {
@@ -94,6 +95,7 @@ describe('mergeSelection', () => {
 
 describe('getFillSelectionAt', () => {
   beforeEach(() => {
+    /* gridSize does not clip selection floods; normalized value only for store reset. */
     gridSize.set(32);
     voxels.set(new Map());
     selection.set(new Map());
@@ -156,9 +158,40 @@ describe('getFillSelectionAt', () => {
     expect(result6.size).toBe(1);
     expect(result26.size).toBe(2);
   });
+
+  it('ignores gridSize: same flood for different nominal grids', () => {
+    const layout = makeVoxels([
+      [0, 0, 0, 0xff0000],
+      [1, 0, 0, 0xff0000]
+    ]);
+    gridSize.set(8);
+    voxels.set(new Map(layout));
+    const smallGrid = getFillSelectionAt(0, 0, 0, false);
+    gridSize.set(1024);
+    voxels.set(new Map(layout));
+    const largeGrid = getFillSelectionAt(0, 0, 0, false);
+    expect(smallGrid.size).toBe(largeGrid.size);
+    expect([...smallGrid.keys()].sort()).toEqual([...largeGrid.keys()].sort());
+  });
+
+  it('works when content is far from origin (content-derived bbox)', () => {
+    const ox = 80;
+    voxels.set(
+      makeVoxels([
+        [ox, 0, 0, 0xff0000],
+        [ox + 1, 0, 0, 0xff0000],
+        [ox + 2, 0, 0, 0xff0000]
+      ])
+    );
+    const result = getFillSelectionAt(ox, 0, 0, false);
+    expect(result.size).toBe(3);
+    expect(result.has(`${ox + 2},0,0`)).toBe(true);
+  });
 });
 
 describe('getFillEmptyAt', () => {
+  const m = SELECTION_BOUNDS_MARGIN;
+
   beforeEach(() => {
     gridSize.set(32);
     voxels.set(new Map());
@@ -172,7 +205,7 @@ describe('getFillEmptyAt', () => {
     expect(result.size).toBe(0);
   });
 
-  it('returns connected empty region including start', () => {
+  it('fills all empty cells inside voxel bbox ± margin (two pillars)', () => {
     voxels.set(
       makeVoxels([
         [-1, 0, 0, 0xff0000],
@@ -180,8 +213,12 @@ describe('getFillEmptyAt', () => {
       ])
     );
     const result = getFillEmptyAt(0, 0, 0, false);
-    expect(result.size).toBeGreaterThan(0);
+    const xSpan = 2 + 2 * m + 1;
+    const ySpan = 2 * m + 1;
+    const zSpan = 2 * m + 1;
+    expect(result.size).toBe(xSpan * ySpan * zSpan - 2);
     expect(result.has('0,0,0')).toBe(true);
+    expect(result.has(`${m + 2},0,0`)).toBe(false);
   });
 
   it('bounds empty region by voxels', () => {
@@ -197,6 +234,46 @@ describe('getFillEmptyAt', () => {
     );
     const result = getFillEmptyAt(0, 0, 0, false);
     expect(result.size).toBe(1);
+  });
+
+  it('ignores gridSize when flood is cage-limited (O(1) region)', () => {
+    const cage = makeVoxels([
+      [-1, 0, 0, 0xff0000],
+      [1, 0, 0, 0xff0000],
+      [0, -1, 0, 0xff0000],
+      [0, 1, 0, 0xff0000],
+      [0, 0, -1, 0xff0000],
+      [0, 0, 1, 0xff0000]
+    ]);
+    gridSize.set(4);
+    voxels.set(new Map(cage));
+    const tight = getFillEmptyAt(0, 0, 0, false);
+    gridSize.set(512);
+    voxels.set(new Map(cage));
+    const wide = getFillEmptyAt(0, 0, 0, false);
+    expect(tight.size).toBe(1);
+    expect(wide.size).toBe(1);
+  });
+
+  it('with no voxels, empty fill reaches ±margin from origin only', () => {
+    voxels.set(new Map());
+    const result = getFillEmptyAt(0, 0, 0, false);
+    expect(result.has('0,0,0')).toBe(true);
+    expect(result.has(`${m},0,0`)).toBe(true);
+    expect(result.has(`${m + 1},0,0`)).toBe(false);
+  });
+
+  it('empty fill between bookends offset in workspace', () => {
+    const ox = 40;
+    voxels.set(
+      makeVoxels([
+        [ox - 1, 0, 0, 0xff0000],
+        [ox + 1, 0, 0, 0xff0000]
+      ])
+    );
+    const result = getFillEmptyAt(ox, 0, 0, false);
+    expect(result.has(`${ox},0,0`)).toBe(true);
+    expect(result.has(`${ox + m + 2},0,0`)).toBe(false);
   });
 });
 
@@ -326,5 +403,35 @@ describe('selection store actions', () => {
     invertSelection();
     expect(get(selection).size).toBe(1);
     expect(get(selection).has('1,1,1')).toBe(true);
+  });
+
+  it('growSelection uses content-derived bounds, not gridSize', () => {
+    const ox = 50;
+    voxels.set(
+      makeVoxels([
+        [ox, 0, 0, 0xff0000],
+        [ox + 1, 0, 0, 0xff0000]
+      ])
+    );
+    selection.set(makeVoxels([[ox, 0, 0, 0xff0000]]));
+    gridSize.set(16);
+    growSelection();
+    expect(get(selection).has(`${ox + 1},0,0`)).toBe(true);
+  });
+
+  it('selectConnected reaches along chain away from origin', () => {
+    const ox = 60;
+    voxels.set(
+      makeVoxels([
+        [ox, 0, 0, 0xff0000],
+        [ox + 1, 0, 0, 0xff0000],
+        [ox + 2, 0, 0, 0x00ff00]
+      ])
+    );
+    selection.set(makeVoxels([[ox, 0, 0, 0xff0000]]));
+    selectConnected();
+    expect(get(selection).size).toBe(2);
+    expect(get(selection).has(`${ox + 1},0,0`)).toBe(true);
+    expect(get(selection).has(`${ox + 2},0,0`)).toBe(false);
   });
 });

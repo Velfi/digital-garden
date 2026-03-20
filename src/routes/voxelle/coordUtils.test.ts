@@ -75,23 +75,22 @@ describe('inBoundsBox', () => {
 });
 
 describe('getEffectiveBounds', () => {
-  it('returns grid box when bounded and gridSize set', () => {
-    const v = new Map<string, number>();
-    expect(getEffectiveBounds(v, 8, false)).toEqual({
-      minX: -4,
-      minY: -4,
-      minZ: -4,
-      maxX: 3,
-      maxY: 3,
-      maxZ: 3
+  it('returns ±margin around origin when empty', () => {
+    expect(getEffectiveBounds(new Map(), 8)).toEqual({
+      minX: -8,
+      minY: -8,
+      minZ: -8,
+      maxX: 8,
+      maxY: 8,
+      maxZ: 8
     });
   });
-  it('returns voxel bounds + margin when unbounded and non-empty', () => {
+  it('returns voxel bounds + margin when non-empty', () => {
     const v = new Map<string, number>([
       ['10,20,30', 0xff],
       ['15,25,35', 0xff]
     ]);
-    const b = getEffectiveBounds(v, 32, true, 5);
+    const b = getEffectiveBounds(v, 5);
     expect(b.minX).toBe(5);
     expect(b.maxX).toBe(20);
     expect(b.minY).toBe(15);
@@ -99,10 +98,10 @@ describe('getEffectiveBounds', () => {
     expect(b.minZ).toBe(25);
     expect(b.maxZ).toBe(40);
   });
-  it('returns large box around origin when unbounded and empty', () => {
-    const b = getEffectiveBounds(new Map(), null, true, 100);
-    expect(b.minX).toBe(-100);
-    expect(b.maxX).toBe(100);
+  it('caps empty-map margin at 1e5', () => {
+    const b = getEffectiveBounds(new Map(), 2e5);
+    expect(b.minX).toBe(-1e5);
+    expect(b.maxX).toBe(1e5);
   });
 });
 
