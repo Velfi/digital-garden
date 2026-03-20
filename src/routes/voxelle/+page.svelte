@@ -95,9 +95,15 @@
     }
   }
 
+  function onBeforeUnload(e: BeforeUnloadEvent) {
+    saveToStorage();
+    e.preventDefault();
+    e.returnValue = '';
+  }
+
   onMount(() => {
     if (browser) {
-      window.addEventListener('beforeunload', saveToStorage);
+      window.addEventListener('beforeunload', onBeforeUnload);
       document.addEventListener('visibilitychange', onVisibilityChange);
       document.addEventListener('fullscreenchange', onFullscreenChange);
       window.addEventListener('pointermove', onFullscreenUiActivity, { passive: true });
@@ -114,7 +120,7 @@
   });
   onDestroy(() => {
     if (browser) {
-      window.removeEventListener('beforeunload', saveToStorage);
+      window.removeEventListener('beforeunload', onBeforeUnload);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       document.removeEventListener('fullscreenchange', onFullscreenChange);
       window.removeEventListener('pointermove', onFullscreenUiActivity);
