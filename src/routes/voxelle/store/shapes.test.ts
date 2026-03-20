@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { initShape, getShapePositionsAt } from './shapes';
+import { initShape, getShapePositionsAt, clampQuarterTurn } from './shapes';
 import { coordKey } from '../coordUtils';
 
 describe('initShape', () => {
@@ -59,6 +59,16 @@ describe('initShape', () => {
 
   it('size < 1 returns empty', () => {
     expect(initShape(0, 'cube').size).toBe(0);
+  });
+});
+
+describe('clampQuarterTurn', () => {
+  it('clamps to 0–3', () => {
+    expect(clampQuarterTurn(0)).toBe(0);
+    expect(clampQuarterTurn(3)).toBe(3);
+    expect(clampQuarterTurn(3.9)).toBe(3);
+    expect(clampQuarterTurn(-1)).toBe(0);
+    expect(clampQuarterTurn(5)).toBe(3);
   });
 });
 

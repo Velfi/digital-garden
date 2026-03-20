@@ -59,7 +59,7 @@
     updateVoxels,
     updateVoxelsInStroke,
     beginStroke,
-    applySelectionTranslationInStroke,
+    applySelectionTranslationAlongAxis,
     applySelectionRotationInStroke,
     selectionGizmoMode,
     pushUndo,
@@ -92,6 +92,7 @@
     getFillEmptyAt,
     getCoplanarFacesSelectionAt,
     getShapePositionsAt,
+    clampQuarterTurn,
     addPanelStore,
     MAX_GRID_SIZE,
     defaultAddShapePlacementAnchor,
@@ -149,6 +150,11 @@
   import { buildPreviewGeometry } from './greedyMesh';
   import { createSceneSetup, POLYGON_POINTS_MAX } from './canvas/sceneSetup';
   import { createMeshManager } from './canvas/meshManager';
+  import {
+    applyAddShapeOccludedPreviewTint,
+    assignSharedDualPreviewGeometry
+  } from './canvas/previewMeshUtils';
+  import { createSelectionGizmoController } from './canvas/selectionGizmo';
   import { handlePointerDown as dispatchPointerDown, handlePointerMove as dispatchPointerMove } from './canvas/handlers/pointerHandler';
   import OrbitGizmo from './OrbitGizmo.svelte';
   import ToolPanel from './ToolPanel.svelte';
@@ -272,35 +278,9 @@
 
   let selectionGroup: THREE.Group | null = null;
 
-  /** Axis-aligned translation handles for the current selection (raycast before voxels). */
   let moveGizmoGroup: THREE.Group | null = null;
   let rotateGizmoGroup: THREE.Group | null = null;
-  let isGizmoDrag = false;
-  /** True when dragging move gizmo for Add shape (updates addPanelStore, not selection). */
-  let isPlacementGizmoDrag = false;
-  /** Selection anchor at placement gizmo pointer-down (RMB cancel restores). */
-  let placementGizmoBasePos: [number, number, number] | null = null;
-  /** Add-shape rotation quarters at pointer-down (RMB cancel restores). */
-  let placementGizmoBaseRot: [number, number, number] | null = null;
-  let gizmoPointerId: number | null = null;
-  let gizmoDragAxis: 0 | 1 | 2 | null = null;
-  let gizmoAppliedSteps = 0;
-  let gizmoDragKind: 'move' | 'rotate' | null = null;
-  let gizmoRotatePrevAngle = 0;
-  let gizmoRotateAccum = 0;
-  const gizmoRotatePivotScratch = new THREE.Vector3();
-  const gizmoRotateE1 = new THREE.Vector3();
-  const gizmoRotateE2 = new THREE.Vector3();
-  const gizmoSavedMeshPos = new THREE.Vector3();
-  const gizmoSavedGroupPos = new THREE.Vector3();
-  let gizmoRotatePreviewActive = false;
-  const gizmoWorldStart = new THREE.Vector3();
-  const gizmoDragPlane = new THREE.Plane();
-  const gizmoCamDir = new THREE.Vector3();
-  const gizmoPlaneNormalScratch = new THREE.Vector3();
-  const gizmoHitScratch = new THREE.Vector3();
-  const gizmoDeltaScratch = new THREE.Vector3();
-  const gizmoOffsetScratch = new THREE.Vector3();
+  let selectionGizmo: ReturnType<typeof createSelectionGizmoController> | null = null;
 
   let gridGroup: THREE.Group | null = null;
   let gridLineMaterial: InstanceType<typeof LineMaterial> | null = null;
@@ -445,343 +425,6 @@
     const targets = getRaycastTargets();
     const intersects = raycaster.intersectObjects(targets, false);
     return intersects.length > 0 ? intersects[0] : null;
-  }
-
-  function gizmoOccludedTint(baseHex: number): THREE.Color {
-    const c = new THREE.Color(baseHex);
-    c.multiplyScalar(0.48);
-    c.lerp(new THREE.Color(0x5577ee), 0.42);
-    return c;
-  }
-
-  /** Visible pass: same idea as add-shape preview (depth-tested, not x-ray). */
-  function createGizmoVisibleMaterial(color: number, opacity: number): THREE.MeshBasicMaterial {
-    return new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity,
-      depthTest: true,
-      depthWrite: false
-    });
-  }
-
-  /** Occluded pass: `GreaterDepth` + tint, matching add-preview / selection overlay. */
-  function createGizmoOccludedMaterial(baseHex: number, opacity: number): THREE.MeshBasicMaterial {
-    return new THREE.MeshBasicMaterial({
-      color: gizmoOccludedTint(baseHex),
-      transparent: true,
-      opacity,
-      depthTest: true,
-      depthWrite: false,
-      depthFunc: THREE.GreaterDepth,
-      polygonOffset: true,
-      polygonOffsetFactor: 1,
-      polygonOffsetUnits: 1
-    });
-  }
-
-  function createMoveGizmo(): THREE.Group {
-    const group = new THREE.Group();
-    const colors = [0xff4466, 0x44ff66, 0x4466ff];
-    const shaftR = 0.14;
-    const shaftLen = 1.75;
-    const coneR = 0.24;
-    const coneH = 0.52;
-    const ordVis = 1001;
-    const ordOcc = 1000;
-
-    for (let axis = 0; axis < 3; axis++) {
-      const shaftGeo = new THREE.CylinderGeometry(shaftR, shaftR, shaftLen, 14);
-      const coneGeo = new THREE.ConeGeometry(coneR, coneH, 12);
-      const matVis = createGizmoVisibleMaterial(colors[axis], 0.96);
-      const matOcc = createGizmoOccludedMaterial(colors[axis], 0.4);
-      const shaft = new THREE.Mesh(shaftGeo, matVis);
-      const cone = new THREE.Mesh(coneGeo, matVis);
-      const shaftOcc = new THREE.Mesh(shaftGeo, matOcc);
-      const coneOcc = new THREE.Mesh(coneGeo, matOcc);
-      shaft.renderOrder = ordVis;
-      cone.renderOrder = ordVis;
-      shaftOcc.renderOrder = ordOcc;
-      coneOcc.renderOrder = ordOcc;
-      shaftOcc.raycast = () => {};
-      coneOcc.raycast = () => {};
-
-      const arm = new THREE.Group();
-      arm.userData.axis = axis as 0 | 1 | 2;
-      if (axis === 0) {
-        shaft.rotation.z = Math.PI / 2;
-        shaft.position.set(shaftLen / 2, 0, 0);
-        cone.rotation.z = -Math.PI / 2;
-        cone.position.set(shaftLen + coneH / 2, 0, 0);
-        shaftOcc.rotation.copy(shaft.rotation);
-        shaftOcc.position.copy(shaft.position);
-        coneOcc.rotation.copy(cone.rotation);
-        coneOcc.position.copy(cone.position);
-      } else if (axis === 1) {
-        shaft.position.set(0, shaftLen / 2, 0);
-        cone.position.set(0, shaftLen + coneH / 2, 0);
-        shaftOcc.rotation.copy(shaft.rotation);
-        shaftOcc.position.copy(shaft.position);
-        coneOcc.rotation.copy(cone.rotation);
-        coneOcc.position.copy(cone.position);
-      } else {
-        shaft.rotation.x = Math.PI / 2;
-        shaft.position.set(0, 0, shaftLen / 2);
-        cone.rotation.x = Math.PI / 2;
-        cone.position.set(0, 0, shaftLen + coneH / 2);
-        shaftOcc.rotation.copy(shaft.rotation);
-        shaftOcc.position.copy(shaft.position);
-        coneOcc.rotation.copy(cone.rotation);
-        coneOcc.position.copy(cone.position);
-      }
-      arm.add(shaftOcc, coneOcc, shaft, cone);
-      group.add(arm);
-    }
-    group.visible = false;
-    return group;
-  }
-
-  function createRotateGizmo(): THREE.Group {
-    const group = new THREE.Group();
-    const colors = [0xff4466, 0x44ff66, 0x4466ff];
-    const ordVis = 1001;
-    const ordOcc = 1000;
-    const major = 1.12;
-    const tube = 0.1;
-    for (let axis = 0; axis < 3; axis++) {
-      const geo = new THREE.TorusGeometry(major, tube, 12, 40);
-      const matVis = createGizmoVisibleMaterial(colors[axis], 0.9);
-      const matOcc = createGizmoOccludedMaterial(colors[axis], 0.4);
-      const mesh = new THREE.Mesh(geo, matVis);
-      const meshOcc = new THREE.Mesh(geo, matOcc);
-      mesh.renderOrder = ordVis;
-      meshOcc.renderOrder = ordOcc;
-      meshOcc.raycast = () => {};
-      const arm = new THREE.Group();
-      arm.userData.axis = axis as 0 | 1 | 2;
-      if (axis === 0) arm.rotation.y = Math.PI / 2;
-      else if (axis === 1) arm.rotation.x = Math.PI / 2;
-      arm.add(meshOcc, mesh);
-      group.add(arm);
-    }
-    group.visible = false;
-    return group;
-  }
-
-  function updateMoveGizmoTransform() {
-    if (!moveGizmoGroup || !rotateGizmoGroup || !camera) return;
-    const mode = get(selectionGizmoMode);
-    let gx = 0;
-    let gy = 0;
-    let gz = 0;
-    let show = false;
-
-    if ($addPanelStore.open && $tool !== 'fly') {
-      const s = $addPanelStore;
-      gx = s.posX;
-      gy = s.posY;
-      gz = s.posZ;
-      show = true;
-    } else if ($selection.size > 0 && $tool !== 'fly') {
-      const center = getSelectionCenter($selection);
-      if (!center) {
-        moveGizmoGroup.visible = false;
-        rotateGizmoGroup.visible = false;
-        return;
-      }
-      gizmoOffsetScratch.set(0, 0, 0);
-      if (
-        isGizmoDrag &&
-        gizmoDragKind === 'move' &&
-        gizmoDragAxis !== null &&
-        gizmoAppliedSteps !== 0
-      ) {
-        gizmoOffsetScratch.setComponent(gizmoDragAxis, gizmoAppliedSteps);
-      }
-      gx = center[0] + gizmoOffsetScratch.x;
-      gy = center[1] + gizmoOffsetScratch.y;
-      gz = center[2] + gizmoOffsetScratch.z;
-      show = true;
-    } else {
-      moveGizmoGroup.visible = false;
-      rotateGizmoGroup.visible = false;
-      return;
-    }
-
-    const dist = Math.hypot(camera.position.x - gx, camera.position.y - gy, camera.position.z - gz);
-    const sc = Math.max(0.44, Math.min(3.49, dist * 0.059));
-    moveGizmoGroup.position.set(gx, gy, gz);
-    rotateGizmoGroup.position.set(gx, gy, gz);
-    moveGizmoGroup.scale.setScalar(sc);
-    rotateGizmoGroup.scale.setScalar(sc);
-    moveGizmoGroup.visible = show && mode === 'move';
-    rotateGizmoGroup.visible = show && mode === 'rotate';
-  }
-
-  function updateGizmoPreviewOffset() {
-    voxelGroup?.position.set(0, 0, 0);
-    if (
-      gizmoRotatePreviewActive &&
-      gizmoDragKind === 'rotate' &&
-      selectionGroup &&
-      gizmoDragAxis !== null
-    ) {
-      selectionGroup.position.copy(gizmoRotatePivotScratch);
-      selectionGroup.setRotationFromAxisAngle(
-        axisVector(gizmoDragAxis),
-        gizmoAppliedSteps * (Math.PI / 2)
-      );
-      return;
-    }
-    gizmoOffsetScratch.set(0, 0, 0);
-    if (
-      isGizmoDrag &&
-      !isPlacementGizmoDrag &&
-      gizmoDragKind === 'move' &&
-      gizmoDragAxis !== null &&
-      gizmoAppliedSteps !== 0
-    ) {
-      gizmoOffsetScratch.setComponent(gizmoDragAxis, gizmoAppliedSteps);
-    }
-    selectionGroup?.position.copy(gizmoOffsetScratch);
-    selectionGroup?.rotation.set(0, 0, 0);
-  }
-
-  function pickMoveGizmoAxis(): 0 | 1 | 2 | null {
-    if (!moveGizmoGroup?.visible || $tool === 'fly' || !camera) return null;
-    if (!$addPanelStore.open && $selection.size === 0) return null;
-    raycaster.setFromCamera(pointer, camera);
-    const hits = raycaster.intersectObjects(moveGizmoGroup.children, true);
-    for (const h of hits) {
-      let o: THREE.Object3D | null = h.object;
-      while (o && o !== moveGizmoGroup) {
-        const ax = o.userData.axis;
-        if (typeof ax === 'number' && ax >= 0 && ax <= 2) return ax as 0 | 1 | 2;
-        o = o.parent;
-      }
-    }
-    return null;
-  }
-
-  function pickRotateGizmoAxis(): 0 | 1 | 2 | null {
-    if (!rotateGizmoGroup?.visible || $tool === 'fly' || !camera) return null;
-    if (!$addPanelStore.open && $selection.size === 0) return null;
-    raycaster.setFromCamera(pointer, camera);
-    const hits = raycaster.intersectObjects(rotateGizmoGroup.children, true);
-    for (const h of hits) {
-      let o: THREE.Object3D | null = h.object;
-      while (o && o !== rotateGizmoGroup) {
-        const ax = o.userData.axis;
-        if (typeof ax === 'number' && ax >= 0 && ax <= 2) return ax as 0 | 1 | 2;
-        o = o.parent;
-      }
-    }
-    return null;
-  }
-
-  function clearGizmoHoverCursor() {
-    if (container) container.style.cursor = '';
-  }
-
-  function syncGizmoHoverCursor() {
-    if (!container || $tool === 'fly') {
-      clearGizmoHoverCursor();
-      return;
-    }
-    if (isGizmoDrag) {
-      container.style.cursor = 'grabbing';
-      return;
-    }
-    if (!$addPanelStore.open && $selection.size === 0) {
-      clearGizmoHoverCursor();
-      return;
-    }
-    if (!camera || !moveGizmoGroup || !rotateGizmoGroup) {
-      clearGizmoHoverCursor();
-      return;
-    }
-    updateMoveGizmoTransform();
-    const mode = get(selectionGizmoMode);
-    const axis = mode === 'move' ? pickMoveGizmoAxis() : pickRotateGizmoAxis();
-    if (axis === null) {
-      clearGizmoHoverCursor();
-      return;
-    }
-    if (mode === 'rotate') {
-      container.style.cursor = 'grab';
-      return;
-    }
-    container.style.cursor = 'move';
-  }
-
-  function setGizmoRotatePlaneBasis(axis: 0 | 1 | 2, outU: THREE.Vector3, outV: THREE.Vector3) {
-    if (axis === 0) {
-      outU.set(0, 1, 0);
-      outV.set(0, 0, 1);
-    } else if (axis === 1) {
-      outU.set(1, 0, 0);
-      outV.set(0, 0, 1);
-    } else {
-      outU.set(1, 0, 0);
-      outV.set(0, 1, 0);
-    }
-  }
-
-  function gizmoRotateAngleFromPointOnPlane(
-    hit: THREE.Vector3,
-    pivot: THREE.Vector3,
-    axis: 0 | 1 | 2
-  ): number {
-    setGizmoRotatePlaneBasis(axis, gizmoRotateE1, gizmoRotateE2);
-    gizmoDeltaScratch.subVectors(hit, pivot);
-    const u = gizmoDeltaScratch.dot(gizmoRotateE1);
-    const v = gizmoDeltaScratch.dot(gizmoRotateE2);
-    return Math.atan2(v, u);
-  }
-
-  /** Plane normal for dragging along `axis`: contains the axis and is well-conditioned vs the view. */
-  function gizmoPlaneNormalForAxis(axis: 0 | 1 | 2): THREE.Vector3 {
-    const ax = axisVector(axis);
-    camera!.getWorldDirection(gizmoCamDir);
-    // Normal = view direction projected onto plane perpendicular to axis.
-    // This keeps the drag plane facing the camera while still containing the axis.
-    gizmoPlaneNormalScratch.copy(gizmoCamDir).addScaledVector(ax, -gizmoCamDir.dot(ax));
-    if (gizmoPlaneNormalScratch.lengthSq() < 1e-8) {
-      if (axis === 0) gizmoPlaneNormalScratch.set(0, 1, 0);
-      else if (axis === 1) gizmoPlaneNormalScratch.set(1, 0, 0);
-      else gizmoPlaneNormalScratch.set(0, 1, 0);
-    }
-    return gizmoPlaneNormalScratch.normalize();
-  }
-
-  function restoreGizmoRotateSelectionPreview() {
-    if (!gizmoRotatePreviewActive || !selectionGroup) return;
-    const mesh = selectionGroup.children[0];
-    if (mesh) {
-      mesh.position.copy(gizmoSavedMeshPos);
-      mesh.rotation.set(0, 0, 0);
-    }
-    selectionGroup.position.copy(gizmoSavedGroupPos);
-    selectionGroup.rotation.set(0, 0, 0);
-    gizmoRotatePreviewActive = false;
-  }
-
-  function endGizmoDrag() {
-    if (gizmoPointerId !== null && container) {
-      try {
-        container.releasePointerCapture(gizmoPointerId);
-      } catch (_) {}
-    }
-    restoreGizmoRotateSelectionPreview();
-    isGizmoDrag = false;
-    isPlacementGizmoDrag = false;
-    placementGizmoBasePos = null;
-    placementGizmoBaseRot = null;
-    gizmoPointerId = null;
-    gizmoDragAxis = null;
-    gizmoAppliedSteps = 0;
-    gizmoDragKind = null;
-    gizmoRotateAccum = 0;
   }
 
   function snapToGrid(point: THREE.Vector3): [number, number, number] {
@@ -1579,17 +1222,7 @@
   }
 
   function cancelDrag() {
-    if (isGizmoDrag) {
-      if (isPlacementGizmoDrag && placementGizmoBasePos) {
-        const [bx, by, bz] = placementGizmoBasePos;
-        addPanelStore.update((s) => ({ ...s, posX: bx, posY: by, posZ: bz }));
-      }
-      if (isPlacementGizmoDrag && placementGizmoBaseRot) {
-        const [rx, ry, rz] = placementGizmoBaseRot;
-        addPanelStore.update((s) => ({ ...s, rotX: rx, rotY: ry, rotZ: rz }));
-      }
-      endGizmoDrag();
-    }
+    selectionGizmo?.cancelWithPlacementRestore();
     deltaDisplay = null;
     if (polygonPhase) {
       cancelPolygon();
@@ -1705,7 +1338,7 @@
         render();
         return;
       }
-      if (isVoxelDrag || isGizmoDrag || cuboidPhase || polygonPhase || ropePhase) {
+      if (isVoxelDrag || selectionGizmo?.isGizmoDrag || cuboidPhase || polygonPhase || ropePhase) {
         event.preventDefault();
         cancelDrag();
         render();
@@ -1732,70 +1365,7 @@
 
     // Rope tension phase: pointer down on slider track starts drag (handled in template)
 
-    // Move / rotate gizmo: selection or Add-shape placement (raycast before voxels)
-    if (($addPanelStore.open || $selection.size > 0) && $tool !== 'fly') {
-      updateMoveGizmoTransform();
-      const mode = get(selectionGizmoMode);
-      const gAxis = mode === 'move' ? pickMoveGizmoAxis() : pickRotateGizmoAxis();
-      if (gAxis !== null) {
-        event.preventDefault();
-        event.stopPropagation();
-        container.setPointerCapture(event.pointerId);
-        gizmoPointerId = event.pointerId;
-        isGizmoDrag = true;
-        isPlacementGizmoDrag = $addPanelStore.open;
-        gizmoDragAxis = gAxis;
-        gizmoAppliedSteps = 0;
-        gizmoDragKind = mode;
-        gizmoRotateAccum = 0;
-        const ap = $addPanelStore;
-        const center: [number, number, number] | null = isPlacementGizmoDrag
-          ? [ap.posX, ap.posY, ap.posZ]
-          : getSelectionCenter($selection);
-        if (isPlacementGizmoDrag) {
-          placementGizmoBasePos = [ap.posX, ap.posY, ap.posZ];
-          placementGizmoBaseRot = [
-            Math.max(0, Math.min(3, Math.floor(ap.rotX))) & 3,
-            Math.max(0, Math.min(3, Math.floor(ap.rotY))) & 3,
-            Math.max(0, Math.min(3, Math.floor(ap.rotZ))) & 3
-          ];
-        } else {
-          placementGizmoBasePos = null;
-          placementGizmoBaseRot = null;
-        }
-        if (center && camera) {
-          const planePoint = pointerHelper.set(center[0], center[1], center[2]);
-          const pn =
-            mode === 'move' ? gizmoPlaneNormalForAxis(gAxis) : axisVector(gAxis);
-          gizmoDragPlane.setFromNormalAndCoplanarPoint(pn, planePoint);
-          raycaster.setFromCamera(pointer, camera);
-          if (!raycaster.ray.intersectPlane(gizmoDragPlane, gizmoWorldStart)) {
-            gizmoWorldStart.copy(planePoint);
-          }
-          if (mode === 'rotate') {
-            gizmoRotatePivotScratch.set(center[0], center[1], center[2]);
-            gizmoRotatePrevAngle = gizmoRotateAngleFromPointOnPlane(
-              gizmoWorldStart,
-              gizmoRotatePivotScratch,
-              gAxis
-            );
-            if (!isPlacementGizmoDrag && selectionGroup) {
-              const mesh = selectionGroup.children[0];
-              if (mesh) {
-                gizmoSavedMeshPos.copy(mesh.position);
-                gizmoSavedGroupPos.copy(selectionGroup.position);
-                mesh.position.set(-center[0], -center[1], -center[2]);
-                selectionGroup.position.set(center[0], center[1], center[2]);
-                selectionGroup.rotation.set(0, 0, 0);
-                gizmoRotatePreviewActive = true;
-              }
-            }
-          }
-        }
-        requestAnimationFrame(() => render());
-        return;
-      }
-    }
+    if (selectionGizmo?.tryPointerDown(event)) return;
 
     // Do not stopPropagation here — container uses capture:true; blocking would prevent
     // OrbitControls on the canvas (left-drag orbit, etc.) from receiving the event.
@@ -2325,60 +1895,11 @@
 
   function handlePointerMove(event?: PointerEvent) {
     if (dispatchPointerMove(pointerHandlerContext, event)) {
-      clearGizmoHoverCursor();
+      selectionGizmo?.clearGizmoHoverCursor();
       return;
     }
     try {
-    if (isGizmoDrag && gizmoDragAxis !== null && camera) {
-      if (event) updatePointerFromEvent(event);
-      raycaster.setFromCamera(pointer, camera);
-      if (raycaster.ray.intersectPlane(gizmoDragPlane, gizmoHitScratch)) {
-        if (gizmoDragKind === 'rotate') {
-          const ang = gizmoRotateAngleFromPointOnPlane(
-            gizmoHitScratch,
-            gizmoRotatePivotScratch,
-            gizmoDragAxis
-          );
-          let delta = ang - gizmoRotatePrevAngle;
-          if (delta > Math.PI) delta -= Math.PI * 2;
-          if (delta < -Math.PI) delta += Math.PI * 2;
-          gizmoRotateAccum += delta;
-          gizmoRotatePrevAngle = ang;
-          gizmoAppliedSteps = Math.round(gizmoRotateAccum / (Math.PI / 2));
-          if (isPlacementGizmoDrag && placementGizmoBaseRot) {
-            const [brx, bry, brz] = placementGizmoBaseRot;
-            const ax = gizmoDragAxis;
-            const sx = ax === 0 ? gizmoAppliedSteps : 0;
-            const sy = ax === 1 ? gizmoAppliedSteps : 0;
-            const sz = ax === 2 ? gizmoAppliedSteps : 0;
-            addPanelStore.update((s) => ({
-              ...s,
-              rotX: ((((brx + sx) % 4) + 4) % 4) & 3,
-              rotY: ((((bry + sy) % 4) + 4) % 4) & 3,
-              rotZ: ((((brz + sz) % 4) + 4) % 4) & 3
-            }));
-          }
-        } else {
-          const along = gizmoDeltaScratch
-            .copy(gizmoHitScratch)
-            .sub(gizmoWorldStart)
-            .dot(axisVector(gizmoDragAxis));
-          const desired = Math.round(along);
-          gizmoAppliedSteps = desired;
-          if (isPlacementGizmoDrag && placementGizmoBasePos && gizmoDragAxis !== null) {
-            const [bx, by, bz] = placementGizmoBasePos;
-            addPanelStore.update((s) => ({
-              ...s,
-              posX: bx + (gizmoDragAxis === 0 ? desired : 0),
-              posY: by + (gizmoDragAxis === 1 ? desired : 0),
-              posZ: bz + (gizmoDragAxis === 2 ? desired : 0)
-            }));
-          }
-        }
-      }
-      render();
-      return;
-    }
+    if (selectionGizmo?.handlePointerMove(event)) return;
     // Add shape panel: only add-preview ghost; hide active-tool rollover + meshManager preview
     if ($addPanelStore.open) {
       if (event) updatePointerFromEvent(event);
@@ -2891,7 +2412,7 @@
     }
     render();
     } finally {
-      syncGizmoHoverCursor();
+      selectionGizmo?.syncGizmoHoverCursor();
     }
   }
 
@@ -2915,6 +2436,10 @@
     };
   }
 
+  function onContainerPointerLeave() {
+    selectionGizmo?.clearGizmoHoverCursor();
+  }
+
   function onPointerMove(event: PointerEvent) {
     updatePointerFromEvent(event);
     handlePointerMove(event);
@@ -2936,21 +2461,16 @@
       } catch (_) {}
       depthAdjustPointerId = null;
     }
-    if (event.button === 2 && (isVoxelDrag || isGizmoDrag || cuboidPhase)) {
+    if (event.button === 2 && (isVoxelDrag || selectionGizmo?.isGizmoDrag || cuboidPhase)) {
       cancelDrag();
     }
-    if (event.button === 0 && isGizmoDrag && gizmoPointerId === event.pointerId) {
-      const wasPlacement = isPlacementGizmoDrag;
-      const axis = gizmoDragAxis;
-      const steps = gizmoAppliedSteps;
-      const kind = gizmoDragKind;
-      endGizmoDrag();
-      if (!wasPlacement && axis !== null && steps !== 0) {
+    const gizmoCommit = selectionGizmo?.tryPrimaryPointerUp(event);
+    if (gizmoCommit) {
+      if (!gizmoCommit.wasPlacement && gizmoCommit.axis !== null && gizmoCommit.steps !== 0) {
         beginStroke();
-        if (kind === 'rotate') applySelectionRotationInStroke(axis, steps);
-        else if (axis === 0) applySelectionTranslationInStroke(steps, 0, 0);
-        else if (axis === 1) applySelectionTranslationInStroke(0, steps, 0);
-        else applySelectionTranslationInStroke(0, 0, steps);
+        if (gizmoCommit.kind === 'rotate')
+          applySelectionRotationInStroke(gizmoCommit.axis, gizmoCommit.steps);
+        else applySelectionTranslationAlongAxis(gizmoCommit.axis, gizmoCommit.steps);
       }
       render();
     }
@@ -3133,14 +2653,14 @@
     if (depthAdjustPointerId === event.pointerId) {
       depthAdjustPointerId = null;
     }
-    if (isVoxelDrag || isGizmoDrag) {
+    if (isVoxelDrag || selectionGizmo?.isGizmoDrag) {
       cancelDrag();
     }
     handlePointerMove();
   }
 
   function onContextMenu(event: Event) {
-    if (isVoxelDrag || isGizmoDrag || $tool === 'fly') event.preventDefault();
+    if (isVoxelDrag || selectionGizmo?.isGizmoDrag || $tool === 'fly') event.preventDefault();
   }
 
   function onEscapeKeyDown(e: KeyboardEvent) {
@@ -3304,8 +2824,8 @@
 
   function render() {
     if (renderer && scene && camera) {
-      updateGizmoPreviewOffset();
-      updateMoveGizmoTransform();
+      selectionGizmo?.updateGizmoPreviewOffset();
+      selectionGizmo?.updateMoveGizmoTransform();
       scene.updateMatrixWorld(true);
       renderer.render(scene, camera);
     }
@@ -3373,13 +2893,13 @@
     const sel = $selection;
     rebuildSelectionOverlay(sel);
     render();
-    syncGizmoHoverCursor();
+    selectionGizmo?.syncGizmoHoverCursor();
   });
 
   $effect(() => {
     $selectionGizmoMode;
     render();
-    syncGizmoHoverCursor();
+    selectionGizmo?.syncGizmoHoverCursor();
   });
 
   $effect(() => {
@@ -3512,8 +3032,21 @@
     meshManager.buildGrid(sz, $voxels);
     gridGroup.visible = $showGrid;
 
-    moveGizmoGroup = createMoveGizmo();
-    rotateGizmoGroup = createRotateGizmo();
+    selectionGizmo = createSelectionGizmoController({
+      getTool: () => get(tool),
+      getSelection: () => get(selection),
+      getPointer: () => pointer,
+      getCamera: () => camera ?? null,
+      getRaycaster: () => raycaster,
+      getMoveGroup: () => moveGizmoGroup,
+      getRotateGroup: () => rotateGizmoGroup,
+      getSelectionGroup: () => selectionGroup,
+      getVoxelGroup: () => voxelGroup,
+      getContainer: () => container,
+      render
+    });
+    moveGizmoGroup = selectionGizmo.createMoveGizmo();
+    rotateGizmoGroup = selectionGizmo.createRotateGizmo();
     scene.add(moveGizmoGroup, rotateGizmoGroup);
 
     window.addEventListener('keydown', handleFlyKeyDown, true);
@@ -3524,7 +3057,7 @@
     updateZoomPercent();
 
     container.addEventListener('pointermove', onPointerMove);
-    container.addEventListener('pointerleave', clearGizmoHoverCursor);
+    container.addEventListener('pointerleave', onContainerPointerLeave);
     container.addEventListener('pointerdown', onPointerDown, true);
     container.addEventListener('pointerup', onFlyPointerCapture, true);
     container.addEventListener('pointerup', onPointerUp);
@@ -3627,7 +3160,7 @@
     document.removeEventListener('mousemove', onFlyPointerMove);
     document.removeEventListener('pointerlockchange', onPointerLockChange);
     if (isFly) {
-      clearGizmoHoverCursor();
+      selectionGizmo?.clearGizmoHoverCursor();
       showFlyHint = true;
       if (flyHintHideTimeout != null) clearTimeout(flyHintHideTimeout);
       flyHintHideTimeout = setTimeout(() => {
@@ -3640,7 +3173,7 @@
       if (flyHintHideTimeout != null) clearTimeout(flyHintHideTimeout);
       flyHintHideTimeout = null;
     }
-    if (isFly && (cuboidPhase || polygonPhase || isGizmoDrag)) {
+    if (isFly && (cuboidPhase || polygonPhase || selectionGizmo?.isGizmoDrag)) {
       flyControls.unlock();
       cancelDrag();
     }
@@ -3702,11 +3235,7 @@
     }
     let positions = getShapePositionsAt({
       position: [s.posX, s.posY, s.posZ],
-      rotation: [
-        Math.max(0, Math.min(3, Math.floor(s.rotX))) & 3,
-        Math.max(0, Math.min(3, Math.floor(s.rotY))) & 3,
-        Math.max(0, Math.min(3, Math.floor(s.rotZ))) & 3
-      ],
+      rotation: [clampQuarterTurn(s.rotX), clampQuarterTurn(s.rotY), clampQuarterTurn(s.rotZ)],
       shape: s.shape,
       size: Math.max(1, Math.min(1024, Math.floor(s.size)))
     });
@@ -3718,23 +3247,8 @@
     const sel = $selectedColors;
     const col = hexToInt(sel.length > 0 ? sel[0] : $color);
     const geo = buildPreviewGeometry(positions, col, $voxels);
-    const occRgb = new THREE.Color(col);
-    occRgb.multiplyScalar(0.48);
-    occRgb.lerp(new THREE.Color(0x5577ee), 0.42);
-    addPreviewOccludedMaterial.color.copy(occRgb);
-    if (geo) {
-      const prevShared = addPreviewMesh.geometry;
-      if (prevShared && prevShared !== geo) {
-        prevShared.dispose();
-      }
-      addPreviewMesh.geometry = geo;
-      addPreviewOccludedMesh.geometry = geo;
-      addPreviewMesh.visible = true;
-      addPreviewOccludedMesh.visible = true;
-    } else {
-      addPreviewMesh.visible = false;
-      addPreviewOccludedMesh.visible = false;
-    }
+    applyAddShapeOccludedPreviewTint(col, addPreviewOccludedMaterial);
+    assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo);
     render();
   });
 
@@ -3743,7 +3257,7 @@
     saveToStorage();
     cancelAnimationFrame(animationFrameId);
     container?.removeEventListener('pointermove', onPointerMove);
-    container?.removeEventListener('pointerleave', clearGizmoHoverCursor);
+    container?.removeEventListener('pointerleave', onContainerPointerLeave);
     container?.removeEventListener('pointerdown', onPointerDown, true);
     container?.removeEventListener('pointerup', onFlyPointerCapture, true);
     container?.removeEventListener('pointerup', onPointerUp);

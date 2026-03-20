@@ -22,6 +22,7 @@ import {
   selectedColors,
   beginStroke,
   applySelectionTranslationInStroke,
+  applySelectionTranslationAlongAxis,
   applySelectionRotationInStroke
 } from './core';
 
@@ -329,6 +330,22 @@ describe('core', () => {
       applySelectionTranslationInStroke(0, 0, 0);
       expect(get(voxels).get(coordKey(0, 0, 0))).toBe(0xff0000);
       expect(get(selection).has(coordKey(0, 0, 0))).toBe(true);
+    });
+  });
+
+  describe('applySelectionTranslationAlongAxis', () => {
+    it('delegates to applySelectionTranslationInStroke per axis', () => {
+      voxels.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      beginStroke();
+      applySelectionTranslationAlongAxis(0, 2);
+      expect(get(voxels).get(coordKey(2, 0, 0))).toBe(0xff0000);
+      beginStroke();
+      applySelectionTranslationAlongAxis(1, -1);
+      expect(get(voxels).get(coordKey(2, -1, 0))).toBe(0xff0000);
+      beginStroke();
+      applySelectionTranslationAlongAxis(2, 1);
+      expect(get(voxels).get(coordKey(2, -1, 1))).toBe(0xff0000);
     });
   });
 

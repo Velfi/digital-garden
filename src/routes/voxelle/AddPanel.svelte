@@ -2,6 +2,7 @@
   import {
     addPanelStore,
     addShapeAt,
+    clampQuarterTurn,
     getPaintColorResolver,
     sidebarOpen,
     MAX_GRID_SIZE,
@@ -13,9 +14,9 @@
   function handleDone() {
     const s = $addPanelStore;
     const size = Math.max(1, Math.min(ADD_SHAPE_MAX_SIZE, Math.floor(s.size)));
-    const rx = Math.max(0, Math.min(3, Math.floor(s.rotX))) & 3;
-    const ry = Math.max(0, Math.min(3, Math.floor(s.rotY))) & 3;
-    const rz = Math.max(0, Math.min(3, Math.floor(s.rotZ))) & 3;
+    const rx = clampQuarterTurn(s.rotX);
+    const ry = clampQuarterTurn(s.rotY);
+    const rz = clampQuarterTurn(s.rotZ);
     addShapeAt({
       position: [s.posX, s.posY, s.posZ],
       rotation: [rx, ry, rz],

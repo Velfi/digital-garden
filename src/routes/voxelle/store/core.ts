@@ -15,7 +15,8 @@ import {
   type AddShapeParams,
   getShapePositionsAt,
   rotatePositionAroundOrigin,
-  rotateVectorByAxisQuarters
+  rotateVectorByAxisQuarters,
+  clampQuarterTurn
 } from './shapes';
 import {
   cloneVoxels as cloneVoxelsImpl,
@@ -281,7 +282,13 @@ export const canUndoStore = undo.canUndoStore;
 export const canRedoStore = undo.canRedoStore;
 
 // Re-exports
-export { initShape, getShapePositionsAt, rotatePositionAroundOrigin, rotateVectorByAxisQuarters };
+export {
+  initShape,
+  getShapePositionsAt,
+  rotatePositionAroundOrigin,
+  rotateVectorByAxisQuarters,
+  clampQuarterTurn
+};
 export type { StartShape, AddShapeParams };
 
 export function ensureGridFitsPositions(positions: Iterable<[number, number, number]>): void {
@@ -560,6 +567,13 @@ export function applySelectionTranslationInStroke(dx: number, dy: number, dz: nu
     newSel.set(coordKey(x + nx, y + ny, z + nz), col);
   }
   selection.set(newSel);
+}
+
+/** Same as `applySelectionTranslationInStroke` but along one world axis by `steps` voxels. */
+export function applySelectionTranslationAlongAxis(axis: 0 | 1 | 2, steps: number): void {
+  if (axis === 0) applySelectionTranslationInStroke(steps, 0, 0);
+  else if (axis === 1) applySelectionTranslationInStroke(0, steps, 0);
+  else applySelectionTranslationInStroke(0, 0, steps);
 }
 
 /**

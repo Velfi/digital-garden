@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { tool, selection, stampRotation, type StampRotation } from '../store/index';
-
-  function clampRot(n: number) {
-    return Math.max(0, Math.min(3, Math.floor(n))) & 3;
-  }
+  import {
+    tool,
+    selection,
+    stampRotation,
+    clampQuarterTurn,
+    type StampRotation
+  } from '../store/index';
   function updateStamp<K extends keyof StampRotation>(k: K, v: StampRotation[K]) {
     stampRotation.update((s: StampRotation) => ({ ...s, [k]: v }));
   }
@@ -20,7 +22,7 @@
         step="1"
         value={$stampRotation.rotX}
         oninput={(e) =>
-          updateStamp('rotX', clampRot(Number((e.target as HTMLInputElement).value)))}
+          updateStamp('rotX', clampQuarterTurn(Number((e.target as HTMLInputElement).value)))}
         title="X (0–3 = 0°–270°)"
       />
       <input
@@ -30,7 +32,7 @@
         step="1"
         value={$stampRotation.rotY}
         oninput={(e) =>
-          updateStamp('rotY', clampRot(Number((e.target as HTMLInputElement).value)))}
+          updateStamp('rotY', clampQuarterTurn(Number((e.target as HTMLInputElement).value)))}
         title="Y"
       />
       <input
@@ -40,7 +42,7 @@
         step="1"
         value={$stampRotation.rotZ}
         oninput={(e) =>
-          updateStamp('rotZ', clampRot(Number((e.target as HTMLInputElement).value)))}
+          updateStamp('rotZ', clampQuarterTurn(Number((e.target as HTMLInputElement).value)))}
         title="Z"
       />
     </div>
@@ -48,7 +50,7 @@
       <button
         type="button"
         class="cross-up"
-        onclick={() => updateStamp('rotX', clampRot($stampRotation.rotX - 1))}
+        onclick={() => updateStamp('rotX', clampQuarterTurn($stampRotation.rotX - 1))}
         title="Tilt up"
       >
         Up
@@ -56,7 +58,7 @@
       <button
         type="button"
         class="cross-down"
-        onclick={() => updateStamp('rotX', clampRot($stampRotation.rotX + 1))}
+        onclick={() => updateStamp('rotX', clampQuarterTurn($stampRotation.rotX + 1))}
         title="Tilt down"
       >
         Down
@@ -64,7 +66,7 @@
       <button
         type="button"
         class="cross-left"
-        onclick={() => updateStamp('rotY', clampRot($stampRotation.rotY - 1))}
+        onclick={() => updateStamp('rotY', clampQuarterTurn($stampRotation.rotY - 1))}
         title="Turn left"
       >
         Left
@@ -72,7 +74,7 @@
       <button
         type="button"
         class="cross-right"
-        onclick={() => updateStamp('rotY', clampRot($stampRotation.rotY + 1))}
+        onclick={() => updateStamp('rotY', clampQuarterTurn($stampRotation.rotY + 1))}
         title="Turn right"
       >
         Right
@@ -83,14 +85,14 @@
       <span class="tool-panel-label">Roll</span>
       <button
         type="button"
-        onclick={() => updateStamp('rotZ', clampRot($stampRotation.rotZ - 1))}
+        onclick={() => updateStamp('rotZ', clampQuarterTurn($stampRotation.rotZ - 1))}
         title="Roll left"
       >
         ←
       </button>
       <button
         type="button"
-        onclick={() => updateStamp('rotZ', clampRot($stampRotation.rotZ + 1))}
+        onclick={() => updateStamp('rotZ', clampQuarterTurn($stampRotation.rotZ + 1))}
         title="Roll right"
       >
         →

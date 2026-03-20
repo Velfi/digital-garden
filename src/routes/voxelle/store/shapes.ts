@@ -78,6 +78,11 @@ function rotateZ([x, y, z]: [number, number, number], quarters: number): [number
   return out;
 }
 
+/** Clamp UI / store rotation to quarter-turns 0–3 (90° steps). */
+export function clampQuarterTurn(n: number): 0 | 1 | 2 | 3 {
+  return (Math.max(0, Math.min(3, Math.floor(n))) & 3) as 0 | 1 | 2 | 3;
+}
+
 /** 90° steps about +X, +Y, or +Z through the origin. `quarters` may be negative. */
 export function rotateVectorByAxisQuarters(
   v: [number, number, number],
