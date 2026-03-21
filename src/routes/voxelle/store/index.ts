@@ -29,7 +29,9 @@ export {
   selectionMode,
   fillSelectDiagonals,
   fillRespectsColor,
-  fillConstrainToPlane,
+  constrainToPlaneEnabled,
+  constrainToPlaneRef,
+  polygonOffsetFromNormal,
   strokeMode,
   effectiveStrokeMode,
   lineAxisAlign,
@@ -51,12 +53,12 @@ export {
   airbrushRadiusRange,
   airbrushRadiusMin,
   airbrushRadiusMax,
-  airbrushPlaneConstraint,
   sprayDirection,
   sprayStreakLength,
   wallWidth,
   wallHeight,
   wallLockStartHeight,
+  wallAxisAlign,
   drawBrushShape,
   drawBrushSize,
   drawBrushSnapToSurface,
@@ -82,6 +84,17 @@ export {
   grassRadius,
   grassDensity,
   grassHeight,
+  roofStyle,
+  roofHeight,
+  roofThickness,
+  roofShedEdgeIndex,
+  roofGableOrientation,
+  roofBreakRatio,
+  roofWallHeight,
+  roofParapetHeight,
+  roofSaltSkew,
+  roofWindingFlipTick,
+  type RoofStyleId,
   showGrid,
   renderingMode,
   lightAngle,
@@ -99,7 +112,10 @@ export {
   symmetryX,
   symmetryY,
   symmetryZ,
-  pushUndo,
+  commitUndoAfter,
+  runVoxelStroke,
+  beginStroke,
+  endStrokeUndo,
   getUndoSnapshot,
   restoreUndoSnapshot,
   history,
@@ -119,7 +135,6 @@ export {
   initCanvas,
   resetCanvas,
   updateVoxels,
-  beginStroke,
   updateVoxelsInStroke,
   applySelectionTranslationInStroke,
   applySelectionTranslationAlongAxis,
@@ -155,14 +170,19 @@ export type {
   RockSinkDirection,
   StartShape,
   AddShapeParams,
-  SelectionGizmoMode
+  SelectionGizmoMode,
+  ConstrainToPlaneRef
 } from './core';
 
 // canUndo, canRedo as aliases
 export { canUndoStore as canUndo, canRedoStore as canRedo } from './core';
 
 // Selection
-export type { FillSelectionResult, FillEmptyResult } from './selection';
+export type {
+  FillSelectionResult,
+  FillEmptyResult,
+  FillPlaneSampleContext
+} from './selection';
 
 export {
   SELECTION_BOUNDS_MARGIN,
@@ -170,6 +190,7 @@ export {
   getFillSelectionAt,
   getFillEmptyAt,
   getCoplanarFacesSelectionAt,
+  getCoplanarEmptySelectionAt,
   mergeSelection,
   selectAll,
   deselectAll,
@@ -243,3 +264,5 @@ export type { LightPresetId, LightPreset } from './lightPresets';
 // Generators
 export { generateRockVoxels, getRockPositions, generateAshlarVoxels, getAshlarPositions } from './generators/rock';
 export { generateGrassVoxels, getGrassPositions } from './generators/grass';
+export { generateRoofVoxels } from './generators/roof';
+export type { GenerateRoofOptions } from './generators/roof';

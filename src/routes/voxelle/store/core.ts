@@ -22,7 +22,9 @@ import {
 import {
   cloneVoxels as cloneVoxelsImpl,
   serializeVoxels,
-  deserializeVoxels
+  deserializeVoxels,
+  computeUndoDelta,
+  isUndoDeltaEmpty
 } from './serialization';
 import { createUndo } from './undo';
 import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
@@ -36,14 +38,17 @@ export type Tool =
   | 'select'
   | 'selectByColor'
   | 'selectCoplanar'
+  | 'selectCoplanarEmpty'
   | 'stamp'
+  | 'punch'
   | 'hand'
   | 'fly'
   | 'eyedropper'
   | 'clay'
   | 'rocks'
   | 'grass'
-  | 'ashlar';
+  | 'ashlar'
+  | 'roof';
 
 export type ClayMode =
   | 'bulk'
@@ -68,7 +73,14 @@ export const MAX_GRID_SIZE = 65536;
 /** Max brush/stamp size in voxels (index 0..MAX_BRUSH_SIZE-1 => 1..MAX_BRUSH_SIZE). */
 export const MAX_BRUSH_SIZE = 25;
 
-export type StrokeMode = 'line' | 'plane' | 'cuboid' | 'polygon' | 'fill' | 'airbrush';
+export type StrokeMode =
+  | 'line'
+  | 'plane'
+  | 'circle'
+  | 'cuboid'
+  | 'polygon'
+  | 'fill'
+  | 'airbrush';
 
 /** Tools that use stroke mode (selection method). Clay/stamp/fly/eyedropper use their own flows. */
 export const STROKE_TOOLS: readonly Tool[] = [
@@ -77,7 +89,8 @@ export const STROKE_TOOLS: readonly Tool[] = [
   'paint',
   'select',
   'selectByColor',
-  'selectCoplanar'
+  'selectCoplanar',
+  'selectCoplanarEmpty'
 ];
 const DRAW_TOOLS_USING_STROKE_MODE = STROKE_TOOLS;
 
@@ -132,8 +145,19 @@ export const selection = writable<Map<string, Voxel>>(new Map());
 export const selectionMode = writable<SelectionMode>('replace');
 export const fillSelectDiagonals = writable<boolean>(false);
 export const fillRespectsColor = writable<boolean>(true);
-/** When true, fill only expands within the plane through the seed (same coordinate on planeAxis). */
-export const fillConstrainToPlane = writable<boolean>(false);
+/** When true, fill and airbrush respect `constrainToPlaneRef`. */
+export const constrainToPlaneEnabled = writable<boolean>(false);
+/**
+ * Plane used for fill flood and airbrush path when `constrainToPlaneEnabled` is on.
+ * Auto = dominant axis of clicked face; camera = view plane; X/Y/Z = world axis through seed.
+ */
+export type ConstrainToPlaneRef = 'auto' | 'camera' | 0 | 1 | 2;
+export const constrainToPlaneRef = writable<ConstrainToPlaneRef>('auto');
+/**
+ * Polygon stroke: integer steps along the face normal from the click that added the latest point.
+ * 0 = fill in the plane of anchor voxels; positive = outward along that normal (previous voxel default).
+ */
+export const polygonOffsetFromNormal = writable<number>(1);
 export const strokeMode = writable<StrokeMode>('airbrush');
 /** Stroke mode only when current tool uses it (draw tools). Null for clay/stamp/fly/eyedropper so selection method never applies. */
 export const effectiveStrokeMode = derived([tool, strokeMode], ([t, sm]) =>
@@ -174,9 +198,6 @@ export const airbrushScatter = writable<number>(0);
 export const airbrushRadiusRange = writable<boolean>(false);
 export const airbrushRadiusMin = writable<number>(0);
 export const airbrushRadiusMax = writable<number>(4);
-/** Airbrush plane constraint: none, camera plane (view plane), or clicked face normal plane. */
-export type AirbrushPlaneConstraint = 'none' | 'camera' | 'face';
-export const airbrushPlaneConstraint = writable<AirbrushPlaneConstraint>('none');
 /** Wall (and legacy): direction to extend voxels. Auto = use face normal (wall only). */
 export type SprayDirection =
   | 'none'
@@ -196,6 +217,8 @@ export const wallWidth = writable<number>(0);
 export const wallHeight = writable<number>(2);
 /** Wall: keep path on starting plane (for enclosed loops). */
 export const wallLockStartHeight = writable<boolean>(false);
+/** Wall: when true, base path is axis-aligned from stroke start (like draw line); when false, freeform Bresenham polyline. */
+export const wallAxisAlign = writable<boolean>(false);
 /** Draw tool brush shape (sphere, cube, pyramid). */
 export const drawBrushShape = writable<DrawBrushShape>('sphere');
 /** Draw brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
@@ -269,6 +292,42 @@ export const grassRadius = writable<number>(4);
 export const grassDensity = writable<number>(0.6);
 /** Grass generator: max blade height in voxels (1–6). */
 export const grassHeight = writable<number>(3);
+
+/** Roof generator: profile style. */
+export type RoofStyleId =
+  | 'flat'
+  | 'flat_parapet'
+  | 'pyramid'
+  | 'cone'
+  | 'shed'
+  | 'saltbox'
+  | 'gable'
+  | 'hip'
+  | 'barrel'
+  | 'mansard'
+  | 'gambrel'
+  | 'pavilion'
+  | 'dutch_gable';
+export const roofStyle = writable<RoofStyleId>('pyramid');
+/** Roof generator: rise in voxels (pyramid, shed, gable). */
+export const roofHeight = writable<number>(4);
+/** Roof generator: slab depth for flat style (voxels). */
+export const roofThickness = writable<number>(2);
+/** Roof generator: low eave along vertex edge index → (i+1) for shed. */
+export const roofShedEdgeIndex = writable<number>(0);
+/** Gable: 0 = auto ridge (longer bbox axis), 1 = ridge along U, 2 = along V (plane UV). */
+export const roofGableOrientation = writable<number>(0);
+/** Mansard / gambrel: normalized break between lower and upper slope (0.2–0.8). */
+export const roofBreakRatio = writable<number>(0.5);
+/** Dutch gable: vertical wall layers before roof pitch (1–16). */
+export const roofWallHeight = writable<number>(3);
+/** Flat + parapet: extra layers on the footprint boundary ring (1–8). */
+export const roofParapetHeight = writable<number>(2);
+/** Saltbox: skew along shed ramp (-50…50, scaled in generator). */
+export const roofSaltSkew = writable<number>(0);
+/** Incremented from UI to reverse roof corner order (polygon winding). */
+export const roofWindingFlipTick = writable<number>(0);
+
 export const showGrid = writable<boolean>(false);
 const renderingModeInner = writable<RenderingMode>('greedy');
 export const renderingMode = {
@@ -302,8 +361,60 @@ export const symmetryZ = writable<boolean>(false);
 
 // Undo system
 const undo = createUndo(voxels, selection);
-export const pushUndo = undo.pushUndo;
-export const resetUndo = undo.reset;
+const pushUndoDelta = undo.pushUndoDelta;
+
+/** Baseline for one logical stroke (`beginStroke` … `endStrokeUndo`). */
+let strokeUndoBaseline: { v: Map<string, Voxel>; s: Map<string, Voxel> } | null = null;
+
+export function resetUndo() {
+  strokeUndoBaseline = null;
+  undo.reset();
+}
+
+export function commitUndoAfter(fn: () => void): void {
+  undo.clearRedo();
+  const oldV = get(voxels);
+  const oldS = get(selection);
+  fn();
+  const delta = computeUndoDelta(oldV, oldS, get(voxels), get(selection));
+  if (!isUndoDeltaEmpty(delta)) {
+    pushUndoDelta(delta);
+  }
+}
+
+/** Start a stroke: remember voxels+selection for a single undo step when `endStrokeUndo` runs. */
+export function beginStroke() {
+  undo.clearRedo();
+  strokeUndoBaseline = {
+    v: cloneVoxelsImpl(get(voxels)),
+    s: cloneVoxelsImpl(get(selection))
+  };
+}
+
+/** Finish a stroke begun with `beginStroke` and record one delta on the undo stack. */
+export function endStrokeUndo() {
+  if (!strokeUndoBaseline) return;
+  const delta = computeUndoDelta(
+    strokeUndoBaseline.v,
+    strokeUndoBaseline.s,
+    get(voxels),
+    get(selection)
+  );
+  strokeUndoBaseline = null;
+  if (!isUndoDeltaEmpty(delta)) {
+    pushUndoDelta(delta);
+  }
+}
+
+export function runVoxelStroke(fn: () => void): void {
+  beginStroke();
+  try {
+    fn();
+  } finally {
+    endStrokeUndo();
+  }
+}
+
 export const getUndoSnapshot = undo.getSnapshot;
 export const restoreUndoSnapshot = undo.restoreSnapshot;
 export const history = undo.history;
@@ -354,21 +465,22 @@ export function shiftVoxelsAndSelection(dx: number, dy: number, dz: number): voi
   const ny = Math.round(dy);
   const nz = Math.round(dz);
   if (nx === 0 && ny === 0 && nz === 0) return;
-  pushUndo();
-  const newVoxels = new Map<string, Voxel>();
-  for (const [key, col] of v) {
-    const [x, y, z] = parseCoordKey(key);
-    newVoxels.set(coordKey(x + nx, y + ny, z + nz), col);
-  }
-  const newSel = new Map<string, Voxel>();
-  for (const [key, col] of sel) {
-    const [x, y, z] = parseCoordKey(key);
-    newSel.set(coordKey(x + nx, y + ny, z + nz), col);
-  }
-  const positions = [...newVoxels.keys()].map((k) => parseCoordKey(k));
-  ensureGridFitsPositions(positions);
-  voxels.set(newVoxels);
-  selection.set(newSel);
+  commitUndoAfter(() => {
+    const newVoxels = new Map<string, Voxel>();
+    for (const [key, col] of v) {
+      const [x, y, z] = parseCoordKey(key);
+      newVoxels.set(coordKey(x + nx, y + ny, z + nz), col);
+    }
+    const newSel = new Map<string, Voxel>();
+    for (const [key, col] of sel) {
+      const [x, y, z] = parseCoordKey(key);
+      newSel.set(coordKey(x + nx, y + ny, z + nz), col);
+    }
+    const positions = [...newVoxels.keys()].map((k) => parseCoordKey(k));
+    ensureGridFitsPositions(positions);
+    voxels.set(newVoxels);
+    selection.set(newSel);
+  });
 }
 
 /**
@@ -378,7 +490,7 @@ export function shiftVoxelsAndSelection(dx: number, dy: number, dz: number): voi
 export function scaleProjectBy2(): void {
   const v = get(voxels);
   if (v.size === 0) return;
-  pushUndo();
+  commitUndoAfter(() => {
   const next = new Map<string, Voxel>();
   for (const [key, col] of v) {
     const [x, y, z] = parseCoordKey(key);
@@ -412,6 +524,7 @@ export function scaleProjectBy2(): void {
   ensureGridFitsPositions(positions);
   voxels.set(next);
   selection.set(nextSel);
+  });
 }
 
 /** Shift only the selected voxels (and the selection). Call when selection is active. */
@@ -423,7 +536,7 @@ export function shiftSelection(dx: number, dy: number, dz: number): void {
   const ny = Math.round(dy);
   const nz = Math.round(dz);
   if (nx === 0 && ny === 0 && nz === 0) return;
-  pushUndo();
+  commitUndoAfter(() => {
   const nextVoxels = cloneVoxelsImpl(v);
   const newSel = new Map<string, Voxel>();
   for (const [key, selCol] of sel) {
@@ -440,6 +553,7 @@ export function shiftSelection(dx: number, dy: number, dz: number): void {
   ensureGridFitsPositions(positions);
   voxels.set(nextVoxels);
   selection.set(newSel);
+  });
 }
 
 export function centerOriginOnObject(): void {
@@ -474,13 +588,14 @@ export function cloneVoxels(v: Map<string, Voxel>): Map<string, Voxel> {
 export { serializeVoxels, deserializeVoxels };
 
 export function initCanvas(size: GridSize, shape: StartShape = 'cube') {
-  undo.reset();
+  resetUndo();
   voxels.set(initShape(size, shape));
 }
 
 export function resetCanvas(size: GridSize, shape: StartShape = 'cube') {
-  pushUndo();
-  voxels.set(initShape(size, shape));
+  commitUndoAfter(() => {
+    voxels.set(initShape(size, shape));
+  });
 }
 
 /** Map-like view that mirrors set/delete across symmetry axes. has/get delegate to underlying. */
@@ -531,8 +646,7 @@ function createMirrorMap(underlying: Map<string, Voxel>, axes: SymmetryAxes): Ma
   } as Map<string, Voxel>;
 }
 
-export function updateVoxels(updater: (v: Map<string, Voxel>) => void) {
-  pushUndo();
+function applyVoxelUpdater(updater: (v: Map<string, Voxel>) => void): void {
   voxels.update((v) => {
     const next = cloneVoxelsImpl(v);
     const axes: SymmetryAxes = {
@@ -546,22 +660,12 @@ export function updateVoxels(updater: (v: Map<string, Voxel>) => void) {
   });
 }
 
-export function beginStroke() {
-  pushUndo();
+export function updateVoxels(updater: (v: Map<string, Voxel>) => void) {
+  commitUndoAfter(() => applyVoxelUpdater(updater));
 }
 
 export function updateVoxelsInStroke(updater: (v: Map<string, Voxel>) => void) {
-  voxels.update((v) => {
-    const next = cloneVoxelsImpl(v);
-    const axes: SymmetryAxes = {
-      x: get(symmetryX),
-      y: get(symmetryY),
-      z: get(symmetryZ)
-    };
-    const target = axes.x || axes.y || axes.z ? createMirrorMap(next, axes) : next;
-    updater(target);
-    return next;
-  });
+  applyVoxelUpdater(updater);
 }
 
 /**
@@ -569,49 +673,53 @@ export function updateVoxelsInStroke(updater: (v: Map<string, Voxel>) => void) {
  * Intended after beginStroke(); updates selection keys the same way. No-op if delta is zero.
  */
 export function applySelectionTranslationInStroke(dx: number, dy: number, dz: number): void {
-  const nx = Math.round(dx);
-  const ny = Math.round(dy);
-  const nz = Math.round(dz);
-  if (nx === 0 && ny === 0 && nz === 0) return;
+  try {
+    const nx = Math.round(dx);
+    const ny = Math.round(dy);
+    const nz = Math.round(dz);
+    if (nx === 0 && ny === 0 && nz === 0) return;
 
-  const v = get(voxels);
-  const sel = get(selection);
+    const v = get(voxels);
+    const sel = get(selection);
 
-  const toMove: [string, Voxel][] = [];
-  for (const [key] of sel) {
-    const col = v.get(key);
-    if (col !== undefined) {
-      toMove.push([key, col]);
+    const toMove: [string, Voxel][] = [];
+    for (const [key] of sel) {
+      const col = v.get(key);
+      if (col !== undefined) {
+        toMove.push([key, col]);
+      }
     }
-  }
 
-  const newPositions: [number, number, number][] = [];
-  for (const [key] of toMove) {
-    const [x, y, z] = parseCoordKey(key);
-    newPositions.push([x + nx, y + ny, z + nz]);
-  }
-  if (newPositions.length > 0) {
-    ensureGridFitsPositions(newPositions);
-  }
+    const newPositions: [number, number, number][] = [];
+    for (const [key] of toMove) {
+      const [x, y, z] = parseCoordKey(key);
+      newPositions.push([x + nx, y + ny, z + nz]);
+    }
+    if (newPositions.length > 0) {
+      ensureGridFitsPositions(newPositions);
+    }
 
-  if (toMove.length > 0) {
-    updateVoxelsInStroke((target) => {
-      for (const [key] of toMove) {
-        target.delete(key);
-      }
-      for (const [key, col] of toMove) {
-        const [x, y, z] = parseCoordKey(key);
-        target.set(coordKey(x + nx, y + ny, z + nz), col);
-      }
-    });
-  }
+    if (toMove.length > 0) {
+      updateVoxelsInStroke((target) => {
+        for (const [key] of toMove) {
+          target.delete(key);
+        }
+        for (const [key, col] of toMove) {
+          const [x, y, z] = parseCoordKey(key);
+          target.set(coordKey(x + nx, y + ny, z + nz), col);
+        }
+      });
+    }
 
-  const newSel = new Map<string, Voxel>();
-  for (const [key, col] of sel) {
-    const [x, y, z] = parseCoordKey(key);
-    newSel.set(coordKey(x + nx, y + ny, z + nz), col);
+    const newSel = new Map<string, Voxel>();
+    for (const [key, col] of sel) {
+      const [x, y, z] = parseCoordKey(key);
+      newSel.set(coordKey(x + nx, y + ny, z + nz), col);
+    }
+    selection.set(newSel);
+  } finally {
+    endStrokeUndo();
   }
-  selection.set(newSel);
 }
 
 /** Same as `applySelectionTranslationInStroke` but along one world axis by `steps` voxels. */
@@ -628,79 +736,83 @@ export function applySelectionTranslationAlongAxis(axis: 0 | 1 | 2, steps: numbe
  * Skips if rounding + recenter would collapse two voxels onto one cell or intrude on non-selected solids.
  */
 export function applySelectionRotationInStroke(axis: 0 | 1 | 2, deltaQuarters: number): void {
-  let q = deltaQuarters % 4;
-  if (q < 0) q += 4;
-  if (q === 0) return;
+  try {
+    let q = deltaQuarters % 4;
+    if (q < 0) q += 4;
+    if (q === 0) return;
 
-  const sel = get(selection);
-  const pivot = getSelectionCenter(sel);
-  if (!pivot) return;
+    const sel = get(selection);
+    const pivot = getSelectionCenter(sel);
+    if (!pivot) return;
 
-  const rawRotatedKey = (key: string) => {
-    const [x, y, z] = parseCoordKey(key);
-    const rel: [number, number, number] = [x - pivot[0], y - pivot[1], z - pivot[2]];
-    const [rx, ry, rz] = rotateVectorByAxisQuarters(rel, axis, q);
-    return coordKey(
-      Math.round(pivot[0] + rx),
-      Math.round(pivot[1] + ry),
-      Math.round(pivot[2] + rz)
-    );
-  };
+    const rawRotatedKey = (key: string) => {
+      const [x, y, z] = parseCoordKey(key);
+      const rel: [number, number, number] = [x - pivot[0], y - pivot[1], z - pivot[2]];
+      const [rx, ry, rz] = rotateVectorByAxisQuarters(rel, axis, q);
+      return coordKey(
+        Math.round(pivot[0] + rx),
+        Math.round(pivot[1] + ry),
+        Math.round(pivot[2] + rz)
+      );
+    };
 
-  const selEntries = [...sel.entries()];
-  const rawKeys = selEntries.map(([k]) => rawRotatedKey(k));
-  if (new Set(rawKeys).size !== rawKeys.length) return;
+    const selEntries = [...sel.entries()];
+    const rawKeys = selEntries.map(([k]) => rawRotatedKey(k));
+    if (new Set(rawKeys).size !== rawKeys.length) return;
 
-  const provisional = new Map<string, Voxel>();
-  for (let i = 0; i < selEntries.length; i++) {
-    provisional.set(rawKeys[i], selEntries[i][1]);
-  }
-  const pivotAfter = getSelectionCenter(provisional);
-  if (!pivotAfter) return;
+    const provisional = new Map<string, Voxel>();
+    for (let i = 0; i < selEntries.length; i++) {
+      provisional.set(rawKeys[i], selEntries[i][1]);
+    }
+    const pivotAfter = getSelectionCenter(provisional);
+    if (!pivotAfter) return;
 
-  const tx = Math.round(pivot[0] - pivotAfter[0]);
-  const ty = Math.round(pivot[1] - pivotAfter[1]);
-  const tz = Math.round(pivot[2] - pivotAfter[2]);
+    const tx = Math.round(pivot[0] - pivotAfter[0]);
+    const ty = Math.round(pivot[1] - pivotAfter[1]);
+    const tz = Math.round(pivot[2] - pivotAfter[2]);
 
-  const newSelKeys = rawKeys.map((k) => {
-    const [x, y, z] = parseCoordKey(k);
-    return coordKey(x + tx, y + ty, z + tz);
-  });
-  if (new Set(newSelKeys).size !== newSelKeys.length) return;
-
-  const v = get(voxels);
-  const toMove: [string, Voxel][] = [];
-  for (const [key] of sel) {
-    const col = v.get(key);
-    if (col !== undefined) toMove.push([key, col]);
-  }
-
-  const sourceKeys = new Set(toMove.map((t) => t[0]));
-  const destKeys = toMove.map(([key]) => {
-    const rk = rawRotatedKey(key);
-    const [x, y, z] = parseCoordKey(rk);
-    return coordKey(x + tx, y + ty, z + tz);
-  });
-
-  for (const nk of destKeys) {
-    if (v.has(nk) && !sourceKeys.has(nk)) return;
-  }
-
-  if (toMove.length > 0) {
-    ensureGridFitsPositions(destKeys.map((k) => parseCoordKey(k)));
-    updateVoxelsInStroke((target) => {
-      for (const [key] of toMove) target.delete(key);
-      for (let i = 0; i < toMove.length; i++) {
-        target.set(destKeys[i], toMove[i][1]);
-      }
+    const newSelKeys = rawKeys.map((k) => {
+      const [x, y, z] = parseCoordKey(k);
+      return coordKey(x + tx, y + ty, z + tz);
     });
-  }
+    if (new Set(newSelKeys).size !== newSelKeys.length) return;
 
-  const newSel = new Map<string, Voxel>();
-  for (let i = 0; i < selEntries.length; i++) {
-    newSel.set(newSelKeys[i], selEntries[i][1]);
+    const v = get(voxels);
+    const toMove: [string, Voxel][] = [];
+    for (const [key] of sel) {
+      const col = v.get(key);
+      if (col !== undefined) toMove.push([key, col]);
+    }
+
+    const sourceKeys = new Set(toMove.map((t) => t[0]));
+    const destKeys = toMove.map(([key]) => {
+      const rk = rawRotatedKey(key);
+      const [x, y, z] = parseCoordKey(rk);
+      return coordKey(x + tx, y + ty, z + tz);
+    });
+
+    for (const nk of destKeys) {
+      if (v.has(nk) && !sourceKeys.has(nk)) return;
+    }
+
+    if (toMove.length > 0) {
+      ensureGridFitsPositions(destKeys.map((k) => parseCoordKey(k)));
+      updateVoxelsInStroke((target) => {
+        for (const [key] of toMove) target.delete(key);
+        for (let i = 0; i < toMove.length; i++) {
+          target.set(destKeys[i], toMove[i][1]);
+        }
+      });
+    }
+
+    const newSel = new Map<string, Voxel>();
+    for (let i = 0; i < selEntries.length; i++) {
+      newSel.set(newSelKeys[i], selEntries[i][1]);
+    }
+    selection.set(newSel);
+  } finally {
+    endStrokeUndo();
   }
-  selection.set(newSel);
 }
 
 /** Returns a function that yields a voxel (color + material) per stroke cell (random color when multi-palette). */

@@ -119,13 +119,13 @@ describe('clipboard', () => {
       expect(get(voxels).has('0,0,0')).toBe(true);
     });
 
-    it('removes voxels at selection and clears selection without clipboard', () => {
+    it('removes voxels at selection and keeps selection without clipboard', () => {
       voxels.set(makeVoxels([[0, 0, 0, 0xff0000]]));
       selection.set(makeVoxels([[0, 0, 0, 0xff0000]]));
       deleteSelectedVoxels();
       expect(writeText).not.toHaveBeenCalled();
       expect(get(voxels).has('0,0,0')).toBe(false);
-      expect(get(selection).size).toBe(0);
+      expect(get(selection).has('0,0,0')).toBe(true);
     });
   });
 });

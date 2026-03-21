@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { writable, get } from 'svelte/store';
 import { createUndo } from './undo';
+import { computeUndoDelta } from './serialization';
 import type { Voxel } from '../voxelMaterial';
 import { plasticVoxel } from '../voxelMaterial';
 
@@ -8,15 +9,30 @@ function makeVoxels(entries: [string, Voxel][]) {
   return new Map(entries);
 }
 
+/** Matches `commitUndoAfter`: clear redo, mutate, push forward delta. */
+function commitDelta(
+  undo: ReturnType<typeof createUndo>,
+  voxels: ReturnType<typeof writable<Map<string, Voxel>>>,
+  selection: ReturnType<typeof writable<Map<string, Voxel>>>,
+  mutate: () => void
+) {
+  undo.clearRedo();
+  const oldV = get(voxels);
+  const oldS = get(selection);
+  mutate();
+  undo.pushUndoDelta(computeUndoDelta(oldV, oldS, get(voxels), get(selection)));
+}
+
 describe('createUndo', () => {
-  it('pushUndo snapshots state and doUndo restores', () => {
+  it('delta undo restores prior voxels and selection', () => {
     const voxels = writable(makeVoxels([['0,0,0', plasticVoxel(0xff0000)]]));
     const selection = writable(new Map<string, Voxel>());
     const undo = createUndo(voxels, selection);
 
-    undo.pushUndo();
-    voxels.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
-    selection.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+    commitDelta(undo, voxels, selection, () => {
+      voxels.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+      selection.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+    });
 
     undo.doUndo();
 
@@ -29,8 +45,10 @@ describe('createUndo', () => {
     const selection = writable(new Map<string, Voxel>());
     const undo = createUndo(voxels, selection);
 
-    undo.pushUndo();
-    voxels.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+    commitDelta(undo, voxels, selection, () => {
+      voxels.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+    });
+
     undo.doUndo();
     undo.doRedo();
 
@@ -43,8 +61,10 @@ describe('createUndo', () => {
     const selection = writable(new Map<string, Voxel>());
     const undo = createUndo(voxels, selection);
 
-    undo.pushUndo();
-    voxels.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+    commitDelta(undo, voxels, selection, () => {
+      voxels.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+    });
+
     undo.reset();
 
     expect(get(undo.canUndoStore)).toBe(false);
@@ -61,7 +81,10 @@ describe('createUndo', () => {
     expect(get(undo.canUndoStore)).toBe(false);
     expect(get(undo.canRedoStore)).toBe(false);
 
-    undo.pushUndo();
+    commitDelta(undo, voxels, selection, () => {
+      voxels.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+    });
+
     expect(get(undo.canUndoStore)).toBe(true);
     expect(get(undo.canRedoStore)).toBe(false);
 
@@ -79,8 +102,10 @@ describe('createUndo', () => {
     const selection = writable(new Map<string, Voxel>());
     const undo = createUndo(voxels, selection);
 
-    undo.pushUndo();
-    voxels.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+    commitDelta(undo, voxels, selection, () => {
+      voxels.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+    });
+
     undo.history.undo();
     expect(get(voxels).get('0,0,0')!.color).toBe(0xff0000);
 
@@ -97,17 +122,22 @@ describe('createUndo', () => {
     expect(get(voxels).get('0,0,0')!.color).toBe(0xff0000);
   });
 
-  it('pushUndo clears redo stack', () => {
+  it('new commit clears redo stack', () => {
     const voxels = writable(makeVoxels([['0,0,0', plasticVoxel(0xff0000)]]));
     const selection = writable(new Map<string, Voxel>());
     const undo = createUndo(voxels, selection);
 
-    undo.pushUndo();
-    voxels.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+    commitDelta(undo, voxels, selection, () => {
+      voxels.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+    });
+
     undo.doUndo();
-    undo.pushUndo();
+    commitDelta(undo, voxels, selection, () => {
+      voxels.set(makeVoxels([['2,2,2', plasticVoxel(0x0000ff)]]));
+    });
+
     expect(get(undo.canRedoStore)).toBe(false);
     undo.doRedo();
-    expect(get(voxels).get('0,0,0')!.color).toBe(0xff0000);
+    expect(get(voxels).get('2,2,2')!.color).toBe(0x0000ff);
   });
 });

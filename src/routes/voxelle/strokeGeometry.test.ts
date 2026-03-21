@@ -9,6 +9,7 @@ import {
   getAxisAlignedLine,
   projectPointOntoPlane,
   getAxisAlignedPlaneFromNormal,
+  getAxisAlignedCircleFromNormal,
   getAxisAlignedCuboid,
   getPolygonVoxels,
   getRayDirectionPath,
@@ -483,6 +484,38 @@ describe('getAxisAlignedPlaneFromNormal', () => {
     expect(result).toContainEqual([1, 0, 0]);
     expect(result).toContainEqual([2, 0, 0]);
     expect(new Set(result.map((p) => p.join(','))).size).toBe(3);
+  });
+});
+
+describe('getAxisAlignedCircleFromNormal', () => {
+  it('zero radius returns single voxel', () => {
+    expect(getAxisAlignedCircleFromNormal([1, 2, 3], [1, 2, 3], { x: 0, y: 1, z: 0 })).toEqual([
+      [1, 2, 3]
+    ]);
+  });
+
+  it('+Y normal: disk in XZ through center', () => {
+    const result = getAxisAlignedCircleFromNormal([5, 0, 5], [5, 0, 6], { x: 0, y: 1, z: 0 });
+    expect(result.every(([, y]) => y === 0)).toBe(true);
+    expect(result.length).toBe(5);
+    expect(result).toContainEqual([5, 0, 5]);
+    expect(result).toContainEqual([5, 0, 6]);
+    expect(result).toContainEqual([5, 0, 4]);
+    expect(result).toContainEqual([4, 0, 5]);
+    expect(result).toContainEqual([6, 0, 5]);
+  });
+
+  it('hollow omits strictly interior voxels', () => {
+    const filled = getAxisAlignedCircleFromNormal([0, 1, 0], [2, 1, 0], { x: 0, y: 1, z: 0 }, false);
+    const hollow = getAxisAlignedCircleFromNormal([0, 1, 0], [2, 1, 0], { x: 0, y: 1, z: 0 }, true);
+    expect(hollow.length).toBeLessThan(filled.length);
+    expect(hollow.every((p) => filled.some((q) => q[0] === p[0] && q[1] === p[1] && q[2] === p[2]))).toBe(
+      true
+    );
+    expect(hollow).not.toContainEqual([0, 1, 0]);
+    expect(hollow).toContainEqual([-2, 1, 0]);
+    expect(hollow).toContainEqual([2, 1, 0]);
+    expect(hollow).not.toContainEqual([1, 1, 0]);
   });
 });
 

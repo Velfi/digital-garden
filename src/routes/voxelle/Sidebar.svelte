@@ -144,7 +144,8 @@
               $lastDrawTool === 'hand' ||
               $lastDrawTool === 'rocks' ||
               $lastDrawTool === 'grass' ||
-              $lastDrawTool === 'ashlar'
+              $lastDrawTool === 'ashlar' ||
+              $lastDrawTool === 'roof'
               ? 'remove'
               : $lastDrawTool
           );

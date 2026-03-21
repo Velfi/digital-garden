@@ -17,17 +17,21 @@
   const isStrokeTool = (t: string) => STROKE_TOOLS.includes(t as (typeof STROKE_TOOLS)[number]);
   const drawBrushVisible = $derived($toolPane === 'draw' && isStrokeTool($tool));
   const planeAxisVisible = $derived(
-    ($strokeMode === 'plane' || $strokeMode === 'cuboid') && isStrokeTool($tool)
+    ($strokeMode === 'plane' || $strokeMode === 'circle' || $strokeMode === 'cuboid') &&
+      isStrokeTool($tool)
   );
   const lineAxisAlignVisible = $derived($strokeMode === 'line' && isStrokeTool($tool));
   const airbrushVisible = $derived($strokeMode === 'airbrush' && isStrokeTool($tool));
   const fillVisible = $derived($strokeMode === 'fill' && isStrokeTool($tool));
   const polygonVisible = $derived($strokeMode === 'polygon' && isStrokeTool($tool));
-  const stampVisible = $derived($tool === 'stamp' && $selection.size > 0);
+  const stampVisible = $derived(
+    ($tool === 'stamp' || $tool === 'punch') && $selection.size > 0
+  );
   const clayVisible = $derived($tool === 'clay');
   const rockVisible = $derived($tool === 'rocks');
   const grassVisible = $derived($tool === 'grass');
   const ashlarVisible = $derived($tool === 'ashlar');
+  const roofVisible = $derived($tool === 'roof');
   const gizmoTabsVisible = $derived(
     $tool !== 'fly' && $tool !== 'hand' && ($selection.size > 0 || $addPanelStore.open)
   );
@@ -44,7 +48,8 @@
       clayVisible ||
       rockVisible ||
       grassVisible ||
-      ashlarVisible
+      ashlarVisible ||
+      roofVisible
   );
 </script>
 

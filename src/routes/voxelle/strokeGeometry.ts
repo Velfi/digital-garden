@@ -923,6 +923,91 @@ export function getAxisAlignedPlaneFromNormal(
   return positions;
 }
 
+/** Disk in the plane normal to `faceNormal`, center at `center`, radius to `edge` in the two free axes (integer lattice). */
+export function getAxisAlignedCircleFromNormal(
+  center: [number, number, number],
+  edge: [number, number, number],
+  faceNormal: Vec3Like,
+  hollow = false
+): [number, number, number][] {
+  const ax = Math.abs(faceNormal.x);
+  const ay = Math.abs(faceNormal.y);
+  const az = Math.abs(faceNormal.z);
+  const fixedAxis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+
+  let cu: number;
+  let cv: number;
+  let eu: number;
+  let ev: number;
+  const build = (u: number, v: number): [number, number, number] => {
+    if (fixedAxis === 0) return [center[0], u, v];
+    if (fixedAxis === 1) return [u, center[1], v];
+    return [u, v, center[2]];
+  };
+
+  if (fixedAxis === 0) {
+    cu = center[1];
+    cv = center[2];
+    eu = edge[1];
+    ev = edge[2];
+  } else if (fixedAxis === 1) {
+    cu = center[0];
+    cv = center[2];
+    eu = edge[0];
+    ev = edge[2];
+  } else {
+    cu = center[0];
+    cv = center[1];
+    eu = edge[0];
+    ev = edge[1];
+  }
+
+  const du = eu - cu;
+  const dv = ev - cv;
+  const rSq = du * du + dv * dv;
+  if (rSq === 0) return [build(cu, cv)];
+
+  const ru = Math.ceil(Math.sqrt(rSq));
+  const filled: [number, number, number][] = [];
+  for (let u = cu - ru; u <= cu + ru; u++) {
+    for (let v = cv - ru; v <= cv + ru; v++) {
+      const ddu = u - cu;
+      const ddv = v - cv;
+      if (ddu * ddu + ddv * ddv <= rSq) filled.push(build(u, v));
+    }
+  }
+
+  if (!hollow) return filled;
+
+  const isInsideUv = (u: number, v: number) => {
+    const ddu = u - cu;
+    const ddv = v - cv;
+    return ddu * ddu + ddv * ddv <= rSq;
+  };
+
+  const boundary: [number, number, number][] = [];
+  for (const pos of filled) {
+    const [px, py, pz] = pos;
+    const u = fixedAxis === 0 ? py : px;
+    const v = fixedAxis === 0 ? pz : fixedAxis === 1 ? pz : py;
+    const neigh: [number, number][] = [
+      [u + 1, v],
+      [u - 1, v],
+      [u, v + 1],
+      [u, v - 1]
+    ];
+    let onEdge = false;
+    for (const [nu, nv] of neigh) {
+      if (!isInsideUv(nu, nv)) {
+        onEdge = true;
+        break;
+      }
+    }
+    if (onEdge) boundary.push(pos);
+  }
+  return boundary;
+}
+
 export function getAxisAlignedCuboid(
   a: [number, number, number],
   b: [number, number, number],
@@ -1013,7 +1098,7 @@ function pointInPolygon2D(px: number, py: number, polygon: [number, number][]): 
 }
 
 /** True if all points lie on the plane through a,b,c (within tolerance). */
-function areCoplanar(
+export function areCoplanar(
   points: [number, number, number][],
   a: [number, number, number],
   b: [number, number, number],
@@ -1031,6 +1116,88 @@ function areCoplanar(
     if (dist > tol) return false;
   }
   return true;
+}
+
+function findNonCollinearTriple(
+  points: [number, number, number][]
+): [number, number, number] | null {
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      for (let k = j + 1; k < n; k++) {
+        const a = points[i];
+        const b = points[j];
+        const c = points[k];
+        const ab = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+        const ac = new THREE.Vector3(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
+        const cross = new THREE.Vector3().crossVectors(ab, ac);
+        if (cross.lengthSq() >= 1e-12) return [i, j, k];
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Voxel centers inside a closed coplanar polygon (vertex loop). Returns `null` if points are not
+ * coplanar or do not span a plane. Same fill rule as polygon stroke for 4+ coplanar vertices.
+ */
+export function getCoplanarPolygonFillPositions(
+  points: [number, number, number][]
+): [number, number, number][] | null {
+  if (points.length < 3) return null;
+  const triple = findNonCollinearTriple(points);
+  if (triple === null) return null;
+  const a = points[triple[0]];
+  const b = points[triple[1]];
+  const c = points[triple[2]];
+  if (!areCoplanar(points, a, b, c)) return null;
+
+  const ab = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+  const ac = new THREE.Vector3(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
+  const normal = new THREE.Vector3().crossVectors(ab, ac);
+  const ax = Math.abs(normal.x);
+  const ay = Math.abs(normal.y);
+  const az = Math.abs(normal.z);
+  const dropAxis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+  const uAxis = dropAxis === 0 ? 1 : 0;
+  const vAxis = dropAxis === 2 ? 1 : 2;
+  const to2D = (p: [number, number, number]) => [p[uAxis], p[vAxis]] as [number, number];
+  const polygon2D = points.map(to2D);
+  const minU = Math.min(...polygon2D.map(([u]) => u));
+  const maxU = Math.max(...polygon2D.map(([u]) => u));
+  const minV = Math.min(...polygon2D.map(([, v]) => v));
+  const maxV = Math.max(...polygon2D.map(([, v]) => v));
+  const floorU = Math.floor(minU);
+  const ceilU = Math.ceil(maxU);
+  const floorV = Math.floor(minV);
+  const ceilV = Math.ceil(maxV);
+  const n = normal.clone().normalize();
+  const d = -n.x * a[0] - n.y * a[1] - n.z * a[2];
+  const positions: [number, number, number][] = [];
+  const coord = [0, 0, 0] as [number, number, number];
+  for (let u = floorU; u <= ceilU; u++) {
+    for (let v = floorV; v <= ceilV; v++) {
+      const corners: [number, number][] = [
+        [u, v],
+        [u + 1, v],
+        [u + 1, v + 1],
+        [u, v + 1]
+      ];
+      const pip = corners.some(([cx, cy]) => pointInPolygon2D(cx, cy, polygon2D));
+      if (!pip) continue;
+      coord[uAxis] = u;
+      coord[vAxis] = v;
+      const nd = n.getComponent(dropAxis);
+      if (Math.abs(nd) < 1e-9) continue;
+      const cx = u + 0.5;
+      const cy = v + 0.5;
+      const third = -(d + n.getComponent(uAxis) * cx + n.getComponent(vAxis) * cy) / nd;
+      coord[dropAxis] = Math.round(third);
+      positions.push([...coord]);
+    }
+  }
+  return positions;
 }
 
 export function getPolygonVoxels(points: [number, number, number][]): [number, number, number][] {
@@ -1102,56 +1269,9 @@ export function getPolygonVoxels(points: [number, number, number][]): [number, n
     return positions;
   }
   // 4+ points: if coplanar, fill actual polygon with 2D point-in-polygon; else 3D convex hull
-  const [a, b, c] = points;
-  const ab = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
-  const ac = new THREE.Vector3(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
-  const normal = new THREE.Vector3().crossVectors(ab, ac);
-  const ax = Math.abs(normal.x);
-  const ay = Math.abs(normal.y);
-  const az = Math.abs(normal.z);
-  const dropAxis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
-  const uAxis = dropAxis === 0 ? 1 : 0;
-  const vAxis = dropAxis === 2 ? 1 : 2;
-  const to2D = (p: [number, number, number]) => [p[uAxis], p[vAxis]] as [number, number];
-  const polygon2D = points.map(to2D);
-  const normalLenSq = normal.lengthSq();
-
-  if (normalLenSq >= 1e-12 && areCoplanar(points, a, b, c)) {
-    const minU = Math.min(...polygon2D.map(([u]) => u));
-    const maxU = Math.max(...polygon2D.map(([u]) => u));
-    const minV = Math.min(...polygon2D.map(([, v]) => v));
-    const maxV = Math.max(...polygon2D.map(([, v]) => v));
-    const floorU = Math.floor(minU);
-    const ceilU = Math.ceil(maxU);
-    const floorV = Math.floor(minV);
-    const ceilV = Math.ceil(maxV);
-    const n = normal.clone().normalize();
-    const d = -n.x * a[0] - n.y * a[1] - n.z * a[2];
-    const positions: [number, number, number][] = [];
-    const coord = [0, 0, 0] as [number, number, number];
-    for (let u = floorU; u <= ceilU; u++) {
-      for (let v = floorV; v <= ceilV; v++) {
-        // Include voxel if any corner is inside or on boundary (center alone misses right/top boundary voxels)
-        const corners: [number, number][] = [
-          [u, v],
-          [u + 1, v],
-          [u + 1, v + 1],
-          [u, v + 1]
-        ];
-        const pip = corners.some(([cx, cy]) => pointInPolygon2D(cx, cy, polygon2D));
-        if (!pip) continue;
-        coord[uAxis] = u;
-        coord[vAxis] = v;
-        const nd = n.getComponent(dropAxis);
-        if (Math.abs(nd) < 1e-9) continue;
-        const cx = u + 0.5;
-        const cy = v + 0.5;
-        const third = -(d + n.getComponent(uAxis) * cx + n.getComponent(vAxis) * cy) / nd;
-        coord[dropAxis] = Math.round(third);
-        positions.push([...coord]);
-      }
-    }
-    return positions;
+  const coplanarFill = getCoplanarPolygonFillPositions(points);
+  if (coplanarFill !== null) {
+    return coplanarFill;
   }
 
   const vecs = points.map((p) => new THREE.Vector3(p[0], p[1], p[2]));

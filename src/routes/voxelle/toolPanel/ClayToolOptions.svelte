@@ -16,6 +16,7 @@
     wallWidth,
     wallHeight,
     wallLockStartHeight,
+    wallAxisAlign,
     MAX_BRUSH_SIZE
   } from '../store/index';
   import type { SprayDirection } from '../store/index';
@@ -193,6 +194,15 @@
           title="Keep path on starting plane for enclosed loops"
         />
         Lock start height
+      </label>
+      <label class="tool-panel-check">
+        <input
+          type="checkbox"
+          checked={$wallAxisAlign}
+          onchange={(e) => wallAxisAlign.set((e.target as HTMLInputElement).checked)}
+          title="Straight wall along dominant axis from stroke start (same idea as draw line axis-align)"
+        />
+        Axis-align
       </label>
     {/if}
     {#if $clayMode === 'rope'}

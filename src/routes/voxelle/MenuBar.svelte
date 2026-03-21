@@ -246,6 +246,13 @@
     closeMenus();
   }
 
+  function handleSelectCoplanarEmpty() {
+    tool.set('selectCoplanarEmpty');
+    toolPane.set('draw');
+    lastDrawTool.set('selectCoplanarEmpty');
+    closeMenus();
+  }
+
   function handleDeselectVoxels() {
     deselectVoxels();
     closeMenus();
@@ -478,6 +485,15 @@
           title="Click a voxel to select all connected voxels in that face's plane"
         >
           Select coplanar faces
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleSelectCoplanarEmpty}
+          disabled={$voxels.size === 0}
+          title="Click the face pointing into a hole to select connected empty voxels in that plane (use Punch to cut the same void elsewhere)"
+        >
+          Select coplanar void
         </button>
         <div class="menu-separator" role="separator"></div>
         <span class="menu-label">Modify</span>

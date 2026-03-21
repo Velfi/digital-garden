@@ -23,6 +23,14 @@
     </button>
     <button
       type="button"
+      class:active={$strokeMode === 'circle'}
+      onclick={() => strokeMode.set('circle')}
+      title="Drag from center to edge: disk in the plane (Alt+scroll to cycle orientation)"
+    >
+      Circle
+    </button>
+    <button
+      type="button"
       class:active={$strokeMode === 'cuboid'}
       onclick={() => strokeMode.set('cuboid')}
       title="Drag to set plane (Alt+scroll to cycle), scroll for depth, click or Done to apply"

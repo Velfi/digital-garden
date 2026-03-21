@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { coordKey } from '../coordUtils';
-import { voxels, selection, ensureGridFitsPositions, pushUndo } from './core';
+import { voxels, selection, ensureGridFitsPositions, commitUndoAfter } from './core';
 import type { Voxel } from '../voxelMaterial';
 import { plasticVoxel } from '../voxelMaterial';
 
@@ -81,13 +81,14 @@ export async function importImageFromFile(file: File): Promise<boolean> {
   });
   ensureGridFitsPositions(positions);
 
-  pushUndo();
-  const v = get(voxels);
-  const next = new Map(v);
-  for (const [key, col] of voxelMap) {
-    next.set(key, col);
-  }
-  voxels.set(next);
-  selection.set(selectionMap);
+  commitUndoAfter(() => {
+    const v = get(voxels);
+    const next = new Map(v);
+    for (const [key, col] of voxelMap) {
+      next.set(key, col);
+    }
+    voxels.set(next);
+    selection.set(selectionMap);
+  });
   return true;
 }

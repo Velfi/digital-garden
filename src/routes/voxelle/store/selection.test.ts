@@ -14,9 +14,13 @@ import {
   deselectVoxels,
   deselectEmptySpaces,
   invertSelection,
+  getCoplanarFacesSelectionAt,
+  getCoplanarEmptySelectionAt,
   SELECTION_BOUNDS_MARGIN
 } from './selection';
 import { plasticVoxel, type Voxel } from '../voxelMaterial';
+
+const EMPTY_SEL_PLACEHOLDER = plasticVoxel(0x33aaff);
 
 function makeSel(entries: [number, number, number][]): Map<string, Voxel> {
   const m = new Map<string, Voxel>();
@@ -312,6 +316,61 @@ describe('getFillEmptyAt', () => {
   });
 });
 
+describe('getCoplanarEmptySelectionAt', () => {
+  beforeEach(() => {
+    gridSize.set(32);
+    voxels.set(new Map());
+    selection.set(new Map());
+    resetUndo();
+  });
+
+  it('selects 2x2 void in YZ plane ringed by solid at same x', () => {
+    const solid: [number, number, number, number][] = [];
+    const x = 0;
+    for (const z of [-1, 2] as const) {
+      for (const y of [-1, 0, 1, 2] as const) solid.push([x, y, z, 0xff0000]);
+    }
+    for (const z of [0, 1] as const) {
+      solid.push([x, -1, z, 0xff0000]);
+      solid.push([x, 2, z, 0xff0000]);
+    }
+    voxels.set(makeVoxels(solid));
+    const region = getCoplanarEmptySelectionAt(0, 0, 0, [1, 0, 0]);
+    expect(region.size).toBe(4);
+    for (const y of [0, 1]) {
+      for (const z of [0, 1]) {
+        const k = `${x},${y},${z}`;
+        expect(region.has(k)).toBe(true);
+        expect(region.get(k)).toEqual(EMPTY_SEL_PLACEHOLDER);
+      }
+    }
+  });
+
+  it('returns empty when seed is solid', () => {
+    voxels.set(makeVoxels([[0, 0, 0, 0xff0000]]));
+    expect(getCoplanarEmptySelectionAt(0, 0, 0, [1, 0, 0]).size).toBe(0);
+  });
+
+  it('does not include coplanar solid from getCoplanarFacesSelectionAt slice', () => {
+    const solid: [number, number, number, number][] = [];
+    const x = 0;
+    for (const z of [-1, 2] as const) {
+      for (const y of [-1, 0, 1, 2] as const) solid.push([x, y, z, 0xff0000]);
+    }
+    for (const z of [0, 1] as const) {
+      solid.push([x, -1, z, 0xff0000]);
+      solid.push([x, 2, z, 0xff0000]);
+    }
+    voxels.set(makeVoxels(solid));
+    const faces = getCoplanarFacesSelectionAt(0, -1, 0, [1, 0, 0]);
+    const air = getCoplanarEmptySelectionAt(0, 0, 0, [1, 0, 0]);
+    for (const k of air.keys()) {
+      expect(faces.has(k)).toBe(false);
+    }
+    expect(faces.size).toBeGreaterThan(0);
+  });
+});
+
 describe('selection store actions', () => {
   beforeEach(() => {
     gridSize.set(32);
@@ -378,6 +437,30 @@ describe('selection store actions', () => {
     const v = get(voxels);
     expect(v.has('1,1,1')).toBe(false);
     expect(v.has('0,0,0')).toBe(true);
+  });
+
+  it('hollowOut with empty selection hollows using model bounds', () => {
+    const positions: [number, number, number, number][] = [];
+    for (let x = 0; x < 3; x++)
+      for (let y = 0; y < 3; y++) for (let z = 0; z < 3; z++) positions.push([x, y, z, 0xff0000]);
+    voxels.set(makeVoxels(positions));
+    selection.set(new Map());
+    hollowOut();
+    expect(get(voxels).has('1,1,1')).toBe(false);
+  });
+
+  it('hollowOut with partial shell selection still removes interior inside selection bbox', () => {
+    const positions: [number, number, number, number][] = [];
+    for (let x = 0; x < 3; x++)
+      for (let y = 0; y < 3; y++) for (let z = 0; z < 3; z++) positions.push([x, y, z, 0xff0000]);
+    const full = makeVoxels(positions);
+    voxels.set(full);
+    const shell = new Map(full);
+    shell.delete('1,1,1');
+    selection.set(shell);
+    hollowOut();
+    expect(get(voxels).has('1,1,1')).toBe(false);
+    expect(get(voxels).size).toBe(26);
   });
 
   it('selectConnected selects same-color region', () => {

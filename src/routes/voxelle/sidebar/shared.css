@@ -40,6 +40,12 @@
   background: var(--block-quote-bg-color);
 }
 
+.tool-buttons button:disabled,
+.stroke-buttons button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .tool-buttons button.active,
 .stroke-buttons button.active {
   background: var(--link-visited-color);

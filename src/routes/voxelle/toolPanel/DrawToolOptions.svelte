@@ -15,10 +15,11 @@
     airbrushRadiusRange,
     airbrushRadiusMin,
     airbrushRadiusMax,
-    airbrushPlaneConstraint,
     fillSelectDiagonals,
     fillRespectsColor,
-    fillConstrainToPlane,
+    constrainToPlaneEnabled,
+    constrainToPlaneRef,
+    polygonOffsetFromNormal,
     MAX_BRUSH_SIZE,
     STROKE_TOOLS
   } from '../store/index';
@@ -29,11 +30,13 @@
 
   const drawBrushVisible = $derived($toolPane === 'draw' && isStrokeTool($tool));
   const planeAxisVisible = $derived(
-    ($strokeMode === 'plane' || $strokeMode === 'cuboid') && isStrokeTool($tool)
+    ($strokeMode === 'plane' || $strokeMode === 'circle' || $strokeMode === 'cuboid') &&
+      isStrokeTool($tool)
   );
   const lineAxisAlignVisible = $derived($strokeMode === 'line' && isStrokeTool($tool));
   const airbrushVisible = $derived($strokeMode === 'airbrush' && isStrokeTool($tool));
   const fillVisible = $derived($strokeMode === 'fill' && isStrokeTool($tool));
+  const constrainPlaneSectionVisible = $derived(fillVisible || airbrushVisible);
   const polygonVisible = $derived($strokeMode === 'polygon' && isStrokeTool($tool));
   const showBrushSection = $derived(
     drawBrushVisible && !airbrushVisible && !fillVisible && !polygonVisible
@@ -134,10 +137,71 @@
         type="checkbox"
         checked={$planeCuboidHollow}
         onchange={(e) => planeCuboidHollow.set((e.target as HTMLInputElement).checked)}
-        title="Only perimeter (plane) or shell (cuboid)"
+        title="Only perimeter (plane/circle) or shell (cuboid)"
       />
       Hollow
     </label>
+  </section>
+{/if}
+
+{#if constrainPlaneSectionVisible}
+  <section class="tool-panel-section" aria-label="Plane constraint">
+    <div class="tool-panel-row">
+      <label class="tool-panel-check">
+        <input
+          type="checkbox"
+          checked={$constrainToPlaneEnabled}
+          onchange={(e) =>
+            constrainToPlaneEnabled.set((e.target as HTMLInputElement).checked)}
+          title="Limit fill flood and airbrush stroke to a plane through the click/drag start"
+        />
+        Constrain to plane
+      </label>
+    </div>
+    {#if $constrainToPlaneEnabled}
+      <div class="stroke-buttons" role="group" aria-label="Plane reference">
+        <button
+          type="button"
+          class:active={$constrainToPlaneRef === 'auto'}
+          onclick={() => constrainToPlaneRef.set('auto')}
+          title="Plane perpendicular to dominant axis of clicked face"
+        >
+          Auto
+        </button>
+        <button
+          type="button"
+          class:active={$constrainToPlaneRef === 'camera'}
+          onclick={() => constrainToPlaneRef.set('camera')}
+          title="View plane (camera look direction) through start"
+        >
+          Camera
+        </button>
+        <button
+          type="button"
+          class:active={$constrainToPlaneRef === 0}
+          onclick={() => constrainToPlaneRef.set(0)}
+          title="World YZ plane through seed (constant X)"
+        >
+          X
+        </button>
+        <button
+          type="button"
+          class:active={$constrainToPlaneRef === 1}
+          onclick={() => constrainToPlaneRef.set(1)}
+          title="World XZ plane through seed (constant Y)"
+        >
+          Y
+        </button>
+        <button
+          type="button"
+          class:active={$constrainToPlaneRef === 2}
+          onclick={() => constrainToPlaneRef.set(2)}
+          title="World XY plane through seed (constant Z)"
+        >
+          Z
+        </button>
+      </div>
+    {/if}
   </section>
 {/if}
 
@@ -213,19 +277,6 @@
       />
       <span class="tool-panel-value">{$airbrushScatter}</span>
     </div>
-    <div class="tool-panel-row tool-panel-row--wide-label">
-      <span class="tool-panel-label">Constrain to</span>
-      <select
-        class="tool-panel-select"
-        aria-label="Airbrush plane constraint"
-        title="Keep airbrush on a plane: none, camera view plane, or clicked face normal"
-        bind:value={$airbrushPlaneConstraint}
-      >
-        <option value="none">None</option>
-        <option value="camera">Camera plane</option>
-        <option value="face">Clicked normal plane</option>
-      </select>
-    </div>
   </section>
 {/if}
 
@@ -251,15 +302,24 @@
         Respect color
       </label>
     </div>
+  </section>
+{/if}
+
+{#if polygonVisible}
+  <section class="tool-panel-section" aria-label="Polygon">
     <div class="tool-panel-row">
-      <label class="tool-panel-check">
-        <input
-          type="checkbox"
-          checked={$fillConstrainToPlane}
-          onchange={(e) => fillConstrainToPlane.set((e.target as HTMLInputElement).checked)}
-        />
-        Constrain to plane
-      </label>
+      <span class="tool-panel-label">Offset from normal</span>
+      <input
+        type="range"
+        min="-8"
+        max="8"
+        step="1"
+        value={$polygonOffsetFromNormal}
+        oninput={(e) =>
+          polygonOffsetFromNormal.set(Number((e.target as HTMLInputElement).value))}
+        title="Voxel steps along the face normal from the latest polygon anchor click"
+      />
+      <span class="tool-panel-value">{$polygonOffsetFromNormal}</span>
     </div>
   </section>
 {/if}

@@ -28,6 +28,14 @@
   >
     Ashlar
   </button>
+  <button
+    type="button"
+    class:active={$tool === 'roof'}
+    onclick={() => tool.set('roof')}
+    title="Click 4+ coplanar corners, then Done to build a roof"
+  >
+    Roof
+  </button>
 </div>
 
 <style>

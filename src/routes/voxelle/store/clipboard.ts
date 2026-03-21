@@ -39,14 +39,13 @@ export async function cutSelection(): Promise<boolean> {
   return true;
 }
 
-/** Remove voxels at selected keys and clear selection. No-op when selection is empty. */
+/** Remove voxels at selected keys; selection keys stay selected. No-op when selection is empty. */
 export function deleteSelectedVoxels(): void {
   const sel = get(selection);
   if (sel.size === 0) return;
   updateVoxels((v) => {
     for (const key of sel.keys()) v.delete(key);
   });
-  selection.set(new Map());
 }
 
 function entryToVoxel(entry: VoxelleClipboard['entries'][number]): Voxel {

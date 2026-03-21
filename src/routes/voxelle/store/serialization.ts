@@ -94,3 +94,12 @@ export function applyUndoDeltaInverse(
   for (const [k, c] of delta.selectionRemoved) nextS.set(k, c);
   return { v: nextV, s: nextS };
 }
+
+export function isUndoDeltaEmpty(d: UndoDelta): boolean {
+  return (
+    d.voxelAdded.length === 0 &&
+    d.voxelRemoved.length === 0 &&
+    d.selectionAdded.length === 0 &&
+    d.selectionRemoved.length === 0
+  );
+}

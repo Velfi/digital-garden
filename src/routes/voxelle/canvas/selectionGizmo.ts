@@ -250,7 +250,13 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
       gy = s.posY;
       gz = s.posZ;
       show = true;
-    } else if (sel.size > 0 && tool !== 'fly' && tool !== 'hand' && tool !== 'stamp') {
+    } else if (
+      sel.size > 0 &&
+      tool !== 'fly' &&
+      tool !== 'hand' &&
+      tool !== 'stamp' &&
+      tool !== 'punch'
+    ) {
       const center = getSelectionCenter(sel);
       if (!center) {
         moveGizmoGroup.visible = false;

@@ -81,7 +81,7 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 
 ### Tools
 
-`voxel`, `remove`, `paint`, `select`, `selectByColor`, `stamp`, `fly`, `eyedropper`, `clay`. Stroke modes: `line`, `plane`, `cuboid`, `polygon`, `fill`, `airbrush`. Clay modes: `bulk`, `smooth`, `level`, `gouge`, `branch`, `melt`, `rope`, `wall`, `inflate` (e.g. bulk = Blender Snake Hook–style pull from surface; use Draw + airbrush for scattered spheres along path).
+`voxel`, `remove`, `paint`, `select`, `selectByColor`, `stamp`, `punch`, `fly`, `eyedropper`, `clay`. Generators: `rocks`, `grass`, `ashlar` (click to place), `roof` (4+ coplanar corners, then Done; styles include flat, flat+parapet, pyramid, cone, shed, saltbox, gable, hip, barrel vault, mansard, gambrel, Dutch gable). Stroke modes: `line`, `plane`, `cuboid`, `polygon`, `fill`, `airbrush`. Clay modes: `bulk`, `smooth`, `level`, `gouge`, `branch`, `melt`, `rope`, `wall`, `inflate` (e.g. bulk = Blender Snake Hook–style pull from surface; use Draw + airbrush for scattered spheres along path).
 
 ### Greedy Meshing
 

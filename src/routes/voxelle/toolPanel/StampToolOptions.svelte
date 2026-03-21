@@ -12,8 +12,8 @@
   }
 </script>
 
-{#if $tool === 'stamp' && $selection.size > 0}
-  <section class="tool-panel-section" aria-label="Stamp">
+{#if ($tool === 'stamp' || $tool === 'punch') && $selection.size > 0}
+  <section class="tool-panel-section" aria-label="Stamp and punch">
     <div class="tool-panel-row tool-panel-row--wide-label">
       <span class="tool-panel-label">Origin</span>
       <select
