@@ -304,6 +304,11 @@ export interface GreedyMeshCoreOptions {
   aoStrength?: AOStrength;
   /** When true, emit one quad per visible face (no slice/merge). Faster for previews. */
   skipMerge?: boolean;
+  /**
+   * Optional lookup map used for neighbor visibility/AO queries.
+   * Useful for chunked meshing so chunk-edge faces can still see adjacent chunks.
+   */
+  occlusionVoxels?: Map<string, Voxel>;
 }
 
 export interface GreedyMeshCoreResult {
@@ -321,6 +326,7 @@ export function computeGreedyMesh(
   voxels: Map<string, Voxel>,
   options: GreedyMeshCoreOptions = {}
 ): Map<string, GreedyMeshCoreResult> {
+  const occlusionVoxels = options.occlusionVoxels ?? voxels;
   const strength: AOStrength = options.aoStrength ?? (options.aoEnabled === false ? 0 : 2);
   const aoEnabled = strength > 0;
   const aoValues = strength > 0 ? AO_PRESETS[strength as 1 | 2] : AO_PRESETS[2];
@@ -348,13 +354,15 @@ export function computeGreedyMesh(
       for (let i = 0; i < 6; i++) {
         const axis = Math.floor(i / 2);
         const sign = i % 2 === 0 ? 1 : -1;
-        if (!hasOccludingNeighbor(pos, axis, sign, voxels, source)) {
+        if (!hasOccludingNeighbor(pos, axis, sign, occlusionVoxels, source)) {
           faces.push({ pos: [...pos], axis, sign });
         }
       }
     }
 
-    const vertexAO = bucketAoEnabled ? precomputeVertexAO(faces, voxels) : new Map<string, number>();
+    const vertexAO = bucketAoEnabled
+      ? precomputeVertexAO(faces, occlusionVoxels)
+      : new Map<string, number>();
 
     const glassThicknessByCell = new Map<string, number>();
     if (material === 'glass') {
@@ -366,7 +374,7 @@ export function computeGreedyMesh(
         const cellKey = `${f.axis},${f.sign},${depth},${u},${v}`;
         glassThicknessByCell.set(
           cellKey,
-          getGlassThicknessAtFace(f.pos, f.axis, f.sign, voxels)
+          getGlassThicknessAtFace(f.pos, f.axis, f.sign, occlusionVoxels)
         );
       }
     }
@@ -471,7 +479,7 @@ export function computeGreedyMesh(
           ny,
           nz
         );
-        return vertexAO.get(k) ?? getCornerAO(axis, sign, depth, cu, cv, ci, voxels);
+        return vertexAO.get(k) ?? getCornerAO(axis, sign, depth, cu, cv, ci, occlusionVoxels);
       };
 
       const signN = nx !== 0 ? nx : ny !== 0 ? ny : nz;

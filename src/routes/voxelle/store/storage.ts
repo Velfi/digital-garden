@@ -3,6 +3,7 @@ import { browser } from '$app/environment';
 import {
   voxels,
   gridSize,
+  resizeGridToContent,
   focalLength,
   orthographic,
   resetUndo,
@@ -174,6 +175,7 @@ async function saveToStorageAsync(): Promise<void> {
  */
 export function saveToStorage() {
   if (!browser) return;
+  resizeGridToContent();
   if (typeof indexedDB === 'undefined') {
     saveToStorageSyncLocal();
   } else {
@@ -184,6 +186,7 @@ export function saveToStorage() {
 /** Await full persist (IndexedDB path). Useful for tests. */
 export async function saveToStoragePromise(): Promise<void> {
   if (!browser) return;
+  resizeGridToContent();
   if (typeof indexedDB === 'undefined') {
     saveToStorageSyncLocal();
     return;

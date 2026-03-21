@@ -29,7 +29,7 @@
   const grassVisible = $derived($tool === 'grass');
   const ashlarVisible = $derived($tool === 'ashlar');
   const gizmoTabsVisible = $derived(
-    $tool !== 'fly' && ($selection.size > 0 || $addPanelStore.open)
+    $tool !== 'fly' && $tool !== 'hand' && ($selection.size > 0 || $addPanelStore.open)
   );
 
   const show = $derived(

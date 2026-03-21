@@ -4,7 +4,7 @@ import { computeMarchingCubes } from './marchingCubesCore';
 import { voxelsFromInput } from './greedyMeshWorkerLogic';
 import type { Voxel } from './voxelMaterial';
 
-export type RenderingMode = 'greedy' | 'marchingCubes';
+export type RenderingMode = 'greedy' | 'marchingCubes' | 'raycast';
 
 const CHUNK_SIZE_DEFAULT = 0;
 
@@ -97,6 +97,9 @@ function mergeChunkResults(
 
 export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshWorkerOutput {
   const { voxels: voxelInput, mode = 'greedy', options = {}, gen } = input;
+  if (mode === 'raycast') {
+    return { results: [], gen };
+  }
   const voxels = voxelsFromInput(voxelInput);
   const chunkSize = options.chunkSize ?? CHUNK_SIZE_DEFAULT;
 
@@ -104,7 +107,12 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
     const chunks = partitionByChunks(voxels, chunkSize);
     const allChunkResults: VoxelMeshWorkerOutput['results'] = [];
     for (const ch of chunks.values()) {
-      const coreResults = computeGreedyMesh(ch, options);
+      // Use full-scene occupancy for culling/AO so chunk-edge neighbors do not emit duplicate faces.
+      const coreResults = computeGreedyMesh(ch, {
+        aoEnabled: options.aoEnabled,
+        aoStrength: options.aoStrength,
+        occlusionVoxels: voxels
+      });
       for (const [bucketKey, data] of coreResults) {
         allChunkResults.push({
           bucketKey,

@@ -84,8 +84,11 @@
     getSelectionBounds,
     getStampOffsetForFace,
     ensureGridFitsPositions,
+    resizeGridToContent,
     stampRotation,
+    stampOriginMode,
     getBoundsFromPositions,
+    getVoxelBounds,
     rotatePositionAroundOrigin,
     getSelectionCenter,
     selectionMode,
@@ -194,6 +197,31 @@
 
   const LARGE_UNCONSTRAINED_FILL_MSG = `This fill will affect a large number of blocks and will take some time to complete. Continue?`;
 
+  // Ray mode is deprecated/removed from UI, but legacy branches still reference these symbols.
+  // Keep lightweight local fallbacks so stale state cannot break runtime.
+  type LegacyRayPickHit = {
+    point: [number, number, number];
+    faceNormal: [number, number, number];
+  };
+  function ddaPickVoxel(..._args: unknown[]): LegacyRayPickHit | null {
+    return null;
+  }
+  class VoxelleRayProgressive {
+    readonly texture: THREE.DataTexture;
+    constructor() {
+      const data = new Uint8ClampedArray(4);
+      this.texture = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+      this.texture.needsUpdate = true;
+    }
+    tick(..._args: unknown[]): void {}
+    dispose(): void {
+      this.texture.dispose();
+    }
+  }
+  function buildVoxelRayTraceParams(..._args: unknown[]): Record<string, never> {
+    return {};
+  }
+
   function formatSignedDelta(n: number): string {
     return n > 0 ? `+${n}` : String(n);
   }
@@ -225,6 +253,8 @@
   let renderer: VoxelleRenderer;
   /** Matches last `createSceneSetupAsync`. */
   let canvasIsWebGPU = false;
+  /** Temporary safety fallback while WebGPU ray backdrop path is unstable on some machines. */
+  const ENABLE_WEBGPU_RAY_BACKDROP = false;
   /** WebGPU: TSL `RenderPipeline` + bloom; null if init failed. */
   let webgpuBloomPipeline: WebGPUBloomPipeline | null = null;
   /** Selective glow bloom (glow voxels only); null if init failed. */
@@ -244,6 +274,28 @@
   let raycaster: THREE.Raycaster;
   let pointer: THREE.Vector2;
   let voxelGroup: THREE.Group;
+  /** Synthetic object for DDA pick hits in raycast rendering mode (face.normal used by tools). */
+  let rayPickProxy: THREE.Object3D | null = null;
+  let rayProgressive: VoxelleRayProgressive | null = null;
+  /**
+   * WebGPU: `scene.background` as DataTexture breaks TSL/node builds (`nodeBuilderState`); draw the
+   * CPU ray buffer on a quad parented to the camera. The active camera is temporarily `scene.add`ed
+   * in ray mode so WebGPU/WebGL render lists traverse camera children (same pattern as HUD quads).
+   */
+  let rayWebGpuBackdrop: THREE.Mesh | null = null;
+  /**
+   * WebGPU: CPU `DataTexture` uploads can break for arbitrary widths (row pitch / backend limits).
+   * Blit the same buffer into a 2D canvas and sample `CanvasTexture` on the backdrop instead.
+   */
+  let rayWebGpuCanvas: HTMLCanvasElement | null = null;
+  let rayWebGpuCanvasCtx: CanvasRenderingContext2D | null = null;
+  let rayWebGpuCanvasTex: THREE.CanvasTexture | null = null;
+  let rayWebGpuPutScratch: ImageData | null = null;
+  /** Baseline pose for ray progressive resets — must not use raw matrixWorld element diffs (OrbitControls damping changes them every frame). */
+  const prevRayCamPos = new THREE.Vector3();
+  const prevRayCamQuat = new THREE.Quaternion();
+  let prevRayCamInitialized = false;
+  let rayTraceContentDirty = true;
   let rollOverMesh: THREE.Mesh;
   let rollOverMaterial: THREE.MeshBasicMaterial;
   let dirLight: THREE.DirectionalLight;
@@ -253,6 +305,9 @@
   let boxGeometry: THREE.BoxGeometry;
   let meshManager: ReturnType<typeof createMeshManager> | null = null;
   let animationFrameId: number;
+  let fpsCounterDisplayed = $state(0);
+  let fpsCounterAccumFrames = 0;
+  let fpsCounterPeriodStartMs = 0;
   let isVoxelDrag = false;
   /** Selection mode for the current drag (set at pointer down when select tool); used so shift-drag extends selection. */
   let selectionModeForCurrentGesture: SelectionMode | null = null;
@@ -340,6 +395,12 @@
   let envMap: THREE.CubeTexture | null = null;
 
   let zoomPercent = $state(100);
+  /** Perspective zoom % uses model extent; cache because orbit `change` runs every frame while damping. */
+  let zoomPercentBaseDistCache: {
+    voxelsRef: Map<string, Voxel>;
+    gridSize: number;
+    baseDist: number;
+  } | null = null;
   /** For Add panel open/close transitions (tool preview hide / restore). */
   let wasAddShapePanelOpen = false;
   let deltaDisplay = $state<{ dx: number; dy: number; dz: number } | null>(null);
@@ -366,6 +427,14 @@
   const axisNormalHelper = new THREE.Vector3();
   const centroidToCameraScratch = new THREE.Vector3();
   const fitHelperBox = new THREE.Box3();
+  const fitHelperCenter = new THREE.Vector3();
+  const fitHelperPoint = new THREE.Vector3();
+  const fitCameraRight = new THREE.Vector3();
+  const fitCameraUp = new THREE.Vector3();
+  const fitCameraForward = new THREE.Vector3();
+  const fitCameraDir = new THREE.Vector3();
+  const fitRelative = new THREE.Vector3();
+  const fitCorners: THREE.Vector3[] = Array.from({ length: 8 }, () => new THREE.Vector3());
   const flyMoveState = createFlyMoveState();
   const { onKeyDown: onFlyKeyDown, onKeyUp: onFlyKeyUp } = createFlyKeyHandlers(flyMoveState, {
     isEnabled: () => !!flyControls?.enabled
@@ -396,18 +465,18 @@
     pokeFlyHint();
     onFlyKeyUp(e);
   }
-  const fitHelperSphere = new THREE.Sphere();
   const worldQuaternion = new THREE.Quaternion();
 
   function rebuildSelectionOverlay(sel: Map<string, Voxel>) {
     meshManager?.rebuildSelectionOverlay(sel);
   }
 
-  /** Same face anchor as rocks/ashlar: `place` from getAddPosition (+0.5 along normal), tangent axes centered on placement cell. */
+  /** Same face anchor as rocks/ashlar: `place` from getAddPosition (+0.5 along normal). */
   function getStampTargetForPlaceOnFace(
     place: [number, number, number],
     normal: FaceNormal,
-    bounds: NonNullable<ReturnType<typeof getBoundsFromPositions>>
+    bounds: NonNullable<ReturnType<typeof getBoundsFromPositions>>,
+    originMode: 'center' | 'corner'
   ): [number, number, number] {
     const halfW = (bounds.maxX - bounds.minX) / 2;
     const halfH = (bounds.maxY - bounds.minY) / 2;
@@ -418,9 +487,9 @@
       place[2] - normal[2]
     ];
     return [
-      normal[0] ? surfaceTarget[0] : place[0] - halfW,
-      normal[1] ? surfaceTarget[1] : place[1] - halfH,
-      normal[2] ? surfaceTarget[2] : place[2] - halfD
+      normal[0] ? surfaceTarget[0] : originMode === 'corner' ? place[0] : place[0] - halfW,
+      normal[1] ? surfaceTarget[1] : originMode === 'corner' ? place[1] : place[1] - halfH,
+      normal[2] ? surfaceTarget[2] : originMode === 'corner' ? place[2] : place[2] - halfD
     ];
   }
 
@@ -443,7 +512,7 @@
     }
     const bounds = getBoundsFromPositions(rotated);
     if (!bounds) return [];
-    const targetForStamp = getStampTargetForPlaceOnFace(place, normal, bounds);
+    const targetForStamp = getStampTargetForPlaceOnFace(place, normal, bounds, $stampOriginMode);
     const [dx, dy, dz] = getStampOffsetForFace(targetForStamp, normal, bounds);
     return rotated.map(([x, y, z]) => [x + dx, y + dy, z + dz]);
   }
@@ -500,6 +569,27 @@
   function getIntersection(): THREE.Intersection | null {
     if (!camera) return null;
     raycaster.setFromCamera(pointer, camera);
+    if (get(renderingMode) === 'raycast') {
+      const r = raycaster.ray;
+      const hit = ddaPickVoxel(
+        r.origin.x,
+        r.origin.y,
+        r.origin.z,
+        r.direction.x,
+        r.direction.y,
+        r.direction.z,
+        get(voxels)
+      );
+      if (!hit || !rayPickProxy) return null;
+      const p = new THREE.Vector3(hit.point[0], hit.point[1], hit.point[2]);
+      const fn = new THREE.Vector3(hit.faceNormal[0], hit.faceNormal[1], hit.faceNormal[2]);
+      return {
+        distance: r.origin.distanceTo(p),
+        point: p,
+        face: { normal: fn, materialIndex: 0 } as THREE.Face,
+        object: rayPickProxy
+      };
+    }
     const targets = getRaycastTargets();
     const intersects = raycaster.intersectObjects(targets, false);
     return intersects.length > 0 ? intersects[0] : null;
@@ -593,18 +683,34 @@
     updateZoomPercent();
   }
 
+  function perspectiveZoomBaseDist(): number {
+    const v = get(voxels);
+    const gsz = get(gridSize);
+    const c = zoomPercentBaseDistCache;
+    if (c && c.voxelsRef === v) {
+      if (v.size > 0) return c.baseDist;
+      if (c.gridSize === gsz) return c.baseDist;
+    }
+    let baseDist: number;
+    if (v.size === 0) {
+      baseDist = gsz * 2.5;
+    } else {
+      const b = getVoxelBounds(v);
+      baseDist = b
+        ? Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) * 1.5 + 10
+        : gsz * 2.5;
+    }
+    zoomPercentBaseDistCache = { voxelsRef: v, gridSize: gsz, baseDist };
+    return baseDist;
+  }
+
   function updateZoomPercent() {
     if (!camera || !orbitControls) return;
     if (camera instanceof THREE.OrthographicCamera) {
       zoomPercent = Math.round(camera.zoom * 100);
     } else {
       const dist = getCameraDistance();
-      const v = $voxels;
-      const b =
-        v.size > 0 ? getBoundsFromPositions([...v.keys()].map((k) => parseCoordKey(k))) : null;
-      const baseDist = b
-        ? Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) * 1.5 + 10
-        : $gridSize * 2.5;
+      const baseDist = perspectiveZoomBaseDist();
       zoomPercent = Math.round((baseDist / dist) * 100);
     }
   }
@@ -655,8 +761,8 @@
 
   function fitToView() {
     if (!camera || !orbitControls || !container) return;
+    resizeGridToContent();
     const v = $voxels;
-    const sz = $gridSize;
     const emptyBoxSize = 64;
     if (v.size === 0) {
       fitHelperBox.setFromCenterAndSize(
@@ -667,27 +773,78 @@
       fitHelperBox.makeEmpty();
       for (const key of v.keys()) {
         const [x, y, z] = parseCoordKey(key);
-        fitHelperBox.expandByPoint(new THREE.Vector3(x, y, z));
+        fitHelperPoint.set(x, y, z);
+        fitHelperBox.expandByPoint(fitHelperPoint);
+        fitHelperPoint.set(x + 1, y + 1, z + 1);
+        fitHelperBox.expandByPoint(fitHelperPoint);
       }
-      fitHelperBox.expandByScalar(1);
     }
-    fitHelperBox.getBoundingSphere(fitHelperSphere);
+
+    fitHelperBox.getCenter(fitHelperCenter);
+    orbitControls.target.copy(fitHelperCenter);
+
+    fitCameraDir.subVectors(camera.position, fitHelperCenter);
+    if (fitCameraDir.lengthSq() < 1e-8) {
+      fitCameraDir.set(0.6, 0.8, 1).normalize();
+    } else {
+      fitCameraDir.normalize();
+    }
+
+    fitCameraRight.set(1, 0, 0).applyQuaternion(camera.quaternion).normalize();
+    fitCameraUp.set(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
+    fitCameraForward.set(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+
+    const { min, max } = fitHelperBox;
+    fitCorners[0].set(min.x, min.y, min.z);
+    fitCorners[1].set(min.x, min.y, max.z);
+    fitCorners[2].set(min.x, max.y, min.z);
+    fitCorners[3].set(min.x, max.y, max.z);
+    fitCorners[4].set(max.x, min.y, min.z);
+    fitCorners[5].set(max.x, min.y, max.z);
+    fitCorners[6].set(max.x, max.y, min.z);
+    fitCorners[7].set(max.x, max.y, max.z);
+
+    const width = Math.max(1, container.clientWidth);
+    const height = Math.max(1, container.clientHeight);
+    const aspect = width / height;
+    const fitPadding = 1.08;
+
     if (camera instanceof THREE.OrthographicCamera) {
-      const baseHeight = v.size > 0 ? Math.max(256, fitHelperSphere.radius * 2.5) : sz * 2;
-      const targetHeight = fitHelperSphere.radius * 3;
-      camera.zoom = Math.max(0.1, baseHeight / targetHeight);
+      let maxX = 0;
+      let maxY = 0;
+      for (const corner of fitCorners) {
+        fitRelative.subVectors(corner, fitHelperCenter);
+        maxX = Math.max(maxX, Math.abs(fitRelative.dot(fitCameraRight)));
+        maxY = Math.max(maxY, Math.abs(fitRelative.dot(fitCameraUp)));
+      }
+      const frustumHalfHeight = Math.max(maxY * fitPadding, (maxX * fitPadding) / Math.max(aspect, 1e-6), 0.5);
+      camera.left = -frustumHalfHeight * aspect;
+      camera.right = frustumHalfHeight * aspect;
+      camera.top = frustumHalfHeight;
+      camera.bottom = -frustumHalfHeight;
+      camera.zoom = 1;
       camera.updateProjectionMatrix();
     } else {
-      const fov = (camera.fov * Math.PI) / 180;
-      const h = container.clientHeight;
-      const w = container.clientWidth;
-      const aspect = w / h;
-      const vFov = fov;
-      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-      const halfFov = Math.min(vFov, hFov) / 2;
-      const fitDist = (fitHelperSphere.radius * 1.5) / Math.tan(halfFov);
-      setCameraDistance(fitDist);
+      const vFovHalfTan = Math.tan((camera.fov * Math.PI) / 360);
+      const hFovHalfTan = vFovHalfTan * aspect;
+      let fitDist = MIN_DISTANCE;
+      for (const corner of fitCorners) {
+        fitRelative.subVectors(corner, fitHelperCenter);
+        const x = Math.abs(fitRelative.dot(fitCameraRight));
+        const y = Math.abs(fitRelative.dot(fitCameraUp));
+        const depth = fitRelative.dot(fitCameraForward);
+        fitDist = Math.max(
+          fitDist,
+          (x * fitPadding) / Math.max(hFovHalfTan, 1e-6) - depth,
+          (y * fitPadding) / Math.max(vFovHalfTan, 1e-6) - depth
+        );
+      }
+      const clampedDist = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, fitDist));
+      camera.position.copy(fitHelperCenter).addScaledVector(fitCameraDir, clampedDist);
     }
+    camera.lookAt(fitHelperCenter);
+    orbitControls.update();
+    updateZoomPercent();
     render();
   }
 
@@ -698,6 +855,58 @@
     const h = Math.cos(elev);
     const d = Math.max(distance, 10);
     dirLight.position.set(Math.cos(az) * h * d, Math.sin(elev) * d, Math.sin(az) * h * d);
+  }
+
+  const baseZenithColor = new THREE.Color(0x7fb3e6);
+  const baseHorizonColor = new THREE.Color(0xddeefe);
+  const baseGroundColor = new THREE.Color(0x394555);
+  const tmpSunColor = new THREE.Color();
+  const tmpZenithColor = new THREE.Color();
+  const tmpHorizonColor = new THREE.Color();
+  const tmpGroundColor = new THREE.Color();
+  const tmpBackgroundColor = new THREE.Color();
+  const tmpHorizonPlaneColor = new THREE.Color();
+
+  function updateSkyLightingColors(): void {
+    if (!sky || !dirLight || !hemisphereLight) return;
+    const sunIntensityN = THREE.MathUtils.clamp($sunlightIntensity / 2.3, 0, 2);
+    const ambientIntensityN = THREE.MathUtils.clamp($ambientIntensity / 0.45, 0, 2);
+    const elevationN = THREE.MathUtils.clamp(($lightElevation - 5) / 85, 0, 1);
+    tmpSunColor.copy(dirLight.color);
+    tmpZenithColor.copy(baseZenithColor).lerp(tmpSunColor, THREE.MathUtils.clamp(0.2 * sunIntensityN + 0.08 * ambientIntensityN, 0, 0.45));
+    tmpHorizonColor.copy(baseHorizonColor).lerp(tmpSunColor, THREE.MathUtils.clamp(0.28 * sunIntensityN * (1 - elevationN) + 0.06 * ambientIntensityN, 0, 0.5));
+    const skyBrightness = THREE.MathUtils.clamp(
+      0.35 + 0.35 * ambientIntensityN + 0.5 * sunIntensityN * (0.25 + 0.75 * elevationN),
+      0.2,
+      1.9
+    );
+    tmpZenithColor.multiplyScalar(skyBrightness);
+    tmpHorizonColor.multiplyScalar(THREE.MathUtils.clamp(skyBrightness * 1.06, 0.25, 2));
+    tmpGroundColor.copy(baseGroundColor).lerp(tmpSunColor, THREE.MathUtils.clamp(0.08 * sunIntensityN, 0, 0.16));
+    tmpGroundColor.multiplyScalar(THREE.MathUtils.clamp(0.35 + 0.35 * ambientIntensityN, 0.2, 1.25));
+    tmpBackgroundColor.setHex(hexToInt($backgroundColor));
+
+    hemisphereLight.color.copy(tmpZenithColor);
+    hemisphereLight.groundColor.copy(tmpGroundColor);
+
+    if (groundPlane?.material instanceof THREE.MeshStandardMaterial) {
+      // In sky mode, the scene background picker drives the horizon plane hue.
+      groundPlane.material.color.copy(
+        tmpHorizonPlaneColor.copy(tmpBackgroundColor).lerp(tmpGroundColor, 0.15)
+      );
+      groundPlane.material.needsUpdate = true;
+    }
+
+    if (sky instanceof Sky) {
+      const uniforms = (sky.material as THREE.ShaderMaterial).uniforms;
+      if (uniforms['turbidity']) uniforms['turbidity'].value = THREE.MathUtils.lerp(1.8, 8.5, 1 - elevationN);
+      if (uniforms['rayleigh']) uniforms['rayleigh'].value = THREE.MathUtils.lerp(0.75, 2.6, ambientIntensityN * 0.5);
+      if (uniforms['mieCoefficient']) uniforms['mieCoefficient'].value = THREE.MathUtils.lerp(0.002, 0.028, 1 - elevationN);
+      if (uniforms['mieDirectionalG']) uniforms['mieDirectionalG'].value = 0.78;
+    } else if (sky instanceof THREE.Mesh && sky.material instanceof THREE.MeshBasicMaterial) {
+      sky.material.color.copy(tmpZenithColor).lerp(tmpHorizonColor, 0.4);
+      sky.material.needsUpdate = true;
+    }
   }
 
   function updateShadowCamera(sz: number) {
@@ -908,7 +1117,7 @@
     const bounds = getBoundsFromPositions(rotated);
     if (!bounds) return;
     playPlaceSound();
-    const targetForStamp = getStampTargetForPlaceOnFace(place, normal, bounds);
+    const targetForStamp = getStampTargetForPlaceOnFace(place, normal, bounds, $stampOriginMode);
     const [dx, dy, dz] = getStampOffsetForFace(targetForStamp, normal, bounds);
     const stampPositions = rotated.map(
       ([x, y, z]) => [x + dx, y + dy, z + dz] as [number, number, number]
@@ -1451,6 +1660,7 @@
       return;
     }
     if (event.button !== 0) return;
+    if ($tool === 'hand') return;
 
     // Cuboid depth phase: pointer down starts drag-to-adjust-depth (anywhere on canvas)
     if (
@@ -2005,15 +2215,21 @@
       return;
     }
     try {
-    if (selectionGizmo?.handlePointerMove(event)) return;
-    // Add shape panel: only add-preview ghost; hide active-tool rollover + meshManager preview
-    if ($addPanelStore.open) {
-      if (event) updatePointerFromEvent(event);
-      rollOverMesh.visible = false;
-      updatePreviewMesh([]);
-      render();
-      return;
-    }
+      if ($tool === 'hand') {
+        selectionGizmo?.clearGizmoHoverCursor();
+        rollOverMesh.visible = false;
+        updatePreviewMesh([]);
+        return;
+      }
+      if (selectionGizmo?.handlePointerMove(event)) return;
+      // Add shape panel: only add-preview ghost; hide active-tool rollover + meshManager preview
+      if ($addPanelStore.open) {
+        if (event) updatePointerFromEvent(event);
+        rollOverMesh.visible = false;
+        updatePreviewMesh([]);
+        render();
+        return;
+      }
     // Stamp drag: re-raycast so stamp follows cursor onto any surface
     if (isStampDrag && $selection.size > 0) {
       const hit = getIntersection();
@@ -2965,6 +3181,79 @@
     }
   }
 
+  function syncRayWebGpuCanvasFromCpuBuffer() {
+    if (!rayProgressive || !rayWebGpuCanvas || !rayWebGpuCanvasCtx || !rayWebGpuCanvasTex) return;
+    const im = rayProgressive.texture.image as {
+      data?: Uint8ClampedArray;
+      width: number;
+      height: number;
+    };
+    if (!im?.data || im.width < 1 || im.height < 1) return;
+    if (rayWebGpuCanvas.width !== im.width || rayWebGpuCanvas.height !== im.height) {
+      rayWebGpuCanvas.width = im.width;
+      rayWebGpuCanvas.height = im.height;
+    }
+    const needLen = im.width * im.height * 4;
+    if (
+      !rayWebGpuPutScratch ||
+      rayWebGpuPutScratch.width !== im.width ||
+      rayWebGpuPutScratch.height !== im.height
+    ) {
+      rayWebGpuPutScratch = rayWebGpuCanvasCtx.createImageData(im.width, im.height);
+    }
+    rayWebGpuPutScratch.data.set(im.data.subarray(0, needLen));
+    rayWebGpuCanvasCtx.putImageData(rayWebGpuPutScratch, 0, 0);
+    rayWebGpuCanvasTex.needsUpdate = true;
+  }
+
+  function updateRayWebGpuBackdropTransform(cam: THREE.PerspectiveCamera | THREE.OrthographicCamera) {
+    if (!rayWebGpuBackdrop) return;
+    const d =
+      cam instanceof THREE.PerspectiveCamera
+        ? THREE.MathUtils.clamp(cam.far * 0.02, Math.max(cam.near * 4, 0.5), 500)
+        : THREE.MathUtils.clamp(Math.abs(cam.far - cam.near) * 0.02, 2, 500);
+    let frW: number;
+    let frH: number;
+    if (cam instanceof THREE.PerspectiveCamera) {
+      const vFov = (cam.fov * Math.PI) / 180;
+      frH = 2 * Math.tan(vFov / 2) * d;
+      frW = frH * cam.aspect;
+    } else {
+      frW = cam.right - cam.left;
+      frH = cam.top - cam.bottom;
+    }
+    rayWebGpuBackdrop.position.set(0, 0, -d);
+    rayWebGpuBackdrop.rotation.set(0, Math.PI, 0);
+    rayWebGpuBackdrop.scale.set(frW / 2, frH / 2, 1);
+  }
+
+  /** WebGPU ray backdrop: only the active camera may be under `scene` so projectObject visits the quad. */
+  function syncRayWebGpuCameraInScene() {
+    if (!scene || !perspectiveCamera || !orthographicCamera || !camera) return;
+    if (perspectiveCamera !== camera && perspectiveCamera.parent === scene) {
+      scene.remove(perspectiveCamera);
+    }
+    if (orthographicCamera !== camera && orthographicCamera.parent === scene) {
+      scene.remove(orthographicCamera);
+    }
+    if (camera.parent !== scene) {
+      scene.add(camera);
+    }
+  }
+
+  function rayWebGpuSceneTeardown() {
+    detachRayWebGpuBackdrop();
+    if (!scene) return;
+    if (perspectiveCamera?.parent === scene) scene.remove(perspectiveCamera);
+    if (orthographicCamera?.parent === scene) scene.remove(orthographicCamera);
+  }
+
+  function detachRayWebGpuBackdrop() {
+    if (rayWebGpuBackdrop?.parent) {
+      rayWebGpuBackdrop.parent.remove(rayWebGpuBackdrop);
+    }
+  }
+
   function updateOrthoFrustum() {
     if (!orthographicCamera || !container) return;
     const w = container.clientWidth;
@@ -3023,12 +3312,23 @@
     bloomPassBackground = null;
   }
 
+  function ensureBloomAuxMaterials() {
+    if (!bloomDarkMaterial) {
+      bloomDarkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    }
+    if (!bloomPassBackground) {
+      bloomPassBackground = new THREE.Color(0x000000);
+    }
+  }
+
   function setupSelectiveBloomPipeline() {
     if (!renderer || !scene || !camera || !container) return;
-    if (!isWebGLRenderer(renderer)) return;
+    if (!isWebGLRenderer(renderer)) {
+      ensureBloomAuxMaterials();
+      return;
+    }
     disposeSelectiveBloomPipeline();
-    bloomDarkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
-    bloomPassBackground = new THREE.Color(0x000000);
+    ensureBloomAuxMaterials();
 
     const w = container.clientWidth;
     const h = container.clientHeight;
@@ -3044,7 +3344,7 @@
     });
 
     sharedSceneRenderPass = new RenderPass(scene, camera);
-    unrealBloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.42, 0.3, 0.2);
+    unrealBloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.58, 0.42, 0.15);
 
     bloomComposer = new EffectComposer(renderer, bloomRenderTarget);
     bloomComposer.renderToScreen = false;
@@ -3055,7 +3355,7 @@
       uniforms: {
         baseTexture: { value: null },
         bloomTexture: { value: bloomComposer.renderTarget2.texture },
-        bloomStrength: { value: 0.72 }
+        bloomStrength: { value: 1.05 }
       },
       vertexShader: BLOOM_MIX_VERTEX,
       fragmentShader: BLOOM_MIX_FRAGMENT,
@@ -3077,6 +3377,7 @@
   async function setupWebGPUBloomPipeline() {
     if (!renderer || !scene || !camera || !container) return;
     if (!isWebGPURenderer(renderer)) return;
+    ensureBloomAuxMaterials();
     webgpuBloomPipeline?.dispose();
     webgpuBloomPipeline = null;
     try {
@@ -3148,6 +3449,22 @@
       selectionGizmo?.updateMoveGizmoTransform();
       scene.updateMatrixWorld(true);
 
+      if (
+        get(renderingMode) === 'raycast' &&
+        ENABLE_WEBGPU_RAY_BACKDROP &&
+        canvasIsWebGPU &&
+        rayWebGpuBackdrop &&
+        camera &&
+        perspectiveCamera &&
+        orthographicCamera
+      ) {
+        syncRayWebGpuCameraInScene();
+        if (rayWebGpuBackdrop.parent !== camera) {
+          camera.add(rayWebGpuBackdrop);
+        }
+        updateRayWebGpuBackdropTransform(camera);
+      }
+
       if (meshManager && get(enableShadows) && !canvasIsWebGPU) {
         const glassUniformsChanged = syncGlassShadowUniformsFromBuckets(
           meshManager.getMeshesByBucket()
@@ -3186,14 +3503,38 @@
         }
       }
 
-      if (webgpuBloomPipeline && camera && isWebGPURenderer(renderer)) {
+      if (
+        webgpuBloomPipeline &&
+        camera &&
+        isWebGPURenderer(renderer) &&
+        get(renderingMode) !== 'raycast'
+      ) {
         webgpuBloomPipeline.renderSceneToTarget(
           renderer as Parameters<WebGPUBloomPipeline['renderSceneToTarget']>[0],
           scene,
           camera
         );
+        const savedWebGpuBloomBg = scene.background;
+        stashNonGlowMaterialsForBloom(scene);
+        if (bloomPassBackground) scene.background = bloomPassBackground;
+        try {
+          webgpuBloomPipeline.renderBloomSourceToTarget(
+            renderer as Parameters<WebGPUBloomPipeline['renderBloomSourceToTarget']>[0],
+            scene,
+            camera
+          );
+        } finally {
+          scene.background = savedWebGpuBloomBg;
+          restoreStashedBloomMaterials(scene);
+        }
         webgpuBloomPipeline.renderPipeline.render();
-      } else if (bloomComposer && finalComposer && sharedSceneRenderPass && camera) {
+      } else if (
+        bloomComposer &&
+        finalComposer &&
+        sharedSceneRenderPass &&
+        camera &&
+        get(renderingMode) !== 'raycast'
+      ) {
         sharedSceneRenderPass.camera = camera;
         stashNonGlowMaterialsForBloom(scene);
         const savedSceneBackground = scene.background;
@@ -3215,6 +3556,21 @@
   function animate(now?: number) {
     animationFrameId = requestAnimationFrame(animate);
     const t = now ?? performance.now();
+    if (get(voxellePreferences).showFpsCounter) {
+      if (!fpsCounterPeriodStartMs) {
+        fpsCounterPeriodStartMs = t;
+        fpsCounterAccumFrames = 0;
+      }
+      fpsCounterAccumFrames++;
+      const fpsElapsed = t - fpsCounterPeriodStartMs;
+      if (fpsElapsed >= 1000) {
+        fpsCounterDisplayed = Math.round((fpsCounterAccumFrames * 1000) / fpsElapsed);
+        fpsCounterAccumFrames = 0;
+        fpsCounterPeriodStartMs = t;
+      }
+    } else {
+      fpsCounterPeriodStartMs = 0;
+    }
     const delta = lastFrameTime ? (t - lastFrameTime) / 1000 : 0;
     lastFrameTime = t;
     if (flyControls?.enabled && camera) {
@@ -3222,6 +3578,49 @@
     } else {
       orbitControls?.update();
     }
+
+    if (
+      rayProgressive &&
+      camera &&
+      renderer &&
+      container &&
+      get(renderingMode) === 'raycast'
+    ) {
+      camera.updateMatrixWorld(true);
+
+      let camDirty = false;
+      if (prevRayCamInitialized) {
+        const posMoved = prevRayCamPos.distanceToSquared(camera.position) > 1e-8;
+        const rotAlign = Math.abs(prevRayCamQuat.dot(camera.quaternion));
+        const rotMoved = rotAlign < 1 - 1e-6;
+        camDirty = posMoved || rotMoved;
+        if (camDirty) {
+          prevRayCamPos.copy(camera.position);
+          prevRayCamQuat.copy(camera.quaternion);
+        }
+      }
+
+      const contentDirty = rayTraceContentDirty;
+      rayTraceContentDirty = false;
+      const params = buildVoxelRayTraceParams(camera, dirLight, hemisphereLight, {
+        enableSky: get(enableSky),
+        backgroundHex: hexToInt(get(backgroundColor)),
+        enableShadows: get(enableShadows),
+        ambientIntensity: get(ambientIntensity),
+        sceneEnvironmentIntensity: get(sceneEnvironmentIntensity)
+      });
+      rayProgressive.tick(
+        delta,
+        container.clientWidth,
+        container.clientHeight,
+        renderer.getPixelRatio(),
+        get(voxels),
+        params,
+        contentDirty || camDirty
+      );
+      if (ENABLE_WEBGPU_RAY_BACKDROP && canvasIsWebGPU) syncRayWebGpuCanvasFromCpuBuffer();
+    }
+
     render();
   }
 
@@ -3270,6 +3669,38 @@
   });
 
   $effect(() => {
+    $renderingMode;
+    $voxels;
+    $lightAngle;
+    $lightElevation;
+    $lightColor;
+    $ambientIntensity;
+    $sunlightIntensity;
+    $enableShadows;
+    $enableSky;
+    $backgroundColor;
+    $sceneEnvironmentIntensity;
+    $gridSize;
+    $focalLength;
+    $orthographic;
+    // Camera movement is already tracked via `camDirty` in animate(); avoid re-resetting every frame.
+    if ($renderingMode === 'raycast') rayTraceContentDirty = true;
+  });
+
+  $effect(() => {
+    if (voxelGroup) voxelGroup.visible = $renderingMode !== 'raycast';
+    if ($renderingMode === 'raycast' && camera) {
+      camera.updateMatrixWorld(true);
+      prevRayCamPos.copy(camera.position);
+      prevRayCamQuat.copy(camera.quaternion);
+      prevRayCamInitialized = true;
+    } else if ($renderingMode !== 'raycast') {
+      prevRayCamInitialized = false;
+    }
+    render();
+  });
+
+  $effect(() => {
     const sel = $selection;
     rebuildSelectionOverlay(sel);
     render();
@@ -3297,7 +3728,12 @@
       if (isWebGLRenderer(renderer)) {
         renderer.shadowMap.type = THREE.BasicShadowMap;
       } else if (isWebGPURenderer(renderer)) {
-        (renderer.shadowMap as { transmitted: boolean }).transmitted = false;
+        try {
+          const sm = renderer.shadowMap as { transmitted?: boolean } | null | undefined;
+          if (sm) sm.transmitted = false;
+        } catch {
+          // WebGPU shadow-map internals may not be fully initialized on this frame.
+        }
       }
     }
     if (dirLight) dirLight.castShadow = shadows;
@@ -3307,7 +3743,10 @@
         mesh.castShadow = shadows;
         const matId = mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY];
         mesh.receiveShadow =
-          shadows && $renderingMode !== 'marchingCubes' && matId !== 'glass';
+          shadows &&
+          $renderingMode !== 'marchingCubes' &&
+          $renderingMode !== 'raycast' &&
+          matId !== 'glass';
       }
     }
     if (shadows) invalidateDirectionalShadowMap();
@@ -3404,6 +3843,7 @@
     dirLight = setupRefs.dirLight;
     sky = setupRefs.sky;
     groundPlane = setupRefs.groundPlane;
+    updateSkyLightingColors();
     gridGroup = setupRefs.gridGroup;
     gridLineMaterial = setupRefs.gridLineMaterial;
     orbitControls = setupRefs.orbitControls;
@@ -3439,6 +3879,47 @@
     );
     meshManager.buildGrid(sz, $voxels);
     gridGroup.visible = $showGrid;
+
+    rayPickProxy = new THREE.Object3D();
+    rayProgressive = new VoxelleRayProgressive();
+    if (canvasIsWebGPU) {
+      rayWebGpuCanvas = document.createElement('canvas');
+      rayWebGpuCanvas.width = 2;
+      rayWebGpuCanvas.height = 2;
+      rayWebGpuCanvasCtx = rayWebGpuCanvas.getContext('2d', { alpha: false });
+      rayWebGpuCanvasTex = new THREE.CanvasTexture(rayWebGpuCanvas);
+      rayWebGpuCanvasTex.colorSpace = THREE.SRGBColorSpace;
+      rayWebGpuCanvasTex.generateMipmaps = false;
+      rayWebGpuCanvasTex.minFilter = THREE.LinearFilter;
+      rayWebGpuCanvasTex.magFilter = THREE.LinearFilter;
+      /** Keep the backdrop unlit and unaffected by tonemapping. */
+      const bgMat = new THREE.MeshBasicMaterial({
+        map: rayWebGpuCanvasTex,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+        side: THREE.DoubleSide,
+        reflectivity: 0
+      });
+      const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat);
+      bgMesh.name = 'voxelleRayWebGpuBackdrop';
+      bgMesh.renderOrder = -2000;
+      bgMesh.frustumCulled = false;
+      bgMesh.raycast = () => {};
+      rayWebGpuBackdrop = bgMesh;
+    }
+    if (get(renderingMode) === 'raycast') {
+      voxelGroup.visible = false;
+      if (ENABLE_WEBGPU_RAY_BACKDROP && canvasIsWebGPU && rayWebGpuBackdrop && camera) {
+        scene.background = new THREE.Color(hexToInt(get(backgroundColor)));
+        syncRayWebGpuCameraInScene();
+        camera.add(rayWebGpuBackdrop);
+        updateRayWebGpuBackdropTransform(camera);
+      } else {
+        rayWebGpuSceneTeardown();
+        scene.background = rayProgressive.texture;
+      }
+    }
 
     const moveDragLineMat = new THREE.LineBasicMaterial({
       color: 0x9fd8ff,
@@ -3511,6 +3992,7 @@
   $effect(() => {
     const sz = $gridSize;
     const useSky = $enableSky;
+    $renderingMode;
     updateDirLightPosition($lightAngle, $lightElevation, sz);
     updateShadowCamera(sz);
     if (dirLight) {
@@ -3518,11 +4000,27 @@
       dirLight.intensity = $sunlightIntensity;
     }
     if (hemisphereLight) hemisphereLight.intensity = $ambientIntensity;
+    updateSkyLightingColors();
     if (scene) {
-      scene.background = useSky ? null : new THREE.Color(hexToInt($backgroundColor));
+      if ($renderingMode === 'raycast' && rayProgressive) {
+        if (ENABLE_WEBGPU_RAY_BACKDROP && canvasIsWebGPU && rayWebGpuBackdrop && camera) {
+          scene.background = new THREE.Color(hexToInt($backgroundColor));
+          syncRayWebGpuCameraInScene();
+          if (rayWebGpuBackdrop.parent !== camera) {
+            camera.add(rayWebGpuBackdrop);
+          }
+          updateRayWebGpuBackdropTransform(camera);
+        } else {
+          rayWebGpuSceneTeardown();
+          scene.background = rayProgressive.texture;
+        }
+      } else {
+        rayWebGpuSceneTeardown();
+        scene.background = useSky ? null : new THREE.Color(hexToInt($backgroundColor));
+      }
     }
     if (sky) {
-      sky.visible = useSky;
+      sky.visible = useSky && $renderingMode !== 'raycast';
       if (useSky && dirLight && sky instanceof Sky) {
         (sky.material as THREE.ShaderMaterial).uniforms['sunPosition'].value.copy(
           dirLight.position
@@ -3530,7 +4028,7 @@
       }
     }
     if (groundPlane) {
-      groundPlane.visible = useSky;
+      groundPlane.visible = useSky && $renderingMode !== 'raycast';
       if (useSky) {
         groundPlane.position.y = -sz * 0.6;
         groundPlane.scale.set(sz * 3, sz * 3, 1);
@@ -3590,6 +4088,7 @@
     const t = $tool;
     if (!orbitControls || !flyControls) return;
     const isFly = t === 'fly';
+    const isHand = t === 'hand';
     orbitControls.enabled = !isFly;
     flyControls.enabled = isFly;
     document.removeEventListener('mousemove', onFlyPointerMove);
@@ -3611,6 +4110,14 @@
     if (isFly && (cuboidPhase || polygonPhase || selectionGizmo?.isGizmoDrag)) {
       flyControls.unlock();
       cancelDrag();
+    }
+    if (isHand) {
+      selectionGizmo?.clearGizmoHoverCursor();
+      rollOverMesh.visible = false;
+      updatePreviewMesh([]);
+      if (cuboidPhase || polygonPhase || selectionGizmo?.isGizmoDrag || isVoxelDrag || ropePhase) {
+        cancelDrag();
+      }
     }
     if (!isFly && prevTool === 'fly' && camera) {
       flyControls.unlock();
@@ -3778,6 +4285,19 @@
     polygonLineMaterial?.dispose();
     polygonPointsMaterial?.dispose();
     ropePointsMaterial?.dispose();
+    if (rayWebGpuBackdrop) {
+      rayWebGpuSceneTeardown();
+      rayWebGpuBackdrop.geometry.dispose();
+      (rayWebGpuBackdrop.material as THREE.MeshBasicMaterial).dispose();
+      rayWebGpuBackdrop = null;
+    }
+    rayWebGpuCanvasTex = null;
+    rayWebGpuCanvasCtx = null;
+    rayWebGpuCanvas = null;
+    rayWebGpuPutScratch = null;
+    rayProgressive?.dispose();
+    rayProgressive = null;
+    rayPickProxy = null;
     meshManager?.destroy();
     if (moveDragLine && scene) {
       scene.remove(moveDragLine);
@@ -3988,6 +4508,11 @@
       >
         Cancel
       </button>
+    </div>
+  {/if}
+  {#if $voxellePreferences.showFpsCounter}
+    <div class="fps-counter" role="status" aria-live="polite">
+      {fpsCounterDisplayed} FPS
     </div>
   {/if}
   {#if deltaDisplay && $voxellePreferences.showMovementDeltaHint}
@@ -4271,6 +4796,20 @@
     font-size: 0.75rem;
     color: rgba(255, 255, 255, 0.9);
     pointer-events: none;
+  }
+
+  .fps-counter {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-family: monospace;
+    color: rgba(255, 255, 255, 0.9);
+    pointer-events: none;
+    z-index: 1;
   }
 
   .delta-display {

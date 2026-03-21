@@ -3,6 +3,7 @@
     tool,
     selection,
     stampRotation,
+    stampOriginMode,
     clampQuarterTurn,
     type StampRotation
   } from '../store/index';
@@ -13,6 +14,18 @@
 
 {#if $tool === 'stamp' && $selection.size > 0}
   <section class="tool-panel-section" aria-label="Stamp">
+    <div class="tool-panel-row tool-panel-row--wide-label">
+      <span class="tool-panel-label">Origin</span>
+      <select
+        class="tool-panel-select"
+        value={$stampOriginMode}
+        onchange={(e) =>
+          stampOriginMode.set((e.target as HTMLSelectElement).value as 'center' | 'corner')}
+      >
+        <option value="center">From center</option>
+        <option value="corner">From corner</option>
+      </select>
+    </div>
     <div class="tool-panel-row">
       <span class="tool-panel-label">Rot</span>
       <input

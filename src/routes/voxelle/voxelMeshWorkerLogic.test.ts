@@ -45,4 +45,18 @@ describe('voxelMeshWorkerLogic', () => {
     });
     expect(output.gen).toBe(7);
   });
+
+  it('does not emit internal faces across chunk boundaries', () => {
+    const output = processVoxelMeshMessage({
+      mode: 'greedy',
+      voxels: [
+        ['15,0,0', plasticVoxel(0xff5733)],
+        ['16,0,0', plasticVoxel(0xff5733)]
+      ],
+      options: { chunkSize: 16 }
+    });
+    expect(output.results).toHaveLength(1);
+    // Two adjacent voxels should render 10 faces total (60 triangle indices), not 12 (72).
+    expect(output.results[0].indices.length).toBe(60);
+  });
 });

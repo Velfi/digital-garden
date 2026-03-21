@@ -40,14 +40,13 @@
     Sky & horizon
   </label>
 </div>
-<div class="light-control" class:dimmed={$enableSky}>
+<div class="light-control">
   <label for="background-color">Background</label>
   <input
     id="background-color"
     type="color"
     value={$backgroundColor}
     oninput={(e) => backgroundColor.set((e.target as HTMLInputElement).value)}
-    disabled={$enableSky}
   />
 </div>
 

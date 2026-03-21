@@ -3,6 +3,7 @@ import {
   coordKey,
   parseCoordKey,
   getSelectionBounds,
+  getVoxelBounds,
   getVoxelCenter,
   getSelectionCenter,
   getMirrorCoordKeys,
@@ -36,6 +37,7 @@ export type Tool =
   | 'selectByColor'
   | 'selectCoplanar'
   | 'stamp'
+  | 'hand'
   | 'fly'
   | 'eyedropper'
   | 'clay'
@@ -84,7 +86,10 @@ export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect' | 'togg
 export type PlaneAxis = 'auto' | 0 | 1 | 2;
 
 export type FaceNormal = [number, number, number];
-export type RenderingMode = 'greedy' | 'marchingCubes';
+export type RenderingMode = 'greedy' | 'marchingCubes' | 'raycast';
+function normalizeRenderingMode(mode: RenderingMode): RenderingMode {
+  return mode === 'raycast' ? 'greedy' : mode;
+}
 
 export type AddPanelState = {
   open: boolean;
@@ -113,8 +118,8 @@ const defaultAddPanel: AddPanelState = {
   size: 8
 };
 
-/** Draw vs Clay vs Fly vs Generators tab pane. Generators = procedural tools (e.g. rocks). */
-export type ToolPane = 'draw' | 'clay' | 'fly' | 'generators';
+/** Draw vs Clay vs Hand vs Fly vs Generators tab pane. Generators = procedural tools (e.g. rocks). */
+export type ToolPane = 'draw' | 'clay' | 'hand' | 'fly' | 'generators';
 
 // Stores
 export const gridSize = writable<GridSize>(32);
@@ -233,6 +238,9 @@ export const selectionGizmoMode = writable<SelectionGizmoMode>('move');
 
 export type StampRotation = { rotX: number; rotY: number; rotZ: number };
 export const stampRotation = writable<StampRotation>({ rotX: 0, rotY: 0, rotZ: 0 });
+export type StampOriginMode = 'center' | 'corner';
+/** Stamp anchor on face tangent axes: center (legacy) or min-corner aligned to click cell. */
+export const stampOriginMode = writable<StampOriginMode>('center');
 
 /** Rocks generator: nominal radius (1–8 voxels). */
 export const rockSize = writable<number>(3);
@@ -262,7 +270,13 @@ export const grassDensity = writable<number>(0.6);
 /** Grass generator: max blade height in voxels (1–6). */
 export const grassHeight = writable<number>(3);
 export const showGrid = writable<boolean>(false);
-export const renderingMode = writable<RenderingMode>('greedy');
+const renderingModeInner = writable<RenderingMode>('greedy');
+export const renderingMode = {
+  subscribe: renderingModeInner.subscribe,
+  set: (mode: RenderingMode) => renderingModeInner.set(normalizeRenderingMode(mode)),
+  update: (updater: (value: RenderingMode) => RenderingMode) =>
+    renderingModeInner.update((value) => normalizeRenderingMode(updater(value)))
+};
 /** Default lighting matches sunny-day preset in `store/lightPresets.ts`. */
 export const lightAngle = writable<number>(50);
 export const lightElevation = writable<number>(55);
@@ -314,6 +328,22 @@ export function ensureGridFitsPositions(positions: Iterable<[number, number, num
   const minSize = 2 * (maxAbs + 1);
   const sz = get(gridSize);
   if (minSize > sz) gridSize.set(Math.min(minSize, MAX_GRID_SIZE));
+}
+
+/** Resize grid to tightly fit current voxel content (symmetric about origin). */
+export function resizeGridToContent(): void {
+  const b = getVoxelBounds(get(voxels));
+  if (!b) return;
+  const maxAbs = Math.max(
+    Math.abs(b.minX),
+    Math.abs(b.minY),
+    Math.abs(b.minZ),
+    Math.abs(b.maxX),
+    Math.abs(b.maxY),
+    Math.abs(b.maxZ)
+  );
+  const targetSize = Math.min(Math.max(1, 2 * (maxAbs + 1)), MAX_GRID_SIZE);
+  if (targetSize !== get(gridSize)) gridSize.set(targetSize);
 }
 
 export function shiftVoxelsAndSelection(dx: number, dy: number, dz: number): void {

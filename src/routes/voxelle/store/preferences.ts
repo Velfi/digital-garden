@@ -31,6 +31,8 @@ export type VoxellePreferences = {
    * `auto` tries WebGPU first, then WebGL.
    */
   rendererBackend: RendererBackendPreference;
+  /** Viewport frames-per-second overlay (top-left). */
+  showFpsCounter: boolean;
 };
 
 const DEFAULTS: VoxellePreferences = {
@@ -38,7 +40,8 @@ const DEFAULTS: VoxellePreferences = {
   showDragDeltaHint: true,
   gizmosAlwaysOnTop: false,
   toneMapping: DEFAULT_TONE_MAPPING_PREFERENCE,
-  rendererBackend: DEFAULT_RENDERER_BACKEND
+  rendererBackend: DEFAULT_RENDERER_BACKEND,
+  showFpsCounter: false
 };
 
 export function loadPreferences(): VoxellePreferences {
@@ -65,7 +68,9 @@ export function loadPreferences(): VoxellePreferences {
       toneMapping: isToneMappingPreference(o.toneMapping) ? o.toneMapping : DEFAULTS.toneMapping,
       rendererBackend: isRendererBackendPreference(o.rendererBackend)
         ? o.rendererBackend
-        : DEFAULTS.rendererBackend
+        : DEFAULTS.rendererBackend,
+      showFpsCounter:
+        typeof o.showFpsCounter === 'boolean' ? o.showFpsCounter : DEFAULTS.showFpsCounter
     };
   } catch {
     return { ...DEFAULTS };

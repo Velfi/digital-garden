@@ -130,7 +130,12 @@ async function createVoxelleRenderer(
       renderer.shadowMap.enabled = enableShadows;
       renderer.shadowMap.type = THREE.PCFShadowMap;
       /** Keep disabled: WebGPU transmitted shadows can punch through opaque occluders. */
-      renderer.shadowMap.transmitted = false;
+      try {
+        const sm = renderer.shadowMap as { transmitted?: boolean } | null | undefined;
+        if (sm) sm.transmitted = false;
+      } catch {
+        // Some WebGPU shadow-map implementations expose transmitted via lazy internals.
+      }
       renderer.toneMapping = THREE.NeutralToneMapping;
       renderer.toneMappingExposure = 1;
       renderer.outputColorSpace = THREE.SRGBColorSpace;

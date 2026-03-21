@@ -38,7 +38,7 @@ describe('storage', () => {
   });
 
   describe('saveToStorage / loadFromStorage', () => {
-    it('round-trips voxels and gridSize', () => {
+    it('round-trips voxels and autoshrunk gridSize', () => {
       voxels.set(
         new Map([
           ['0,0,0', plasticVoxel(0xff0000)],
@@ -46,11 +46,12 @@ describe('storage', () => {
         ])
       );
       saveToStorage();
+      expect(get(gridSize)).toBe(4);
       voxels.set(new Map());
       gridSize.set(16);
       const result = loadFromStorage();
       expect(result).toBe(true);
-      expect(get(gridSize)).toBe(32);
+      expect(get(gridSize)).toBe(4);
       expect(get(voxels).get('0,0,0')).toEqual(plasticVoxel(0xff0000));
       expect(get(voxels).get('1,1,1')).toEqual(plasticVoxel(0x00ff00));
     });
@@ -92,10 +93,11 @@ describe('storage', () => {
       expect(await loadFromStorageAsync()).toBe(false);
       voxels.set(new Map([['0,0,0', plasticVoxel(0xff0000)]]));
       await saveToStoragePromise();
+      expect(get(gridSize)).toBe(2);
       voxels.set(new Map());
       gridSize.set(16);
       expect(await loadFromStorageAsync()).toBe(true);
-      expect(get(gridSize)).toBe(32);
+      expect(get(gridSize)).toBe(2);
       expect(get(voxels).get('0,0,0')).toEqual(plasticVoxel(0xff0000));
     });
   });

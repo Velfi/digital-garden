@@ -38,6 +38,11 @@
     savePreferences(prefs);
   }
 
+  function onFpsCounterChange(checked: boolean) {
+    prefs = { ...prefs, showFpsCounter: checked };
+    savePreferences(prefs);
+  }
+
   function onToneMappingChange(value: ToneMappingPreference) {
     prefs = { ...prefs, toneMapping: value };
     savePreferences(prefs);
@@ -90,6 +95,14 @@
           onchange={(e) => onGizmosAlwaysOnTopChange(e.currentTarget.checked)}
         />
         Always render movement and rotation gizmos on top
+      </label>
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          checked={prefs.showFpsCounter}
+          onchange={(e) => onFpsCounterChange(e.currentTarget.checked)}
+        />
+        Show FPS counter (viewport overlay)
       </label>
       <label class="select-label">
         <span class="select-label-text">Graphics API</span>

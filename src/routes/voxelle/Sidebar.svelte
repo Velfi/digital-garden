@@ -122,12 +122,29 @@
       <button
         type="button"
         role="tab"
+        class:active={$toolPane === 'hand'}
+        aria-selected={$toolPane === 'hand'}
+        onclick={() => {
+          toolPane.set('hand');
+          tool.set('hand');
+        }}
+      >
+        ✋
+      </button>
+      <button
+        type="button"
+        role="tab"
         class:active={$toolPane === 'draw'}
         aria-selected={$toolPane === 'draw'}
         onclick={() => {
           toolPane.set('draw');
           tool.set(
-            $lastDrawTool === 'fly' || $lastDrawTool === 'clay' || $lastDrawTool === 'rocks' || $lastDrawTool === 'grass' || $lastDrawTool === 'ashlar'
+            $lastDrawTool === 'fly' ||
+              $lastDrawTool === 'clay' ||
+              $lastDrawTool === 'hand' ||
+              $lastDrawTool === 'rocks' ||
+              $lastDrawTool === 'grass' ||
+              $lastDrawTool === 'ashlar'
               ? 'remove'
               : $lastDrawTool
           );
@@ -187,6 +204,10 @@
       <div role="tabpanel">
         <GeneratorPicker />
         <SymmetrySection />
+      </div>
+    {:else if $toolPane === 'hand'}
+      <div role="tabpanel" class="fly-tab">
+        <p class="fly-hint">Drag anywhere on the canvas to orbit/pan without affecting voxels.</p>
       </div>
     {:else}
       <div role="tabpanel" class="fly-tab">

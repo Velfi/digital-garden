@@ -244,13 +244,13 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
       return;
     }
 
-    if (addOpen && tool !== 'fly') {
+    if (addOpen && tool !== 'fly' && tool !== 'hand') {
       const s = get(addPanelStore);
       gx = s.posX;
       gy = s.posY;
       gz = s.posZ;
       show = true;
-    } else if (sel.size > 0 && tool !== 'fly') {
+    } else if (sel.size > 0 && tool !== 'fly' && tool !== 'hand' && tool !== 'stamp') {
       const center = getSelectionCenter(sel);
       if (!center) {
         moveGizmoGroup.visible = false;
@@ -535,7 +535,7 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
     const tool = deps.getTool();
     const addOpen = get(addPanelStore).open;
     const sel = deps.getSelection();
-    if (!(addOpen || sel.size > 0) || tool === 'fly') return false;
+    if (!(addOpen || sel.size > 0) || tool === 'fly' || tool === 'hand') return false;
     const container = deps.getContainer();
     const camera = deps.getCamera();
     const raycaster = deps.getRaycaster();

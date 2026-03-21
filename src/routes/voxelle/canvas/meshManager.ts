@@ -36,7 +36,7 @@ import { GLASS_SHADOW_VERTEX_AO_POW, GLASS_SHADOW_VERTEX_AO_SCALE } from './glas
 
 export interface MeshManagerOptions {
   enableShadows: boolean;
-  renderingMode: 'greedy' | 'marchingCubes';
+  renderingMode: 'greedy' | 'marchingCubes' | 'raycast';
   aoStrength: number;
   sceneEnvironmentIntensity: number;
 }
@@ -52,6 +52,7 @@ export interface MeshManagerCallbacks {
 const CHUNK_THRESHOLD = 50000;
 const SPINNER_DELAY_MS = 2000;
 const SELECTION_OVERLAY_HEX = 0x3399ff;
+const GRID_SURFACE_LIFT = 0.01;
 
 /**
  * Max linear-depth bias in the shadow pass when net transmittance is 1 (non-reversed Z: pushes clip z
@@ -209,15 +210,7 @@ export function createMeshManager(
   const selectionRefinementScheduler = createPreviewRefinementScheduler();
   const previewRefinementScheduler = createPreviewRefinementScheduler();
 
-  function applyVoxelMeshResults(
-    results: Array<{
-      bucketKey: string;
-      positions: Float32Array;
-      normals: Float32Array;
-      colors: Float32Array;
-      indices: Uint32Array;
-    }>
-  ) {
+  function disposeAllVoxelMeshes() {
     if (!voxelGroup) return;
     for (const { mesh } of meshesByBucket.values()) {
       voxelGroup.remove(mesh);
@@ -229,6 +222,19 @@ export function createMeshManager(
       if (mesh instanceof THREE.Mesh && mesh.geometry) mesh.geometry.dispose();
     }
     meshesByBucket.clear();
+  }
+
+  function applyVoxelMeshResults(
+    results: Array<{
+      bucketKey: string;
+      positions: Float32Array;
+      normals: Float32Array;
+      colors: Float32Array;
+      indices: Uint32Array;
+    }>
+  ) {
+    if (!voxelGroup) return;
+    disposeAllVoxelMeshes();
 
     const opts = getOptions();
     const envMap = scene?.environment ?? null;
@@ -255,7 +261,10 @@ export function createMeshManager(
       mesh.userData[VOXELLE_GLOW_BLOOM_USERDATA_KEY] = materialId === 'glow';
       mesh.castShadow = opts.enableShadows;
       mesh.receiveShadow =
-        opts.enableShadows && opts.renderingMode !== 'marchingCubes' && materialId !== 'glass';
+        opts.enableShadows &&
+        opts.renderingMode !== 'marchingCubes' &&
+        opts.renderingMode !== 'raycast' &&
+        materialId !== 'glass';
       if (materialId === 'glass') {
         /**
          * Use the depth-material glass shadow path on both backends.
@@ -290,6 +299,19 @@ export function createMeshManager(
   function requestRebuildVoxelMeshes(v: Map<string, Voxel>) {
     if (!meshWorker || !voxelGroup) return;
     const gen = ++meshRebuildGen;
+    const opts = getOptions();
+    if (opts.renderingMode === 'raycast') {
+      if (spinnerTimeoutId) {
+        clearTimeout(spinnerTimeoutId);
+        spinnerTimeoutId = null;
+      }
+      callbacks.onLoadingChange(false);
+      callbacks.onSpinnerChange(false);
+      disposeAllVoxelMeshes();
+      callbacks.onVoxelMeshesRebuilt?.();
+      callbacks.render();
+      return;
+    }
     callbacks.onLoadingChange(true);
     callbacks.onSpinnerChange(false);
     if (spinnerTimeoutId) clearTimeout(spinnerTimeoutId);
@@ -298,7 +320,6 @@ export function createMeshManager(
       callbacks.onSpinnerChange(true);
     }, SPINNER_DELAY_MS);
     const voxelsArr: [string, Voxel][] = [...v];
-    const opts = getOptions();
     const chunkSize = v.size >= CHUNK_THRESHOLD ? 32 : 0;
     meshWorker.postMessage({
       voxels: voxelsArr,
@@ -401,7 +422,7 @@ export function createMeshManager(
       const geom = (child as { geometry?: THREE.BufferGeometry }).geometry;
       if (geom) geom.dispose();
     }
-    const positions = buildGridPositions(v);
+    const positions = buildGridPositions(v, GRID_SURFACE_LIFT);
     if (positions.length === 0) return;
     if (isWebGPU) {
       const geom = new THREE.BufferGeometry();
