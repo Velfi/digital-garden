@@ -9,6 +9,7 @@ import {
   hexToInt,
   intToHex,
   getStampOffsetForFace,
+  getPunchOffsetForFace,
   cloneVoxels,
   ensureGridFitsPositions,
   shiftVoxelsAndSelection,
@@ -84,6 +85,20 @@ describe('core', () => {
     it('computes offset for neutral face (inside plane)', () => {
       const offset = getStampOffsetForFace([1, 1, 1], [0, 0, 0], bounds);
       expect(offset).toEqual([1, 1, 1]);
+    });
+  });
+
+  describe('getPunchOffsetForFace', () => {
+    it('single-voxel selection: inward -Y aligns maxY to hit layer (not one below)', () => {
+      const one = { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 };
+      const inwardY = [0, -1, 0] as const;
+      const [dx, dy, dz] = getPunchOffsetForFace([0, 0, 0], inwardY, one);
+      expect([dx, dy, dz]).toEqual([0, 0, 0]);
+    });
+    it('inward +X aligns minX to hit layer', () => {
+      const one = { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 };
+      const [dx, dy, dz] = getPunchOffsetForFace([5, 0, 0], [1, 0, 0], one);
+      expect([dx, dy, dz]).toEqual([5, 0, 0]);
     });
   });
 

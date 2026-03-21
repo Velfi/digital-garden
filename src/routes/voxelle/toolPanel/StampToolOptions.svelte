@@ -4,6 +4,8 @@
     selection,
     stampRotation,
     stampOriginMode,
+    punchDepth,
+    PUNCH_DEPTH_MAX,
     clampQuarterTurn,
     type StampRotation
   } from '../store/index';
@@ -14,6 +16,24 @@
 
 {#if ($tool === 'stamp' || $tool === 'punch') && $selection.size > 0}
   <section class="tool-panel-section" aria-label="Stamp and punch">
+    {#if $tool === 'punch'}
+      <div class="tool-panel-row tool-panel-row--wide-label">
+        <span class="tool-panel-label">Depth</span>
+        <input
+          type="range"
+          min="1"
+          max={PUNCH_DEPTH_MAX}
+          step="1"
+          value={$punchDepth}
+          oninput={(e) => {
+            const v = Math.floor(Number((e.target as HTMLInputElement).value));
+            punchDepth.set(Math.max(1, Math.min(PUNCH_DEPTH_MAX, v)));
+          }}
+          aria-label="Punch depth in voxel layers"
+        />
+        <span class="tool-panel-value" title="Layers along punch direction">{$punchDepth}</span>
+      </div>
+    {/if}
     <div class="tool-panel-row tool-panel-row--wide-label">
       <span class="tool-panel-label">Origin</span>
       <select

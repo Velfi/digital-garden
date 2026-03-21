@@ -264,6 +264,9 @@ export const stampRotation = writable<StampRotation>({ rotX: 0, rotY: 0, rotZ: 0
 export type StampOriginMode = 'center' | 'corner';
 /** Stamp anchor on face tangent axes: center (legacy) or min-corner aligned to click cell. */
 export const stampOriginMode = writable<StampOriginMode>('center');
+/** Punch: how many voxel layers to remove along the inward face normal (1 = surface slice only). */
+export const PUNCH_DEPTH_MAX = 32;
+export const punchDepth = writable<number>(1);
 
 /** Rocks generator: nominal radius (1–8 voxels). */
 export const rockSize = writable<number>(3);
@@ -581,6 +584,25 @@ export function getStampOffsetForFace(
   const dx = nx > 0 ? tx + 1 - minX : nx < 0 ? tx - 1 - maxX : tx - minX;
   const dy = ny > 0 ? ty + 1 - minY : ny < 0 ? ty - 1 - maxY : ty - minY;
   const dz = nz > 0 ? tz + 1 - minZ : nz < 0 ? tz - 1 - maxZ : tz - minZ;
+  return [dx, dy, dz];
+}
+
+/**
+ * Like `getStampOffsetForFace` but for punch: `normal` points **into** the solid.
+ * Aligns the selection bbox so the face along `-normal` lies on the hit voxel layer
+ * (no extra ±1 step used for placing stamps in empty neighbors).
+ */
+export function getPunchOffsetForFace(
+  target: [number, number, number],
+  inwardNormal: FaceNormal,
+  bounds: SelectionBounds
+): [number, number, number] {
+  const [tx, ty, tz] = target;
+  const [nx, ny, nz] = inwardNormal;
+  const { minX, minY, minZ, maxX, maxY, maxZ } = bounds;
+  const dx = nx > 0 ? tx - minX : nx < 0 ? tx - maxX : tx - minX;
+  const dy = ny > 0 ? ty - minY : ny < 0 ? ty - maxY : ty - minY;
+  const dz = nz > 0 ? tz - minZ : nz < 0 ? tz - maxZ : tz - minZ;
   return [dx, dy, dz];
 }
 

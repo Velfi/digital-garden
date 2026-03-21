@@ -83,10 +83,13 @@
     getSelectionAnchor,
     getSelectionBounds,
     getStampOffsetForFace,
+    getPunchOffsetForFace,
     ensureGridFitsPositions,
     resizeGridToContent,
     stampRotation,
     stampOriginMode,
+    punchDepth,
+    PUNCH_DEPTH_MAX,
     getBoundsFromPositions,
     getVoxelBounds,
     rotatePositionAroundOrigin,
@@ -636,6 +639,34 @@
     return [-normal[0], -normal[1], -normal[2]] as FaceNormal;
   }
 
+  /** Extrude punch footprint `depth` layers along `inward` (deduped). */
+  function expandPunchAlongDepth(
+    base: [number, number, number][],
+    inward: FaceNormal,
+    depth: number
+  ): [number, number, number][] {
+    const d = Math.floor(depth);
+    const layers = Math.max(
+      1,
+      Math.min(PUNCH_DEPTH_MAX, Number.isFinite(d) ? d : 1)
+    );
+    const [ix, iy, iz] = inward;
+    const seen = new Set<string>();
+    const out: [number, number, number][] = [];
+    for (const [x, y, z] of base) {
+      for (let k = 0; k < layers; k++) {
+        const px = x + k * ix;
+        const py = y + k * iy;
+        const pz = z + k * iz;
+        const key = coordKey(px, py, pz);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push([px, py, pz]);
+      }
+    }
+    return out;
+  }
+
   /** Snaps punch shape into the solid along -normal (same rotation/origin as stamp). */
   function getPunchPositionsForFace(
     placeVoxel: [number, number, number],
@@ -661,12 +692,10 @@
       bounds,
       $stampOriginMode
     );
-    const [dx, dy, dz] = getStampOffsetForFace(
-      targetForPunch,
-      inwardFaceNormal(normal),
-      bounds
-    );
-    return rotated.map(([x, y, z]) => [x + dx, y + dy, z + dz]);
+    const inward = inwardFaceNormal(normal);
+    const [dx, dy, dz] = getPunchOffsetForFace(targetForPunch, inward, bounds);
+    const base = rotated.map(([x, y, z]) => [x + dx, y + dy, z + dz] as [number, number, number]);
+    return expandPunchAlongDepth(base, inward, get(punchDepth));
   }
 
   /** Snaps stamp to face under cursor (placement cell + tangent centering match generators). */
@@ -1332,14 +1361,12 @@
       bounds,
       $stampOriginMode
     );
-    const [dx, dy, dz] = getStampOffsetForFace(
-      targetForPunch,
-      inwardFaceNormal(normal),
-      bounds
-    );
-    const punchPositions = rotated.map(
+    const inward = inwardFaceNormal(normal);
+    const [dx, dy, dz] = getPunchOffsetForFace(targetForPunch, inward, bounds);
+    const base = rotated.map(
       ([x, y, z]) => [x + dx, y + dy, z + dz] as [number, number, number]
     );
+    const punchPositions = expandPunchAlongDepth(base, inward, get(punchDepth));
     ensureGridFitsPositions(punchPositions);
     const punchBoundSize: number | undefined = undefined;
     runVoxelStroke(() => {
@@ -2491,6 +2518,11 @@
             ? getPunchPositionsForFace(place, normal)
             : getStampPositionsForFace(place, normal)
         );
+      } else {
+        dragPointerId = null;
+        try {
+          container.releasePointerCapture(event.pointerId);
+        } catch (_) {}
       }
       requestAnimationFrame(() => render());
       return;
@@ -3251,11 +3283,24 @@
       render();
     }
     if (event.button === 0 && isStampDrag) {
-      if (lastStampPlace && lastStampNormal) {
+      updatePointerFromEvent(event);
+      let place = lastStampPlace;
+      let normal = lastStampNormal;
+      const hit = getIntersection();
+      if (hit && stampLikeDragMode) {
+        const n = getFaceNormalFromHit(hit);
+        const p =
+          stampLikeDragMode === 'punch' ? getVoxelPosition(hit) : getAddPosition(hit);
+        if (p && n) {
+          place = p;
+          normal = n;
+        }
+      }
+      if (place && normal && stampLikeDragMode) {
         if (stampLikeDragMode === 'punch') {
-          placePunch(lastStampPlace, lastStampNormal);
+          placePunch(place, normal);
         } else {
-          placeStamp(lastStampPlace, lastStampNormal);
+          placeStamp(place, normal);
         }
       }
       stampLikeDragMode = null;
@@ -3263,6 +3308,12 @@
       lastStampPlace = null;
       lastStampNormal = null;
       updatePreviewMesh([]);
+      if (dragPointerId !== null) {
+        try {
+          container.releasePointerCapture(event.pointerId);
+        } catch (_) {}
+        dragPointerId = null;
+      }
     }
     if (event.button === 0 && $tool === 'rocks' && !$addPanelStore.open) {
       const hit = getIntersection();
@@ -3426,7 +3477,7 @@
     if (depthAdjustPointerId === event.pointerId) {
       depthAdjustPointerId = null;
     }
-    if (isVoxelDrag || selectionGizmo?.isGizmoDrag) {
+    if (isVoxelDrag || selectionGizmo?.isGizmoDrag || isStampDrag) {
       cancelDrag();
     }
     handlePointerMove();
@@ -4155,6 +4206,27 @@
     } else if ($renderingMode !== 'raycast') {
       prevRayCamInitialized = false;
     }
+    render();
+  });
+
+  $effect(() => {
+    void $stampRotation;
+    void $stampOriginMode;
+    void $punchDepth;
+    void $tool;
+    const selSize = $selection.size;
+    if (!meshManager || !camera) return;
+    if (($tool !== 'stamp' && $tool !== 'punch') || selSize === 0) return;
+    const hit = getIntersection();
+    if (!hit) return;
+    const normal = getFaceNormalFromHit(hit);
+    const place = $tool === 'punch' ? getVoxelPosition(hit) : getAddPosition(hit);
+    if (!place || !normal) return;
+    updatePreviewMesh(
+      $tool === 'punch'
+        ? getPunchPositionsForFace(place, normal)
+        : getStampPositionsForFace(place, normal)
+    );
     render();
   });
 
