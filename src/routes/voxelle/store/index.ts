@@ -199,8 +199,14 @@ export {
 } from './storage';
 
 // Preferences (localStorage)
-export { loadPreferences, savePreferences, voxellePreferences } from './preferences';
-export type { VoxellePreferences } from './preferences';
+export {
+  loadPreferences,
+  savePreferences,
+  voxellePreferences,
+  isRendererBackendPreference,
+  DEFAULT_RENDERER_BACKEND
+} from './preferences';
+export type { VoxellePreferences, RendererBackendPreference } from './preferences';
 
 export {
   DEFAULT_TONE_MAPPING_PREFERENCE,

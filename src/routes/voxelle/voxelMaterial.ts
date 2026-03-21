@@ -98,6 +98,21 @@ export function cloneVoxel(v: Voxel | number): Voxel {
   return { color: v.color & 0xffffff, material: v.material };
 }
 
+/**
+ * Single preset for voxel `glass` material: shared by `createVoxelSurfaceMaterial` and glass shadow depth bias
+ * (`meshManager` `createGlassShadowDepthMaterial`). Lower `transmission`, larger `thickness`, or shorter
+ * `attenuationDistance` → darker cast shadows (less depth bias).
+ */
+export const VOXEL_GLASS_PHYSICAL = {
+  transmission: 0.96,
+  thickness: 0.65,
+  ior: 1.5,
+  attenuationDistance: 2.5,
+  roughness: 0.06,
+  clearcoat: 0.12,
+  clearcoatRoughness: 0.04
+} as const;
+
 /** Base IBL strength per preset (before scene environment multiplier). */
 export function voxelMaterialBaseEnvMapIntensity(materialId: VoxelMaterialId): number {
   const plastic = 0.45;
@@ -133,16 +148,23 @@ export function createVoxelSurfaceMaterial(
   } as const;
 
   if (materialId === 'glass') {
+    const g = VOXEL_GLASS_PHYSICAL;
+    const tint = new THREE.Color(color24 & 0xffffff);
     const m = new THREE.MeshPhysicalMaterial({
       ...base,
       metalness: 0,
-      roughness: 0.04,
+      roughness: g.roughness,
       transparent: true,
-      opacity: 0.45,
+      opacity: 1,
       depthWrite: false,
-      transmission: 0,
-      clearcoat: 0.9,
-      clearcoatRoughness: 0.03
+      transmission: g.transmission,
+      thickness: g.thickness,
+      ior: g.ior,
+      specularIntensity: 1,
+      clearcoat: g.clearcoat,
+      clearcoatRoughness: g.clearcoatRoughness,
+      attenuationColor: tint,
+      attenuationDistance: g.attenuationDistance
     });
     return m;
   }

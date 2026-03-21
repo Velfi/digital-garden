@@ -3,12 +3,17 @@
  * VoxelCanvas. No tool or pointer logic; used by MeshManager and pointer handlers.
  */
 import * as THREE from 'three';
+import type { WebGPURenderer } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { Sky } from 'three/addons/objects/Sky.js';
+import type { RendererBackendPreference } from '../store/preferences';
 
 export const POLYGON_POINTS_MAX = 64;
+
+/** Main viewport renderer: WebGL (bloom, fat lines) or WebGPU. */
+export type VoxelleRenderer = THREE.WebGLRenderer | WebGPURenderer;
 
 export interface SceneSetupOptions {
   gridSize: number;
@@ -28,7 +33,9 @@ export interface SceneSetupRefs {
   scene: THREE.Scene;
   perspectiveCamera: THREE.PerspectiveCamera;
   orthographicCamera: THREE.OrthographicCamera;
-  renderer: THREE.WebGLRenderer;
+  renderer: VoxelleRenderer;
+  /** True when using native WebGPU backend (not WebGL). */
+  isWebGPU: boolean;
   envMap: THREE.CubeTexture;
   voxelGroup: THREE.Group;
   rollOverMesh: THREE.Mesh;
@@ -50,10 +57,12 @@ export interface SceneSetupRefs {
   ropePointsMaterial: THREE.MeshBasicMaterial;
   hemisphereLight: THREE.HemisphereLight;
   dirLight: THREE.DirectionalLight;
-  sky: InstanceType<typeof Sky>;
+  /** WebGL: `Sky` shader. WebGPU: large back-face sphere (no procedural sky yet). */
+  sky: InstanceType<typeof Sky> | THREE.Mesh;
   groundPlane: THREE.Mesh;
   gridGroup: THREE.Group;
-  gridLineMaterial: InstanceType<typeof LineMaterial>;
+  /** WebGL: wide lines (`LineMaterial`). WebGPU: `LineBasicMaterial` + `LineSegments`. */
+  gridLineMaterial: InstanceType<typeof LineMaterial> | THREE.LineBasicMaterial;
   orbitControls: OrbitControls;
   flyControls: InstanceType<typeof PointerLockControls>;
   raycaster: THREE.Raycaster;
@@ -91,10 +100,72 @@ function focalLengthToFov(mm: number): number {
   return (2 * Math.atan(12 / mm) * 180) / Math.PI;
 }
 
-export function createSceneSetup(
+/** WebGPU `AttributeNode` requires `position`; empty `BufferGeometry` warns and breaks compile. */
+function placeholderLineGeometry(): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0], 3));
+  return g;
+}
+
+function placeholderMeshGeometry(): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0, 0, 0, 0], 3));
+  g.setIndex([0, 1, 2]);
+  return g;
+}
+
+async function createVoxelleRenderer(
   container: HTMLDivElement,
-  options: SceneSetupOptions
-): SceneSetupRefs {
+  enableShadows: boolean,
+  backendPref: RendererBackendPreference
+): Promise<{ renderer: VoxelleRenderer; isWebGPU: boolean }> {
+  const tryWebGPU = backendPref === 'auto' || backendPref === 'webgpu';
+  const forceWebGL = backendPref === 'webgl';
+
+  if (!forceWebGL && tryWebGPU && typeof navigator !== 'undefined' && navigator.gpu) {
+    try {
+      const { WebGPURenderer } = await import('three/webgpu');
+      const renderer = new WebGPURenderer({ antialias: true });
+      await renderer.init();
+      renderer.shadowMap.enabled = enableShadows;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+      /** Opacity / `castShadowNode` on materials (e.g. glass). */
+      renderer.shadowMap.transmitted = enableShadows;
+      renderer.toneMapping = THREE.NeutralToneMapping;
+      renderer.toneMappingExposure = 1;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.setPixelRatio(window.devicePixelRatio);
+      container.appendChild(renderer.domElement);
+      return { renderer, isWebGPU: true };
+    } catch (e) {
+      console.warn('Voxelle: WebGPU failed to initialize, using WebGL.', e);
+    }
+  } else if (backendPref === 'webgpu' && typeof navigator !== 'undefined' && !navigator.gpu) {
+    console.warn('Voxelle: WebGPU is not available in this browser; using WebGL.');
+  }
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.transmissionResolutionScale = 1;
+  renderer.shadowMap.enabled = enableShadows;
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  renderer.toneMappingExposure = 1;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  container.appendChild(renderer.domElement);
+  return { renderer, isWebGPU: false };
+}
+
+/**
+ * Full scene + renderer. Call `await createSceneSetupAsync(...)` before first `render()`.
+ * WebGPU path skips ShaderMaterial sky and Fat Lines grid (MVP fallbacks).
+ */
+export async function createSceneSetupAsync(
+  container: HTMLDivElement,
+  options: SceneSetupOptions,
+  rendererBackend: RendererBackendPreference
+): Promise<SceneSetupRefs> {
   const {
     gridSize: sz,
     colorHex,
@@ -107,6 +178,12 @@ export function createSceneSetup(
     directionalLightIntensity = 2,
     aspect = container ? container.clientWidth / container.clientHeight : 1
   } = options;
+
+  const { renderer, isWebGPU } = await createVoxelleRenderer(
+    container,
+    enableShadows,
+    rendererBackend
+  );
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(backgroundColorHex);
@@ -160,7 +237,7 @@ export function createSceneSetup(
     depthTest: false,
     depthWrite: false
   });
-  const previewMesh = new THREE.Mesh(new THREE.BufferGeometry(), previewMaterial);
+  const previewMesh = new THREE.Mesh(placeholderMeshGeometry(), previewMaterial);
   previewMesh.visible = false;
   previewMesh.raycast = () => {};
   scene.add(previewMesh);
@@ -173,7 +250,7 @@ export function createSceneSetup(
     depthTest: true,
     depthWrite: false
   });
-  const addPreviewSharedGeometry = new THREE.BufferGeometry();
+  const addPreviewSharedGeometry = placeholderMeshGeometry();
   const addPreviewMesh = new THREE.Mesh(addPreviewSharedGeometry, addPreviewMaterial);
   addPreviewMesh.visible = false;
   addPreviewMesh.renderOrder = 1001;
@@ -204,10 +281,8 @@ export function createSceneSetup(
     depthTest: true,
     depthWrite: false
   });
-  const polygonLineSegments = new THREE.LineSegments(
-    new THREE.BufferGeometry(),
-    polygonLineMaterial
-  );
+  const polygonLineSegments = new THREE.LineSegments(placeholderLineGeometry(), polygonLineMaterial);
+  polygonLineSegments.visible = false;
   polygonLineSegments.raycast = () => {};
   scene.add(polygonLineSegments);
 
@@ -272,11 +347,26 @@ export function createSceneSetup(
   }
   scene.add(dirLight);
 
-  const sky = new Sky();
-  sky.scale.setScalar(20000);
-  sky.renderOrder = -1;
-  (sky.material as THREE.ShaderMaterial).uniforms['cloudCoverage'].value = 0;
-  scene.add(sky);
+  let sky: InstanceType<typeof Sky> | THREE.Mesh;
+  if (isWebGPU) {
+    const skyGeo = new THREE.SphereGeometry(8000, 32, 16);
+    const skyMat = new THREE.MeshBasicMaterial({
+      color: 0x9ec8f0,
+      side: THREE.BackSide,
+      depthWrite: false
+    });
+    const skyMesh = new THREE.Mesh(skyGeo, skyMat);
+    skyMesh.renderOrder = -1;
+    scene.add(skyMesh);
+    sky = skyMesh;
+  } else {
+    const skyShader = new Sky();
+    skyShader.scale.setScalar(20000);
+    skyShader.renderOrder = -1;
+    (skyShader.material as THREE.ShaderMaterial).uniforms['cloudCoverage'].value = 0;
+    scene.add(skyShader);
+    sky = skyShader;
+  }
 
   const groundGeo = new THREE.CircleGeometry(1, 64);
   const groundMat = new THREE.MeshStandardMaterial({
@@ -292,29 +382,28 @@ export function createSceneSetup(
   groundPlane.renderOrder = -1;
   scene.add(groundPlane);
 
-  const gridLineMaterial = new LineMaterial({
-    color: 0x333333,
-    opacity: 0.5,
-    transparent: true,
-    depthTest: true,
-    depthWrite: false,
-    linewidth: 1.5,
-    worldUnits: false,
-    alphaToCoverage: true
-  });
+  const gridLineMaterial = isWebGPU
+    ? new THREE.LineBasicMaterial({
+        color: 0x333333,
+        transparent: true,
+        opacity: 0.5,
+        depthTest: true,
+        depthWrite: false
+      })
+    : new LineMaterial({
+        color: 0x333333,
+        opacity: 0.5,
+        transparent: true,
+        depthTest: true,
+        depthWrite: false,
+        linewidth: 1.5,
+        worldUnits: false,
+        alphaToCoverage: true
+      });
+
   const gridGroup = new THREE.Group();
   gridGroup.renderOrder = 1;
   scene.add(gridGroup);
-
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.shadowMap.enabled = enableShadows;
-  renderer.shadowMap.autoUpdate = false;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.toneMapping = THREE.NeutralToneMapping;
-  renderer.toneMappingExposure = 1;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  container.appendChild(renderer.domElement);
 
   const initialCamera = perspectiveCamera;
   const orbitControls = new OrbitControls(initialCamera, renderer.domElement);
@@ -332,6 +421,7 @@ export function createSceneSetup(
     perspectiveCamera,
     orthographicCamera,
     renderer,
+    isWebGPU,
     envMap,
     voxelGroup,
     rollOverMesh,

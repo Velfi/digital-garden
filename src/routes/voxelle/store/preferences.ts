@@ -8,6 +8,15 @@ import {
 
 const VOXELLE_PREFERENCES_KEY = 'voxelle-preferences';
 
+/** Viewport API: WebGL, WebGPU when supported, or auto (prefer WebGPU). */
+export type RendererBackendPreference = 'auto' | 'webgpu' | 'webgl';
+
+export function isRendererBackendPreference(v: unknown): v is RendererBackendPreference {
+  return v === 'auto' || v === 'webgpu' || v === 'webgl';
+}
+
+export const DEFAULT_RENDERER_BACKEND: RendererBackendPreference = 'auto';
+
 export type VoxellePreferences = {
   /** Δx,Δy,Δz tooltip following the pointer during sculpt strokes (branch, depth adjust, etc.). */
   showMovementDeltaHint: boolean;
@@ -17,13 +26,19 @@ export type VoxellePreferences = {
   gizmosAlwaysOnTop: boolean;
   /** HDR → display tone mapping for the main viewport (and bloom OutputPass). */
   toneMapping: ToneMappingPreference;
+  /**
+   * Which graphics API to use. Takes effect after reload (see Preferences modal).
+   * `auto` tries WebGPU first, then WebGL.
+   */
+  rendererBackend: RendererBackendPreference;
 };
 
 const DEFAULTS: VoxellePreferences = {
   showMovementDeltaHint: false,
   showDragDeltaHint: true,
   gizmosAlwaysOnTop: false,
-  toneMapping: DEFAULT_TONE_MAPPING_PREFERENCE
+  toneMapping: DEFAULT_TONE_MAPPING_PREFERENCE,
+  rendererBackend: DEFAULT_RENDERER_BACKEND
 };
 
 export function loadPreferences(): VoxellePreferences {
@@ -47,7 +62,10 @@ export function loadPreferences(): VoxellePreferences {
         typeof o.gizmosAlwaysOnTop === 'boolean'
           ? o.gizmosAlwaysOnTop
           : DEFAULTS.gizmosAlwaysOnTop,
-      toneMapping: isToneMappingPreference(o.toneMapping) ? o.toneMapping : DEFAULTS.toneMapping
+      toneMapping: isToneMappingPreference(o.toneMapping) ? o.toneMapping : DEFAULTS.toneMapping,
+      rendererBackend: isRendererBackendPreference(o.rendererBackend)
+        ? o.rendererBackend
+        : DEFAULTS.rendererBackend
     };
   } catch {
     return { ...DEFAULTS };

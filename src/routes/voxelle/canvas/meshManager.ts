@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import {
   getBoundsFromPositions,
   getSelectionBounds,
@@ -27,9 +28,12 @@ import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
 import {
   createVoxelSurfaceMaterial,
   parseBucketKey,
+  VOXEL_GLASS_PHYSICAL,
   VOXELLE_GLOW_BLOOM_USERDATA_KEY,
   VOXELLE_MESH_MATERIAL_USERDATA_KEY
 } from '../voxelMaterial';
+import { attachWebGPUGlassCastShadowNode } from './glassShadowWebGPU';
+import { GLASS_SHADOW_VERTEX_AO_POW, GLASS_SHADOW_VERTEX_AO_SCALE } from './glassShadowConstants';
 
 export interface MeshManagerOptions {
   enableShadows: boolean;
@@ -50,69 +54,126 @@ const CHUNK_THRESHOLD = 50000;
 const SPINNER_DELAY_MS = 2000;
 const SELECTION_OVERLAY_HEX = 0x3399ff;
 
-/** Remap mesh transmittance before driving shadow depth offset (darker / less “empty” glass). */
-const GLASS_SHADOW_TRANSMIT_POW = 1.55;
-const GLASS_SHADOW_TRANSMIT_SCALE = 0.8;
-/** Max depth push (non-reversed Z) for fully transmissive glass; thick glass → ~0 push. */
-const GLASS_SHADOW_DEPTH_PUSH = 0.042;
+/**
+ * Max linear-depth bias in the shadow pass when net transmittance is 1 (non-reversed Z: pushes clip z
+ * toward far → lighter PCF shadow). PCF uses the render target's depth texture; too large a value clamps
+ * glass to the far plane so it stops occluding (looks like “no shadow”).
+ * push = this × netT × vertexAOFactor; clip Δz = 2 × push × w (matches `fragCoordZ = 0.5*z/w+0.5`).
+ */
+const GLASS_SHADOW_DEPTH_PUSH_MAX = 0.052;
+
+/** Live refs for glass shadow depth uniforms (same objects as `shader.uniforms` in onBeforeCompile). */
+export type VoxelleGlassShadowUniforms = {
+  uGlassTransmission: { value: number };
+  uGlassThickness: { value: number };
+  uGlassAttenuationDistance: { value: number };
+  glassShadowDepthPushMax: { value: number };
+};
+
+const VOXELLE_GLASS_SHADOW_UNIFORM_USERDATA_KEY = 'voxelleGlassShadowUniforms';
+
+let prevGlassShadowParams: {
+  transmission: number;
+  thickness: number;
+  attenuationDistance: number;
+  pushMax: number;
+} | null = null;
+
+/**
+ * Push `VOXEL_GLASS_PHYSICAL` into each glass mesh's shadow depth material; return whether GPU
+ * values changed (caller should invalidate the directional shadow map when `autoUpdate` is false).
+ */
+export function syncGlassShadowUniformsFromBuckets(
+  meshesByBucket: Map<
+    string,
+    { mesh: THREE.InstancedMesh | THREE.Mesh; positions: [number, number, number][] | null }
+  >
+): boolean {
+  const g = VOXEL_GLASS_PHYSICAL;
+  const pm = GLASS_SHADOW_DEPTH_PUSH_MAX;
+  const changed =
+    prevGlassShadowParams === null ||
+    prevGlassShadowParams.transmission !== g.transmission ||
+    prevGlassShadowParams.thickness !== g.thickness ||
+    prevGlassShadowParams.attenuationDistance !== g.attenuationDistance ||
+    prevGlassShadowParams.pushMax !== pm;
+  prevGlassShadowParams = {
+    transmission: g.transmission,
+    thickness: g.thickness,
+    attenuationDistance: g.attenuationDistance,
+    pushMax: pm
+  };
+
+  for (const { mesh } of meshesByBucket.values()) {
+    if (mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY] !== 'glass') continue;
+    const u = (mesh as THREE.Mesh).customDepthMaterial?.userData[
+      VOXELLE_GLASS_SHADOW_UNIFORM_USERDATA_KEY
+    ] as VoxelleGlassShadowUniforms | undefined;
+    if (!u) continue;
+    u.uGlassTransmission.value = g.transmission;
+    u.uGlassThickness.value = g.thickness;
+    u.uGlassAttenuationDistance.value = g.attenuationDistance;
+    u.glassShadowDepthPushMax.value = pm;
+  }
+  return changed;
+}
 
 /**
  * Glass uses depthWrite:false on the visible material; shadow pass uses this instead.
- * Stochastic discard made sparse shadow-map texels → noisy PCF; we always write depth and only bias Z
- * by thickness so shadows stay smooth with a hint of transmittance.
- *
- * Tries both bundled `depth_frag` (compact) and source-style layout (comment after logdepthbuf).
+ * Clip-space Z bias only in the depth vertex shader (Metal-safe; no `gl_FragDepth`): `netT` from
+ * uniforms and per-vertex AO tint ratio. Do not re-apply the same push in the fragment shader (doubles
+ * bias and can clamp packed depth to far → invisible glass shadows).
  */
 function createGlassShadowDepthMaterial(baseColor24: number): THREE.MeshDepthMaterial {
   const depthMat = new THREE.MeshDepthMaterial({
-    depthPacking: THREE.RGBADepthPacking,
+    /** Same as WebGLShadowMap's internal depth material so glass writes comparable depth to the PCF map. */
+    depthPacking: THREE.BasicDepthPacking,
     vertexColors: true
   });
   const baseColor = new THREE.Color(baseColor24 & 0xffffff);
+  const g = VOXEL_GLASS_PHYSICAL;
+  const glassU: VoxelleGlassShadowUniforms = {
+    uGlassTransmission: { value: g.transmission },
+    uGlassThickness: { value: g.thickness },
+    uGlassAttenuationDistance: { value: g.attenuationDistance },
+    glassShadowDepthPushMax: { value: GLASS_SHADOW_DEPTH_PUSH_MAX }
+  };
+  depthMat.userData[VOXELLE_GLASS_SHADOW_UNIFORM_USERDATA_KEY] = glassU;
   depthMat.onBeforeCompile = (shader) => {
     shader.uniforms.glassBaseColor = { value: baseColor };
-    shader.uniforms.glassShadowTransmitPow = { value: GLASS_SHADOW_TRANSMIT_POW };
-    shader.uniforms.glassShadowTransmitScale = { value: GLASS_SHADOW_TRANSMIT_SCALE };
-    shader.uniforms.glassShadowDepthPush = { value: GLASS_SHADOW_DEPTH_PUSH };
+    shader.uniforms.glassShadowVertexAOPow = { value: GLASS_SHADOW_VERTEX_AO_POW };
+    shader.uniforms.glassShadowVertexAOScale = { value: GLASS_SHADOW_VERTEX_AO_SCALE };
+    shader.uniforms.glassShadowDepthPushMax = glassU.glassShadowDepthPushMax;
+    shader.uniforms.uGlassTransmission = glassU.uGlassTransmission;
+    shader.uniforms.uGlassThickness = glassU.uGlassThickness;
+    shader.uniforms.uGlassAttenuationDistance = glassU.uGlassAttenuationDistance;
 
     shader.vertexShader = shader.vertexShader.replace(
       '#include <clipping_planes_pars_vertex>',
-      '#include <clipping_planes_pars_vertex>\n#include <color_pars_vertex>'
+      '#include <clipping_planes_pars_vertex>\nuniform vec3 glassBaseColor;\nuniform float glassShadowVertexAOPow;\nuniform float glassShadowVertexAOScale;\nuniform float glassShadowDepthPushMax;\nuniform float uGlassTransmission;\nuniform float uGlassThickness;\nuniform float uGlassAttenuationDistance;\n#include <color_pars_vertex>'
     );
     shader.vertexShader = shader.vertexShader.replace(
       '#include <begin_vertex>',
       '#include <begin_vertex>\n#include <color_vertex>'
     );
 
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <clipping_planes_pars_fragment>',
-      '#include <clipping_planes_pars_fragment>\nuniform vec3 glassBaseColor;\nuniform float glassShadowTransmitPow;\nuniform float glassShadowTransmitScale;\nuniform float glassShadowDepthPush;\n#include <color_pars_fragment>'
-    );
+    // Bias only in the vertex stage (Metal-safe; no gl_FragDepth). AO-dark verts → thicker effective slab → lower netT → less push → darker shadow.
+    const glassVertexDepthBias =
+      '\n\t{\n\t\tfloat attDistV = max(uGlassAttenuationDistance, 1e-4);\n#ifdef USE_COLOR\n\t\tvec3 glassDenomV = max(glassBaseColor, vec3(0.0001));\n\t\tvec3 glassRatioV = vColor.rgb / glassDenomV;\n\t\tfloat rawAOV = clamp((glassRatioV.r + glassRatioV.g + glassRatioV.b) / 3.0, 0.0, 1.0);\n\t\tfloat thickScaleV = mix(1.5, 0.72, rawAOV);\n\t\tfloat vertexAOFactorV = clamp(pow(rawAOV, glassShadowVertexAOPow) * glassShadowVertexAOScale, 0.0, 1.0);\n#else\n\t\tfloat thickScaleV = 1.0;\n\t\tfloat vertexAOFactorV = 1.0;\n#endif\n\t\tfloat netTV = clamp(uGlassTransmission * exp(-(uGlassThickness * thickScaleV) / attDistV), 0.0, 1.0);\n\t\tfloat glassPushV = glassShadowDepthPushMax * netTV * vertexAOFactorV;\n\t\tfloat dz = 2.0 * glassPushV * gl_Position.w;\n#ifdef USE_REVERSED_DEPTH_BUFFER\n\t\tgl_Position.z -= dz;\n#else\n\t\tgl_Position.z += dz;\n#endif\n\t\tfloat wLim = max(abs(gl_Position.w), 1e-6);\n\t\tgl_Position.z = clamp(gl_Position.z, -wLim + 1e-4, wLim - 1e-4);\n\t}\n';
 
-    const glassFragCoordPatch =
-      '\n#ifdef USE_COLOR\n\tvec3 glassDenom = max(glassBaseColor, vec3(0.0001));\n\tvec3 glassRatio = vColor.rgb / glassDenom;\n\tfloat rawT = clamp((glassRatio.r + glassRatio.g + glassRatio.b) / 3.0, 0.0, 1.0);\n\tfloat glassT = clamp(pow(rawT, glassShadowTransmitPow) * glassShadowTransmitScale, 0.0, 1.0);\n\tfloat glassPush = glassShadowDepthPush * glassT;\n\t#ifdef USE_REVERSED_DEPTH_BUFFER\n\tfragCoordZ -= glassPush;\n\t#else\n\tfragCoordZ += glassPush;\n\t#endif\n\tfragCoordZ = clamp(fragCoordZ, 0.0, 1.0);\n#endif\n';
+    const vertexZwCompactBlock =
+      '\t#include <logdepthbuf_vertex>\n\t#include <clipping_planes_vertex>\n\tvHighPrecisionZW = gl_Position.zw;';
+    const vertexZwCompactReplacement =
+      '\t#include <logdepthbuf_vertex>\n\t#include <clipping_planes_vertex>' +
+      glassVertexDepthBias +
+      '\tvHighPrecisionZW = gl_Position.zw;';
 
-    const fragCoordZCompactBlock =
-      '\t#include <logdepthbuf_fragment>\n\t#ifdef USE_REVERSED_DEPTH_BUFFER\n\t\tfloat fragCoordZ = vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ];\n\t#else\n\t\tfloat fragCoordZ = 0.5 * vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ] + 0.5;\n\t#endif\n\t#if DEPTH_PACKING == 3200';
-    const fragCoordZCompactReplacement =
-      '\t#include <logdepthbuf_fragment>\n\t#ifdef USE_REVERSED_DEPTH_BUFFER\n\t\tfloat fragCoordZ = vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ];\n\t#else\n\t\tfloat fragCoordZ = 0.5 * vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ] + 0.5;\n\t#endif' +
-      glassFragCoordPatch +
-      '\t#if DEPTH_PACKING == 3200';
-
-    const fragCoordZSpacedBlock =
-      '\t#include <logdepthbuf_fragment>\n\n\t// Higher precision equivalent of gl_FragCoord.z\n\n\t#ifdef USE_REVERSED_DEPTH_BUFFER\n\n\t\tfloat fragCoordZ = vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ];\n\n\t#else\n\n\t\tfloat fragCoordZ = 0.5 * vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ] + 0.5;\n\n\t#endif\n\n\t#if DEPTH_PACKING == 3200';
-    const fragCoordZSpacedReplacement =
-      '\t#include <logdepthbuf_fragment>\n\n\t// Higher precision equivalent of gl_FragCoord.z\n\n\t#ifdef USE_REVERSED_DEPTH_BUFFER\n\n\t\tfloat fragCoordZ = vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ];\n\n\t#else\n\n\t\tfloat fragCoordZ = 0.5 * vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ] + 0.5;\n\n\t#endif' +
-      glassFragCoordPatch +
-      '\n\t#if DEPTH_PACKING == 3200';
-
-    if (shader.fragmentShader.includes(fragCoordZCompactBlock)) {
-      shader.fragmentShader = shader.fragmentShader.replace(fragCoordZCompactBlock, fragCoordZCompactReplacement);
-    } else if (shader.fragmentShader.includes(fragCoordZSpacedBlock)) {
-      shader.fragmentShader = shader.fragmentShader.replace(fragCoordZSpacedBlock, fragCoordZSpacedReplacement);
+    if (shader.vertexShader.includes(vertexZwCompactBlock)) {
+      shader.vertexShader = shader.vertexShader.replace(vertexZwCompactBlock, vertexZwCompactReplacement);
     } else {
-      console.warn('voxelle: glass shadow depth patch failed (three.js depth shader layout changed)');
+      console.warn('voxelle: glass shadow vertex depth patch failed (three.js depth_vert layout changed)');
     }
+
   };
   return depthMat;
 }
@@ -129,7 +190,8 @@ export function createMeshManager(
     gridLineMaterial,
     selectionGroup,
     previewMesh,
-    previewMaterial
+    previewMaterial,
+    isWebGPU
   } = refs;
 
   let meshWorker: Worker | null = null;
@@ -196,7 +258,11 @@ export function createMeshManager(
       mesh.receiveShadow =
         opts.enableShadows && opts.renderingMode !== 'marchingCubes' && materialId !== 'glass';
       if (materialId === 'glass') {
-        mesh.customDepthMaterial = createGlassShadowDepthMaterial(parsed?.color ?? 0xffffff);
+        if (isWebGPU) {
+          attachWebGPUGlassCastShadowNode(mat as THREE.MeshPhysicalMaterial);
+        } else {
+          mesh.customDepthMaterial = createGlassShadowDepthMaterial(parsed?.color ?? 0xffffff);
+        }
       }
       voxelGroup.add(mesh);
       meshesByBucket.set(bucketKey, { mesh, positions: null });
@@ -338,11 +404,22 @@ export function createMeshManager(
     }
     const positions = buildGridPositions(v);
     if (positions.length === 0) return;
-    const geom = new LineSegmentsGeometry();
-    geom.setPositions(positions);
-    const lines = new LineSegments2(geom, gridLineMaterial);
-    lines.raycast = () => {};
-    gridGroup.add(lines);
+    if (isWebGPU) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      const lines = new THREE.LineSegments(
+        geom,
+        gridLineMaterial as THREE.LineBasicMaterial
+      );
+      lines.raycast = () => {};
+      gridGroup.add(lines);
+    } else {
+      const geom = new LineSegmentsGeometry();
+      geom.setPositions(positions);
+      const lines = new LineSegments2(geom, gridLineMaterial as InstanceType<typeof LineMaterial>);
+      lines.raycast = () => {};
+      gridGroup.add(lines);
+    }
   }
 
   function updatePreviewMesh(
@@ -366,6 +443,7 @@ export function createMeshManager(
   }
 
   function destroy() {
+    prevGlassShadowParams = null;
     meshWorker?.terminate();
     meshWorker = null;
     if (spinnerTimeoutId) clearTimeout(spinnerTimeoutId);

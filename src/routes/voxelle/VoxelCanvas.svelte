@@ -163,8 +163,17 @@
   import { Sky } from 'three/addons/objects/Sky.js';
   import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
   import { buildGreedyMesh, buildPreviewGeometry, PREVIEW_MESH_OPTIONS } from './greedyMesh';
-  import { createSceneSetup, POLYGON_POINTS_MAX } from './canvas/sceneSetup';
-  import { createMeshManager } from './canvas/meshManager';
+  import {
+    createSceneSetupAsync,
+    POLYGON_POINTS_MAX,
+    type VoxelleRenderer
+  } from './canvas/sceneSetup';
+  import { createMeshManager, syncGlassShadowUniformsFromBuckets } from './canvas/meshManager';
+  import { isWebGLRenderer, isWebGPURenderer } from './canvas/rendererUtils';
+  import {
+    createWebGPUBloomPipeline,
+    type WebGPUBloomPipeline
+  } from './canvas/webgpuBloom';
   import {
     applyAddShapeOccludedPreviewTint,
     assignSharedDualPreviewGeometry
@@ -213,7 +222,11 @@
   let perspectiveCamera: THREE.PerspectiveCamera;
   let orthographicCamera: THREE.OrthographicCamera;
   let scene: THREE.Scene;
-  let renderer: THREE.WebGLRenderer;
+  let renderer: VoxelleRenderer;
+  /** Matches last `createSceneSetupAsync`. */
+  let canvasIsWebGPU = false;
+  /** WebGPU: TSL `RenderPipeline` + bloom; null if init failed. */
+  let webgpuBloomPipeline: WebGPUBloomPipeline | null = null;
   /** Selective glow bloom (glow voxels only); null if init failed. */
   let bloomComposer: EffectComposer | null = null;
   let finalComposer: EffectComposer | null = null;
@@ -222,6 +235,8 @@
   let bloomMixPass: ShaderPass | null = null;
   let bloomOutputPass: OutputPass | null = null;
   let bloomDarkMaterial: THREE.MeshBasicMaterial | null = null;
+  /** Solid scene.background is not a mesh, so bloom pass must clear it to black or the whole RT blooms. */
+  let bloomPassBackground: THREE.Color | null = null;
   const bloomMaterialStash: Record<string, THREE.Material | THREE.Material[]> = {};
   let orbitControls = $state<OrbitControls>();
   let flyControls: InstanceType<typeof PointerLockControls> | null = null;
@@ -233,7 +248,7 @@
   let rollOverMaterial: THREE.MeshBasicMaterial;
   let dirLight: THREE.DirectionalLight;
   let hemisphereLight: THREE.HemisphereLight;
-  let sky: InstanceType<typeof Sky> | null = null;
+  let sky: InstanceType<typeof Sky> | THREE.Mesh | null = null;
   let groundPlane: THREE.Mesh | null = null;
   let boxGeometry: THREE.BoxGeometry;
   let meshManager: ReturnType<typeof createMeshManager> | null = null;
@@ -321,7 +336,7 @@
   let selectionGizmo: ReturnType<typeof createSelectionGizmoController> | null = null;
 
   let gridGroup: THREE.Group | null = null;
-  let gridLineMaterial: InstanceType<typeof LineMaterial> | null = null;
+  let gridLineMaterial: InstanceType<typeof LineMaterial> | THREE.LineBasicMaterial | null = null;
   let envMap: THREE.CubeTexture | null = null;
 
   let zoomPercent = $state(100);
@@ -701,7 +716,8 @@
   /** Re-render directional shadow map on next frame (static lighting + mesh: skip shadow pass otherwise). */
   function invalidateDirectionalShadowMap() {
     if (!renderer?.shadowMap?.enabled || !get(enableShadows) || !dirLight?.shadow) return;
-    renderer.shadowMap.needsUpdate = true;
+    const sm = renderer.shadowMap as { needsUpdate?: boolean };
+    if (typeof sm.needsUpdate === 'boolean') sm.needsUpdate = true;
     dirLight.shadow.needsUpdate = true;
   }
 
@@ -1270,12 +1286,21 @@
   function updatePolygonPreview(points: [number, number, number][]) {
     updatePolygonPointsMesh(points);
     if (!polygonLineSegments || !scene) return;
-    scene.remove(polygonLineSegments);
-    if (polygonLineSegments.geometry) {
-      polygonLineSegments.geometry.dispose();
-      polygonLineSegments.geometry = new THREE.BufferGeometry();
+    const polyLines = polygonLineSegments;
+    scene.remove(polyLines);
+
+    const setPolygonLinePlaceholderGeometry = () => {
+      polyLines.geometry?.dispose();
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0], 3));
+      polyLines.geometry = g;
+    };
+
+    if (points.length < 2) {
+      setPolygonLinePlaceholderGeometry();
+      polyLines.visible = false;
+      return;
     }
-    if (points.length < 2) return;
     const positions: number[] = [];
     for (let i = 0; i < points.length - 1; i++) {
       const [x, y, z] = points[i];
@@ -1287,12 +1312,18 @@
       const [nx, ny, nz] = points[0];
       positions.push(x, y, z, nx, ny, nz);
     }
-    if (positions.length === 0) return;
+    if (positions.length === 0) {
+      setPolygonLinePlaceholderGeometry();
+      polyLines.visible = false;
+      return;
+    }
+    polyLines.geometry?.dispose();
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geom.computeBoundingSphere();
-    polygonLineSegments.geometry = geom;
-    scene.add(polygonLineSegments);
+    polyLines.geometry = geom;
+    polyLines.visible = true;
+    scene.add(polyLines);
   }
 
   function cancelDrag() {
@@ -2972,6 +3003,8 @@
   `;
 
   function disposeSelectiveBloomPipeline() {
+    webgpuBloomPipeline?.dispose();
+    webgpuBloomPipeline = null;
     unrealBloomPass?.dispose();
     unrealBloomPass = null;
     bloomMixPass?.dispose();
@@ -2987,12 +3020,15 @@
       bloomDarkMaterial.dispose();
       bloomDarkMaterial = null;
     }
+    bloomPassBackground = null;
   }
 
   function setupSelectiveBloomPipeline() {
     if (!renderer || !scene || !camera || !container) return;
+    if (!isWebGLRenderer(renderer)) return;
     disposeSelectiveBloomPipeline();
     bloomDarkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    bloomPassBackground = new THREE.Color(0x000000);
 
     const w = container.clientWidth;
     const h = container.clientHeight;
@@ -3000,7 +3036,7 @@
     const finalRenderTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
 
     sharedSceneRenderPass = new RenderPass(scene, camera);
-    unrealBloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.9, 0.42, 0.12);
+    unrealBloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.42, 0.3, 0.2);
 
     bloomComposer = new EffectComposer(renderer, bloomRenderTarget);
     bloomComposer.renderToScreen = false;
@@ -3011,7 +3047,7 @@
       uniforms: {
         baseTexture: { value: null },
         bloomTexture: { value: bloomComposer.renderTarget2.texture },
-        bloomStrength: { value: 1 }
+        bloomStrength: { value: 0.72 }
       },
       vertexShader: BLOOM_MIX_VERTEX,
       fragmentShader: BLOOM_MIX_FRAGMENT,
@@ -3028,6 +3064,25 @@
 
     bloomComposer.setSize(w, h);
     finalComposer.setSize(w, h);
+  }
+
+  async function setupWebGPUBloomPipeline() {
+    if (!renderer || !scene || !camera || !container) return;
+    if (!isWebGPURenderer(renderer)) return;
+    webgpuBloomPipeline?.dispose();
+    webgpuBloomPipeline = null;
+    try {
+      webgpuBloomPipeline = await createWebGPUBloomPipeline(
+        renderer,
+        scene,
+        camera,
+        container.clientWidth,
+        container.clientHeight,
+        renderer.getPixelRatio()
+      );
+    } catch (e) {
+      console.warn('Voxelle: WebGPU TSL bloom disabled', e);
+    }
   }
 
   function stashNonGlowMaterialsForBloom(root: THREE.Object3D) {
@@ -3072,6 +3127,9 @@
     bloomComposer?.setSize(w, h);
     finalComposer?.setPixelRatio(pr);
     finalComposer?.setSize(w, h);
+    if (webgpuBloomPipeline && container) {
+      webgpuBloomPipeline.setSize(container.clientWidth, container.clientHeight, pr);
+    }
     render();
   }
 
@@ -3081,6 +3139,13 @@
       selectionGizmo?.updateGizmoPreviewOffset();
       selectionGizmo?.updateMoveGizmoTransform();
       scene.updateMatrixWorld(true);
+
+      if (meshManager && get(enableShadows) && !canvasIsWebGPU) {
+        const glassUniformsChanged = syncGlassShadowUniformsFromBuckets(
+          meshManager.getMeshesByBucket()
+        );
+        if (glassUniformsChanged) invalidateDirectionalShadowMap();
+      }
 
       const dragDelta =
         get(voxellePreferences).showDragDeltaHint && selectionGizmo?.getMoveDragDeltaLabel();
@@ -3113,12 +3178,22 @@
         }
       }
 
-      if (bloomComposer && finalComposer && sharedSceneRenderPass && camera) {
+      if (webgpuBloomPipeline && camera && isWebGPURenderer(renderer)) {
+        webgpuBloomPipeline.renderSceneToTarget(
+          renderer as Parameters<WebGPUBloomPipeline['renderSceneToTarget']>[0],
+          scene,
+          camera
+        );
+        webgpuBloomPipeline.renderPipeline.render();
+      } else if (bloomComposer && finalComposer && sharedSceneRenderPass && camera) {
         sharedSceneRenderPass.camera = camera;
         stashNonGlowMaterialsForBloom(scene);
+        const savedSceneBackground = scene.background;
+        if (bloomPassBackground) scene.background = bloomPassBackground;
         try {
           bloomComposer.render();
         } finally {
+          scene.background = savedSceneBackground;
           restoreStashedBloomMaterials(scene);
         }
         finalComposer.render();
@@ -3209,7 +3284,12 @@
 
   $effect(() => {
     const shadows = $enableShadows;
-    if (renderer) renderer.shadowMap.enabled = shadows;
+    if (renderer) {
+      renderer.shadowMap.enabled = shadows;
+      if (isWebGPURenderer(renderer)) {
+        (renderer.shadowMap as { transmitted: boolean }).transmitted = shadows;
+      }
+    }
     if (dirLight) dirLight.castShadow = shadows;
     const byBucket = meshManager?.getMeshesByBucket();
     if (byBucket) {
@@ -3268,18 +3348,23 @@
     if (!fromUrl && !(await loadFromStorageAsync())) initCanvas(get(gridSize));
     const sz = get(gridSize);
 
-    const setupRefs = createSceneSetup(container, {
-      gridSize: sz,
-      colorHex: hexToInt($color),
-      lightColorHex: hexToInt($lightColor),
-      focalLength: get(focalLength),
-      backgroundColorHex: hexToInt($backgroundColor),
-      enableShadows: $enableShadows,
-      lightAngle: $lightAngle,
-      lightElevation: $lightElevation,
-      directionalLightIntensity: get(sunlightIntensity),
-      aspect: container ? container.clientWidth / container.clientHeight : 1
-    });
+    const setupRefs = await createSceneSetupAsync(
+      container,
+      {
+        gridSize: sz,
+        colorHex: hexToInt($color),
+        lightColorHex: hexToInt($lightColor),
+        focalLength: get(focalLength),
+        backgroundColorHex: hexToInt($backgroundColor),
+        enableShadows: $enableShadows,
+        lightAngle: $lightAngle,
+        lightElevation: $lightElevation,
+        directionalLightIntensity: get(sunlightIntensity),
+        aspect: container ? container.clientWidth / container.clientHeight : 1
+      },
+      get(voxellePreferences).rendererBackend
+    );
+    canvasIsWebGPU = setupRefs.isWebGPU;
     scene = setupRefs.scene;
     perspectiveCamera = setupRefs.perspectiveCamera;
     orthographicCamera = setupRefs.orthographicCamera;
@@ -3321,6 +3406,7 @@
     } catch (e) {
       console.warn('Voxelle: selective bloom disabled', e);
     }
+    await setupWebGPUBloomPipeline();
     orbitControls.addEventListener('change', updateZoomPercent);
 
     meshManager = createMeshManager(
@@ -3427,7 +3513,7 @@
     }
     if (sky) {
       sky.visible = useSky;
-      if (useSky && dirLight) {
+      if (useSky && dirLight && sky instanceof Sky) {
         (sky.material as THREE.ShaderMaterial).uniforms['sunPosition'].value.copy(
           dirLight.position
         );

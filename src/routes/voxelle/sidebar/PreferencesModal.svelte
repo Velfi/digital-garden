@@ -5,18 +5,21 @@
     voxellePreferences,
     TONE_MAPPING_OPTIONS,
     type VoxellePreferences,
-    type ToneMappingPreference
+    type ToneMappingPreference,
+    type RendererBackendPreference
   } from '../store/index';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
   let prefs = $state<VoxellePreferences>(loadPreferences());
+  let rendererBackendBeforeOpen: RendererBackendPreference | null = null;
 
   $effect(() => {
     if (open) {
       const loaded = loadPreferences();
       prefs = loaded;
       voxellePreferences.set(loaded);
+      rendererBackendBeforeOpen = loaded.rendererBackend;
     }
   });
 
@@ -38,6 +41,16 @@
   function onToneMappingChange(value: ToneMappingPreference) {
     prefs = { ...prefs, toneMapping: value };
     savePreferences(prefs);
+  }
+
+  function onRendererBackendChange(value: RendererBackendPreference) {
+    prefs = { ...prefs, rendererBackend: value };
+    savePreferences(prefs);
+    if (rendererBackendBeforeOpen !== null && value !== rendererBackendBeforeOpen) {
+      if (typeof window !== 'undefined' && window.confirm('Reload the page to switch the graphics backend?')) {
+        window.location.reload();
+      }
+    }
   }
 </script>
 
@@ -77,6 +90,20 @@
           onchange={(e) => onGizmosAlwaysOnTopChange(e.currentTarget.checked)}
         />
         Always render movement and rotation gizmos on top
+      </label>
+      <label class="select-label">
+        <span class="select-label-text">Graphics API</span>
+        <select
+          class="tone-mapping-select"
+          value={prefs.rendererBackend}
+          onchange={(e) =>
+            onRendererBackendChange(e.currentTarget.value as RendererBackendPreference)}
+        >
+          <option value="auto">Auto (WebGPU if available)</option>
+          <option value="webgpu">WebGPU</option>
+          <option value="webgl">WebGL</option>
+        </select>
+        <span class="field-hint">Changing this reloads the page. WebGPU: TSL bloom + simpler grid/sky.</span>
       </label>
       <label class="select-label">
         <span class="select-label-text">Viewport tone mapping</span>
@@ -128,6 +155,12 @@
 
   .select-label-text {
     font-weight: 500;
+  }
+
+  .field-hint {
+    font-size: 0.78rem;
+    opacity: 0.85;
+    line-height: 1.3;
   }
 
   .tone-mapping-select {
