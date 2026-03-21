@@ -4,6 +4,8 @@
  */
 import { edgeTable, triTable } from 'three/addons/objects/MarchingCubes.js';
 import { coordKey, parseCoordKey } from './coordUtils';
+import type { Voxel } from './voxelMaterial';
+import { voxelBucketKey } from './voxelMaterial';
 
 type Vec3 = [number, number, number];
 
@@ -66,14 +68,8 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
-/**
- * Marching cubes over a binary voxel occupancy field.
- * Returns a single vertex-colored mesh under color key 0.
- */
-export function computeMarchingCubes(
-  voxels: Map<string, number>
-): Map<number, MarchingCubesCoreResult> {
-  if (voxels.size === 0) return new Map();
+function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCoreResult | null {
+  if (voxels.size === 0) return null;
 
   let minX = Infinity;
   let minY = Infinity;
@@ -129,12 +125,13 @@ export function computeMarchingCubes(
         for (let dz = -1; dz <= 0; dz++) {
           for (let dy = -1; dy <= 0; dy++) {
             for (let dx = -1; dx <= 0; dx++) {
-              const col = voxels.get(coordKey(gx + dx, gy + dy, gz + dz));
-              if (col === undefined) continue;
+              const vx = voxels.get(coordKey(gx + dx, gy + dy, gz + dz));
+              if (vx === undefined) continue;
               count++;
-              sr += (col >> 16) & 0xff;
-              sg += (col >> 8) & 0xff;
-              sb += col & 0xff;
+              const rgb = vx.color;
+              sr += (rgb >> 16) & 0xff;
+              sg += (rgb >> 8) & 0xff;
+              sb += rgb & 0xff;
             }
           }
         }
@@ -306,7 +303,7 @@ export function computeMarchingCubes(
     }
   }
 
-  if (rawPos.length === 0) return new Map();
+  if (rawPos.length === 0) return null;
 
   const outPos: number[] = [];
   const outNormX: number[] = [];
@@ -371,12 +368,37 @@ export function computeMarchingCubes(
     outColors[i * 3 + 2] = Math.max(0, Math.min(1, outColB[i] / c));
   }
 
-  const result = new Map<number, MarchingCubesCoreResult>();
-  result.set(0, {
+  return {
     positions: new Float32Array(outPos),
     normals: outNormals,
     colors: outColors,
     indices: new Uint32Array(indices)
-  });
+  };
+}
+
+/**
+ * Marching cubes per (color, material) bucket.
+ * Returns one vertex-colored mesh per bucket key: `${color}|${material}`.
+ */
+export function computeMarchingCubes(
+  voxels: Map<string, Voxel>
+): Map<string, MarchingCubesCoreResult> {
+  if (voxels.size === 0) return new Map();
+  const grouped = new Map<string, Map<string, Voxel>>();
+  for (const [key, voxel] of voxels) {
+    const bucket = voxelBucketKey(voxel);
+    let bucketMap = grouped.get(bucket);
+    if (!bucketMap) {
+      bucketMap = new Map();
+      grouped.set(bucket, bucketMap);
+    }
+    bucketMap.set(key, voxel);
+  }
+
+  const result = new Map<string, MarchingCubesCoreResult>();
+  for (const [bucketKey, bucketVoxels] of grouped) {
+    const mesh = computeMarchingCubesBucket(bucketVoxels);
+    if (mesh) result.set(bucketKey, mesh);
+  }
   return result;
 }

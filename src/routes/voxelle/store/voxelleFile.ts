@@ -2,19 +2,16 @@ import { get } from 'svelte/store';
 import { coordKey, parseCoordKey } from '../coordUtils';
 import { voxels, gridSize, focalLength, orthographic, resetUndo } from './core';
 import type { GridSize } from './core';
-import { parseFormatPayload, serializeFormatToBson } from './voxelleFormatCore';
+import {
+  parseFormatPayload,
+  serializeFormatToBson,
+  VOXELLE_FORMAT_VERSION,
+  type VoxelleFileFormat
+} from './voxelleFormatCore';
+import type { Voxel } from '../voxelMaterial';
+import { parseVoxelMaterial } from '../voxelMaterial';
 
-export const VOXELLE_FILE_VERSION = 1;
-
-export type VoxelleFileFormat = {
-  version: number;
-  gridSize: number;
-  voxels: [number, number, number, number][];
-  scene?: {
-    focalLength?: number;
-    orthographic?: boolean;
-  };
-};
+export { VOXELLE_FORMAT_VERSION, type VoxelleFileFormat };
 
 export type ParsePayloadImpl = (bytes: Uint8Array) => Promise<VoxelleFileFormat | null>;
 export type SerializeImpl = (data: VoxelleFileFormat) => Promise<Uint8Array>;
@@ -97,11 +94,11 @@ export function serializeToVoxelleFormat(): VoxelleFileFormat {
     sz = Math.max(sz, 2 * (maxAbs + 1));
   }
   return {
-    version: VOXELLE_FILE_VERSION,
+    version: VOXELLE_FORMAT_VERSION,
     gridSize: sz,
-    voxels: [...v.entries()].map(([key, c]) => {
+    voxels: [...v.entries()].map(([key, vx]) => {
       const [x, y, z] = parseCoordKey(key);
-      return [x, y, z, c];
+      return [x, y, z, vx.color, vx.material] as VoxelleFileFormat['voxels'][number];
     }),
     scene: {
       focalLength: get(focalLength),
@@ -136,10 +133,19 @@ function isGzipped(bytes: Uint8Array): boolean {
 }
 
 function applyModelData(data: VoxelleFileFormat): void {
-  const voxelsMap = new Map<string, number>();
+  const voxelsMap = new Map<string, Voxel>();
   const sz = data.gridSize;
-  for (const [x, y, z, c] of data.voxels) {
-    voxelsMap.set(coordKey(x, y, z), c);
+  for (const row of data.voxels) {
+    if (!Array.isArray(row) || row.length < 4) continue;
+    const x = row[0] as number;
+    const y = row[1] as number;
+    const z = row[2] as number;
+    const c = (row[3] as number) >>> 0 & 0xffffff;
+    const m =
+      row.length >= 5 && typeof row[4] === 'string'
+        ? parseVoxelMaterial(row[4])
+        : parseVoxelMaterial(0);
+    voxelsMap.set(coordKey(x, y, z), { color: c, material: m });
   }
   resetUndo();
   gridSize.set(sz as GridSize);

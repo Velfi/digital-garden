@@ -1,14 +1,50 @@
 import { serialize as bsonSerialize, deserialize as bsonDeserialize } from 'bson';
+import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
+import { normalizeLegacyVoxel, parseVoxelMaterial } from '../voxelMaterial';
+
+export const VOXELLE_FORMAT_VERSION = 2;
+
+/** File voxel row: legacy 4-tuple or v2 with material string. */
+export type VoxelleFileVoxelRow =
+  | [number, number, number, number]
+  | [number, number, number, number, string];
 
 export type VoxelleFileFormat = {
   version: number;
   gridSize: number;
-  voxels: [number, number, number, number][];
+  voxels: VoxelleFileVoxelRow[];
   scene?: {
     focalLength?: number;
     orthographic?: boolean;
   };
 };
+
+function rowToVoxel(row: VoxelleFileVoxelRow): { x: number; y: number; z: number; voxel: Voxel } | null {
+  if (!Array.isArray(row) || row.length < 4) return null;
+  const [x, y, z, col] = row;
+  if (
+    typeof x !== 'number' ||
+    typeof y !== 'number' ||
+    typeof z !== 'number' ||
+    typeof col !== 'number'
+  )
+    return null;
+  const color = col >>> 0 & 0xffffff;
+  if (row.length >= 5 && typeof row[4] === 'string') {
+    return {
+      x: Math.floor(x),
+      y: Math.floor(y),
+      z: Math.floor(z),
+      voxel: { color, material: parseVoxelMaterial(row[4]) }
+    };
+  }
+  return {
+    x: Math.floor(x),
+    y: Math.floor(y),
+    z: Math.floor(z),
+    voxel: normalizeLegacyVoxel(col)
+  };
+}
 
 function parseFullFormat(raw: unknown): VoxelleFileFormat | null {
   const data = raw as VoxelleFileFormat;
@@ -16,18 +52,13 @@ function parseFullFormat(raw: unknown): VoxelleFileFormat | null {
   const sz = data.gridSize;
   if (sz < 1 || !Number.isInteger(sz)) return null;
   if (!Array.isArray(data.voxels)) return null;
-  const voxelsArr: [number, number, number, number][] = [];
+  const voxelsArr: VoxelleFileVoxelRow[] = [];
   for (const e of data.voxels) {
-    if (!Array.isArray(e) || e.length !== 4) continue;
-    const [x, y, z, col] = e;
-    if (
-      typeof x !== 'number' ||
-      typeof y !== 'number' ||
-      typeof z !== 'number' ||
-      typeof col !== 'number'
-    )
-      continue;
-    voxelsArr.push([Math.floor(x), Math.floor(y), Math.floor(z), col >>> 0]);
+    if (!Array.isArray(e) || e.length < 4 || e.length > 5) continue;
+    const parsed = rowToVoxel(e as VoxelleFileVoxelRow);
+    if (!parsed) continue;
+    const mat = parsed.voxel.material as VoxelMaterialId;
+    voxelsArr.push([parsed.x, parsed.y, parsed.z, parsed.voxel.color, mat]);
   }
   return { version: data.version, gridSize: sz, voxels: voxelsArr, scene: data.scene };
 }

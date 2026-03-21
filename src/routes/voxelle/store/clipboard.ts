@@ -1,10 +1,13 @@
 import { get } from 'svelte/store';
 import { coordKey, parseCoordKey, getSelectionBounds } from '../coordUtils';
 import { voxels, selection, updateVoxels, ensureGridFitsPositions } from './core';
+import type { Voxel } from '../voxelMaterial';
+import { parseVoxelMaterial, plasticVoxel } from '../voxelMaterial';
 
+/** Clipboard entry: relative position + voxel (v1 pastes used 4-tuple with color only = plastic). */
 export type VoxelleClipboard = {
   type: 'voxelle';
-  entries: [number, number, number, number][];
+  entries: [number, number, number, number, string?][];
 };
 
 export async function copySelection(): Promise<boolean> {
@@ -13,11 +16,12 @@ export async function copySelection(): Promise<boolean> {
   const sel = get(selection);
   const bounds = getSelectionBounds(sel);
   if (!bounds) return false;
-  const entries: [number, number, number, number][] = [];
-  for (const [key, col] of sel) {
+  const entries: VoxelleClipboard['entries'] = [];
+  for (const [key, selV] of sel) {
     if (!v.has(key)) continue;
+    const vx = v.get(key)!;
     const [x, y, z] = parseCoordKey(key);
-    entries.push([x - bounds.minX, y - bounds.minY, z - bounds.minZ, col]);
+    entries.push([x - bounds.minX, y - bounds.minY, z - bounds.minZ, vx.color, vx.material]);
   }
   if (entries.length === 0) return false;
   const payload: VoxelleClipboard = { type: 'voxelle', entries };
@@ -35,6 +39,16 @@ export async function cutSelection(): Promise<boolean> {
   return true;
 }
 
+function entryToVoxel(entry: VoxelleClipboard['entries'][number]): Voxel {
+  if (entry.length >= 5 && typeof entry[4] === 'string') {
+    return {
+      color: (entry[3] as number) & 0xffffff,
+      material: parseVoxelMaterial(entry[4])
+    };
+  }
+  return plasticVoxel(entry[3] as number);
+}
+
 export async function pasteFromClipboard(): Promise<boolean> {
   if (typeof navigator === 'undefined' || !navigator.clipboard?.readText) return false;
   try {
@@ -44,8 +58,10 @@ export async function pasteFromClipboard(): Promise<boolean> {
     const positions = data.entries.map(([x, y, z]) => [x, y, z] as [number, number, number]);
     ensureGridFitsPositions(positions);
     updateVoxels((v) => {
-      for (const [dx, dy, dz, col] of data.entries) {
-        v.set(coordKey(dx, dy, dz), col >>> 0);
+      for (const entry of data.entries) {
+        const [dx, dy, dz] = entry;
+        const key = coordKey(dx, dy, dz);
+        v.set(key, entryToVoxel(entry));
       }
     });
     return true;

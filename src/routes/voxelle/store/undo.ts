@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import type { Writable } from 'svelte/store';
 import { serializeVoxels, deserializeVoxels } from './serialization';
+import type { Voxel } from '../voxelMaterial';
 
 const MAX_UNDO = 50;
 
@@ -12,8 +13,8 @@ export type UndoSnapshot = {
 };
 
 export function createUndo(
-  voxels: Writable<Map<string, number>>,
-  selection: Writable<Map<string, number>>
+  voxels: Writable<Map<string, Voxel>>,
+  selection: Writable<Map<string, Voxel>>
 ) {
   const canUndoStore = writable(false);
   const canRedoStore = writable(false);

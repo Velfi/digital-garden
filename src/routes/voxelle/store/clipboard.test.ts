@@ -2,10 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { voxels, selection, gridSize, resetUndo } from './core';
 import { copySelection, pasteFromClipboard, cutSelection } from './clipboard';
+import { plasticVoxel, type Voxel } from '../voxelMaterial';
 
-function makeVoxels(entries: [number, number, number, number][]): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const [x, y, z, col] of entries) m.set(`${x},${y},${z}`, col);
+function makeVoxels(entries: [number, number, number, number][]): Map<string, Voxel> {
+  const m = new Map<string, Voxel>();
+  for (const [x, y, z, col] of entries) m.set(`${x},${y},${z}`, plasticVoxel(col));
   return m;
 }
 
@@ -94,8 +95,8 @@ describe('clipboard', () => {
       const result = await pasteFromClipboard();
       expect(result).toBe(true);
       const v = get(voxels);
-      expect(v.get('0,0,0')).toBe(0xff0000);
-      expect(v.get('1,1,1')).toBe(0x00ff00);
+      expect(v.get('0,0,0')).toEqual(plasticVoxel(0xff0000));
+      expect(v.get('1,1,1')).toEqual(plasticVoxel(0x00ff00));
     });
   });
 

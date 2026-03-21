@@ -3,11 +3,12 @@ import { get } from 'svelte/store';
 import { voxels, gridSize, focalLength, orthographic, resetUndo } from './core';
 import {
   serializeToVoxelleFormat,
-  VOXELLE_FILE_VERSION,
+  VOXELLE_FORMAT_VERSION,
   loadFromBytes,
   encodeForTransport,
   setWorkerImpls
 } from './voxelleFile';
+import { plasticVoxel } from '../voxelMaterial';
 import {
   parseFormatPayload,
   serializeFormatToBson,
@@ -46,16 +47,16 @@ describe('serializeToVoxelleFormat', () => {
   it('returns format with version, gridSize, voxels, scene', () => {
     voxels.set(
       new Map([
-        ['0,0,0', 0xff5733],
-        ['1,1,1', 0x00ff00]
+        ['0,0,0', plasticVoxel(0xff5733)],
+        ['1,1,1', plasticVoxel(0x00ff00)]
       ])
     );
     const data = serializeToVoxelleFormat();
-    expect(data.version).toBe(VOXELLE_FILE_VERSION);
+    expect(data.version).toBe(VOXELLE_FORMAT_VERSION);
     expect(data.gridSize).toBe(32);
     expect(data.voxels).toHaveLength(2);
-    expect(data.voxels).toContainEqual([0, 0, 0, 0xff5733]);
-    expect(data.voxels).toContainEqual([1, 1, 1, 0x00ff00]);
+    expect(data.voxels).toContainEqual([0, 0, 0, 0xff5733, 'plastic']);
+    expect(data.voxels).toContainEqual([1, 1, 1, 0x00ff00, 'plastic']);
     expect(data.scene?.focalLength).toBe(29);
     expect(data.scene?.orthographic).toBe(true);
   });
@@ -87,7 +88,11 @@ describe('voxelle file format round-trip', () => {
     expect(parsed).not.toBeNull();
     expect(parsed!.version).toBe(data.version);
     expect(parsed!.gridSize).toBe(data.gridSize);
-    expect(parsed!.voxels).toEqual(data.voxels);
+    expect(parsed!.voxels).toEqual([
+      [0, 0, 0, 0xff5733, 'plastic'],
+      [1, 0, 0, 0x00ff00, 'plastic'],
+      [-5, 3, 2, 0x0000ff, 'plastic']
+    ]);
     expect(parsed!.scene?.focalLength).toBe(data.scene?.focalLength);
     expect(parsed!.scene?.orthographic).toBe(data.scene?.orthographic);
   });
@@ -109,6 +114,7 @@ describe('voxelle file format round-trip', () => {
     const parsed = parseFormatPayload(decompressed);
     expect(parsed).not.toBeNull();
     expect(parsed!.voxels.length).toBe(12000);
+    expect(parsed!.voxels[0]).toEqual([-16, -6, -16, 0x888888, 'plastic']);
   });
 });
 
@@ -140,7 +146,7 @@ describe('loadFromBytes / encodeForTransport with injected impls', () => {
     const result = await loadFromBytes(rawBson);
     expect(result).toBe(true);
     expect(get(gridSize)).toBe(8);
-    expect(get(voxels).get('0,0,0')).toBe(0xff0000);
+    expect(get(voxels).get('0,0,0')).toEqual(plasticVoxel(0xff0000));
     expect(get(focalLength)).toBe(35);
     expect(get(orthographic)).toBe(true);
   });
@@ -160,8 +166,8 @@ describe('loadFromBytes / encodeForTransport with injected impls', () => {
     const result = await loadFromBytes(compressed);
     expect(result).toBe(true);
     expect(get(gridSize)).toBe(16);
-    expect(get(voxels).get('0,0,0')).toBe(0xff5733);
-    expect(get(voxels).get('1,1,1')).toBe(0x00ff00);
+    expect(get(voxels).get('0,0,0')).toEqual(plasticVoxel(0xff5733));
+    expect(get(voxels).get('1,1,1')).toEqual(plasticVoxel(0x00ff00));
     expect(get(focalLength)).toBe(50);
     expect(get(orthographic)).toBe(false);
   });
@@ -169,8 +175,8 @@ describe('loadFromBytes / encodeForTransport with injected impls', () => {
   it('encodeForTransport returns base64 string', async () => {
     voxels.set(
       new Map([
-        ['0,0,0', 0xff0000],
-        ['1,0,0', 0x00ff00]
+        ['0,0,0', plasticVoxel(0xff0000)],
+        ['1,0,0', plasticVoxel(0x00ff00)]
       ])
     );
     const encoded = await encodeForTransport();

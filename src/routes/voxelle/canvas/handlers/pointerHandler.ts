@@ -9,7 +9,9 @@ export type { PointerHandlerContext } from './types';
 
 /** Returns true if the event was handled and the caller should return. */
 export function handlePointerDown(ctx: PointerHandlerContext, event: PointerEvent): boolean {
-  if ((event.target as Element)?.closest?.('[data-voxelle-no-passthrough]')) return false;
+  // Tool panel and other overlays live inside the canvas container; pointerdown uses
+  // capture on the container, so this must short-circuit before sculpting/orbit logic.
+  if ((event.target as Element)?.closest?.('[data-voxelle-no-passthrough]')) return true;
   if (handleFlyPointerDown(ctx, event)) return true;
   return false;
 }

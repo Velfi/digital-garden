@@ -1,4 +1,5 @@
 import { coordKey, parseCoordKey } from './coordUtils';
+import type { Voxel } from './voxelMaterial';
 
 export const CUBE_EDGES: number[][] = [
   [-0.5, -0.5, -0.5, 0.5, -0.5, -0.5],
@@ -67,7 +68,7 @@ export const EDGE_NEIGHBORS: [number, number, number][][] = [
 ];
 
 /** Returns flat position array for grid lines (x1,y1,z1,x2,y2,z2,...). Empty if no visible edges. */
-export function buildGridPositions(v: Map<string, number>): number[] {
+export function buildGridPositions(v: Map<string, Voxel>): number[] {
   if (v.size === 0) return [];
   const positions: number[] = [];
   const has = (x: number, y: number, z: number) => v.has(coordKey(x, y, z));

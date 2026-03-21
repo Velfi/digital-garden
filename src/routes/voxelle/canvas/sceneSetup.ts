@@ -19,6 +19,8 @@ export interface SceneSetupOptions {
   enableShadows: boolean;
   lightAngle: number;
   lightElevation: number;
+  /** Directional (sun) light intensity. */
+  directionalLightIntensity?: number;
   aspect?: number;
 }
 
@@ -102,6 +104,7 @@ export function createSceneSetup(
     enableShadows,
     lightAngle,
     lightElevation,
+    directionalLightIntensity = 2,
     aspect = container ? container.clientWidth / container.clientHeight : 1
   } = options;
 
@@ -243,7 +246,7 @@ export function createSceneSetup(
   const hemisphereLight = new THREE.HemisphereLight(0xb8d4e8, 0x4a5568, 1);
   scene.add(hemisphereLight);
 
-  const dirLight = new THREE.DirectionalLight(lightColorHex, 2);
+  const dirLight = new THREE.DirectionalLight(lightColorHex, directionalLightIntensity);
   dirLight.castShadow = enableShadows;
   dirLight.shadow.mapSize.set(4096, 4096);
   dirLight.shadow.bias = -0.0002;
@@ -305,7 +308,7 @@ export function createSceneSetup(
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.shadowMap.enabled = enableShadows;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1;
   renderer.outputColorSpace = THREE.SRGBColorSpace;

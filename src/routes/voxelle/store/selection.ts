@@ -15,6 +15,8 @@ import {
   fillConstrainToPlane
 } from './core';
 import type { FaceNormal, SelectionMode } from './core';
+import type { Voxel } from '../voxelMaterial';
+import { sameVoxelColor } from '../voxelMaterial';
 
 /**
  * Isotropic padding around content for flood fills. Large margins balloon empty-region BFS
@@ -26,7 +28,7 @@ export const SELECTION_BOUNDS_MARGIN = 48;
 export const FILL_UNCONSTRAINED_LARGE_THRESHOLD = 256;
 
 export type FillSelectionResult = {
-  region: Map<string, number>;
+  region: Map<string, Voxel>;
   /** BFS stopped early because optional max region size was exceeded (actual region may be larger). */
   truncated: boolean;
 };
@@ -91,12 +93,12 @@ export function getFillSelectionAt(
   const v = get(voxels);
   const bounds = getEffectiveBoundsForSelection();
   const k0 = coordKey(x, y, z);
-  const targetColor = v.get(k0);
-  if (targetColor === undefined) return { region: new Map(), truncated: false };
+  const targetVoxel = v.get(k0);
+  if (targetVoxel === undefined) return { region: new Map(), truncated: false };
   const adj = diagonals ? ADJ_26 : ADJ_6;
   const visited = new Set<string>();
   const stack: [number, number, number][] = [[x, y, z]];
-  const next = new Map<string, number>();
+  const next = new Map<string, Voxel>();
   while (stack.length > 0) {
     const [cx, cy, cz] = stack.pop()!;
     const ck = coordKey(cx, cy, cz);
@@ -104,7 +106,7 @@ export function getFillSelectionAt(
     visited.add(ck);
     const col = v.get(ck);
     if (col === undefined) continue;
-    if (respectsColor && col !== targetColor) continue;
+    if (respectsColor && !sameVoxelColor(col, targetVoxel)) continue;
     next.set(ck, col);
     if (maxRegionSize !== undefined && next.size > maxRegionSize) {
       return { region: next, truncated: true };
@@ -163,10 +165,10 @@ export function getFillEmptyAt(
 }
 
 export function mergeSelection(
-  current: Map<string, number>,
-  incoming: Map<string, number>,
+  current: Map<string, Voxel>,
+  incoming: Map<string, Voxel>,
   mode: SelectionMode
-): Map<string, number> {
+): Map<string, Voxel> {
   if (mode === 'replace') return new Map(incoming);
   const next = new Map(current);
   if (mode === 'add') {
@@ -184,7 +186,7 @@ export function mergeSelection(
     }
     return next;
   }
-  const out = new Map<string, number>();
+  const out = new Map<string, Voxel>();
   for (const [k, c] of incoming) {
     if (current.has(k)) out.set(k, c);
   }
@@ -194,7 +196,7 @@ export function mergeSelection(
 export function selectAll() {
   pushUndo();
   const v = get(voxels);
-  const next = new Map<string, number>();
+  const next = new Map<string, Voxel>();
   for (const [key, col] of v) next.set(key, col);
   selection.set(next);
 }
@@ -208,7 +210,7 @@ export function deselectVoxels() {
   pushUndo();
   const v = get(voxels);
   const sel = get(selection);
-  const next = new Map<string, number>();
+  const next = new Map<string, Voxel>();
   for (const [key, col] of sel) {
     if (!v.has(key)) next.set(key, col);
   }
@@ -219,7 +221,7 @@ export function deselectEmptySpaces() {
   pushUndo();
   const v = get(voxels);
   const sel = get(selection);
-  const next = new Map<string, number>();
+  const next = new Map<string, Voxel>();
   for (const [key, col] of sel) {
     if (v.has(key)) next.set(key, col);
   }
@@ -230,7 +232,7 @@ export function invertSelection() {
   pushUndo();
   const v = get(voxels);
   const sel = get(selection);
-  const next = new Map<string, number>();
+  const next = new Map<string, Voxel>();
   for (const [key, col] of v) {
     if (!sel.has(key)) next.set(key, col);
   }
@@ -264,7 +266,7 @@ export function shrinkSelection() {
   const v = get(voxels);
   const bounds = getEffectiveBoundsForSelection();
   const sel = get(selection);
-  const next = new Map<string, number>();
+  const next = new Map<string, Voxel>();
   for (const [key, col] of sel) {
     const [x, y, z] = parseCoordKey(key);
     let onBoundary = false;
@@ -292,7 +294,7 @@ export function shrinkSelection() {
 export function deselectInnerVoxels() {
   pushUndo();
   const sel = get(selection);
-  const next = new Map<string, number>();
+  const next = new Map<string, Voxel>();
   for (const [key, col] of sel) {
     const [x, y, z] = parseCoordKey(key);
     let bounded = true;
@@ -349,18 +351,19 @@ export function selectConnected() {
   pushUndo();
   const firstKey = sel.keys().next().value;
   if (!firstKey) return;
-  const targetColor = sel.get(firstKey)!;
+  const targetVoxel = v.get(firstKey);
+  if (!targetVoxel) return;
   const [sx, sy, z0] = parseCoordKey(firstKey);
   const visited = new Set<string>();
   const stack: [number, number, number][] = [[sx, sy, z0]];
-  const next = new Map<string, number>();
+  const next = new Map<string, Voxel>();
   while (stack.length > 0) {
     const [x, y, z] = stack.pop()!;
     const k = coordKey(x, y, z);
     if (visited.has(k)) continue;
     visited.add(k);
     const col = v.get(k);
-    if (col !== targetColor) continue;
+    if (col === undefined || !sameVoxelColor(col, targetVoxel)) continue;
     next.set(k, col);
     for (const [dx, dy, dz] of ADJ_6) {
       const nx = x + dx;
@@ -381,7 +384,7 @@ export function getCoplanarFacesSelectionAt(
   y: number,
   z: number,
   faceNormal: FaceNormal
-): Map<string, number> {
+): Map<string, Voxel> {
   const v = get(voxels);
   const bounds = getEffectiveBoundsForSelection();
   const k0 = coordKey(x, y, z);
@@ -389,7 +392,7 @@ export function getCoplanarFacesSelectionAt(
   const [nx, ny, nz] = faceNormal;
   const visited = new Set<string>();
   const stack: [number, number, number][] = [[x, y, z]];
-  const next = new Map<string, number>();
+  const next = new Map<string, Voxel>();
   while (stack.length > 0) {
     const [cx, cy, cz] = stack.pop()!;
     const ck = coordKey(cx, cy, cz);

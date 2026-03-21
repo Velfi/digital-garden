@@ -14,10 +14,10 @@ import {
 import { buildGridPositions } from '../gridLines';
 import { buildGreedyMesh, buildPreviewGeometry, PREVIEW_MESH_OPTIONS } from '../greedyMesh';
 import type { SceneSetupRefs } from './sceneSetup';
+import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
+import { createVoxelSurfaceMaterial, parseBucketKey } from '../voxelMaterial';
 
 export interface MeshManagerOptions {
-  roughness: number;
-  metalness: number;
   enableShadows: boolean;
   renderingMode: 'greedy' | 'marchingCubes';
   aoStrength: number;
@@ -50,8 +50,8 @@ export function createMeshManager(
 
   let meshWorker: Worker | null = null;
   let meshRebuildGen = 0;
-  const meshesByColor = new Map<
-    number,
+  const meshesByBucket = new Map<
+    string,
     { mesh: THREE.InstancedMesh | THREE.Mesh; positions: [number, number, number][] | null }
   >();
   let selectionMesh: THREE.Mesh | null = null;
@@ -64,7 +64,7 @@ export function createMeshManager(
 
   function applyVoxelMeshResults(
     results: Array<{
-      color: number;
+      bucketKey: string;
       positions: Float32Array;
       normals: Float32Array;
       colors: Float32Array;
@@ -72,17 +72,17 @@ export function createMeshManager(
     }>
   ) {
     if (!voxelGroup) return;
-    for (const { mesh } of meshesByColor.values()) {
+    for (const { mesh } of meshesByBucket.values()) {
       voxelGroup.remove(mesh);
       (mesh.material as THREE.Material).dispose();
       if (mesh instanceof THREE.Mesh && mesh.geometry) mesh.geometry.dispose();
     }
-    meshesByColor.clear();
+    meshesByBucket.clear();
 
     const opts = getOptions();
     const envMap = scene?.environment ?? null;
 
-    for (const { color: col, positions, normals, colors, indices } of results) {
+    for (const { bucketKey, positions, normals, colors, indices } of results) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
@@ -91,17 +91,16 @@ export function createMeshManager(
       geo.computeVertexNormals();
       geo.computeBoundingSphere();
 
-      const mat = new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: opts.roughness,
-        metalness: opts.metalness,
-        envMap: envMap
-      });
+      let materialId: VoxelMaterialId = 'plastic';
+      const parsed = parseBucketKey(bucketKey);
+      if (parsed) materialId = parsed.material;
+      const mat = createVoxelSurfaceMaterial(materialId, envMap);
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.castShadow = opts.enableShadows;
-      mesh.receiveShadow = opts.enableShadows && opts.renderingMode !== 'marchingCubes';
+      mesh.castShadow = opts.enableShadows && materialId !== 'glass';
+      mesh.receiveShadow =
+        opts.enableShadows && opts.renderingMode !== 'marchingCubes' && materialId !== 'glass';
       voxelGroup.add(mesh);
-      meshesByColor.set(col, { mesh, positions: null });
+      meshesByBucket.set(bucketKey, { mesh, positions: null });
     }
   }
 
@@ -123,7 +122,7 @@ export function createMeshManager(
     };
   }
 
-  function requestRebuildVoxelMeshes(v: Map<string, number>) {
+  function requestRebuildVoxelMeshes(v: Map<string, Voxel>) {
     if (!meshWorker || !voxelGroup) return;
     const gen = ++meshRebuildGen;
     callbacks.onLoadingChange(true);
@@ -133,7 +132,7 @@ export function createMeshManager(
       spinnerTimeoutId = null;
       callbacks.onSpinnerChange(true);
     }, SPINNER_DELAY_MS);
-    const voxelsArr: [string, number][] = [...v];
+    const voxelsArr: [string, Voxel][] = [...v];
     const opts = getOptions();
     const chunkSize = v.size >= CHUNK_THRESHOLD ? 32 : 0;
     meshWorker.postMessage({
@@ -144,7 +143,7 @@ export function createMeshManager(
     });
   }
 
-  function rebuildSelectionOverlay(sel: Map<string, number>) {
+  function rebuildSelectionOverlay(sel: Map<string, Voxel>) {
     if (!selectionGroup || !scene) return;
     if (selectionMesh || selectionOccludedMesh || selectionWireframe) {
       if (selectionMesh) selectionGroup.remove(selectionMesh);
@@ -166,10 +165,11 @@ export function createMeshManager(
       }
     }
     if (sel.size === 0) return;
-    const overlayMap = new Map<string, number>();
-    for (const key of sel.keys()) overlayMap.set(key, SELECTION_OVERLAY_HEX);
-    const geoByColor = buildGreedyMesh(overlayMap, PREVIEW_MESH_OPTIONS);
-    const geo = geoByColor.get(SELECTION_OVERLAY_HEX);
+    const overlayVoxel: Voxel = { color: SELECTION_OVERLAY_HEX, material: 'plastic' };
+    const overlayMap = new Map<string, Voxel>();
+    for (const key of sel.keys()) overlayMap.set(key, overlayVoxel);
+    const geoByBucket = buildGreedyMesh(overlayMap, PREVIEW_MESH_OPTIONS);
+    const geo = geoByBucket.get(`${SELECTION_OVERLAY_HEX}|plastic`);
     if (!geo) return;
 
     selectionMaterial = new THREE.MeshBasicMaterial({
@@ -228,7 +228,7 @@ export function createMeshManager(
     }
   }
 
-  function buildGrid(_size: number, v: Map<string, number>) {
+  function buildGrid(_size: number, v: Map<string, Voxel>) {
     if (!gridGroup || !gridLineMaterial || !scene) return;
     while (gridGroup.children.length > 0) {
       const child = gridGroup.children[0];
@@ -247,15 +247,15 @@ export function createMeshManager(
 
   function updatePreviewMesh(
     positions: [number, number, number][],
-    colorHex: number,
-    existingVoxels?: Map<string, number>
+    voxel: Voxel,
+    existingVoxels?: Map<string, Voxel>
   ) {
     if (!previewMesh || !previewMaterial) return;
     if (positions.length === 0) {
       previewMesh.visible = false;
       return;
     }
-    const geo = buildPreviewGeometry(positions, colorHex, existingVoxels);
+    const geo = buildPreviewGeometry(positions, voxel, existingVoxels);
     if (geo) {
       if (previewMesh.geometry) previewMesh.geometry.dispose();
       previewMesh.geometry = geo;
@@ -269,11 +269,11 @@ export function createMeshManager(
     meshWorker?.terminate();
     meshWorker = null;
     if (spinnerTimeoutId) clearTimeout(spinnerTimeoutId);
-    for (const { mesh } of meshesByColor.values()) {
+    for (const { mesh } of meshesByBucket.values()) {
       mesh.geometry?.dispose();
       (mesh.material as THREE.Material).dispose();
     }
-    meshesByColor.clear();
+    meshesByBucket.clear();
     if (selectionMesh || selectionOccludedMesh) {
       const sharedGeo = selectionMesh?.geometry ?? selectionOccludedMesh?.geometry;
       if (sharedGeo) sharedGeo.dispose();
@@ -300,6 +300,6 @@ export function createMeshManager(
     buildGrid,
     updatePreviewMesh,
     destroy,
-    getMeshesByColor: () => meshesByColor
+    getMeshesByBucket: () => meshesByBucket
   };
 }

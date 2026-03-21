@@ -1,17 +1,53 @@
 <script lang="ts">
   import {
     ambientIntensity,
+    sunlightIntensity,
     lightColor,
     lightAngle,
     lightElevation,
     enableShadows,
-    aoStrength
+    aoStrength,
+    sceneEnvironmentIntensity,
+    LIGHT_PRESETS,
+    applyLightPreset,
+    type LightPresetId
   } from '../store/index';
+
+  function matchesPreset(id: LightPresetId): boolean {
+    const p = LIGHT_PRESETS.find((x) => x.id === id);
+    if (!p) return false;
+    return (
+      $ambientIntensity === p.ambientIntensity &&
+      $sunlightIntensity === p.sunlightIntensity &&
+      $lightColor.toLowerCase() === p.lightColor.toLowerCase() &&
+      $lightAngle === p.lightAngle &&
+      $lightElevation === p.lightElevation &&
+      $enableShadows === p.enableShadows &&
+      $sceneEnvironmentIntensity === p.sceneEnvironmentIntensity
+    );
+  }
 </script>
 
-<h2>Light</h2>
+<div class="light-heading-row">
+  <h2 class="light-title">Light</h2>
+  <div class="preset-toolbar" role="toolbar" aria-label="Lighting presets">
+    {#each LIGHT_PRESETS as preset (preset.id)}
+      <button
+        type="button"
+        class="preset-btn"
+        class:active={matchesPreset(preset.id)}
+        title={preset.title}
+        aria-label={`${preset.title} lighting`}
+        aria-pressed={matchesPreset(preset.id)}
+        onclick={() => applyLightPreset(preset.id)}
+      >
+        <span class="preset-emoji" aria-hidden="true">{preset.id === 'sunny' ? '☀️' : preset.id === 'cloudy' ? '☁️' : preset.id === 'incandescent' ? '💡' : preset.id === 'fluorescent' ? '🔦' : preset.id === 'moonlight' ? '🌙' : '🌑'}</span>
+      </button>
+    {/each}
+  </div>
+</div>
 <div class="light-control">
-  <label for="ambient-intensity">Ambient</label>
+  <label for="ambient-intensity">Ambient light</label>
   <div class="slider-row">
     <input
       id="ambient-intensity"
@@ -23,6 +59,21 @@
       oninput={(e) => ambientIntensity.set(Number((e.target as HTMLInputElement).value))}
     />
     <span class="slider-value">{$ambientIntensity.toFixed(1)}</span>
+  </div>
+</div>
+<div class="light-control">
+  <label for="sunlight-intensity">Sunlight</label>
+  <div class="slider-row">
+    <input
+      id="sunlight-intensity"
+      type="range"
+      min="0"
+      max="4"
+      step="0.1"
+      value={$sunlightIntensity}
+      oninput={(e) => sunlightIntensity.set(Number((e.target as HTMLInputElement).value))}
+    />
+    <span class="slider-value">{$sunlightIntensity.toFixed(1)}</span>
   </div>
 </div>
 <div class="light-control">
@@ -91,4 +142,51 @@
 </div>
 
 <style>
+  .light-heading-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 0.75rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .light-title {
+    margin: 0;
+    font-size: 1rem;
+  }
+
+  .preset-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .preset-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.85rem;
+    height: 1.85rem;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-color);
+    color: var(--text-color);
+    cursor: pointer;
+  }
+
+  .preset-btn:hover {
+    filter: brightness(1.08);
+  }
+
+  .preset-btn.active {
+    border-color: var(--accent-color, #3399ff);
+    box-shadow: 0 0 0 1px var(--accent-color, #3399ff);
+  }
+
+  .preset-emoji {
+    font-size: 1.15rem;
+    line-height: 1;
+  }
 </style>

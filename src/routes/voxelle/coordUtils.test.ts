@@ -14,6 +14,11 @@ import {
   getSelectionCenter,
   selectionAabbWireframePositions
 } from './coordUtils';
+import { plasticVoxel, type Voxel } from './voxelMaterial';
+
+function pv(c: number): Voxel {
+  return plasticVoxel(c);
+}
 
 describe('coordKey', () => {
   it('formats integer coords as "x,y,z"', () => {
@@ -88,9 +93,9 @@ describe('getEffectiveBounds', () => {
     });
   });
   it('returns voxel bounds + margin when non-empty', () => {
-    const v = new Map<string, number>([
-      ['10,20,30', 0xff],
-      ['15,25,35', 0xff]
+    const v = new Map<string, Voxel>([
+      ['10,20,30', pv(0xff)],
+      ['15,25,35', pv(0xff)]
     ]);
     const b = getEffectiveBounds(v, 5);
     expect(b.minX).toBe(5);
@@ -113,16 +118,16 @@ describe('getSelectionAnchor', () => {
   });
 
   it('returns min corner for non-empty selection', () => {
-    const sel = new Map<string, number>([
-      ['1,2,3', 0xff0000],
-      ['-1,0,5', 0x00ff00],
-      ['0,-2,1', 0x0000ff]
+    const sel = new Map<string, Voxel>([
+      ['1,2,3', pv(0xff0000)],
+      ['-1,0,5', pv(0x00ff00)],
+      ['0,-2,1', pv(0x0000ff)]
     ]);
     expect(getSelectionAnchor(sel)).toEqual([-1, -2, 1]);
   });
 
   it('returns single coord for one voxel', () => {
-    const sel = new Map([['5,5,5', 0x888888]]);
+    const sel = new Map([['5,5,5', pv(0x888888)]]);
     expect(getSelectionAnchor(sel)).toEqual([5, 5, 5]);
   });
 });
@@ -133,10 +138,10 @@ describe('getSelectionBounds', () => {
   });
 
   it('returns correct bounds for selection', () => {
-    const sel = new Map<string, number>([
-      ['1,2,3', 0xff0000],
-      ['-1,0,5', 0x00ff00],
-      ['0,-2,1', 0x0000ff]
+    const sel = new Map<string, Voxel>([
+      ['1,2,3', pv(0xff0000)],
+      ['-1,0,5', pv(0x00ff00)],
+      ['0,-2,1', pv(0x0000ff)]
     ]);
     expect(getSelectionBounds(sel)).toEqual({
       minX: -1,
@@ -155,10 +160,10 @@ describe('getVoxelBounds', () => {
   });
 
   it('returns same structure as getSelectionBounds', () => {
-    const v = new Map<string, number>([
-      ['2,0,0', 0xff],
-      ['0,2,0', 0xff],
-      ['0,0,2', 0xff]
+    const v = new Map<string, Voxel>([
+      ['2,0,0', pv(0xff)],
+      ['0,2,0', pv(0xff)],
+      ['0,0,2', pv(0xff)]
     ]);
     expect(getVoxelBounds(v)).toEqual({
       minX: 0,
@@ -177,14 +182,14 @@ describe('getVoxelCenter', () => {
   });
 
   it('returns center of single voxel', () => {
-    const v = new Map([['0,0,0', 0xff]]);
+    const v = new Map([['0,0,0', pv(0xff)]]);
     expect(getVoxelCenter(v)).toEqual([0.5, 0.5, 0.5]);
   });
 
   it('returns center of 2x2x2 cube', () => {
-    const v = new Map<string, number>();
+    const v = new Map<string, Voxel>();
     for (let x = 0; x < 2; x++)
-      for (let y = 0; y < 2; y++) for (let z = 0; z < 2; z++) v.set(coordKey(x, y, z), 0xff);
+      for (let y = 0; y < 2; y++) for (let z = 0; z < 2; z++) v.set(coordKey(x, y, z), pv(0xff));
     expect(getVoxelCenter(v)).toEqual([1, 1, 1]);
   });
 });
@@ -217,9 +222,9 @@ describe('getSelectionCenter', () => {
   });
 
   it('returns center of selection bounds', () => {
-    const sel = new Map<string, number>([
-      ['0,0,0', 0xff],
-      ['2,2,2', 0xff]
+    const sel = new Map<string, Voxel>([
+      ['0,0,0', pv(0xff)],
+      ['2,2,2', pv(0xff)]
     ]);
     expect(getSelectionCenter(sel)).toEqual([1.5, 1.5, 1.5]);
   });
@@ -242,9 +247,9 @@ describe('selectionAabbWireframePositions', () => {
 
 describe('defaultAddShapePlacementAnchor', () => {
   it('uses rounded voxel bounds center when map is non-empty (ignores orbit target)', () => {
-    const v = new Map<string, number>([
-      ['0,0,0', 1],
-      ['1,0,0', 1]
+    const v = new Map<string, Voxel>([
+      ['0,0,0', pv(1)],
+      ['1,0,0', pv(1)]
     ]);
     expect(defaultAddShapePlacementAnchor(v, { x: 99, y: 99, z: 99 })).toEqual([1, 1, 1]);
   });

@@ -3,37 +3,49 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { parseCoordKey } from './coordUtils';
 import { buildGreedyMesh } from './greedyMesh';
+import type { Voxel } from './voxelMaterial';
+import { createVoxelSurfaceMaterial, parseBucketKey } from './voxelMaterial';
 
 export interface ExportGltfOptions {
   greedyRemesh?: boolean;
 }
 
 /**
- * Build a single merged BufferGeometry for export. Caller must dispose the result.
+ * Build export scene geometry. Greedy mode: one mesh per (color, material) bucket.
+ * Per-voxel mode: single merged geometry with vertex colors (one standard material).
  */
-function buildExportGeometry(
-  voxels: Map<string, number>,
+function buildExportMeshes(
+  voxels: Map<string, Voxel>,
   greedyRemesh: boolean
-): THREE.BufferGeometry | null {
+): { scene: THREE.Scene; disposables: { geometry: THREE.BufferGeometry; material: THREE.Material }[] } {
+  const disposables: { geometry: THREE.BufferGeometry; material: THREE.Material }[] = [];
+  const scene = new THREE.Scene();
+
   if (greedyRemesh) {
-    const geoByColor = buildGreedyMesh(voxels, { aoEnabled: false });
-    const geometries = [...geoByColor.values()];
-    const merged = mergeGeometries(geometries);
-    geometries.forEach((g) => g.dispose());
-    return merged;
+    const geoByBucket = buildGreedyMesh(voxels, { aoEnabled: false });
+    for (const [bucketKey, geo] of geoByBucket) {
+      const parsed = parseBucketKey(bucketKey);
+      const mat = createVoxelSurfaceMaterial(parsed?.material ?? 'plastic', null);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.rotation.x = Math.PI;
+      scene.add(mesh);
+      disposables.push({ geometry: geo, material: mat });
+    }
+    return { scene, disposables };
   }
 
   const box = new THREE.BoxGeometry(1, 1, 1);
   const geometries: THREE.BufferGeometry[] = [];
 
-  for (const [key, col] of voxels) {
+  for (const [key, vx] of voxels) {
     const [x, y, z] = parseCoordKey(key);
     const geo = box.clone();
     geo.translate(x, y, z);
 
-    const r = ((col >> 16) & 0xff) / 255;
-    const g = ((col >> 8) & 0xff) / 255;
-    const b = (col & 0xff) / 255;
+    const c = vx.color;
+    const r = ((c >> 16) & 0xff) / 255;
+    const g = ((c >> 8) & 0xff) / 255;
+    const b = (c & 0xff) / 255;
     const count = geo.attributes.position.count;
     const colors = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
@@ -48,33 +60,33 @@ function buildExportGeometry(
   box.dispose();
   const merged = mergeGeometries(geometries);
   geometries.forEach((g) => g.dispose());
-  return merged;
-}
-
-/**
- * Exports the voxel mesh as GLTF with vertex colors. Triggers a download.
- * When options.greedyRemesh is true, uses culled/merged quads instead of one cube per voxel.
- */
-export async function exportVoxelsToGltf(
-  voxels: Map<string, number>,
-  filename = 'voxelle.glb',
-  options: ExportGltfOptions = {}
-): Promise<void> {
-  if (voxels.size === 0) return;
-
-  const { greedyRemesh = false } = options;
-  const merged = buildExportGeometry(voxels, greedyRemesh);
-  if (!merged) return;
-
-  const filenameWithExt = filename.toLowerCase().endsWith('.glb') ? filename : `${filename}.glb`;
+  if (!merged) return { scene, disposables };
 
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true
   });
   const mesh = new THREE.Mesh(merged, material);
   mesh.rotation.x = Math.PI;
-  const scene = new THREE.Scene();
   scene.add(mesh);
+  disposables.push({ geometry: merged, material });
+  return { scene, disposables };
+}
+
+/**
+ * Exports the voxel mesh as GLTF. Greedy export uses one PBR mesh per material bucket.
+ */
+export async function exportVoxelsToGltf(
+  voxels: Map<string, Voxel>,
+  filename = 'voxelle.glb',
+  options: ExportGltfOptions = {}
+): Promise<void> {
+  if (voxels.size === 0) return;
+
+  const { greedyRemesh = false } = options;
+  const { scene, disposables } = buildExportMeshes(voxels, greedyRemesh);
+  if (disposables.length === 0) return;
+
+  const filenameWithExt = filename.toLowerCase().endsWith('.glb') ? filename : `${filename}.glb`;
 
   const exporter = new GLTFExporter();
   const result = (await exporter.parseAsync(scene, { binary: true })) as ArrayBuffer;
@@ -87,6 +99,8 @@ export async function exportVoxelsToGltf(
   a.click();
   URL.revokeObjectURL(url);
 
-  merged.dispose();
-  material.dispose();
+  for (const { geometry, material } of disposables) {
+    geometry.dispose();
+    material.dispose();
+  }
 }

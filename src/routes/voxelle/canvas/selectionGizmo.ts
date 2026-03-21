@@ -9,13 +9,13 @@ import {
   VOXELLE_SELECTION_PIVOT_CHILD_KEY
 } from '../coordUtils';
 import { clampQuarterTurn } from '../store/shapes';
-import { addPanelStore, selectionGizmoMode, type Tool } from '../store/index';
+import { addPanelStore, selectionGizmoMode, type Tool, type Voxel } from '../store/index';
 import { previewOccludedTintInto } from './previewMeshUtils';
 
 export type SelectionGizmoDeps = {
   getTool: () => Tool;
   getIsDrawing: () => boolean;
-  getSelection: () => Map<string, number>;
+  getSelection: () => Map<string, Voxel>;
   getPointer: () => THREE.Vector2;
   getCamera: () => THREE.PerspectiveCamera | THREE.OrthographicCamera | null;
   getRaycaster: () => THREE.Raycaster;

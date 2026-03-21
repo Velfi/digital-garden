@@ -2,13 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { attachGreedyMeshWorker } from './greedyMeshWorker.bind';
 import { attachVoxelMeshWorker } from './voxelMeshWorker.bind';
 import { attachVoxelleFileWorker } from './store/voxelleFileWorker.bind';
-import { processGreedyMeshMessage } from './greedyMeshWorkerLogic';
-import { processVoxelMeshMessage } from './voxelMeshWorkerLogic';
+import { processGreedyMeshMessage, type GreedyMeshWorkerInput } from './greedyMeshWorkerLogic';
+import { processVoxelMeshMessage, type VoxelMeshWorkerInput } from './voxelMeshWorkerLogic';
 import { processVoxelleFileMessage } from './store/voxelleFileWorkerLogic';
 import { serializeFormatToBson } from './store/voxelleFormatCore';
 import type { VoxelleFileFormat } from './store/voxelleFormatCore';
 import { transferablesFromMeshResults } from './meshWorkerTransfer';
 import type { WorkerMessagePort } from './workerMessagePort';
+import { plasticVoxel } from './voxelMaterial';
 
 /**
  * Exercise the same `onmessage` / `postMessage` wiring the browser worker entry files install.
@@ -50,8 +51,8 @@ describe('web worker bindings (mock global scope)', () => {
     it('posts same payload as processGreedyMeshMessage and transfers mesh buffers', () => {
       const scope = createMockWorkerPort();
       attachGreedyMeshWorker(scope);
-      const input = {
-        voxels: [['0,0,0', 0x888888]] as [string, number][],
+      const input: GreedyMeshWorkerInput = {
+        voxels: [['0,0,0', plasticVoxel(0x888888)]],
         gen: 3
       };
       scope.dispatchMessage(input);
@@ -66,9 +67,9 @@ describe('web worker bindings (mock global scope)', () => {
     it('posts voxel mesh output with matching transferables', () => {
       const scope = createMockWorkerPort();
       attachVoxelMeshWorker(scope);
-      const input = {
-        mode: 'greedy' as const,
-        voxels: [['0,0,0', 0xff5733]] as [string, number][],
+      const input: VoxelMeshWorkerInput = {
+        mode: 'greedy',
+        voxels: [['0,0,0', plasticVoxel(0xff5733)]],
         gen: 9
       };
       scope.dispatchMessage(input);

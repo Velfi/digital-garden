@@ -48,14 +48,15 @@
     lightElevation,
     lightColor,
     ambientIntensity,
+    sunlightIntensity,
     enableShadows,
     aoStrength,
     backgroundColor,
     enableSky,
     focalLength,
     orthographic,
-    roughness,
-    metalness,
+    voxelMaterial,
+    sameVoxelColor,
     updateVoxels,
     updateVoxelsInStroke,
     beginStroke,
@@ -65,7 +66,7 @@
     pushUndo,
     history,
     initCanvas,
-    loadFromStorage,
+    loadFromStorageAsync,
     loadFromBytes,
     saveToStorage,
     coordKey,
@@ -113,7 +114,8 @@
     grassHeight,
     type Tool,
     type FaceNormal,
-    voxellePreferences
+    voxellePreferences,
+    type Voxel
   } from './store/index';
   import { generateRockVoxels, getRockPositions, generateAshlarVoxels, getAshlarPositions } from './store/generators/rock';
   import { generateGrassVoxels, getGrassPositions } from './store/generators/grass';
@@ -352,7 +354,7 @@
   const fitHelperSphere = new THREE.Sphere();
   const worldQuaternion = new THREE.Quaternion();
 
-  function rebuildSelectionOverlay(sel: Map<string, number>) {
+  function rebuildSelectionOverlay(sel: Map<string, Voxel>) {
     meshManager?.rebuildSelectionOverlay(sel);
   }
 
@@ -419,9 +421,9 @@
 
   function getRaycastTargets(): THREE.Object3D[] {
     const targets: THREE.Object3D[] = [];
-    const byColor = meshManager?.getMeshesByColor();
-    if (byColor) {
-      for (const { mesh } of byColor.values()) {
+    const byBucket = meshManager?.getMeshesByBucket();
+    if (byBucket) {
+      for (const { mesh } of byBucket.values()) {
         targets.push(mesh);
       }
     }
@@ -513,7 +515,7 @@
     return { x: v.x, y: v.y, z: v.z };
   }
 
-  function buildGrid(sz: number, v: Map<string, number>) {
+  function buildGrid(sz: number, v: Map<string, Voxel>) {
     meshManager?.buildGrid(sz, v);
   }
 
@@ -808,7 +810,7 @@
     const v = $voxels;
     const boundSize: number | undefined = undefined;
     const modeToUse = mode ?? get(selectionMode);
-    const incoming = new Map<string, number>();
+    const incoming = new Map<string, Voxel>();
     for (const [x, y, z] of positions) {
       if (!inBounds(x, y, z, boundSize)) continue;
       const key = coordKey(x, y, z);
@@ -826,7 +828,7 @@
     const [cx, cy, cz] = center;
     const { rotX, rotY, rotZ } = $stampRotation;
     const rotated: [number, number, number][] = [];
-    const colors: number[] = [];
+    const colors: Voxel[] = [];
     for (const [key, col] of sel) {
       const [x, y, z] = parseCoordKey(key);
       const centered: [number, number, number] = [x - cx, y - cy, z - cz];
@@ -879,7 +881,7 @@
     const sinkDir = get(rockSinkDirection) as 'none' | 'under' | 'over';
     const sinkAmount = get(rockSinkAmount) as number;
     const allPositions: [number, number, number][] = [];
-    const allColors: number[] = [];
+    const allVoxels: Voxel[] = [];
     // Surface for placement: none = on surface; under = buried; over = floating
     const N = sinkDir !== 'none' ? Math.min(5, Math.max(0, sinkAmount)) : 0;
     const surfaceTarget: [number, number, number] =
@@ -907,7 +909,7 @@
         placementSeed + i,
         size,
         roughness,
-        getCol()
+        getCol().color
       );
       const localPositions = [...rockMap.keys()].map(
         (k) => parseCoordKey(k) as [number, number, number]
@@ -924,10 +926,10 @@
         normal[2] ? surfaceTarget[2] : placeI[2] - halfD
       ];
       const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
-      for (const [key, col] of rockMap) {
+      for (const [key, vx] of rockMap) {
         const [lx, ly, lz] = parseCoordKey(key);
         allPositions.push([lx + ox, ly + oy, lz + oz]);
-        allColors.push(col);
+        allVoxels.push(vx);
       }
     }
 
@@ -939,7 +941,7 @@
     updateVoxelsInStroke((v) => {
       allPositions.forEach(([x, y, z], i) => {
         if (!inBounds(x, y, z, boundSize)) return;
-        v.set(coordKey(x, y, z), allColors[i]);
+        v.set(coordKey(x, y, z), allVoxels[i]!);
       });
     });
   }
@@ -966,7 +968,7 @@
       placementSeed,
       size,
       roughness,
-      getCol(),
+      getCol().color,
       thickness,
       thicknessAxis
     );
@@ -985,11 +987,11 @@
     ];
     const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
     const allPositions: [number, number, number][] = [];
-    const allColors: number[] = [];
-    for (const [key, col] of ashlarMap) {
+    const allVoxelsAsh: Voxel[] = [];
+    for (const [key, vx] of ashlarMap) {
       const [lx, ly, lz] = parseCoordKey(key);
       allPositions.push([lx + ox, ly + oy, lz + oz]);
-      allColors.push(col);
+      allVoxelsAsh.push(vx);
     }
     if (allPositions.length === 0) return;
     playPlaceSound();
@@ -999,7 +1001,7 @@
     updateVoxelsInStroke((v) => {
       allPositions.forEach(([x, y, z], i) => {
         if (!inBounds(x, y, z, boundSize)) return;
-        v.set(coordKey(x, y, z), allColors[i]);
+        v.set(coordKey(x, y, z), allVoxelsAsh[i]!);
       });
     });
   }
@@ -1016,13 +1018,13 @@
       radius,
       density,
       height,
-      getCol()
+      getCol().color
     );
     const allPositions: [number, number, number][] = [];
-    const allColors: number[] = [];
-    for (const [key, col] of grassMap) {
+    const allVoxelsGrass: Voxel[] = [];
+    for (const [key, vx] of grassMap) {
       allPositions.push(parseCoordKey(key) as [number, number, number]);
-      allColors.push(col);
+      allVoxelsGrass.push(vx);
     }
     if (allPositions.length === 0) return;
     playPlaceSound();
@@ -1032,7 +1034,7 @@
     updateVoxelsInStroke((v) => {
       allPositions.forEach(([x, y, z], i) => {
         if (!inBounds(x, y, z, boundSize)) return;
-        v.set(coordKey(x, y, z), allColors[i]);
+        v.set(coordKey(x, y, z), allVoxelsGrass[i]!);
       });
     });
   }
@@ -1050,15 +1052,19 @@
       sel.size > 0 && ($tool === 'paint' || $tool === 'remove')
         ? positions.filter(([x, y, z]) => sel.has(coordKey(x, y, z)))
         : positions;
-    const hex =
+    const previewVoxel: Voxel =
       filtered.length === 0
-        ? 0
+        ? { color: 0, material: 'plastic' }
         : $tool === 'remove'
-          ? 0xff4444
+          ? { color: 0xff4444, material: 'plastic' }
           : $tool === 'select' || $tool === 'selectByColor' || $tool === 'selectCoplanar'
-            ? 0x33aaff
-            : hexToInt($color);
-    meshManager.updatePreviewMesh(filtered, hex, filtered.length > 0 ? $voxels : undefined);
+            ? { color: 0x33aaff, material: 'plastic' }
+            : getPaintColorResolver()();
+    meshManager.updatePreviewMesh(
+      filtered,
+      previewVoxel,
+      filtered.length > 0 ? $voxels : undefined
+    );
   }
 
   function updateCuboidFromDepth() {
@@ -1751,13 +1757,13 @@
       return;
     }
 
-    // Select by color: when fill mode, flood-fill select; else select all of that color globally
+    // Select by color: when fill mode, flood-fill select; else select all voxels with same RGB globally
     if ($tool === 'selectByColor' && hit.object !== polygonPointsMesh) {
       const pos = getVoxelPosition(hit);
       if (pos) {
-        const targetColor = $voxels.get(coordKey(pos[0], pos[1], pos[2]));
-        if (targetColor !== undefined) {
-          let incoming: Map<string, number>;
+        const targetVoxel = $voxels.get(coordKey(pos[0], pos[1], pos[2]));
+        if (targetVoxel !== undefined) {
+          let incoming: Map<string, Voxel>;
           if (get(effectiveStrokeMode) === 'fill') {
             incoming = getFillSelectionAt(
               pos[0],
@@ -1767,9 +1773,9 @@
               get(fillRespectsColor)
             ).region;
           } else {
-            incoming = new Map<string, number>();
+            incoming = new Map<string, Voxel>();
             for (const [key, col] of $voxels) {
-              if (col === targetColor) incoming.set(key, col);
+              if (sameVoxelColor(col, targetVoxel)) incoming.set(key, col);
             }
           }
           if (incoming.size === 0) {
@@ -1789,15 +1795,16 @@
       return;
     }
 
-    // Eyedropper: click voxel to pick its color
+    // Eyedropper: click voxel to pick color and material
     if ($tool === 'eyedropper') {
       const pos = getVoxelPosition(hit);
       if (pos) {
-        const col = $voxels.get(coordKey(pos[0], pos[1], pos[2]));
-        if (col !== undefined) {
-          const hex = intToHex(col);
+        const vx = $voxels.get(coordKey(pos[0], pos[1], pos[2]));
+        if (vx !== undefined) {
+          const hex = intToHex(vx.color);
           color.set(hex);
           selectedColors.set([hex]);
+          voxelMaterial.set(vx.material);
         }
       }
       requestAnimationFrame(() => render());
@@ -2415,6 +2422,74 @@
     const hit = getIntersection();
     if (!hit || !hit.face) {
       rollOverMesh.visible = false;
+      if (get(effectiveStrokeMode) === 'airbrush') updatePreviewMesh([]);
+      render();
+      return;
+    }
+    if (get(effectiveStrokeMode) === 'airbrush') {
+      const addPos = getAddPosition(hit);
+      if (addPos && !$voxels.has(coordKey(addPos[0], addPos[1], addPos[2]))) {
+        let hoverPos: [number, number, number] = addPos;
+        const ac = get(airbrushPlaneConstraint);
+        if (ac !== 'none') {
+          const planePoint = new THREE.Vector3(
+            addPos[0] + 0.5,
+            addPos[1] + 0.5,
+            addPos[2] + 0.5
+          );
+          let planeNormal: THREE.Vector3 | null = null;
+          if (ac === 'camera' && camera) {
+            planeNormal = new THREE.Vector3();
+            camera.getWorldDirection(planeNormal);
+          } else if (ac === 'face') {
+            const fn = getFaceNormalFromHit(hit);
+            if (fn) planeNormal = new THREE.Vector3(fn[0], fn[1], fn[2]);
+          }
+          if (planeNormal) {
+            const planePos = getIntersectionWithPlane(planePoint, planeNormal);
+            if (planePos) hoverPos = planePos;
+          }
+        }
+        const fn = getFaceNormalFromHit(hit);
+        const faceN = fn ? new THREE.Vector3(fn[0], fn[1], fn[2]) : null;
+        rollOverMesh.visible = false;
+        updatePreviewMesh(
+          thickenPathForStroke([hoverPos], {
+            strokeMode: 'airbrush',
+            clayMode: undefined,
+            clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
+            bulkBrushShape: get(bulkBrushShape),
+            branchTaper: get(branchTaper),
+            branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
+            branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
+            airbrushRadius: (get(airbrushRadius) as number) * 0.5,
+            airbrushScatter: get(airbrushScatter),
+            airbrushRadiusRange: get(airbrushRadiusRange),
+            airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
+            airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
+            airbrushConstrainToPlane: ac !== 'none',
+            airbrushPlaneAxis:
+              ac === 'face' && faceN ? getDominantAxisOfNormal(faceN) : undefined,
+            airbrushPlaneNormal: ac === 'camera' ? getCameraPlaneNormal() : undefined,
+            planeAxis: get(planeAxis),
+            sprayDirection: get(sprayDirection),
+            sprayStreakLength: get(sprayStreakLength),
+            wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
+            wallHeight: get(wallHeight),
+            wallFaceNormal: faceN ? { x: faceN.x, y: faceN.y, z: faceN.z } : undefined,
+            drawBrushShape: get(drawBrushShape),
+            drawBrushSize: get(drawBrushSize) * 0.5,
+            drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+            drawBrushFaceNormal: faceN
+              ? { x: faceN.x, y: faceN.y, z: faceN.z }
+              : undefined,
+            seed: 0
+          })
+        );
+      } else {
+        rollOverMesh.visible = false;
+        updatePreviewMesh([]);
+      }
       render();
       return;
     }
@@ -2425,6 +2500,7 @@
     } else {
       rollOverMesh.visible = false;
     }
+    updatePreviewMesh([]);
     render();
     } finally {
       selectionGizmo?.syncGizmoHoverCursor();
@@ -2954,9 +3030,9 @@
     const shadows = $enableShadows;
     if (renderer) renderer.shadowMap.enabled = shadows;
     if (dirLight) dirLight.castShadow = shadows;
-    const byColor = meshManager?.getMeshesByColor();
-    if (byColor) {
-      for (const { mesh } of byColor.values()) {
+    const byBucket = meshManager?.getMeshesByBucket();
+    if (byBucket) {
+      for (const { mesh } of byBucket.values()) {
         mesh.castShadow = shadows;
         mesh.receiveShadow = shadows && $renderingMode !== 'marchingCubes';
       }
@@ -2965,15 +3041,15 @@
   });
 
   $effect(() => {
-    const r = $roughness;
-    const m = $metalness;
-    const byColor = meshManager?.getMeshesByColor();
-    if (byColor) {
-      for (const { mesh } of byColor.values()) {
-        const mat = mesh.material as THREE.MeshStandardMaterial;
-        mat.roughness = r;
-        mat.metalness = m;
-      }
+    $enableSky;
+    $backgroundColor;
+    const env = scene?.environment ?? null;
+    const byBucket = meshManager?.getMeshesByBucket();
+    if (!byBucket) return;
+    for (const { mesh } of byBucket.values()) {
+      const mat = mesh.material as THREE.MeshStandardMaterial & { envMap?: THREE.Texture | null };
+      mat.envMap = env;
+      mat.needsUpdate = true;
     }
     render();
   });
@@ -3011,7 +3087,7 @@
         }
       }
     }
-    if (!fromUrl && !loadFromStorage()) initCanvas(get(gridSize));
+    if (!fromUrl && !(await loadFromStorageAsync())) initCanvas(get(gridSize));
     const sz = get(gridSize);
 
     const setupRefs = createSceneSetup(container, {
@@ -3023,6 +3099,7 @@
       enableShadows: $enableShadows,
       lightAngle: $lightAngle,
       lightElevation: $lightElevation,
+      directionalLightIntensity: get(sunlightIntensity),
       aspect: container ? container.clientWidth / container.clientHeight : 1
     });
     scene = setupRefs.scene;
@@ -3065,8 +3142,6 @@
     meshManager = createMeshManager(
       setupRefs,
       () => ({
-        roughness: $roughness,
-        metalness: $metalness,
         enableShadows: $enableShadows,
         renderingMode: $renderingMode,
         aoStrength: $aoStrength
@@ -3152,7 +3227,10 @@
     const useSky = $enableSky;
     updateDirLightPosition($lightAngle, $lightElevation, sz);
     updateShadowCamera(sz);
-    if (dirLight) dirLight.color.setHex(hexToInt($lightColor));
+    if (dirLight) {
+      dirLight.color.setHex(hexToInt($lightColor));
+      dirLight.intensity = $sunlightIntensity;
+    }
     if (hemisphereLight) hemisphereLight.intensity = $ambientIntensity;
     if (scene) {
       scene.background = useSky ? null : new THREE.Color(hexToInt($backgroundColor));
@@ -3315,9 +3393,12 @@
       z: get(symmetryZ)
     });
     const sel = $selectedColors;
-    const col = hexToInt(sel.length > 0 ? sel[0] : $color);
-    const geo = buildPreviewGeometry(positions, col, $voxels);
-    applyAddShapeOccludedPreviewTint(col, addPreviewOccludedMaterial);
+    const addVx: Voxel = {
+      color: hexToInt(sel.length > 0 ? sel[0] : $color) & 0xffffff,
+      material: $voxelMaterial
+    };
+    const geo = buildPreviewGeometry(positions, addVx, $voxels);
+    applyAddShapeOccludedPreviewTint(addVx.color, addPreviewOccludedMaterial);
     assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo);
     render();
   });

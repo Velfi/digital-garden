@@ -1,6 +1,8 @@
 import { get } from 'svelte/store';
 import { coordKey } from '../coordUtils';
 import { voxels, selection, ensureGridFitsPositions, pushUndo } from './core';
+import type { Voxel } from '../voxelMaterial';
+import { plasticVoxel } from '../voxelMaterial';
 
 const LARGE_IMAGE_PIXELS = 256 * 256; // 65536 pixels – show confirmation above this
 
@@ -64,12 +66,13 @@ export async function importImageFromFile(file: File): Promise<boolean> {
 
   if (entries.length === 0) return false;
 
-  const voxelMap = new Map<string, number>();
-  const selectionMap = new Map<string, number>();
+  const voxelMap = new Map<string, Voxel>();
+  const selectionMap = new Map<string, Voxel>();
   for (const [x, z, col] of entries) {
     const key = coordKey(x, 0, z);
-    voxelMap.set(key, col);
-    selectionMap.set(key, col);
+    const v = plasticVoxel(col);
+    voxelMap.set(key, v);
+    selectionMap.set(key, v);
   }
 
   const positions = [...voxelMap.keys()].map((k) => {

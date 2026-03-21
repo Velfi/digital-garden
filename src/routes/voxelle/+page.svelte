@@ -14,8 +14,10 @@
     selection,
     updateVoxels,
     hexToInt,
+    voxelMaterial,
     modalRequest,
     getSkipStartup,
+    autosaveError,
     voxels,
     gridSize,
     focalLength,
@@ -31,13 +33,17 @@
     }
     const sel = untrack(() => get(selection));
     if (sel.size === 0) return;
-    const colInt = hexToInt(newColor);
+    const colInt = hexToInt(newColor) & 0xffffff;
+    const mat = untrack(() => get(voxelMaterial));
+    const vx = { color: colInt, material: mat };
     updateVoxels((v) => {
-      for (const key of sel.keys()) v.set(key, colInt);
+      for (const key of sel.keys()) {
+        if (v.has(key)) v.set(key, vx);
+      }
     });
     selection.update((s) => {
       const next = new Map(s);
-      for (const key of next.keys()) next.set(key, colInt);
+      for (const key of next.keys()) next.set(key, vx);
       return next;
     });
   });
@@ -162,6 +168,13 @@
     <h1>Voxelle</h1>
     <MenuBar />
   </header>
+  {#if $autosaveError}
+    <div class="autosave-alert" role="alert">
+      <p><strong>Autosave failed: {$autosaveError}</strong></p>
+      <p>Your work may be lost if you refresh or close the tab.</p>
+      <p>Use File → Save now to download a <code>.voxelle</code> backup. Free browser storage, close private browsing, or allow site data, then try again.</p>
+    </div>
+  {/if}
   {#if webglSupported}
     <div class="app">
       <Sidebar />
@@ -247,6 +260,29 @@
 
   .webgl-alert p {
     margin: 0;
+  }
+
+  .autosave-alert {
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    background: var(--bg-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    max-width: 40rem;
+  }
+
+  .autosave-alert p {
+    margin: 0 0 0.25rem 0;
+  }
+
+  .autosave-alert p:last-child {
+    margin-bottom: 0;
+  }
+
+  .autosave-alert code {
+    font-size: 0.9em;
+    color: var(--text-color);
   }
 
   @media screen and (max-width: 600px) {

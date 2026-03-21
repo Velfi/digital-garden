@@ -1,8 +1,12 @@
 import { computeGreedyMesh } from './greedyMeshCore';
 import { coordKey } from './coordUtils';
+import type { Voxel } from './voxelMaterial';
+import { normalizeLegacyVoxel, parseVoxelMaterial, VOXEL_MATERIAL_IDS } from './voxelMaterial';
 
 export interface GreedyMeshWorkerInput {
-  voxels: [string, number][] | { coords: Int32Array; colors: Uint32Array };
+  voxels:
+    | [string, Voxel][]
+    | { coords: Int32Array; colors: Uint32Array; materials?: Uint8Array };
   options?: { aoEnabled?: boolean };
   gen?: number;
 }
@@ -10,7 +14,7 @@ export interface GreedyMeshWorkerInput {
 export interface GreedyMeshWorkerOutput {
   gen?: number;
   results: Array<{
-    color: number;
+    bucketKey: string;
     positions: Float32Array;
     normals: Float32Array;
     colors: Float32Array;
@@ -19,18 +23,34 @@ export interface GreedyMeshWorkerOutput {
 }
 
 /** Parse worker input to voxel map. Testable without Worker APIs. */
-export function voxelsFromInput(input: GreedyMeshWorkerInput['voxels']): Map<string, number> {
+export function voxelsFromInput(input: GreedyMeshWorkerInput['voxels']): Map<string, Voxel> {
   if (Array.isArray(input)) {
-    return new Map(input as [string, number][]);
+    const m = new Map<string, Voxel>();
+    for (const [k, v] of input) {
+      if (v && typeof v === 'object' && typeof (v as Voxel).color === 'number') {
+        m.set(k, {
+          color: (v as Voxel).color & 0xffffff,
+          material: parseVoxelMaterial((v as Voxel).material)
+        });
+      } else if (typeof v === 'number') {
+        m.set(k, normalizeLegacyVoxel(v as number));
+      }
+    }
+    return m;
   }
-  const { coords, colors } = input;
-  const voxels = new Map<string, number>();
+  const { coords, colors, materials } = input;
+  const voxels = new Map<string, Voxel>();
   const n = colors.length;
   for (let i = 0; i < n; i++) {
     const x = coords[i * 3];
     const y = coords[i * 3 + 1];
     const z = coords[i * 3 + 2];
-    voxels.set(coordKey(x, y, z), colors[i]);
+    const mi = materials && i < materials.length ? materials[i]! : 0;
+    const mat =
+      typeof mi === 'number' && mi >= 0 && mi < VOXEL_MATERIAL_IDS.length
+        ? VOXEL_MATERIAL_IDS[mi]!
+        : 'plastic';
+    voxels.set(coordKey(x, y, z), { color: colors[i]! & 0xffffff, material: mat });
   }
   return voxels;
 }
@@ -42,9 +62,9 @@ export function processGreedyMeshMessage(input: GreedyMeshWorkerInput): GreedyMe
   const coreResults = computeGreedyMesh(voxels, options);
 
   const results: GreedyMeshWorkerOutput['results'] = [];
-  for (const [color, data] of coreResults) {
+  for (const [bucketKey, data] of coreResults) {
     results.push({
-      color,
+      bucketKey,
       positions: data.positions,
       normals: data.normals,
       colors: data.colors,

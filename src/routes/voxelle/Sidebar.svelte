@@ -198,10 +198,10 @@
     {/if}
   </div>
   <ColorSection />
+  <MaterialSection />
   <CameraSection />
   <SceneSection />
   <LightSection />
-  <MaterialSection />
   <OriginSection />
 
   <ShareModal bind:open={showShareModal} {shareUrl} />

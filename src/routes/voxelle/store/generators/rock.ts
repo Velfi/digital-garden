@@ -1,4 +1,6 @@
 import { coordKey, parseCoordKey } from '../../coordUtils';
+import type { Voxel } from '../../voxelMaterial';
+import { plasticVoxel } from '../../voxelMaterial';
 
 /** Hash three integers to a float in [0, 1]. Deterministic. */
 function hash3(seed: number, x: number, y: number, z: number): number {
@@ -55,8 +57,8 @@ export function generateRockVoxels(
   size: number,
   roughness: number,
   baseColor: number
-): Map<string, number> {
-  const out = new Map<string, number>();
+): Map<string, Voxel> {
+  const out = new Map<string, Voxel>();
   if (size < 1) return out;
 
   const r = Math.max(1, Math.floor(size));
@@ -95,7 +97,7 @@ export function generateRockVoxels(
           const dist = x * (fnx / flen) + y * (fny / flen) + z * (fnz / flen);
           if (dist < -facetDepth) continue;
         }
-        out.set(coordKey(x, y, z), 0);
+        out.set(coordKey(x, y, z), plasticVoxel(0));
       }
     }
   }
@@ -107,8 +109,9 @@ export function generateRockVoxels(
     if (y < floorY) out.delete(key);
   }
 
+  const pv = plasticVoxel(baseColor);
   for (const key of out.keys()) {
-    out.set(key, baseColor);
+    out.set(key, pv);
   }
 
   return out;
@@ -146,8 +149,8 @@ export function generateAshlarVoxels(
   baseColor: number,
   thickness?: number,
   thicknessAxis?: 0 | 1 | 2
-): Map<string, number> {
-  const out = new Map<string, number>();
+): Map<string, Voxel> {
+  const out = new Map<string, Voxel>();
   if (size < 1) return out;
 
   const s = Math.max(1, Math.floor(size));
@@ -198,13 +201,14 @@ export function generateAshlarVoxels(
           return Math.sqrt(dx * dx + dy * dy + dz * dz) < roundRadius;
         });
         if (nearCorner) continue;
-        out.set(coordKey(x, y, z), 0);
+        out.set(coordKey(x, y, z), plasticVoxel(0));
       }
     }
   }
 
+  const pv = plasticVoxel(baseColor);
   for (const key of out.keys()) {
-    out.set(key, baseColor);
+    out.set(key, pv);
   }
 
   const bounds = { minX: 0, maxX: wx - 1, minY: 0, maxY: wy - 1, minZ: 0, maxZ: wz - 1 };
@@ -212,7 +216,7 @@ export function generateAshlarVoxels(
   const cy = (bounds.minY + bounds.maxY) / 2;
   const cz = (bounds.minZ + bounds.maxZ) / 2;
 
-  const centered = new Map<string, number>();
+  const centered = new Map<string, Voxel>();
   for (const [key, col] of out) {
     const [x, y, z] = parseCoordKey(key);
     centered.set(coordKey(x - cx, y - cy, z - cz), col);

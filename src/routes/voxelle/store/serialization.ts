@@ -1,48 +1,65 @@
-export function cloneVoxels(voxels: Map<string, number>): Map<string, number> {
-  return new Map(voxels);
+import type { Voxel } from '../voxelMaterial';
+import { cloneVoxel, normalizeLegacyVoxel, parseVoxelMaterial } from '../voxelMaterial';
+
+export function cloneVoxels(voxels: Map<string, Voxel>): Map<string, Voxel> {
+  const next = new Map<string, Voxel>();
+  for (const [k, v] of voxels) next.set(k, cloneVoxel(v));
+  return next;
 }
 
-export function serializeVoxels(voxels: Map<string, number>): string {
-  return JSON.stringify([...voxels.entries()]);
+export function serializeVoxels(voxelMap: Map<string, Voxel>): string {
+  return JSON.stringify([...voxelMap.entries()]);
 }
 
-export function deserializeVoxels(json: string): Map<string, number> {
-  const entries = JSON.parse(json) as [string, number][];
-  return new Map(entries);
+export function deserializeVoxels(json: string): Map<string, Voxel> {
+  const entries = JSON.parse(json) as [string, unknown][];
+  const m = new Map<string, Voxel>();
+  for (const [k, val] of entries) {
+    if (typeof val === 'number') {
+      m.set(k, normalizeLegacyVoxel(val));
+    } else if (val && typeof val === 'object' && typeof (val as Voxel).color === 'number') {
+      const v = val as Voxel;
+      m.set(k, {
+        color: v.color & 0xffffff,
+        material: parseVoxelMaterial(v.material)
+      });
+    }
+  }
+  return m;
 }
 
 /** Delta from old state to new state (forward). Used for memory-efficient undo. */
 export type UndoDelta = {
-  voxelAdded: [string, number][];
-  voxelRemoved: [string, number][];
-  selectionAdded: [string, number][];
-  selectionRemoved: [string, number][];
+  voxelAdded: [string, Voxel][];
+  voxelRemoved: [string, Voxel][];
+  selectionAdded: [string, Voxel][];
+  selectionRemoved: [string, Voxel][];
 };
 
-function cloneMap(m: Map<string, number>): Map<string, number> {
+function cloneMap(m: Map<string, Voxel>): Map<string, Voxel> {
   return new Map(m);
 }
 
 export function computeUndoDelta(
-  oldV: Map<string, number>,
-  oldS: Map<string, number>,
-  newV: Map<string, number>,
-  newS: Map<string, number>
+  oldV: Map<string, Voxel>,
+  oldS: Map<string, Voxel>,
+  newV: Map<string, Voxel>,
+  newS: Map<string, Voxel>
 ): UndoDelta {
-  const voxelAdded: [string, number][] = [];
-  const voxelRemoved: [string, number][] = [];
-  const selectionAdded: [string, number][] = [];
-  const selectionRemoved: [string, number][] = [];
+  const voxelAdded: [string, Voxel][] = [];
+  const voxelRemoved: [string, Voxel][] = [];
+  const selectionAdded: [string, Voxel][] = [];
+  const selectionRemoved: [string, Voxel][] = [];
   for (const [k, c] of newV) {
     const oldC = oldV.get(k);
-    if (oldC !== c) voxelAdded.push([k, c]);
+    if (!oldC || oldC.color !== c.color || oldC.material !== c.material) voxelAdded.push([k, c]);
   }
   for (const [k, c] of oldV) {
     if (!newV.has(k)) voxelRemoved.push([k, c]);
   }
   for (const [k, c] of newS) {
     const oldC = oldS.get(k);
-    if (oldC !== c) selectionAdded.push([k, c]);
+    if (!oldC || oldC.color !== c.color || oldC.material !== c.material) selectionAdded.push([k, c]);
   }
   for (const [k, c] of oldS) {
     if (!newS.has(k)) selectionRemoved.push([k, c]);
@@ -51,10 +68,10 @@ export function computeUndoDelta(
 }
 
 export function applyUndoDeltaForward(
-  v: Map<string, number>,
-  s: Map<string, number>,
+  v: Map<string, Voxel>,
+  s: Map<string, Voxel>,
   delta: UndoDelta
-): { v: Map<string, number>; s: Map<string, number> } {
+): { v: Map<string, Voxel>; s: Map<string, Voxel> } {
   const nextV = cloneMap(v);
   const nextS = cloneMap(s);
   for (const [k] of delta.voxelRemoved) nextV.delete(k);
@@ -65,10 +82,10 @@ export function applyUndoDeltaForward(
 }
 
 export function applyUndoDeltaInverse(
-  v: Map<string, number>,
-  s: Map<string, number>,
+  v: Map<string, Voxel>,
+  s: Map<string, Voxel>,
   delta: UndoDelta
-): { v: Map<string, number>; s: Map<string, number> } {
+): { v: Map<string, Voxel>; s: Map<string, Voxel> } {
   const nextV = cloneMap(v);
   const nextS = cloneMap(s);
   for (const [k] of delta.voxelAdded) nextV.delete(k);

@@ -1,3 +1,5 @@
+import type { Voxel } from './voxelMaterial';
+
 export function coordKey(x: number, y: number, z: number): string {
   return `${Math.floor(x)},${Math.floor(y)},${Math.floor(z)}`;
 }
@@ -7,14 +9,14 @@ export function parseCoordKey(key: string): [number, number, number] {
   return [x, y, z];
 }
 
-/** Build a voxel Map from a list of positions and a single color. */
+/** Build a voxel Map from a list of positions and a single voxel (color + material). */
 export function positionsToVoxelMap(
   positions: [number, number, number][],
-  color: number
-): Map<string, number> {
-  const map = new Map<string, number>();
+  voxel: Voxel
+): Map<string, Voxel> {
+  const map = new Map<string, Voxel>();
   for (const [x, y, z] of positions) {
-    map.set(coordKey(x, y, z), color);
+    map.set(coordKey(x, y, z), { color: voxel.color, material: voxel.material });
   }
   return map;
 }
@@ -79,7 +81,7 @@ export function inBoundsBox(x: number, y: number, z: number, b: SelectionBounds)
 }
 
 /** Bounds for operations that need a finite search space: voxel extent ± margin per axis, or ±margin around origin when empty. */
-export function getEffectiveBounds(voxels: Map<string, number>, margin: number = 256): SelectionBounds {
+export function getEffectiveBounds(voxels: Map<string, Voxel>, margin: number = 256): SelectionBounds {
   const b = getVoxelBounds(voxels);
   if (b) {
     return {
@@ -103,7 +105,7 @@ export function getEffectiveBounds(voxels: Map<string, number>, margin: number =
 }
 
 /** Min corner [x,y,z] of selection bounding box; null if empty. */
-export function getSelectionAnchor(sel: Map<string, number>): [number, number, number] | null {
+export function getSelectionAnchor(sel: Map<string, Voxel>): [number, number, number] | null {
   if (sel.size === 0) return null;
   let minX = Infinity,
     minY = Infinity,
@@ -220,7 +222,7 @@ export const VOXELLE_SELECTION_PIVOT_CHILD_KEY = 'voxelleSelectionPivotChild';
 export const VOXELLE_SELECTION_BBOX_WIREFRAME_KEY = 'voxelleSelectionBboxWireframe';
 
 /** Bounding box of selection; null if empty. */
-export function getSelectionBounds(sel: Map<string, number>): SelectionBounds | null {
+export function getSelectionBounds(sel: Map<string, Voxel>): SelectionBounds | null {
   if (sel.size === 0) return null;
   let minX = Infinity,
     minY = Infinity,
@@ -241,7 +243,7 @@ export function getSelectionBounds(sel: Map<string, number>): SelectionBounds | 
 }
 
 /** Bounding box of voxels; null if empty. */
-export function getVoxelBounds(v: Map<string, number>): SelectionBounds | null {
+export function getVoxelBounds(v: Map<string, Voxel>): SelectionBounds | null {
   if (v.size === 0) return null;
   let minX = Infinity,
     minY = Infinity,
@@ -262,7 +264,7 @@ export function getVoxelBounds(v: Map<string, number>): SelectionBounds | null {
 }
 
 /** Center of voxel bounding box (voxel-space). Null if empty. */
-export function getVoxelCenter(v: Map<string, number>): [number, number, number] | null {
+export function getVoxelCenter(v: Map<string, Voxel>): [number, number, number] | null {
   const b = getVoxelBounds(v);
   if (!b) return null;
   return [(b.minX + b.maxX + 1) / 2, (b.minY + b.maxY + 1) / 2, (b.minZ + b.maxZ + 1) / 2];
@@ -273,7 +275,7 @@ export function getVoxelCenter(v: Map<string, number>): [number, number, number]
  * otherwise rounded orbit / camera target.
  */
 export function defaultAddShapePlacementAnchor(
-  voxelMap: Map<string, number>,
+  voxelMap: Map<string, Voxel>,
   orbitTarget: { x: number; y: number; z: number }
 ): [number, number, number] {
   const c = getVoxelCenter(voxelMap);
@@ -310,7 +312,7 @@ export function getBoundsFromPositions(
 }
 
 /** Center of selection bounding box. Null if empty. */
-export function getSelectionCenter(sel: Map<string, number>): [number, number, number] | null {
+export function getSelectionCenter(sel: Map<string, Voxel>): [number, number, number] | null {
   const b = getSelectionBounds(sel);
   if (!b) return null;
   return [(b.minX + b.maxX + 1) / 2, (b.minY + b.maxY + 1) / 2, (b.minZ + b.maxZ + 1) / 2];

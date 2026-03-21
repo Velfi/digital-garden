@@ -2,13 +2,16 @@ import { parseCoordKey } from './coordUtils';
 import { computeGreedyMesh } from './greedyMeshCore';
 import { computeMarchingCubes } from './marchingCubesCore';
 import { voxelsFromInput } from './greedyMeshWorkerLogic';
+import type { Voxel } from './voxelMaterial';
 
 export type RenderingMode = 'greedy' | 'marchingCubes';
 
 const CHUNK_SIZE_DEFAULT = 0;
 
 export interface VoxelMeshWorkerInput {
-  voxels: [string, number][] | { coords: Int32Array; colors: Uint32Array };
+  voxels:
+    | [string, Voxel][]
+    | { coords: Int32Array; colors: Uint32Array; materials?: Uint8Array };
   mode?: RenderingMode;
   options?: { aoEnabled?: boolean; aoStrength?: 0 | 1 | 2; chunkSize?: number };
   gen?: number;
@@ -17,7 +20,7 @@ export interface VoxelMeshWorkerInput {
 export interface VoxelMeshWorkerOutput {
   gen?: number;
   results: Array<{
-    color: number;
+    bucketKey: string;
     positions: Float32Array;
     normals: Float32Array;
     colors: Float32Array;
@@ -31,11 +34,11 @@ function chunkKey(cx: number, cy: number, cz: number): string {
 
 /** Partition voxels by spatial chunks. chunkSize must be >= 1. */
 function partitionByChunks(
-  voxels: Map<string, number>,
+  voxels: Map<string, Voxel>,
   chunkSize: number
-): Map<string, Map<string, number>> {
-  const chunks = new Map<string, Map<string, number>>();
-  for (const [key, color] of voxels) {
+): Map<string, Map<string, Voxel>> {
+  const chunks = new Map<string, Map<string, Voxel>>();
+  for (const [key, voxel] of voxels) {
     const [x, y, z] = parseCoordKey(key);
     const cx = Math.floor(x / chunkSize);
     const cy = Math.floor(y / chunkSize);
@@ -46,43 +49,43 @@ function partitionByChunks(
       ch = new Map();
       chunks.set(ck, ch);
     }
-    ch.set(key, color);
+    ch.set(key, voxel);
   }
   return chunks;
 }
 
 function mergeChunkResults(
   chunkResults: Array<{
-    color: number;
+    bucketKey: string;
     positions: Float32Array;
     normals: Float32Array;
     colors: Float32Array;
     indices: Uint32Array;
   }>
 ): VoxelMeshWorkerOutput['results'] {
-  const byColor = new Map<
-    number,
+  const byBucket = new Map<
+    string,
     { positions: number[]; normals: number[]; colors: number[]; indices: number[] }
   >();
   for (const r of chunkResults) {
-    const pos = byColor.get(r.color) ?? {
+    const pos = byBucket.get(r.bucketKey) ?? {
       positions: [],
       normals: [],
       colors: [],
       indices: []
     };
-    if (!byColor.has(r.color)) byColor.set(r.color, pos);
+    if (!byBucket.has(r.bucketKey)) byBucket.set(r.bucketKey, pos);
     const base = pos.positions.length / 3;
     for (let i = 0; i < r.positions.length; i++) pos.positions.push(r.positions[i]);
     for (let i = 0; i < r.normals.length; i++) pos.normals.push(r.normals[i]);
     for (let i = 0; i < r.colors.length; i++) pos.colors.push(r.colors[i]);
     for (let i = 0; i < r.indices.length; i++) pos.indices.push(r.indices[i] + base);
-    byColor.set(r.color, pos);
+    byBucket.set(r.bucketKey, pos);
   }
   const results: VoxelMeshWorkerOutput['results'] = [];
-  for (const [color, pos] of byColor) {
+  for (const [bucketKey, pos] of byBucket) {
     results.push({
-      color,
+      bucketKey,
       positions: new Float32Array(pos.positions),
       normals: new Float32Array(pos.normals),
       colors: new Float32Array(pos.colors),
@@ -99,18 +102,12 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
 
   if (chunkSize >= 16 && mode === 'greedy' && voxels.size > 0) {
     const chunks = partitionByChunks(voxels, chunkSize);
-    const allChunkResults: Array<{
-      color: number;
-      positions: Float32Array;
-      normals: Float32Array;
-      colors: Float32Array;
-      indices: Uint32Array;
-    }> = [];
+    const allChunkResults: VoxelMeshWorkerOutput['results'] = [];
     for (const ch of chunks.values()) {
       const coreResults = computeGreedyMesh(ch, options);
-      for (const [color, data] of coreResults) {
+      for (const [bucketKey, data] of coreResults) {
         allChunkResults.push({
-          color,
+          bucketKey,
           positions: data.positions,
           normals: data.normals,
           colors: data.colors,
@@ -122,13 +119,26 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
     return { results, gen };
   }
 
-  const coreResults =
-    mode === 'marchingCubes' ? computeMarchingCubes(voxels) : computeGreedyMesh(voxels, options);
+  if (mode === 'marchingCubes') {
+    const coreResults = computeMarchingCubes(voxels);
+    const results: VoxelMeshWorkerOutput['results'] = [];
+    for (const [bucketKey, data] of coreResults) {
+      results.push({
+        bucketKey,
+        positions: data.positions,
+        normals: data.normals,
+        colors: data.colors,
+        indices: data.indices
+      });
+    }
+    return { results, gen };
+  }
 
+  const coreResults = computeGreedyMesh(voxels, options);
   const results: VoxelMeshWorkerOutput['results'] = [];
-  for (const [color, data] of coreResults) {
+  for (const [bucketKey, data] of coreResults) {
     results.push({
-      color,
+      bucketKey,
       positions: data.positions,
       normals: data.normals,
       colors: data.colors,

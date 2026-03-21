@@ -1,38 +1,63 @@
 <script lang="ts">
-  import { roughness, metalness } from '../store/index';
+  import {
+    voxelMaterial,
+    VOXEL_MATERIAL_IDS,
+    type VoxelMaterialId
+  } from '../store/index';
+
+  const labels: Record<VoxelMaterialId, string> = {
+    plastic: 'Plastic',
+    metal: 'Metal',
+    glass: 'Glass',
+    glow: 'Glow'
+  };
 </script>
 
-<h2>Material (PBR)</h2>
-<div class="light-control">
-  <label for="roughness">Roughness</label>
-  <div class="slider-row">
-    <input
-      id="roughness"
-      type="range"
-      min="0"
-      max="1"
-      step="0.05"
-      value={$roughness}
-      oninput={(e) => roughness.set(Number((e.target as HTMLInputElement).value))}
-    />
-    <span class="slider-value">{$roughness.toFixed(2)}</span>
-  </div>
-</div>
-<div class="light-control">
-  <label for="metalness">Metalness</label>
-  <div class="slider-row">
-    <input
-      id="metalness"
-      type="range"
-      min="0"
-      max="1"
-      step="0.05"
-      value={$metalness}
-      oninput={(e) => metalness.set(Number((e.target as HTMLInputElement).value))}
-    />
-    <span class="slider-value">{$metalness.toFixed(2)}</span>
-  </div>
+<h2>Material</h2>
+<p class="hint">Material for new voxels, paint, and clay strokes. Eyedropper picks both color and material.</p>
+<div class="material-grid" role="group" aria-label="Voxel material">
+  {#each VOXEL_MATERIAL_IDS as id (id)}
+    <button
+      type="button"
+      class="mat-btn"
+      class:active={$voxelMaterial === id}
+      onclick={() => voxelMaterial.set(id)}
+    >
+      {labels[id]}
+    </button>
+  {/each}
 </div>
 
 <style>
+  .hint {
+    font-size: 0.8rem;
+    opacity: 0.85;
+    margin: 0 0 0.75rem;
+    line-height: 1.35;
+  }
+
+  .material-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+  }
+
+  .mat-btn {
+    padding: 0.45rem 0.5rem;
+    font-size: 0.8rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-color);
+    color: var(--text-color);
+    cursor: pointer;
+  }
+
+  .mat-btn:hover {
+    filter: brightness(1.06);
+  }
+
+  .mat-btn.active {
+    border-color: var(--accent-color, #3399ff);
+    box-shadow: 0 0 0 1px var(--accent-color, #3399ff);
+  }
 </style>

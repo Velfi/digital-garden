@@ -24,6 +24,8 @@ import {
   deserializeVoxels
 } from './serialization';
 import { createUndo } from './undo';
+import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
+import { cloneVoxel } from '../voxelMaterial';
 
 export type GridSize = number;
 export type Tool =
@@ -116,12 +118,12 @@ export type ToolPane = 'draw' | 'clay' | 'fly' | 'generators';
 
 // Stores
 export const gridSize = writable<GridSize>(32);
-export const voxels = writable<Map<string, number>>(new Map());
+export const voxels = writable<Map<string, Voxel>>(new Map());
 export const tool = writable<Tool>('voxel');
 export const toolPane = writable<ToolPane>('draw');
 /** Last selected draw tool, restored when switching from Clay back to Draw pane. */
 export const lastDrawTool = writable<Tool>('remove');
-export const selection = writable<Map<string, number>>(new Map());
+export const selection = writable<Map<string, Voxel>>(new Map());
 export const selectionMode = writable<SelectionMode>('replace');
 export const fillSelectDiagonals = writable<boolean>(false);
 export const fillRespectsColor = writable<boolean>(true);
@@ -196,6 +198,8 @@ export const drawBrushSize = writable<number>(0);
 /** When true, offset brush along face normal so it sits on surface instead of through it. */
 export const drawBrushSnapToSurface = writable<boolean>(true);
 export const color = writable<string>('#ff5733');
+/** Active material for new paint / voxel / clay strokes. */
+export const voxelMaterial = writable<VoxelMaterialId>('plastic');
 /** Palette colors selected for painting (shift+click). Empty = use color. */
 export const selectedColors = writable<string[]>([]);
 const DEFAULT_PALETTE = [
@@ -259,17 +263,21 @@ export const grassDensity = writable<number>(0.6);
 export const grassHeight = writable<number>(3);
 export const showGrid = writable<boolean>(false);
 export const renderingMode = writable<RenderingMode>('greedy');
-export const lightAngle = writable<number>(45);
-export const lightElevation = writable<number>(40);
-export const lightColor = writable<string>('#ffffff');
-export const ambientIntensity = writable<number>(0.5);
+/** Default lighting matches sunny-day preset in `store/lightPresets.ts`. */
+export const lightAngle = writable<number>(50);
+export const lightElevation = writable<number>(55);
+export const lightColor = writable<string>('#fff8e8');
+/** Hemisphere fill light (sky/ground). */
+export const ambientIntensity = writable<number>(0.45);
+/** Directional key light intensity. */
+export const sunlightIntensity = writable<number>(2.3);
+/** Environment (IBL) intensity multiplier for scene.environment reflections. */
+export const sceneEnvironmentIntensity = writable<number>(1);
 export const enableShadows = writable<boolean>(true);
 /** 0 = off, 1 = subtle, 2 = strong */
 export const aoStrength = writable<0 | 1 | 2>(1);
 export const backgroundColor = writable<string>('#f0f0f0');
 export const enableSky = writable<boolean>(true);
-export const roughness = writable<number>(0.6);
-export const metalness = writable<number>(0);
 export const focalLength = writable<number>(29);
 export const orthographic = writable<boolean>(false);
 
@@ -317,12 +325,12 @@ export function shiftVoxelsAndSelection(dx: number, dy: number, dz: number): voi
   const nz = Math.round(dz);
   if (nx === 0 && ny === 0 && nz === 0) return;
   pushUndo();
-  const newVoxels = new Map<string, number>();
+  const newVoxels = new Map<string, Voxel>();
   for (const [key, col] of v) {
     const [x, y, z] = parseCoordKey(key);
     newVoxels.set(coordKey(x + nx, y + ny, z + nz), col);
   }
-  const newSel = new Map<string, number>();
+  const newSel = new Map<string, Voxel>();
   for (const [key, col] of sel) {
     const [x, y, z] = parseCoordKey(key);
     newSel.set(coordKey(x + nx, y + ny, z + nz), col);
@@ -341,7 +349,7 @@ export function scaleProjectBy2(): void {
   const v = get(voxels);
   if (v.size === 0) return;
   pushUndo();
-  const next = new Map<string, number>();
+  const next = new Map<string, Voxel>();
   for (const [key, col] of v) {
     const [x, y, z] = parseCoordKey(key);
     const bx = 2 * x;
@@ -356,7 +364,7 @@ export function scaleProjectBy2(): void {
     }
   }
   const sel = get(selection);
-  const nextSel = new Map<string, number>();
+  const nextSel = new Map<string, Voxel>();
   for (const [key, col] of sel) {
     const [x, y, z] = parseCoordKey(key);
     const bx = 2 * x;
@@ -387,7 +395,7 @@ export function shiftSelection(dx: number, dy: number, dz: number): void {
   if (nx === 0 && ny === 0 && nz === 0) return;
   pushUndo();
   const nextVoxels = cloneVoxelsImpl(v);
-  const newSel = new Map<string, number>();
+  const newSel = new Map<string, Voxel>();
   for (const [key, selCol] of sel) {
     const [x, y, z] = parseCoordKey(key);
     const newKey = coordKey(x + nx, y + ny, z + nz);
@@ -430,7 +438,7 @@ export function getStampOffsetForFace(
   return [dx, dy, dz];
 }
 
-export function cloneVoxels(v: Map<string, number>): Map<string, number> {
+export function cloneVoxels(v: Map<string, Voxel>): Map<string, Voxel> {
   return cloneVoxelsImpl(v);
 }
 export { serializeVoxels, deserializeVoxels };
@@ -446,15 +454,15 @@ export function resetCanvas(size: GridSize, shape: StartShape = 'cube') {
 }
 
 /** Map-like view that mirrors set/delete across symmetry axes. has/get delegate to underlying. */
-function createMirrorMap(underlying: Map<string, number>, axes: SymmetryAxes): Map<string, number> {
+function createMirrorMap(underlying: Map<string, Voxel>, axes: SymmetryAxes): Map<string, Voxel> {
   return {
     get(key: string) {
       return underlying.get(key);
     },
-    set(key: string, value: number) {
+    set(key: string, value: Voxel) {
       const [x, y, z] = parseCoordKey(key);
       for (const k of getMirrorCoordKeys(x, y, z, axes)) {
-        underlying.set(k, value);
+        underlying.set(k, cloneVoxel(value));
       }
       return underlying;
     },
@@ -475,7 +483,7 @@ function createMirrorMap(underlying: Map<string, number>, axes: SymmetryAxes): M
     clear() {
       underlying.clear();
     },
-    forEach(cb: (value: number, key: string, map: Map<string, number>) => void) {
+    forEach(cb: (value: Voxel, key: string, map: Map<string, Voxel>) => void) {
       underlying.forEach(cb);
     },
     entries() {
@@ -490,10 +498,10 @@ function createMirrorMap(underlying: Map<string, number>, axes: SymmetryAxes): M
     [Symbol.iterator]() {
       return underlying[Symbol.iterator]();
     }
-  } as Map<string, number>;
+  } as Map<string, Voxel>;
 }
 
-export function updateVoxels(updater: (v: Map<string, number>) => void) {
+export function updateVoxels(updater: (v: Map<string, Voxel>) => void) {
   pushUndo();
   voxels.update((v) => {
     const next = cloneVoxelsImpl(v);
@@ -512,7 +520,7 @@ export function beginStroke() {
   pushUndo();
 }
 
-export function updateVoxelsInStroke(updater: (v: Map<string, number>) => void) {
+export function updateVoxelsInStroke(updater: (v: Map<string, Voxel>) => void) {
   voxels.update((v) => {
     const next = cloneVoxelsImpl(v);
     const axes: SymmetryAxes = {
@@ -539,7 +547,7 @@ export function applySelectionTranslationInStroke(dx: number, dy: number, dz: nu
   const v = get(voxels);
   const sel = get(selection);
 
-  const toMove: [string, number][] = [];
+  const toMove: [string, Voxel][] = [];
   for (const [key] of sel) {
     const col = v.get(key);
     if (col !== undefined) {
@@ -568,7 +576,7 @@ export function applySelectionTranslationInStroke(dx: number, dy: number, dz: nu
     });
   }
 
-  const newSel = new Map<string, number>();
+  const newSel = new Map<string, Voxel>();
   for (const [key, col] of sel) {
     const [x, y, z] = parseCoordKey(key);
     newSel.set(coordKey(x + nx, y + ny, z + nz), col);
@@ -613,7 +621,7 @@ export function applySelectionRotationInStroke(axis: 0 | 1 | 2, deltaQuarters: n
   const rawKeys = selEntries.map(([k]) => rawRotatedKey(k));
   if (new Set(rawKeys).size !== rawKeys.length) return;
 
-  const provisional = new Map<string, number>();
+  const provisional = new Map<string, Voxel>();
   for (let i = 0; i < selEntries.length; i++) {
     provisional.set(rawKeys[i], selEntries[i][1]);
   }
@@ -631,7 +639,7 @@ export function applySelectionRotationInStroke(axis: 0 | 1 | 2, deltaQuarters: n
   if (new Set(newSelKeys).size !== newSelKeys.length) return;
 
   const v = get(voxels);
-  const toMove: [string, number][] = [];
+  const toMove: [string, Voxel][] = [];
   for (const [key] of sel) {
     const col = v.get(key);
     if (col !== undefined) toMove.push([key, col]);
@@ -658,29 +666,36 @@ export function applySelectionRotationInStroke(axis: 0 | 1 | 2, deltaQuarters: n
     });
   }
 
-  const newSel = new Map<string, number>();
+  const newSel = new Map<string, Voxel>();
   for (let i = 0; i < selEntries.length; i++) {
     newSel.set(newSelKeys[i], selEntries[i][1]);
   }
   selection.set(newSel);
 }
 
-/** Returns a function that yields a paint color per voxel (random when multiple selected). */
-export function getPaintColorResolver(): () => number {
+/** Returns a function that yields a voxel (color + material) per stroke cell (random color when multi-palette). */
+export function getPaintColorResolver(): () => Voxel {
   const sel = get(selectedColors);
+  const mat = get(voxelMaterial);
   const colors = sel.length > 0 ? sel.map(hexToInt) : [hexToInt(get(color))];
-  if (colors.length === 1) return () => colors[0];
-  return () => colors[Math.floor(Math.random() * colors.length)];
+  if (colors.length === 1) {
+    const c = colors[0]! & 0xffffff;
+    return () => ({ color: c, material: mat });
+  }
+  return () => ({
+    color: colors[Math.floor(Math.random() * colors.length)]! & 0xffffff,
+    material: mat
+  });
 }
 
 export function addShapeAt(params: AddShapeParams): void {
-  const { position, rotation, shape, size, getColor } = params;
+  const { position, rotation, shape, size, getVoxel } = params;
   if (shape === 'empty' || size < 1) return;
   const positions = getShapePositionsAt({ position, rotation, shape, size });
   ensureGridFitsPositions(positions);
   updateVoxels((v) => {
     for (const [x, y, z] of positions) {
-      v.set(coordKey(x, y, z), getColor());
+      v.set(coordKey(x, y, z), cloneVoxel(getVoxel()));
     }
   });
 }

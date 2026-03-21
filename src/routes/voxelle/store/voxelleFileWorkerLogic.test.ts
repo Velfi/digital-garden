@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { processVoxelleFileMessage } from './voxelleFileWorkerLogic';
-import { serializeFormatToBson } from './voxelleFormatCore';
+import { serializeFormatToBson, VOXELLE_FORMAT_VERSION } from './voxelleFormatCore';
 import type { VoxelleFileFormat } from './voxelleFormatCore';
 
+/** Normalized on parse: legacy 4-tuples become 5-tuples with material. */
 const sampleData: VoxelleFileFormat = {
-  version: 1,
+  version: VOXELLE_FORMAT_VERSION,
   gridSize: 16,
   voxels: [
-    [0, 0, 0, 0xff5733],
-    [1, 0, 0, 0x00ff00]
+    [0, 0, 0, 0xff5733, 'plastic'],
+    [1, 0, 0, 0x00ff00, 'plastic']
   ],
   scene: { focalLength: 29, orthographic: true }
 };

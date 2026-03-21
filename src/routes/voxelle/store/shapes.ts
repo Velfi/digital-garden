@@ -1,4 +1,5 @@
 import { coordKey, parseCoordKey } from '../coordUtils';
+import type { Voxel } from '../voxelMaterial';
 
 export type GridSize = number;
 export type StartShape = 'cube' | 'orb' | 'cylinder' | 'hollowCube' | 'plane' | 'circle' | 'empty';
@@ -15,8 +16,9 @@ export function initShape(
   size: GridSize,
   shape: StartShape,
   color: number = DEFAULT_COLOR
-): Map<string, number> {
-  const map = new Map<string, number>();
+): Map<string, Voxel> {
+  const voxel: Voxel = { color: color & 0xffffff, material: 'plastic' };
+  const map = new Map<string, Voxel>();
   if (size < 1) return map;
   const { lo, hi } = getBounds(size);
 
@@ -43,14 +45,14 @@ export function initShape(
         } else if (shape === 'circle') {
           include = y === 0 && x * x + z * z <= rSq;
         }
-        if (include) map.set(coordKey(x, y, z), color);
+        if (include) map.set(coordKey(x, y, z), { ...voxel });
       }
     }
   }
   return map;
 }
 
-export function initFilledCube(size: GridSize, color: number = DEFAULT_COLOR): Map<string, number> {
+export function initFilledCube(size: GridSize, color: number = DEFAULT_COLOR): Map<string, Voxel> {
   return initShape(size, 'cube', color);
 }
 
@@ -102,7 +104,7 @@ export type AddShapeParams = {
   rotation: [number, number, number];
   shape: StartShape;
   size: number;
-  getColor: () => number;
+  getVoxel: () => Voxel;
 };
 
 /** Rotate position by quarter-turns (0–3) around origin. Order: X, Y, Z. */
@@ -118,7 +120,7 @@ export function rotatePositionAroundOrigin(
 }
 
 export function getShapePositionsAt(
-  params: Omit<AddShapeParams, 'getColor'>
+  params: Omit<AddShapeParams, 'getVoxel'>
 ): [number, number, number][] {
   const { position, rotation, shape, size } = params;
   if (shape === 'empty' || size < 1) return [];

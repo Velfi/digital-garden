@@ -1,5 +1,7 @@
 import { coordKey } from '../../coordUtils';
 import type { FaceNormal } from '../core';
+import type { Voxel } from '../../voxelMaterial';
+import { plasticVoxel } from '../../voxelMaterial';
 
 /** Seeded RNG (mulberry32). Returns 0–1. */
 function createRng(seed: number): () => number {
@@ -33,8 +35,8 @@ export function generateGrassVoxels(
   density: number,
   height: number,
   baseColor: number
-): Map<string, number> {
-  const out = new Map<string, number>();
+): Map<string, Voxel> {
+  const out = new Map<string, Voxel>();
   const R = Math.max(0, Math.floor(radius));
   const maxH = Math.max(1, Math.min(6, Math.floor(height)));
   const dens = Math.max(0, Math.min(1, density));
@@ -55,7 +57,7 @@ export function generateGrassVoxels(
         const x = bx + k * normal[0];
         const y = by + k * normal[1];
         const z = bz + k * normal[2];
-        out.set(coordKey(x, y, z), baseColor);
+        out.set(coordKey(x, y, z), plasticVoxel(baseColor));
       }
     }
   }

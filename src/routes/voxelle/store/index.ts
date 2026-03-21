@@ -61,6 +61,7 @@ export {
   drawBrushSize,
   drawBrushSnapToSurface,
   color,
+  voxelMaterial,
   selectedColors,
   palette,
   sidebarOpen,
@@ -86,12 +87,12 @@ export {
   lightElevation,
   lightColor,
   ambientIntensity,
+  sunlightIntensity,
+  sceneEnvironmentIntensity,
   enableShadows,
   aoStrength,
   backgroundColor,
   enableSky,
-  roughness,
-  metalness,
   focalLength,
   orthographic,
   symmetryX,
@@ -187,7 +188,15 @@ export { copySelection, cutSelection, pasteFromClipboard } from './clipboard';
 export type { VoxelleClipboard } from './clipboard';
 
 // Storage
-export { loadFromStorage, saveToStorage, getSkipStartup, setSkipStartup } from './storage';
+export {
+  loadFromStorage,
+  loadFromStorageAsync,
+  saveToStorage,
+  saveToStoragePromise,
+  getSkipStartup,
+  setSkipStartup,
+  autosaveError
+} from './storage';
 
 // Preferences (localStorage)
 export { loadPreferences, savePreferences, voxellePreferences } from './preferences';
@@ -200,12 +209,19 @@ export {
   loadFromBytes,
   encodeForTransport,
   serializeToVoxelleFormat,
-  VOXELLE_FILE_VERSION
+  VOXELLE_FORMAT_VERSION
 } from './voxelleFile';
 
 // Import
 export { importImageFromFile } from './importImage';
 export type { VoxelleFileFormat } from './voxelleFile';
+
+export type { Voxel, VoxelMaterialId } from '../voxelMaterial';
+export { VOXEL_MATERIAL_IDS, sameVoxelColor } from '../voxelMaterial';
+
+// Lighting presets
+export { LIGHT_PRESETS, applyLightPreset } from './lightPresets';
+export type { LightPresetId, LightPreset } from './lightPresets';
 
 // Generators
 export { generateRockVoxels, getRockPositions, generateAshlarVoxels, getAshlarPositions } from './generators/rock';

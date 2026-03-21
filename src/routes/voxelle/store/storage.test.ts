@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { voxels, gridSize, focalLength, orthographic, resetUndo } from './core';
-import { loadFromStorage, saveToStorage, getSkipStartup, setSkipStartup } from './storage';
+import {
+  loadFromStorage,
+  loadFromStorageAsync,
+  saveToStorage,
+  saveToStoragePromise,
+  getSkipStartup,
+  setSkipStartup,
+  autosaveError
+} from './storage';
+import { plasticVoxel } from '../voxelMaterial';
 
 const mockStorage: Record<string, string> = {};
 const localStorageMock = {
@@ -25,14 +34,15 @@ describe('storage', () => {
     focalLength.set(29);
     orthographic.set(true);
     resetUndo();
+    autosaveError.set(null);
   });
 
   describe('saveToStorage / loadFromStorage', () => {
     it('round-trips voxels and gridSize', () => {
       voxels.set(
         new Map([
-          ['0,0,0', 0xff0000],
-          ['1,1,1', 0x00ff00]
+          ['0,0,0', plasticVoxel(0xff0000)],
+          ['1,1,1', plasticVoxel(0x00ff00)]
         ])
       );
       saveToStorage();
@@ -41,8 +51,8 @@ describe('storage', () => {
       const result = loadFromStorage();
       expect(result).toBe(true);
       expect(get(gridSize)).toBe(32);
-      expect(get(voxels).get('0,0,0')).toBe(0xff0000);
-      expect(get(voxels).get('1,1,1')).toBe(0x00ff00);
+      expect(get(voxels).get('0,0,0')).toEqual(plasticVoxel(0xff0000));
+      expect(get(voxels).get('1,1,1')).toEqual(plasticVoxel(0x00ff00));
     });
 
     it('loadFromStorage returns false when empty', () => {
@@ -54,6 +64,39 @@ describe('storage', () => {
       localStorage.setItem('voxelle', 'invalid json');
       const result = loadFromStorage();
       expect(result).toBe(false);
+    });
+
+    it('sets autosaveError when localStorage.setItem throws', () => {
+      vi.mocked(localStorage.setItem).mockImplementationOnce((key: string, value: string) => {
+        if (key === 'voxelle') throw new DOMException('QuotaExceeded', 'QuotaExceededError');
+        mockStorage[key] = value;
+      });
+      saveToStorage();
+      const err = get(autosaveError);
+      expect(err).toBeTruthy();
+      expect(err).toContain('full');
+    });
+
+    it('clears autosaveError on successful save after a failure', () => {
+      vi.mocked(localStorage.setItem).mockImplementationOnce((key: string, value: string) => {
+        if (key === 'voxelle') throw new Error('QuotaExceeded');
+        mockStorage[key] = value;
+      });
+      saveToStorage();
+      expect(get(autosaveError)).toBeTruthy();
+      saveToStorage();
+      expect(get(autosaveError)).toBeNull();
+    });
+
+    it('loadFromStorageAsync restores from localStorage when IndexedDB is unavailable', async () => {
+      expect(await loadFromStorageAsync()).toBe(false);
+      voxels.set(new Map([['0,0,0', plasticVoxel(0xff0000)]]));
+      await saveToStoragePromise();
+      voxels.set(new Map());
+      gridSize.set(16);
+      expect(await loadFromStorageAsync()).toBe(true);
+      expect(get(gridSize)).toBe(32);
+      expect(get(voxels).get('0,0,0')).toEqual(plasticVoxel(0xff0000));
     });
   });
 

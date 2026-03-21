@@ -1,37 +1,37 @@
 import { describe, it, expect } from 'vitest';
 import { applySmooth, applyLevel, applyMelt } from './clayOps';
 import { coordKey } from './coordUtils';
+import { plasticVoxel, type Voxel } from './voxelMaterial';
+
+const gray = plasticVoxel(0x888888);
 
 describe('applySmooth', () => {
   it('fills single-voxel concavity when 4+ neighbors filled', () => {
-    const v = new Map<string, number>();
-    v.set(coordKey(0, 0, 0), 0x888888);
-    v.set(coordKey(1, 0, 0), 0x888888);
-    v.set(coordKey(0, 1, 0), 0x888888);
-    v.set(coordKey(0, 0, 1), 0x888888);
-    // (0,0,0) has 3 neighbors; add one more to create concavity at (1,1,1)
-    v.set(coordKey(1, 1, 0), 0x888888);
-    v.set(coordKey(1, 0, 1), 0x888888);
-    v.set(coordKey(0, 1, 1), 0x888888);
-    // (1,1,1) is empty with 3 neighbors; need 4+ to fill. Add (2,1,1)
-    v.set(coordKey(2, 1, 1), 0x888888);
+    const v = new Map<string, Voxel>();
+    v.set(coordKey(0, 0, 0), gray);
+    v.set(coordKey(1, 0, 0), gray);
+    v.set(coordKey(0, 1, 0), gray);
+    v.set(coordKey(0, 0, 1), gray);
+    v.set(coordKey(1, 1, 0), gray);
+    v.set(coordKey(1, 0, 1), gray);
+    v.set(coordKey(0, 1, 1), gray);
+    v.set(coordKey(2, 1, 1), gray);
     const brush: [number, number, number][] = [[1, 1, 1]];
     const { toAdd, toRemove } = applySmooth(v, brush, 8);
     expect(toAdd.has(coordKey(1, 1, 1))).toBe(true);
   });
 
   it('removes single-voxel bump when 2 or fewer neighbors', () => {
-    const v = new Map<string, number>();
-    v.set(coordKey(0, 0, 0), 0x888888);
-    v.set(coordKey(1, 0, 0), 0x888888);
-    // (0,0,0) has 1 neighbor - should be removed
+    const v = new Map<string, Voxel>();
+    v.set(coordKey(0, 0, 0), gray);
+    v.set(coordKey(1, 0, 0), gray);
     const brush: [number, number, number][] = [[0, 0, 0]];
     const { toAdd, toRemove } = applySmooth(v, brush, 8);
     expect(toRemove.has(coordKey(0, 0, 0))).toBe(true);
   });
 
   it('returns empty when brush outside grid', () => {
-    const v = new Map([[coordKey(0, 0, 0), 0x888888]]);
+    const v = new Map([[coordKey(0, 0, 0), gray]]);
     const brush: [number, number, number][] = [[100, 100, 100]];
     const { toAdd, toRemove } = applySmooth(v, brush, 8);
     expect(toAdd.size).toBe(0);
@@ -41,7 +41,7 @@ describe('applySmooth', () => {
 
 describe('applyLevel', () => {
   it('adds voxels at levelY for xz positions in brush', () => {
-    const v = new Map<string, number>();
+    const v = new Map<string, Voxel>();
     const brush: [number, number, number][] = [
       [0, 2, 0],
       [1, 2, 1],
@@ -49,11 +49,11 @@ describe('applyLevel', () => {
     ];
     const levelY = 0;
     let colorCalls = 0;
-    const getColor = () => {
+    const getVoxel = () => {
       colorCalls++;
-      return 0xff0000;
+      return plasticVoxel(0xff0000);
     };
-    const { toAdd, toRemove } = applyLevel(v, brush, levelY, getColor, 8);
+    const { toAdd, toRemove } = applyLevel(v, brush, levelY, getVoxel, 8);
     expect(toAdd.has(coordKey(0, 0, 0))).toBe(true);
     expect(toAdd.has(coordKey(1, 0, 1))).toBe(true);
     expect(toAdd.has(coordKey(2, 0, 2))).toBe(true);
@@ -61,18 +61,17 @@ describe('applyLevel', () => {
   });
 
   it('does not add where voxel already exists', () => {
-    const v = new Map([[coordKey(0, 4, 0), 0x888888]]);
+    const v = new Map([[coordKey(0, 4, 0), gray]]);
     const brush: [number, number, number][] = [[0, 5, 0]];
-    const { toAdd } = applyLevel(v, brush, 4, () => 0xff0000, 8);
+    const { toAdd } = applyLevel(v, brush, 4, () => plasticVoxel(0xff0000), 8);
     expect(toAdd.has(coordKey(0, 4, 0))).toBe(false);
   });
 });
 
 describe('applyMelt', () => {
   it('moves voxels downward when space below is empty', () => {
-    const v = new Map<string, number>();
-    v.set(coordKey(0, 2, 0), 0x888888);
-    // (0,1,0) and (0,0,0) empty - (0,2,0) falls to bottom (0,0,0)
+    const v = new Map<string, Voxel>();
+    v.set(coordKey(0, 2, 0), gray);
     const brush: [number, number, number][] = [
       [0, 0, 0],
       [0, 1, 0],
@@ -86,9 +85,8 @@ describe('applyMelt', () => {
   });
 
   it('conserves blocks when voxel moves multiple steps (net delta)', () => {
-    const v = new Map<string, number>();
-    v.set(coordKey(0, 3, 0), 0x888888);
-    // Brush column: voxel at (0,3,0) falls to (0,0,0) over several passes
+    const v = new Map<string, Voxel>();
+    v.set(coordKey(0, 3, 0), gray);
     const brush: [number, number, number][] = [
       [0, 0, 0],
       [0, 1, 0],
@@ -100,6 +98,6 @@ describe('applyMelt', () => {
     expect(toAdd.size).toBe(1);
     expect(toRemove.has(coordKey(0, 3, 0))).toBe(true);
     expect(toAdd.has(coordKey(0, 0, 0))).toBe(true);
-    expect(toAdd.get(coordKey(0, 0, 0))).toBe(0x888888);
+    expect(toAdd.get(coordKey(0, 0, 0))).toEqual(gray);
   });
 });

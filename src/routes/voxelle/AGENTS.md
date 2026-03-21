@@ -6,7 +6,6 @@
 
 - **SM** – Selection Method
 - **AO** – Ambient Occlusion
--
 
 ## Tech Stack
 
@@ -18,9 +17,9 @@
 
 ### State (`store/`)
 
-Central state in writable stores. Import from `'./store/index'` (barrel at `store/index.ts`). Voxels and selection are `Map<string, number>`: key = `"x,y,z"` (from `coordKey`), value = hex color.
+Central state in writable stores. Import from `'./store/index'` (barrel at `store/index.ts`). Voxels and selection are `Map<string, Voxel>`: key = `"x,y,z"` (from `coordKey`), value = `{ color: number, material: VoxelMaterialId }` (`plastic` \| `metal` \| `glass` \| `glow`). Brush material is `voxelMaterial`; `getPaintColorResolver()` returns a full `Voxel`. Legacy bare RGB numbers normalize to plastic at I/O boundaries.
 
-- `store/core.ts` – voxels, selection, gridSize, tool, color, updateVoxels, updateVoxelsInStroke, `applySelectionTranslationInStroke`, `applySelectionTranslationAlongAxis`, `applySelectionRotationInStroke` (90° about selection bbox center), `selectionGizmoMode` (`move` \| `rotate`), etc.
+- `store/core.ts` – voxels, selection, gridSize, tool, color, `voxelMaterial`, updateVoxels, updateVoxelsInStroke, `applySelectionTranslationInStroke`, `applySelectionTranslationAlongAxis`, `applySelectionRotationInStroke` (90° about selection bbox center), `selectionGizmoMode` (`move` \| `rotate`), etc.
 - `store/selection.ts` – growSelection, shrinkSelection, mergeSelection, getFillSelectionAt / getFillEmptyAt (return `{ region, truncated }`; optional max caps BFS for large-fill warnings), etc.
 - `store/shapes.ts` – initShape, getShapePositionsAt
 - `store/undo.ts` – pushUndo, history
@@ -29,7 +28,8 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 - `api/voxelle/share` (POST) – stores model in Vercel Blob, returns short id
 - `api/voxelle/model/[id]` (GET) – fetches stored model by id
 - `store/clipboard.ts` – copySelection, cutSelection, pasteFromClipboard
-- `store/storage.ts` – loadFromStorage, saveToStorage
+- `store/storage.ts` – loadFromStorage (localStorage only), loadFromStorageAsync (IndexedDB + localStorage migration), saveToStorage
+- `store/idbAutosave.ts` – IndexedDB snapshot for autosave (larger quota than localStorage)
 - `store/preferences.ts` – `loadPreferences`, `savePreferences`, reactive `voxellePreferences` store (`localStorage` key `voxelle-preferences`; `showMovementDeltaHint`, `showDragDeltaHint`, `gizmosAlwaysOnTop`)
 - `store/voxelleFile.ts` – saveToFile, loadFromFile, .voxelle format (BSON + gzip; full key names for versioning)
 - `VOXELLE_FORMAT.md` – .voxelle file format specification
@@ -49,7 +49,7 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 ### Canvas layer (`canvas/`)
 
 - **`canvas/sceneSetup.ts`** – Creates the Three.js scene graph: scene, perspective/orthographic cameras, renderer, env map, voxel group, rollover mesh, preview mesh, **add-shape preview** (two meshes sharing one `BufferGeometry`: visible pass default depth test; occluded pass `depthFunc: GreaterDepth` + distinct tint), polygon/rope point meshes, lights (hemisphere, directional), sky, ground plane, grid group, orbit/fly controls, raycaster, pointer. No tool or pointer logic. Used by VoxelCanvas onMount and by MeshManager.
-- **`canvas/meshManager.ts`** – Manages voxel mesh rebuild (worker), grid geometry, **selection overlay** (two meshes sharing geometry: visible `depthTest` + occluded `GreaterDepth` tint, same idea as add-shape preview), **faint AABB wireframe** around the selection (`selectionAabbWireframePositions` in `coordUtils`; during move-gizmo drag it stays at the pre-drag world position until release while the overlay previews the offset), and preview mesh geometry. Subscribes to store via getOptions callback; exposes `requestRebuildVoxelMeshes`, `rebuildSelectionOverlay`, `buildGrid`, `updatePreviewMesh`, `destroy`, `getMeshesByColor`. No tool or pointer logic.
+- **`canvas/meshManager.ts`** – Manages voxel mesh rebuild (worker), grid geometry, **selection overlay** (two meshes sharing geometry: visible `depthTest` + occluded `GreaterDepth` tint, same idea as add-shape preview), **faint AABB wireframe** around the selection (`selectionAabbWireframePositions` in `coordUtils`; during move-gizmo drag it stays at the pre-drag world position until release while the overlay previews the offset), and preview mesh geometry. Subscribes to store via getOptions callback; exposes `requestRebuildVoxelMeshes`, `rebuildSelectionOverlay`, `buildGrid`, `updatePreviewMesh`, `destroy`, `getMeshesByBucket` (one mesh group per `color|material` bucket). No tool or pointer logic.
 - **`canvas/previewMeshUtils.ts`** – Occluded-pass tint shared by add-shape ghost and gizmo materials; `assignSharedDualPreviewGeometry` for two meshes sharing one `BufferGeometry`.
 - **`canvas/selectionGizmo.ts`** – `createSelectionGizmoController`: move/rotate handle meshes, raycast, drag preview on `selectionGroup`, **world-space centroid line** while moving a selection (original bbox center → preview center), **`getMoveDragDeltaLabel`** for integer Δx,Δy,Δz (VoxelCanvas projects the original centroid and shows a HUD label), placement updates to `addPanelStore`, commit callbacks wired from VoxelCanvas pointer-up. Rotate preview pivots all `userData.voxelleSelectionPivotChild` children (overlay meshes + bbox wireframe).
 - **`canvas/handlers/`** – Pointer event handling by tool. `pointerHandler.ts` dispatches to per-tool handlers (e.g. `fly.ts`). VoxelCanvas calls `handlePointerDown` / `handlePointerMove` with a context; more tools can be moved here by extending `PointerHandlerContext` in `types.ts` and adding handlers.
@@ -67,7 +67,7 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 | `sidebar/CameraSection.svelte`    | Ortho, focal length                                                |
 | `sidebar/SceneSection.svelte`     | Grid, sky, background                                              |
 | `sidebar/LightSection.svelte`     | Ambient, color, angle, elevation, shadows, AO                      |
-| `sidebar/MaterialSection.svelte`  | PBR (roughness, metalness, env)                                    |
+| `sidebar/MaterialSection.svelte`  | Voxel material preset picker (plastic / metal / glass / glow)      |
 | `sidebar/OriginSection.svelte`    | Center controls, shift inputs                                      |
 | `sidebar/ShareModal.svelte`       | Share URL modal                                                    |
 | `sidebar/PreferencesModal.svelte` | Preferences (File menu); settings in `localStorage` via `store/preferences.ts` |
@@ -82,12 +82,12 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 
 ### Greedy Meshing
 
-`buildGreedyMesh(voxels, options)` returns meshes by color. Options: `aoEnabled` (deprecated), `aoStrength` (0/1/2), `skipMerge`. Only visible faces; merges coplanar quads. Uses Minecraft-style corner AO. Use `PREVIEW_MESH_OPTIONS` or `buildPreviewGeometry(positions, color)` for preview/overlay meshes.
+`buildGreedyMesh(voxels, options)` returns `Map<bucketKey, BufferGeometry>` where `bucketKey` is `color|material`. Options: `aoEnabled` (deprecated), `aoStrength` (0/1/2), `skipMerge`. Only visible faces; merges coplanar quads within a bucket. Uses Minecraft-style corner AO. Use `PREVIEW_MESH_OPTIONS` or `buildPreviewGeometry(positions, voxel)` for preview/overlay meshes.
 
 ## Conventions
 
 - **Coords**: Integer voxel positions. Placement is unbounded; selection/fill/clay use content-derived bounds (getEffectiveBounds). `gridSize` is used for New Grid initial shape and file format only.
-- **Colors**: 24-bit hex stored as `number`; `hexToInt('#ff5733')`, `intToHex(n)` for conversions.
+- **Colors**: 24-bit hex in `Voxel.color`; `hexToInt('#ff5733')`, `intToHex(n)` for conversions. Select-by-color / flood fill with `respectsColor` compare **color only** (`sameVoxelColor`).
 - **Faces**: `FaceNormal` = `[nx, ny, nz]` (1, 0, or -1).
 - **Shapes**: `cube`, `orb`, `cylinder`, `hollowCube`, `plane`, `circle`, `empty`. Rotation in quarter-turns (0–3) per axis.
 - **Brush size indices**: Most UI size sliders store `0..(MAX_BRUSH_SIZE-1)` and map to `1..MAX_BRUSH_SIZE` voxels (default 25) via radius `index * 0.5`.
@@ -96,8 +96,8 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 
 1. Use `updateVoxels` or `updateVoxelsInStroke` for voxel changes; call `pushUndo()` before edits.
 2. Keep greedy mesh logic in `greedyMesh.ts`; VoxelCanvas consumes it.
-3. Selection is `Map<string, number>` like voxels; use `getSelectionBounds`, `getSelectionAnchor`, etc.
-4. Avoid touching `meshesByColor` internals; MeshManager owns them and exposes `getMeshesByColor()`.
+3. Selection is `Map<string, Voxel>` like voxels (values often mirror tint for recolor); use `getSelectionBounds`, `getSelectionAnchor`, etc.
+4. Avoid touching per-bucket mesh map internals; MeshManager owns them and exposes `getMeshesByBucket()`.
 5. Run `greedyMesh.test.ts` after changes to meshing.
 6. **Workers**: Heavy logic lives in `*WorkerLogic.ts` (unit-tested). Thin `*.worker.ts` / `*Worker.ts` files call `attach*Worker(self)` from `*Worker.bind.ts`; `webWorkerBindings.test.ts` mocks `self` to assert `postMessage` payloads and transfer lists (Node has no `Worker` global).
 7. **New tools / options**: Add pointer handling in VoxelCanvas (or future `canvas/handlers/`); add UI in ToolPanel (or `toolPanel/*Options.svelte`). Tool/stroke-mode lists (e.g. `DRAW_TOOLS_USING_STROKE_MODE`) are defined once in `store/core.ts` and imported elsewhere.

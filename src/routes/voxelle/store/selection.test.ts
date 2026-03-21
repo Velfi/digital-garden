@@ -16,16 +16,17 @@ import {
   invertSelection,
   SELECTION_BOUNDS_MARGIN
 } from './selection';
+import { plasticVoxel, type Voxel } from '../voxelMaterial';
 
-function makeSel(entries: [number, number, number][]): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const [x, y, z] of entries) m.set(`${x},${y},${z}`, 0x888888);
+function makeSel(entries: [number, number, number][]): Map<string, Voxel> {
+  const m = new Map<string, Voxel>();
+  for (const [x, y, z] of entries) m.set(`${x},${y},${z}`, plasticVoxel(0x888888));
   return m;
 }
 
-function makeVoxels(entries: [number, number, number, number][]): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const [x, y, z, col] of entries) m.set(`${x},${y},${z}`, col);
+function makeVoxels(entries: [number, number, number, number][]): Map<string, Voxel> {
+  const m = new Map<string, Voxel>();
+  for (const [x, y, z, col] of entries) m.set(`${x},${y},${z}`, plasticVoxel(col));
   return m;
 }
 

@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { coordKey, positionsToVoxelMap } from './coordUtils';
 import { computeGreedyMesh, getGreedyMeshFaceArea } from './greedyMeshCore';
+import type { Voxel } from './voxelMaterial';
 
 import type { AOStrength } from './greedyMeshCore';
 export type { AOStrength } from './greedyMeshCore';
@@ -40,20 +41,23 @@ function darkenHex(hex: number, factor: number): number {
  */
 export function buildPreviewGeometry(
   positions: [number, number, number][],
-  color: number,
-  existingVoxels?: Map<string, number>
+  voxel: Voxel,
+  existingVoxels?: Map<string, Voxel>
 ): THREE.BufferGeometry | null {
   if (positions.length === 0) return null;
-  let voxelMap: Map<string, number>;
+  let voxelMap: Map<string, Voxel>;
   if (existingVoxels && existingVoxels.size > 0) {
-    const darkColor = darkenHex(color, OVERLAP_DARKEN);
+    const darkColor = darkenHex(voxel.color, OVERLAP_DARKEN);
     voxelMap = new Map();
     for (const [x, y, z] of positions) {
       const key = coordKey(x, y, z);
-      voxelMap.set(key, existingVoxels.has(key) ? darkColor : color);
+      voxelMap.set(key, {
+        color: existingVoxels.has(key) ? darkColor : voxel.color,
+        material: voxel.material
+      });
     }
   } else {
-    voxelMap = positionsToVoxelMap(positions, color);
+    voxelMap = positionsToVoxelMap(positions, voxel);
   }
   const geoByColor = buildGreedyMesh(voxelMap, PREVIEW_MESH_OPTIONS);
   const geos = [...geoByColor.values()];
@@ -65,24 +69,24 @@ export function buildPreviewGeometry(
 }
 
 export function buildGreedyMesh(
-  voxels: Map<string, number>,
+  voxels: Map<string, Voxel>,
   options: GreedyMeshOptions = {}
-): Map<number, THREE.BufferGeometry> {
+): Map<string, THREE.BufferGeometry> {
   const coreResults = computeGreedyMesh(voxels, {
     aoEnabled: options.aoEnabled,
     aoStrength: options.aoStrength,
     skipMerge: options.skipMerge
   });
-  const result = new Map<number, THREE.BufferGeometry>();
+  const result = new Map<string, THREE.BufferGeometry>();
 
-  for (const [col, data] of coreResults) {
+  for (const [bucketKey, data] of coreResults) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(data.normals, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(data.colors, 3));
     geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
     geo.computeBoundingSphere();
-    result.set(col, geo);
+    result.set(bucketKey, geo);
   }
 
   return result;

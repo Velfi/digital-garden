@@ -3,9 +3,18 @@ import * as THREE from 'three';
 import { buildGreedyMesh, getGreedyMeshFaceArea } from './greedyMesh';
 import { coordKey } from './store/index';
 import { initShape } from './store/index';
+import { plasticVoxel, voxelBucketKey, type Voxel } from './voxelMaterial';
+
+function bkey(rgb: number): string {
+  return voxelBucketKey(plasticVoxel(rgb));
+}
+
+function glassVoxel(color: number): Voxel {
+  return { color: color & 0xffffff, material: 'glass' };
+}
 
 /** Count visible faces (no neighbor in that direction) for a voxel set. */
-function countVisibleFaces(voxels: Map<string, number>): number {
+function countVisibleFaces(voxels: Map<string, Voxel>): number {
   const set = new Set(voxels.keys());
   let count = 0;
   const dirs: [number, number, number][] = [
@@ -41,18 +50,14 @@ function getTriangleCount(geo: THREE.BufferGeometry): number {
 describe('buildGreedyMesh', () => {
   it('AO ignores coplanar interior-slice voxels for +X face corners', () => {
     const color = 0xffffff;
-    const voxels = new Map<string, number>([
-      // Target voxel whose +X face should stay fully lit.
-      [coordKey(0, 0, 0), color],
-      // These voxels only exist on the source voxel depth slice (x=0).
-      // If AO sampling ignores face sign and samples depth=x instead of x+1,
-      // they incorrectly darken one +X corner of the target voxel.
-      [coordKey(0, 2, 1), color],
-      [coordKey(0, 1, 2), color],
-      [coordKey(0, 2, 2), color]
+    const voxels = new Map<string, Voxel>([
+      [coordKey(0, 0, 0), plasticVoxel(color)],
+      [coordKey(0, 2, 1), plasticVoxel(color)],
+      [coordKey(0, 1, 2), plasticVoxel(color)],
+      [coordKey(0, 2, 2), plasticVoxel(color)]
     ]);
     const result = buildGreedyMesh(voxels);
-    const geo = result.get(color)!;
+    const geo = result.get(bkey(color))!;
     const pos = geo.getAttribute('position') as THREE.BufferAttribute;
     const normals = geo.getAttribute('normal') as THREE.BufferAttribute;
     const colors = geo.getAttribute('color') as THREE.BufferAttribute;
@@ -75,7 +80,6 @@ describe('buildGreedyMesh', () => {
       if (!expectedCorners.has(key)) continue;
       seenCorners.add(key);
 
-      // White base color should remain white when AO samples exterior slice.
       expect(colors.getX(i)).toBeCloseTo(1, 6);
       expect(colors.getY(i)).toBeCloseTo(1, 6);
       expect(colors.getZ(i)).toBeCloseTo(1, 6);
@@ -85,35 +89,31 @@ describe('buildGreedyMesh', () => {
   });
 
   it('single voxel produces 6 faces (12 triangles, welded vertices)', () => {
-    const voxels = new Map<string, number>([[coordKey(0, 0, 0), 0x888888]]);
+    const voxels = new Map<string, Voxel>([[coordKey(0, 0, 0), plasticVoxel(0x888888)]]);
     const result = buildGreedyMesh(voxels);
     expect(result.size).toBe(1);
-    const geo = result.get(0x888888)!;
-    // 6 faces × 4 unique corners each = 24 vertices (vertex welding)
+    const geo = result.get(bkey(0x888888))!;
     expect(getVertexCount(geo)).toBe(24);
     expect(getTriangleCount(geo)).toBe(12);
     expect(countVisibleFaces(voxels)).toBe(6);
   });
 
   it('single voxel geometry has correct face positions', () => {
-    const voxels = new Map<string, number>([[coordKey(0, 0, 0), 0x888888]]);
+    const voxels = new Map<string, Voxel>([[coordKey(0, 0, 0), plasticVoxel(0x888888)]]);
     const result = buildGreedyMesh(voxels);
-    const geo = result.get(0x888888)!;
+    const geo = result.get(bkey(0x888888))!;
     const pos = geo.getAttribute('position') as THREE.BufferAttribute;
     const normals = geo.getAttribute('normal') as THREE.BufferAttribute;
 
-    // Should have vertices at ±0.5 on each axis (cube faces)
     const verts = new Set<string>();
     for (let i = 0; i < pos.count; i++) {
       verts.add([pos.getX(i), pos.getY(i), pos.getZ(i)].map((n) => n.toFixed(2)).join(','));
     }
-    // 8 corners of cube: (±0.5, ±0.5, ±0.5)
-    expect(verts.has('0.50,-0.50,-0.50')).toBe(true); // +X face
-    expect(verts.has('-0.50,-0.50,-0.50')).toBe(true); // -X face
-    expect(verts.has('-0.50,0.50,-0.50')).toBe(true); // +Y face
-    expect(verts.has('-0.50,-0.50,0.50')).toBe(true); // +Z face
+    expect(verts.has('0.50,-0.50,-0.50')).toBe(true);
+    expect(verts.has('-0.50,-0.50,-0.50')).toBe(true);
+    expect(verts.has('-0.50,0.50,-0.50')).toBe(true);
+    expect(verts.has('-0.50,-0.50,0.50')).toBe(true);
 
-    // Should have all 6 normals
     const normalSet = new Set<string>();
     for (let i = 0; i < normals.count; i++) {
       normalSet.add(
@@ -130,40 +130,37 @@ describe('buildGreedyMesh', () => {
   });
 
   it('two adjacent voxels share a face (10 visible, merge to 6 quads)', () => {
-    const voxels = new Map<string, number>([
-      [coordKey(0, 0, 0), 0x888888],
-      [coordKey(1, 0, 0), 0x888888]
+    const voxels = new Map<string, Voxel>([
+      [coordKey(0, 0, 0), plasticVoxel(0x888888)],
+      [coordKey(1, 0, 0), plasticVoxel(0x888888)]
     ]);
     expect(countVisibleFaces(voxels)).toBe(10);
     const result = buildGreedyMesh(voxels, { aoEnabled: false });
-    const geo = result.get(0x888888)!;
-    // 6 quads = 12 tris; vertex welding reduces to 24 unique verts
+    const geo = result.get(bkey(0x888888))!;
     expect(getVertexCount(geo)).toBe(24);
   });
 
   it('skipMerge emits one quad per visible face (no merging)', () => {
-    const voxels = new Map<string, number>([
-      [coordKey(0, 0, 0), 0x888888],
-      [coordKey(1, 0, 0), 0x888888]
+    const voxels = new Map<string, Voxel>([
+      [coordKey(0, 0, 0), plasticVoxel(0x888888)],
+      [coordKey(1, 0, 0), plasticVoxel(0x888888)]
     ]);
     expect(countVisibleFaces(voxels)).toBe(10);
     const result = buildGreedyMesh(voxels, { aoEnabled: false, skipMerge: true });
-    const geo = result.get(0x888888)!;
+    const geo = result.get(bkey(0x888888))!;
     expect(geo).toBeDefined();
-    // 10 faces = 10 quads = 20 tris
     expect(getTriangleCount(geo)).toBe(20);
   });
 
   it('2×2×2 cube has 24 visible faces, merged to 6 quads', () => {
-    const voxels = new Map<string, number>();
+    const voxels = new Map<string, Voxel>();
     for (let x = 0; x < 2; x++)
       for (let y = 0; y < 2; y++)
-        for (let z = 0; z < 2; z++) voxels.set(coordKey(x, y, z), 0x888888);
+        for (let z = 0; z < 2; z++) voxels.set(coordKey(x, y, z), plasticVoxel(0x888888));
 
     expect(countVisibleFaces(voxels)).toBe(24);
     const result = buildGreedyMesh(voxels, { aoEnabled: false });
-    const geo = result.get(0x888888)!;
-    // 6 faces × 2 triangles each = 12 tris; vertex welding = 24 unique verts
+    const geo = result.get(bkey(0x888888))!;
     expect(getVertexCount(geo)).toBe(24);
     expect(getTriangleCount(geo)).toBe(12);
   });
@@ -172,10 +169,9 @@ describe('buildGreedyMesh', () => {
     const voxels = initShape(8, 'cube');
     const result = buildGreedyMesh(voxels, { aoEnabled: false });
     expect(result.size).toBe(1);
-    const geo = result.get(0x888888)!;
-    // 8×8×8 cube: 6 faces, each 8×8 merged to one quad = 6 quads = 12 tris
+    const geo = result.get(bkey(0x888888))!;
     expect(getTriangleCount(geo)).toBe(12);
-    expect(getVertexCount(geo)).toBe(24); // vertex welding
+    expect(getVertexCount(geo)).toBe(24);
   });
 
   it('initShape orb produces geometry with all 6 normals', () => {
@@ -183,8 +179,8 @@ describe('buildGreedyMesh', () => {
     expect(voxels.size).toBeGreaterThan(0);
     const result = buildGreedyMesh(voxels);
     expect(result.size).toBe(1);
-    const geo = result.get(0x888888)!;
-    expect(getVertexCount(geo)).toBeGreaterThan(24); // more than single voxel
+    const geo = result.get(bkey(0x888888))!;
+    expect(getVertexCount(geo)).toBeGreaterThan(24);
 
     const normals = geo.getAttribute('normal') as THREE.BufferAttribute;
     const normalSet = new Set<string>();
@@ -199,24 +195,21 @@ describe('buildGreedyMesh', () => {
   it('initShape cylinder produces geometry', () => {
     const voxels = initShape(8, 'cylinder');
     const result = buildGreedyMesh(voxels);
-    const geo = result.get(0x888888)!;
-    // Cylinder has curved sides + 2 circular caps
+    const geo = result.get(bkey(0x888888))!;
     expect(getVertexCount(geo)).toBeGreaterThan(24);
   });
 
   it('voxels with negative coordinates render correctly', () => {
-    // Centered 2×2×2 around origin: (-1,-1,-1) to (0,0,0)
-    const voxels = new Map<string, number>();
+    const voxels = new Map<string, Voxel>();
     for (let x = -1; x <= 0; x++)
       for (let y = -1; y <= 0; y++)
-        for (let z = -1; z <= 0; z++) voxels.set(coordKey(x, y, z), 0x888888);
+        for (let z = -1; z <= 0; z++) voxels.set(coordKey(x, y, z), plasticVoxel(0x888888));
 
     expect(countVisibleFaces(voxels)).toBe(24);
     const result = buildGreedyMesh(voxels, { aoEnabled: false });
-    const geo = result.get(0x888888)!;
-    expect(getVertexCount(geo)).toBe(24); // vertex welding
+    const geo = result.get(bkey(0x888888))!;
+    expect(getVertexCount(geo)).toBe(24);
 
-    // Check we have faces at the expected positions
     const pos = geo.getAttribute('position') as THREE.BufferAttribute;
     let hasNegFace = false;
     let hasPosFace = false;
@@ -225,27 +218,24 @@ describe('buildGreedyMesh', () => {
       if (x <= -0.4) hasNegFace = true;
       if (x >= 0.4) hasPosFace = true;
     }
-    expect(hasNegFace).toBe(true); // -X face at x=-1.5
-    expect(hasPosFace).toBe(true); // +X face at x=0.5
+    expect(hasNegFace).toBe(true);
+    expect(hasPosFace).toBe(true);
   });
 
   it('plane with 1-height line and AO enabled is subdivided for smooth AO', () => {
-    // Flat plane at y=0 (one voxel thick), 3×3; 1-height line on top at y=1 along one edge
-    const voxels = new Map<string, number>();
+    const voxels = new Map<string, Voxel>();
     for (let x = -1; x <= 1; x++)
-      for (let z = -1; z <= 1; z++) voxels.set(coordKey(x, 0, z), 0xcccccc);
-    voxels.set(coordKey(-1, 1, 0), 0x444444);
-    voxels.set(coordKey(0, 1, 0), 0x444444);
-    voxels.set(coordKey(1, 1, 0), 0x444444);
+      for (let z = -1; z <= 1; z++) voxels.set(coordKey(x, 0, z), plasticVoxel(0xcccccc));
+    voxels.set(coordKey(-1, 1, 0), plasticVoxel(0x444444));
+    voxels.set(coordKey(0, 1, 0), plasticVoxel(0x444444));
+    voxels.set(coordKey(1, 1, 0), plasticVoxel(0x444444));
 
     const resultNoAO = buildGreedyMesh(voxels, { aoEnabled: false });
     const resultAO = buildGreedyMesh(voxels, { aoEnabled: true });
-    const geoNoAO = resultNoAO.get(0xcccccc)!;
-    const geoAO = resultAO.get(0xcccccc)!;
+    const geoNoAO = resultNoAO.get(bkey(0xcccccc))!;
+    const geoAO = resultAO.get(bkey(0xcccccc))!;
 
-    // With AO off, plane top is one merged quad (9 cells) = 4 verts (welded). With AO on, quad is subdivided.
     expect(getVertexCount(geoAO)).toBeGreaterThan(getVertexCount(geoNoAO));
-    // Plane top face vertices should have varying color (AO darkens under the line)
     const colors = geoAO.getAttribute('color') as THREE.BufferAttribute;
     let minC = 1;
     let maxC = 0;
@@ -267,23 +257,62 @@ describe('buildGreedyMesh', () => {
       const voxels = initShape(8, shape);
       if (voxels.size === 0) continue;
       const expectedFaces = countVisibleFaces(voxels);
-      const areaByColor = getGreedyMeshFaceArea(voxels);
-      const totalArea = [...areaByColor.values()].reduce((a, b) => a + b, 0);
+      const areaByBucket = getGreedyMeshFaceArea(voxels);
+      const totalArea = [...areaByBucket.values()].reduce((a, b) => a + b, 0);
       expect(totalArea).toBe(expectedFaces);
     }
   });
 
+  it('adjacent glass voxels cull inner faces to avoid stacked transparency', () => {
+    const voxels = new Map<string, Voxel>([
+      [coordKey(0, 0, 0), glassVoxel(0x88ccff)],
+      [coordKey(1, 0, 0), glassVoxel(0x88ccff)]
+    ]);
+    const plasticPair = new Map<string, Voxel>([
+      [coordKey(0, 0, 0), plasticVoxel(0x88ccff)],
+      [coordKey(1, 0, 0), plasticVoxel(0x88ccff)]
+    ]);
+    const glassArea = [...getGreedyMeshFaceArea(voxels).values()].reduce((a, b) => a + b, 0);
+    const plasticArea = [...getGreedyMeshFaceArea(plasticPair).values()].reduce((a, b) => a + b, 0);
+    expect(plasticArea).toBe(10);
+    expect(glassArea).toBe(10);
+  });
+
+  it('glass darkens as contiguous thickness increases', () => {
+    const thin = new Map<string, Voxel>([[coordKey(0, 0, 0), glassVoxel(0x88ccff)]]);
+    const thick = new Map<string, Voxel>([
+      [coordKey(0, 0, 0), glassVoxel(0x88ccff)],
+      [coordKey(1, 0, 0), glassVoxel(0x88ccff)],
+      [coordKey(2, 0, 0), glassVoxel(0x88ccff)]
+    ]);
+
+    const thinGeo = buildGreedyMesh(thin).get(voxelBucketKey(glassVoxel(0x88ccff)))!;
+    const thickGeo = buildGreedyMesh(thick).get(voxelBucketKey(glassVoxel(0x88ccff)))!;
+    const thinColors = thinGeo.getAttribute('color') as THREE.BufferAttribute;
+    const thickColors = thickGeo.getAttribute('color') as THREE.BufferAttribute;
+
+    const minChannel = (attr: THREE.BufferAttribute): number => {
+      let min = 1;
+      for (let i = 0; i < attr.count; i++) {
+        min = Math.min(min, attr.getX(i), attr.getY(i), attr.getZ(i));
+      }
+      return min;
+    };
+
+    expect(minChannel(thinColors)).toBeCloseTo((0x88 / 255), 6);
+    expect(minChannel(thickColors)).toBeLessThan(minChannel(thinColors));
+  });
+
   it('separate colors produce separate geometries', () => {
-    const voxels = new Map<string, number>([
-      [coordKey(0, 0, 0), 0xff0000],
-      [coordKey(2, 0, 0), 0x00ff00]
+    const voxels = new Map<string, Voxel>([
+      [coordKey(0, 0, 0), plasticVoxel(0xff0000)],
+      [coordKey(2, 0, 0), plasticVoxel(0x00ff00)]
     ]);
     const result = buildGreedyMesh(voxels);
     expect(result.size).toBe(2);
-    expect(result.has(0xff0000)).toBe(true);
-    expect(result.has(0x00ff00)).toBe(true);
-    // Each single voxel = 24 vertices (welded)
-    expect(getVertexCount(result.get(0xff0000)!)).toBe(24);
-    expect(getVertexCount(result.get(0x00ff00)!)).toBe(24);
+    expect(result.has(bkey(0xff0000))).toBe(true);
+    expect(result.has(bkey(0x00ff00))).toBe(true);
+    expect(getVertexCount(result.get(bkey(0xff0000))!)).toBe(24);
+    expect(getVertexCount(result.get(bkey(0x00ff00))!)).toBe(24);
   });
 });

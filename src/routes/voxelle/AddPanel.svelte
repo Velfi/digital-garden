@@ -22,7 +22,7 @@
       rotation: [rx, ry, rz],
       shape: s.shape,
       size,
-      getColor: getPaintColorResolver()
+      getVoxel: getPaintColorResolver()
     });
     addPanelStore.update((x) => ({ ...x, open: false, placementAnchorPending: false }));
   }

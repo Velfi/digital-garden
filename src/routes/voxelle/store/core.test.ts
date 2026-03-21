@@ -20,17 +20,24 @@ import {
   getPaintColorResolver,
   color,
   selectedColors,
+  voxelMaterial,
   beginStroke,
   applySelectionTranslationInStroke,
   applySelectionTranslationAlongAxis,
   applySelectionRotationInStroke
 } from './core';
+import { plasticVoxel, type Voxel } from '../voxelMaterial';
+
+function pv(rgb: number): Voxel {
+  return plasticVoxel(rgb);
+}
 
 describe('core', () => {
   beforeEach(() => {
     gridSize.set(32);
     voxels.set(new Map());
     selection.set(new Map());
+    voxelMaterial.set('plastic');
     resetUndo();
   });
 
@@ -82,10 +89,10 @@ describe('core', () => {
 
   describe('cloneVoxels', () => {
     it('returns new map with same entries', () => {
-      const orig = new Map([['0,0,0', 0xff0000]]);
+      const orig = new Map([['0,0,0', pv(0xff0000)]]);
       const cloned = cloneVoxels(orig);
       expect(cloned).not.toBe(orig);
-      expect(cloned.get('0,0,0')).toBe(0xff0000);
+      expect(cloned.get('0,0,0')).toEqual(pv(0xff0000));
     });
   });
 
@@ -116,42 +123,42 @@ describe('core', () => {
     it('shifts voxels and selection by delta', () => {
       voxels.set(
         new Map([
-          [coordKey(0, 0, 0), 0xff0000],
-          [coordKey(1, 0, 0), 0x00ff00]
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x00ff00)]
         ])
       );
-      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      selection.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
 
       shiftVoxelsAndSelection(2, 1, -1);
 
       const v = get(voxels);
       const s = get(selection);
-      expect(v.get('2,1,-1')).toBe(0xff0000);
-      expect(v.get('3,1,-1')).toBe(0x00ff00);
-      expect(s.get('2,1,-1')).toBe(0xff0000);
+      expect(v.get('2,1,-1')).toEqual(pv(0xff0000));
+      expect(v.get('3,1,-1')).toEqual(pv(0x00ff00));
+      expect(s.get('2,1,-1')).toEqual(pv(0xff0000));
     });
     it('no-op when both empty', () => {
       shiftVoxelsAndSelection(1, 1, 1);
       expect(get(voxels).size).toBe(0);
     });
     it('no-op when delta is zero', () => {
-      voxels.set(new Map([['0,0,0', 0xff0000]]));
+      voxels.set(new Map([['0,0,0', pv(0xff0000)]]));
       shiftVoxelsAndSelection(0, 0, 0);
-      expect(get(voxels).get('0,0,0')).toBe(0xff0000);
+      expect(get(voxels).get('0,0,0')).toEqual(pv(0xff0000));
     });
   });
 
   describe('scaleProjectBy2', () => {
     it('replaces each voxel with a 2×2×2 block of the same color', () => {
-      voxels.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
-      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      voxels.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
+      selection.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
       scaleProjectBy2();
       const v = get(voxels);
       expect(v.size).toBe(8);
       for (let dx = 0; dx < 2; dx++) {
         for (let dy = 0; dy < 2; dy++) {
           for (let dz = 0; dz < 2; dz++) {
-            expect(v.get(coordKey(dx, dy, dz))).toBe(0xff0000);
+            expect(v.get(coordKey(dx, dy, dz))).toEqual(pv(0xff0000));
           }
         }
       }
@@ -160,15 +167,15 @@ describe('core', () => {
     it('keeps adjacent unit voxels as separate 2×2×2 blocks', () => {
       voxels.set(
         new Map([
-          [coordKey(0, 0, 0), 0xff0000],
-          [coordKey(1, 0, 0), 0x00ff00]
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x00ff00)]
         ])
       );
       scaleProjectBy2();
       const v = get(voxels);
       expect(v.size).toBe(16);
-      expect(v.get(coordKey(0, 0, 0))).toBe(0xff0000);
-      expect(v.get(coordKey(2, 0, 0))).toBe(0x00ff00);
+      expect(v.get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
+      expect(v.get(coordKey(2, 0, 0))).toEqual(pv(0x00ff00));
     });
     it('no-op when voxels empty', () => {
       scaleProjectBy2();
@@ -180,24 +187,24 @@ describe('core', () => {
     it('shifts only selected voxels', () => {
       voxels.set(
         new Map([
-          [coordKey(0, 0, 0), 0xff0000],
-          [coordKey(1, 0, 0), 0x00ff00]
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x00ff00)]
         ])
       );
-      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      selection.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
 
       shiftSelection(3, 0, 0);
 
       const v = get(voxels);
       const s = get(selection);
-      expect(v.get('3,0,0')).toBe(0xff0000);
-      expect(v.get('1,0,0')).toBe(0x00ff00);
-      expect(s.get('3,0,0')).toBe(0xff0000);
+      expect(v.get('3,0,0')).toEqual(pv(0xff0000));
+      expect(v.get('1,0,0')).toEqual(pv(0x00ff00));
+      expect(s.get('3,0,0')).toEqual(pv(0xff0000));
     });
     it('no-op when selection empty', () => {
-      voxels.set(new Map([['0,0,0', 0xff0000]]));
+      voxels.set(new Map([['0,0,0', pv(0xff0000)]]));
       shiftSelection(1, 1, 1);
-      expect(get(voxels).get('0,0,0')).toBe(0xff0000);
+      expect(get(voxels).get('0,0,0')).toEqual(pv(0xff0000));
     });
   });
 
@@ -205,8 +212,8 @@ describe('core', () => {
     it('centers voxels on origin', () => {
       voxels.set(
         new Map([
-          [coordKey(4, 4, 4), 0xff0000],
-          [coordKey(6, 6, 6), 0x00ff00]
+          [coordKey(4, 4, 4), pv(0xff0000)],
+          [coordKey(6, 6, 6), pv(0x00ff00)]
         ])
       );
       centerOriginOnObject();
@@ -220,14 +227,14 @@ describe('core', () => {
     it('centers selection on origin', () => {
       voxels.set(
         new Map([
-          [coordKey(4, 4, 4), 0xff0000],
-          [coordKey(6, 6, 6), 0x00ff00]
+          [coordKey(4, 4, 4), pv(0xff0000)],
+          [coordKey(6, 6, 6), pv(0x00ff00)]
         ])
       );
       selection.set(
         new Map([
-          [coordKey(4, 4, 4), 0xff0000],
-          [coordKey(6, 6, 6), 0x00ff00]
+          [coordKey(4, 4, 4), pv(0xff0000)],
+          [coordKey(6, 6, 6), pv(0x00ff00)]
         ])
       );
       centerOriginOnSelection();
@@ -244,11 +251,11 @@ describe('core', () => {
         rotation: [0, 0, 0],
         shape: 'cube',
         size: 2,
-        getColor: () => 0xff0000
+        getVoxel: () => pv(0xff0000)
       });
       const v = get(voxels);
       expect(v.size).toBeGreaterThan(0);
-      expect(v.get('0,0,0')).toBe(0xff0000);
+      expect(v.get('0,0,0')).toEqual(pv(0xff0000));
     });
     it('no-op for empty shape', () => {
       addShapeAt({
@@ -256,7 +263,7 @@ describe('core', () => {
         rotation: [0, 0, 0],
         shape: 'empty',
         size: 4,
-        getColor: () => 0xff0000
+        getVoxel: () => pv(0xff0000)
       });
       expect(get(voxels).size).toBe(0);
     });
@@ -266,7 +273,7 @@ describe('core', () => {
         rotation: [0, 0, 0],
         shape: 'cube',
         size: 0,
-        getColor: () => 0xff0000
+        getVoxel: () => pv(0xff0000)
       });
       expect(get(voxels).size).toBe(0);
     });
@@ -276,30 +283,30 @@ describe('core', () => {
     it('moves selected voxel through wall, overwrites destination, leaves no duplicate', () => {
       voxels.set(
         new Map([
-          [coordKey(0, 0, 0), 0xff0000],
-          [coordKey(1, 0, 0), 0x0000ff]
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x0000ff)]
         ])
       );
-      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      selection.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
       beginStroke();
       applySelectionTranslationInStroke(1, 0, 0);
       const v = get(voxels);
       expect(v.has(coordKey(0, 0, 0))).toBe(false);
-      expect(v.get(coordKey(1, 0, 0))).toBe(0xff0000);
+      expect(v.get(coordKey(1, 0, 0))).toEqual(pv(0xff0000));
       expect(get(selection).has(coordKey(1, 0, 0))).toBe(true);
     });
 
     it('translates all selected voxels together', () => {
       voxels.set(
         new Map([
-          [coordKey(0, 0, 0), 0xff0000],
-          [coordKey(2, 0, 0), 0x00ff00]
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(2, 0, 0), pv(0x00ff00)]
         ])
       );
       selection.set(
         new Map([
-          [coordKey(0, 0, 0), 0xff0000],
-          [coordKey(2, 0, 0), 0x00ff00]
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(2, 0, 0), pv(0x00ff00)]
         ])
       );
       beginStroke();
@@ -307,15 +314,15 @@ describe('core', () => {
       const v = get(voxels);
       expect(v.has(coordKey(0, 0, 0))).toBe(false);
       expect(v.has(coordKey(2, 0, 0))).toBe(false);
-      expect(v.get(coordKey(0, 1, 0))).toBe(0xff0000);
-      expect(v.get(coordKey(2, 1, 0))).toBe(0x00ff00);
+      expect(v.get(coordKey(0, 1, 0))).toEqual(pv(0xff0000));
+      expect(v.get(coordKey(2, 1, 0))).toEqual(pv(0x00ff00));
       const s = get(selection);
       expect(s.has(coordKey(0, 1, 0))).toBe(true);
       expect(s.has(coordKey(2, 1, 0))).toBe(true);
     });
 
     it('translates selection keys when no voxels at keys (no voxel map change)', () => {
-      selection.set(new Map([[coordKey(5, 5, 5), 0xff0000]]));
+      selection.set(new Map([[coordKey(5, 5, 5), pv(0xff0000)]]));
       beginStroke();
       applySelectionTranslationInStroke(-1, 0, 2);
       const s = get(selection);
@@ -324,88 +331,94 @@ describe('core', () => {
     });
 
     it('no-op for zero delta', () => {
-      voxels.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
-      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      voxels.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
+      selection.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
       beginStroke();
       applySelectionTranslationInStroke(0, 0, 0);
-      expect(get(voxels).get(coordKey(0, 0, 0))).toBe(0xff0000);
+      expect(get(voxels).get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
       expect(get(selection).has(coordKey(0, 0, 0))).toBe(true);
     });
   });
 
   describe('applySelectionTranslationAlongAxis', () => {
     it('delegates to applySelectionTranslationInStroke per axis', () => {
-      voxels.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
-      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      voxels.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
+      selection.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
       beginStroke();
       applySelectionTranslationAlongAxis(0, 2);
-      expect(get(voxels).get(coordKey(2, 0, 0))).toBe(0xff0000);
+      expect(get(voxels).get(coordKey(2, 0, 0))).toEqual(pv(0xff0000));
       beginStroke();
       applySelectionTranslationAlongAxis(1, -1);
-      expect(get(voxels).get(coordKey(2, -1, 0))).toBe(0xff0000);
+      expect(get(voxels).get(coordKey(2, -1, 0))).toEqual(pv(0xff0000));
       beginStroke();
       applySelectionTranslationAlongAxis(2, 1);
-      expect(get(voxels).get(coordKey(2, -1, 1))).toBe(0xff0000);
+      expect(get(voxels).get(coordKey(2, -1, 1))).toEqual(pv(0xff0000));
     });
   });
 
   describe('applySelectionRotationInStroke', () => {
     it('keeps a single selected voxel on the same cell after 90° Z (re-centered after round)', () => {
-      voxels.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
-      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      voxels.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
+      selection.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
       beginStroke();
       applySelectionRotationInStroke(2, 1);
-      expect(get(voxels).get(coordKey(0, 0, 0))).toBe(0xff0000);
+      expect(get(voxels).get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
       expect(get(selection).has(coordKey(0, 0, 0))).toBe(true);
     });
 
     it('no-op when re-centered rotation would overlap non-selected solid voxels', () => {
       voxels.set(
         new Map([
-          [coordKey(0, 0, 0), 0xff0000],
-          [coordKey(1, 0, 0), 0xff0000],
-          [coordKey(1, 1, 0), 0x00ff00]
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0xff0000)],
+          [coordKey(1, 1, 0), pv(0x00ff00)]
         ])
       );
       selection.set(
         new Map([
-          [coordKey(0, 0, 0), 0xff0000],
-          [coordKey(1, 0, 0), 0xff0000]
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0xff0000)]
         ])
       );
       beginStroke();
       applySelectionRotationInStroke(2, 1);
-      expect(get(voxels).get(coordKey(0, 0, 0))).toBe(0xff0000);
-      expect(get(voxels).get(coordKey(1, 0, 0))).toBe(0xff0000);
-      expect(get(voxels).get(coordKey(1, 1, 0))).toBe(0x00ff00);
+      expect(get(voxels).get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
+      expect(get(voxels).get(coordKey(1, 0, 0))).toEqual(pv(0xff0000));
+      expect(get(voxels).get(coordKey(1, 1, 0))).toEqual(pv(0x00ff00));
       expect(get(selection).has(coordKey(0, 0, 0))).toBe(true);
       expect(get(selection).has(coordKey(1, 0, 0))).toBe(true);
     });
 
     it('no-op for zero quarter steps', () => {
-      voxels.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
-      selection.set(new Map([[coordKey(0, 0, 0), 0xff0000]]));
+      voxels.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
+      selection.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
       beginStroke();
       applySelectionRotationInStroke(1, 0);
-      expect(get(voxels).get(coordKey(0, 0, 0))).toBe(0xff0000);
+      expect(get(voxels).get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
     });
   });
 
   describe('getPaintColorResolver', () => {
-    it('returns single color when one selected', () => {
+    it('returns single voxel when one selected', () => {
       selectedColors.set([]);
       color.set('#ff0000');
+      voxelMaterial.set('plastic');
       const resolver = getPaintColorResolver();
-      expect(resolver()).toBe(0xff0000);
-      expect(resolver()).toBe(0xff0000);
+      expect(resolver()).toEqual({ color: 0xff0000, material: 'plastic' });
+      expect(resolver()).toEqual({ color: 0xff0000, material: 'plastic' });
     });
     it('returns from selectedColors when non-empty', () => {
       selectedColors.set(['#ff0000', '#00ff00']);
+      voxelMaterial.set('metal');
       const resolver = getPaintColorResolver();
-      const results = new Set<number>();
-      for (let i = 0; i < 20; i++) results.add(resolver());
-      expect(results.has(0xff0000)).toBe(true);
-      expect(results.has(0x00ff00)).toBe(true);
+      const colors = new Set<number>();
+      for (let i = 0; i < 20; i++) {
+        const v = resolver();
+        expect(v.material).toBe('metal');
+        colors.add(v.color);
+      }
+      expect(colors.has(0xff0000)).toBe(true);
+      expect(colors.has(0x00ff00)).toBe(true);
     });
   });
 });

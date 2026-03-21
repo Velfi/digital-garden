@@ -3,6 +3,38 @@
  * Used by greedyMesh.ts (sync) and greedyMeshWorker.ts (async).
  */
 import { coordKey, parseCoordKey } from './coordUtils';
+import type { Voxel } from './voxelMaterial';
+import { voxelBucketKey } from './voxelMaterial';
+
+/**
+ * AO occlusion rule: glass does not darken neighboring faces.
+ * Keep this independent from face-culling rules.
+ */
+function hasOccludingVoxelAt(voxels: Map<string, Voxel>, nx: number, ny: number, nz: number): boolean {
+  const vx = voxels.get(coordKey(nx, ny, nz));
+  if (!vx) return false;
+  return vx.material !== 'glass';
+}
+
+/**
+ * Face culling rule:
+ * - Non-glass keeps drawing against glass so opaque↔glass boundaries remain visible.
+ * - Glass culls against any neighbor so we do not stack interior transparent faces.
+ */
+function isFaceOccludedByNeighbor(source: Voxel, neighbor: Voxel): boolean {
+  if (source.material === 'glass') return true;
+  return neighbor.material !== 'glass';
+}
+
+/** Beer-Lambert absorption per voxel depth for glass buckets. */
+const GLASS_ABSORPTION_PER_VOXEL = 0.16;
+const GLASS_MIN_TRANSMITTANCE = 0.35;
+
+function glassDepthToTransmittance(depth: number): number {
+  if (depth <= 1) return 1;
+  const t = Math.exp(-GLASS_ABSORPTION_PER_VOXEL * (depth - 1));
+  return Math.max(GLASS_MIN_TRANSMITTANCE, t);
+}
 
 type Vec3 = [number, number, number];
 
@@ -60,7 +92,13 @@ function quadPositionFromSlice(
   return [u - 0.5, v - 0.5, depth + faceOffset];
 }
 
-function hasNeighbor(pos: Vec3, axis: number, sign: number, voxelSet: Set<string>): boolean {
+function hasOccludingNeighbor(
+  pos: Vec3,
+  axis: number,
+  sign: number,
+  voxels: Map<string, Voxel>,
+  sourceVoxel: Voxel
+): boolean {
   const [x, y, z] = pos;
   let nx = x,
     ny = y,
@@ -68,7 +106,28 @@ function hasNeighbor(pos: Vec3, axis: number, sign: number, voxelSet: Set<string
   if (axis === 0) nx += sign;
   else if (axis === 1) ny += sign;
   else nz += sign;
-  return voxelSet.has(coordKey(nx, ny, nz));
+  const neighbor = voxels.get(coordKey(nx, ny, nz));
+  if (!neighbor) return false;
+  return isFaceOccludedByNeighbor(sourceVoxel, neighbor);
+}
+
+function getGlassThicknessAtFace(
+  pos: Vec3,
+  axis: number,
+  sign: number,
+  voxels: Map<string, Voxel>
+): number {
+  let [x, y, z] = pos;
+  let depth = 0;
+  while (true) {
+    const v = voxels.get(coordKey(x, y, z));
+    if (!v || v.material !== 'glass') break;
+    depth++;
+    if (axis === 0) x -= sign;
+    else if (axis === 1) y -= sign;
+    else z -= sign;
+  }
+  return Math.max(1, depth);
 }
 
 function getAOState(side1: number, side2: number, corner: number): number {
@@ -105,12 +164,12 @@ function getCornerAO(
   cu: number,
   cv: number,
   cornerIndex: number,
-  voxelSet: Set<string>
+  voxels: Map<string, Voxel>
 ): number {
   const [n1, n2, n3] = getAONeighborCoords(axis, sign, depth, cu, cv, cornerIndex);
-  const s1 = voxelSet.has(coordKey(n1[0], n1[1], n1[2])) ? 1 : 0;
-  const s2 = voxelSet.has(coordKey(n2[0], n2[1], n2[2])) ? 1 : 0;
-  const c = voxelSet.has(coordKey(n3[0], n3[1], n3[2])) ? 1 : 0;
+  const s1 = hasOccludingVoxelAt(voxels, n1[0], n1[1], n1[2]) ? 1 : 0;
+  const s2 = hasOccludingVoxelAt(voxels, n2[0], n2[1], n2[2]) ? 1 : 0;
+  const c = hasOccludingVoxelAt(voxels, n3[0], n3[1], n3[2]) ? 1 : 0;
   return getAOState(s1, s2, c);
 }
 
@@ -127,7 +186,7 @@ function vertexKey(x: number, y: number, z: number, nx: number, ny: number, nz: 
 
 function precomputeVertexAO(
   faces: { pos: Vec3; axis: number; sign: number }[],
-  voxelSet: Set<string>
+  voxels: Map<string, Voxel>
 ): Map<string, number> {
   const aoMap = new Map<string, number>();
   for (const f of faces) {
@@ -148,7 +207,7 @@ function precomputeVertexAO(
     ];
     for (let ci = 0; ci < 4; ci++) {
       const [cu, cv] = cornerUV[ci];
-      const ao = getCornerAO(axis, sign, depth, cu, cv, ci, voxelSet);
+      const ao = getCornerAO(axis, sign, depth, cu, cv, ci, voxels);
       let wx: number, wy: number, wz: number;
       if (axis === 0) {
         wx = depth + faceOffset;
@@ -255,41 +314,64 @@ export interface GreedyMeshCoreResult {
 }
 
 /**
- * Pure greedy mesh computation. Returns raw typed arrays per color.
+ * Pure greedy mesh computation. Returns raw typed arrays per (color, material) bucket.
  * No Three.js dependency — safe to run in a Web Worker.
  */
 export function computeGreedyMesh(
-  voxels: Map<string, number>,
+  voxels: Map<string, Voxel>,
   options: GreedyMeshCoreOptions = {}
-): Map<number, GreedyMeshCoreResult> {
+): Map<string, GreedyMeshCoreResult> {
   const strength: AOStrength = options.aoStrength ?? (options.aoEnabled === false ? 0 : 2);
   const aoEnabled = strength > 0;
   const aoValues = strength > 0 ? AO_PRESETS[strength as 1 | 2] : AO_PRESETS[2];
-  const voxelSet = new Set(voxels.keys());
-  const byColor = new Map<number, Vec3[]>();
-  for (const [key, col] of voxels) {
-    if (!byColor.has(col)) byColor.set(col, []);
-    byColor.get(col)!.push(parseCoordKey(key));
+  const groups = new Map<string, { positions: Vec3[]; color: number; material: Voxel['material'] }>();
+  for (const [key, voxel] of voxels) {
+    const bk = voxelBucketKey(voxel);
+    let g = groups.get(bk);
+    if (!g) {
+      g = { positions: [], color: voxel.color, material: voxel.material };
+      groups.set(bk, g);
+    }
+    g.positions.push(parseCoordKey(key));
   }
 
-  const result = new Map<number, GreedyMeshCoreResult>();
+  const result = new Map<string, GreedyMeshCoreResult>();
 
-  for (const [col, positions] of byColor) {
+  for (const [bucketKey, { positions, color: col, material }] of groups) {
+    // Glass should stay clean/transparent: skip AO darkening entirely for this bucket.
+    const bucketAoEnabled = aoEnabled && material !== 'glass';
     const faces: { pos: Vec3; axis: number; sign: number }[] = [];
 
     for (const pos of positions) {
+      const source = voxels.get(coordKey(pos[0], pos[1], pos[2]));
+      if (!source) continue;
       for (let i = 0; i < 6; i++) {
         const axis = Math.floor(i / 2);
         const sign = i % 2 === 0 ? 1 : -1;
-        if (!hasNeighbor(pos, axis, sign, voxelSet)) {
+        if (!hasOccludingNeighbor(pos, axis, sign, voxels, source)) {
           faces.push({ pos: [...pos], axis, sign });
         }
       }
     }
 
-    const vertexAO = aoEnabled ? precomputeVertexAO(faces, voxelSet) : new Map<string, number>();
+    const vertexAO = bucketAoEnabled ? precomputeVertexAO(faces, voxels) : new Map<string, number>();
 
-    const quads: { n: Vec3; u: Vec3; v: Vec3; p: Vec3; w: number; h: number }[] = [];
+    const glassThicknessByCell = new Map<string, number>();
+    if (material === 'glass') {
+      for (const f of faces) {
+        const [x, y, z] = f.pos;
+        const depth = f.axis === 0 ? x : f.axis === 1 ? y : z;
+        const u = f.axis === 0 ? y : f.axis === 1 ? x : x;
+        const v = f.axis === 0 ? z : f.axis === 1 ? z : y;
+        const cellKey = `${f.axis},${f.sign},${depth},${u},${v}`;
+        glassThicknessByCell.set(
+          cellKey,
+          getGlassThicknessAtFace(f.pos, f.axis, f.sign, voxels)
+        );
+      }
+    }
+
+    const quads: { n: Vec3; u: Vec3; v: Vec3; p: Vec3; w: number; h: number; t: number }[] = [];
 
     if (options.skipMerge) {
       for (const f of faces) {
@@ -299,13 +381,16 @@ export function computeGreedyMesh(
         const u = axis === 0 ? y : axis === 1 ? x : x;
         const v = axis === 0 ? z : axis === 1 ? z : y;
         const fo = FACE_OFFSETS[axis * 2 + (sign === 1 ? 0 : 1)];
+        const cellKey = `${axis},${sign},${depth},${u},${v}`;
+        const t = glassThicknessByCell.get(cellKey) ?? 1;
         quads.push({
           n: fo.n,
           u: fo.u,
           v: fo.v,
           p: quadPositionFromSlice(axis, sign, depth, u, v, 1, 1),
           w: 1,
-          h: 1
+          h: 1,
+          t
         });
       }
     } else {
@@ -328,13 +413,27 @@ export function computeGreedyMesh(
         );
         const merged = greedyMerge(cells);
         for (const { u, v, w, h } of merged) {
+          let t = 1;
+          if (material === 'glass') {
+            let sum = 0;
+            let count = 0;
+            for (let du = 0; du < w; du++) {
+              for (let dv = 0; dv < h; dv++) {
+                const cellKey = `${axis},${sign},${depth},${u + du},${v + dv}`;
+                sum += glassThicknessByCell.get(cellKey) ?? 1;
+                count++;
+              }
+            }
+            t = count > 0 ? sum / count : 1;
+          }
           quads.push({
             n: fo.n,
             u: fo.u,
             v: fo.v,
             p: quadPositionFromSlice(axis, sign, depth, u, v, w, h),
             w,
-            h
+            h,
+            t
           });
         }
       }
@@ -372,7 +471,7 @@ export function computeGreedyMesh(
           ny,
           nz
         );
-        return vertexAO.get(k) ?? getCornerAO(axis, sign, depth, cu, cv, ci, voxelSet);
+        return vertexAO.get(k) ?? getCornerAO(axis, sign, depth, cu, cv, ci, voxels);
       };
 
       const signN = nx !== 0 ? nx : ny !== 0 ? ny : nz;
@@ -382,12 +481,14 @@ export function computeGreedyMesh(
         for (let i = 0; i < 3; i++) {
           verts.push(t[i][0], t[i][1], t[i][2]);
           normals.push(nx, ny, nz);
-          const m = aoEnabled ? aoStateToMultiplier(tao[i], aoValues) : 1;
+          const aoMul = bucketAoEnabled ? aoStateToMultiplier(tao[i], aoValues) : 1;
+          const glassMul = material === 'glass' ? glassDepthToTransmittance(q.t) : 1;
+          const m = aoMul * glassMul;
           colors.push(r * m, g * m, b * m);
         }
       };
 
-      if (aoEnabled && (q.w > 1 || q.h > 1)) {
+      if (bucketAoEnabled && (q.w > 1 || q.h > 1)) {
         // Subdivide quad for smooth AO: one vertex per (u,v) grid point, two triangles per 1x1 cell
         const faceOffset = 0.5 * sign;
         const gridW = q.w + 1;
@@ -442,7 +543,7 @@ export function computeGreedyMesh(
           }
         }
       } else {
-        const aos: number[] = aoEnabled
+        const aos: number[] = bucketAoEnabled
           ? [
               getAO(u0, v0, 0),
               getAO(u0 + q.w, v0, 1),
@@ -474,28 +575,35 @@ export function computeGreedyMesh(
     }
 
     const welded = weldVertices(verts, normals, colors);
-    result.set(col, welded);
+    result.set(bucketKey, welded);
   }
 
   return result;
 }
 
-/** Returns total quad area (sum of w*h) for each color. Used by tests. */
-export function getGreedyMeshFaceArea(voxels: Map<string, number>): Map<number, number> {
-  const voxelSet = new Set(voxels.keys());
-  const byColor = new Map<number, Vec3[]>();
-  for (const [key, col] of voxels) {
-    if (!byColor.has(col)) byColor.set(col, []);
-    byColor.get(col)!.push(parseCoordKey(key));
+/** Returns total quad area (sum of w*h) for each (color, material) bucket. Used by tests. */
+export function getGreedyMeshFaceArea(voxels: Map<string, Voxel>): Map<string, number> {
+  const groups = new Map<string, { positions: Vec3[] }>();
+  for (const [key, voxel] of voxels) {
+    const bk = voxelBucketKey(voxel);
+    let g = groups.get(bk);
+    if (!g) {
+      g = { positions: [] };
+      groups.set(bk, g);
+    }
+    g.positions.push(parseCoordKey(key));
   }
-  const result = new Map<number, number>();
-  for (const [col, positions] of byColor) {
+  const result = new Map<string, number>();
+  for (const [bucketKey, { positions }] of groups) {
     const faces: { pos: Vec3; axis: number; sign: number }[] = [];
     for (const pos of positions) {
+      const source = voxels.get(coordKey(pos[0], pos[1], pos[2]));
+      if (!source) continue;
       for (let i = 0; i < 6; i++) {
         const axis = Math.floor(i / 2);
         const sign = i % 2 === 0 ? 1 : -1;
-        if (!hasNeighbor(pos, axis, sign, voxelSet)) faces.push({ pos: [...pos], axis, sign });
+        if (!hasOccludingNeighbor(pos, axis, sign, voxels, source))
+          faces.push({ pos: [...pos], axis, sign });
       }
     }
     const slices = new Map<string, { cells: Set<string> }>();
@@ -515,7 +623,7 @@ export function getGreedyMeshFaceArea(voxels: Map<string, number>): Map<number, 
       );
       for (const { w, h } of greedyMerge(cells)) totalArea += w * h;
     }
-    result.set(col, totalArea);
+    result.set(bucketKey, totalArea);
   }
   return result;
 }
