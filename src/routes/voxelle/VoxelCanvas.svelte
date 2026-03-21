@@ -3032,8 +3032,16 @@
 
     const w = container.clientWidth;
     const h = container.clientHeight;
-    const bloomRenderTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
-    const finalRenderTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+    // Safari/WebGL2 can report sampler-type mismatches with float/half-float post targets
+    // when mixed with shadow/transmission sampling in the same frame. Use normalized RGBA8.
+    const bloomRenderTarget = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.UnsignedByteType,
+      colorSpace: THREE.NoColorSpace
+    });
+    const finalRenderTarget = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.UnsignedByteType,
+      colorSpace: THREE.NoColorSpace
+    });
 
     sharedSceneRenderPass = new RenderPass(scene, camera);
     unrealBloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.42, 0.3, 0.2);
@@ -3286,8 +3294,10 @@
     const shadows = $enableShadows;
     if (renderer) {
       renderer.shadowMap.enabled = shadows;
-      if (isWebGPURenderer(renderer)) {
-        (renderer.shadowMap as { transmitted: boolean }).transmitted = shadows;
+      if (isWebGLRenderer(renderer)) {
+        renderer.shadowMap.type = THREE.BasicShadowMap;
+      } else if (isWebGPURenderer(renderer)) {
+        (renderer.shadowMap as { transmitted: boolean }).transmitted = false;
       }
     }
     if (dirLight) dirLight.castShadow = shadows;

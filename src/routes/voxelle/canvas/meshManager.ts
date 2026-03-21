@@ -32,7 +32,6 @@ import {
   VOXELLE_GLOW_BLOOM_USERDATA_KEY,
   VOXELLE_MESH_MATERIAL_USERDATA_KEY
 } from '../voxelMaterial';
-import { attachWebGPUGlassCastShadowNode } from './glassShadowWebGPU';
 import { GLASS_SHADOW_VERTEX_AO_POW, GLASS_SHADOW_VERTEX_AO_SCALE } from './glassShadowConstants';
 
 export interface MeshManagerOptions {
@@ -60,7 +59,7 @@ const SELECTION_OVERLAY_HEX = 0x3399ff;
  * glass to the far plane so it stops occluding (looks like “no shadow”).
  * push = this × netT × vertexAOFactor; clip Δz = 2 × push × w (matches `fragCoordZ = 0.5*z/w+0.5`).
  */
-const GLASS_SHADOW_DEPTH_PUSH_MAX = 0.052;
+const GLASS_SHADOW_DEPTH_PUSH_MAX = 0.0001;
 
 /** Live refs for glass shadow depth uniforms (same objects as `shader.uniforms` in onBeforeCompile). */
 export type VoxelleGlassShadowUniforms = {
@@ -258,11 +257,11 @@ export function createMeshManager(
       mesh.receiveShadow =
         opts.enableShadows && opts.renderingMode !== 'marchingCubes' && materialId !== 'glass';
       if (materialId === 'glass') {
-        if (isWebGPU) {
-          attachWebGPUGlassCastShadowNode(mat as THREE.MeshPhysicalMaterial);
-        } else {
-          mesh.customDepthMaterial = createGlassShadowDepthMaterial(parsed?.color ?? 0xffffff);
-        }
+        /**
+         * Use the depth-material glass shadow path on both backends.
+         * WebGPU transmitted shadows can render through opaque occluders.
+         */
+        mesh.customDepthMaterial = createGlassShadowDepthMaterial(parsed?.color ?? 0xffffff);
       }
       voxelGroup.add(mesh);
       meshesByBucket.set(bucketKey, { mesh, positions: null });

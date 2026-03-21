@@ -129,8 +129,8 @@ async function createVoxelleRenderer(
       await renderer.init();
       renderer.shadowMap.enabled = enableShadows;
       renderer.shadowMap.type = THREE.PCFShadowMap;
-      /** Opacity / `castShadowNode` on materials (e.g. glass). */
-      renderer.shadowMap.transmitted = enableShadows;
+      /** Keep disabled: WebGPU transmitted shadows can punch through opaque occluders. */
+      renderer.shadowMap.transmitted = false;
       renderer.toneMapping = THREE.NeutralToneMapping;
       renderer.toneMappingExposure = 1;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -149,7 +149,9 @@ async function createVoxelleRenderer(
   renderer.transmissionResolutionScale = 1;
   renderer.shadowMap.enabled = enableShadows;
   renderer.shadowMap.autoUpdate = false;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
+  // Safari/WebGL2 can intermittently report sampler-type mismatches on sampler2DShadow paths.
+  // BasicShadowMap uses regular depth sampling and avoids that class of errors.
+  renderer.shadowMap.type = THREE.BasicShadowMap;
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 1;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
