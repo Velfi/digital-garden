@@ -30,7 +30,8 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 - `store/clipboard.ts` – copySelection, cutSelection, pasteFromClipboard
 - `store/storage.ts` – loadFromStorage (localStorage only), loadFromStorageAsync (IndexedDB + localStorage migration), saveToStorage
 - `store/idbAutosave.ts` – IndexedDB snapshot for autosave (larger quota than localStorage)
-- `store/preferences.ts` – `loadPreferences`, `savePreferences`, reactive `voxellePreferences` store (`localStorage` key `voxelle-preferences`; `showMovementDeltaHint`, `showDragDeltaHint`, `gizmosAlwaysOnTop`)
+- `store/preferences.ts` – `loadPreferences`, `savePreferences`, reactive `voxellePreferences` store (`localStorage` key `voxelle-preferences`; `showMovementDeltaHint`, `showDragDeltaHint`, `gizmosAlwaysOnTop`, `toneMapping`)
+- `toneMappingPreference.ts` – maps preference id → `THREE` tone mapping; used by `VoxelCanvas` renderer and Preferences
 - `store/voxelleFile.ts` – saveToFile, loadFromFile, .voxelle format (BSON + gzip; full key names for versioning)
 - `VOXELLE_FORMAT.md` – .voxelle file format specification
 - Undo/redo via `history.undo()`, `history.redo()`; call `pushUndo()` before mutating voxels or selection.

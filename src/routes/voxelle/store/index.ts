@@ -202,6 +202,14 @@ export {
 export { loadPreferences, savePreferences, voxellePreferences } from './preferences';
 export type { VoxellePreferences } from './preferences';
 
+export {
+  DEFAULT_TONE_MAPPING_PREFERENCE,
+  TONE_MAPPING_OPTIONS,
+  isToneMappingPreference,
+  toneMappingPreferenceToThree
+} from '../toneMappingPreference';
+export type { ToneMappingPreference } from '../toneMappingPreference';
+
 // Voxelle file format
 export {
   saveToFile,

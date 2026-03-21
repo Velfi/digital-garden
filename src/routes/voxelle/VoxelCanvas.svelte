@@ -176,6 +176,7 @@
     downsamplePositionsToPreviewMap,
     resetPreviewMeshTransform
   } from './previewMeshLod';
+  import { toneMappingPreferenceToThree } from './toneMappingPreference';
   import { createSelectionGizmoController } from './canvas/selectionGizmo';
   import { handlePointerDown as dispatchPointerDown, handlePointerMove as dispatchPointerMove } from './canvas/handlers/pointerHandler';
   import OrbitGizmo from './OrbitGizmo.svelte';
@@ -3199,6 +3200,14 @@
   });
 
   $effect(() => {
+    const tm = $voxellePreferences.toneMapping;
+    if (renderer) {
+      renderer.toneMapping = toneMappingPreferenceToThree(tm);
+      render();
+    }
+  });
+
+  $effect(() => {
     const shadows = $enableShadows;
     if (renderer) renderer.shadowMap.enabled = shadows;
     if (dirLight) dirLight.castShadow = shadows;
@@ -3276,6 +3285,7 @@
     orthographicCamera = setupRefs.orthographicCamera;
     camera = get(orthographic) ? orthographicCamera : perspectiveCamera;
     renderer = setupRefs.renderer;
+    renderer.toneMapping = toneMappingPreferenceToThree(get(voxellePreferences).toneMapping);
     envMap = setupRefs.envMap;
     voxelGroup = setupRefs.voxelGroup;
     rollOverMesh = setupRefs.rollOverMesh;

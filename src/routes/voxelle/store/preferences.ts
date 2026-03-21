@@ -1,5 +1,10 @@
 import { browser } from '$app/environment';
 import { writable } from 'svelte/store';
+import {
+  DEFAULT_TONE_MAPPING_PREFERENCE,
+  isToneMappingPreference,
+  type ToneMappingPreference
+} from '../toneMappingPreference';
 
 const VOXELLE_PREFERENCES_KEY = 'voxelle-preferences';
 
@@ -10,12 +15,15 @@ export type VoxellePreferences = {
   showDragDeltaHint: boolean;
   /** When true, move/rotate gizmos skip occluded-pass tint and draw fully on top of the scene. */
   gizmosAlwaysOnTop: boolean;
+  /** HDR → display tone mapping for the main viewport (and bloom OutputPass). */
+  toneMapping: ToneMappingPreference;
 };
 
 const DEFAULTS: VoxellePreferences = {
   showMovementDeltaHint: false,
   showDragDeltaHint: true,
-  gizmosAlwaysOnTop: false
+  gizmosAlwaysOnTop: false,
+  toneMapping: DEFAULT_TONE_MAPPING_PREFERENCE
 };
 
 export function loadPreferences(): VoxellePreferences {
@@ -38,7 +46,8 @@ export function loadPreferences(): VoxellePreferences {
       gizmosAlwaysOnTop:
         typeof o.gizmosAlwaysOnTop === 'boolean'
           ? o.gizmosAlwaysOnTop
-          : DEFAULTS.gizmosAlwaysOnTop
+          : DEFAULTS.gizmosAlwaysOnTop,
+      toneMapping: isToneMappingPreference(o.toneMapping) ? o.toneMapping : DEFAULTS.toneMapping
     };
   } catch {
     return { ...DEFAULTS };

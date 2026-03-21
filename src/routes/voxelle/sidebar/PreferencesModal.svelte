@@ -3,7 +3,9 @@
     loadPreferences,
     savePreferences,
     voxellePreferences,
-    type VoxellePreferences
+    TONE_MAPPING_OPTIONS,
+    type VoxellePreferences,
+    type ToneMappingPreference
   } from '../store/index';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -30,6 +32,11 @@
 
   function onGizmosAlwaysOnTopChange(checked: boolean) {
     prefs = { ...prefs, gizmosAlwaysOnTop: checked };
+    savePreferences(prefs);
+  }
+
+  function onToneMappingChange(value: ToneMappingPreference) {
+    prefs = { ...prefs, toneMapping: value };
     savePreferences(prefs);
   }
 </script>
@@ -71,6 +78,18 @@
         />
         Always render movement and rotation gizmos on top
       </label>
+      <label class="select-label">
+        <span class="select-label-text">Viewport tone mapping</span>
+        <select
+          class="tone-mapping-select"
+          value={prefs.toneMapping}
+          onchange={(e) => onToneMappingChange(e.currentTarget.value as ToneMappingPreference)}
+        >
+          {#each TONE_MAPPING_OPTIONS as opt (opt.value)}
+            <option value={opt.value}>{opt.label}</option>
+          {/each}
+        </select>
+      </label>
       <div class="modal-buttons">
         <button type="button" onclick={() => (open = false)}>Close</button>
       </div>
@@ -96,6 +115,29 @@
   .checkbox-label input {
     margin-top: 0.15rem;
     flex-shrink: 0;
+  }
+
+  .select-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+    line-height: 1.35;
+  }
+
+  .select-label-text {
+    font-weight: 500;
+  }
+
+  .tone-mapping-select {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.9rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-color);
+    color: var(--text-color);
+    cursor: pointer;
   }
 
   .modal-buttons button {
