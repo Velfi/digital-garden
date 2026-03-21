@@ -135,6 +135,7 @@
     roofParapetHeight,
     roofSaltSkew,
     roofWindingFlipTick,
+    roofHollow,
     type Tool,
     type FaceNormal,
     voxellePreferences,
@@ -1657,6 +1658,7 @@
       wallHeight: get(roofWallHeight),
       parapetHeight: get(roofParapetHeight),
       saltSkew: get(roofSaltSkew),
+      hollow: get(roofHollow),
       color: getPaintColorResolver()().color
     });
     const positions = [...roofMap.keys()].map((k) => parseCoordKey(k) as [number, number, number]);
@@ -1675,6 +1677,7 @@
       wallHeight: get(roofWallHeight),
       parapetHeight: get(roofParapetHeight),
       saltSkew: get(roofSaltSkew),
+      hollow: get(roofHollow),
       color: getPaintColorResolver()().color
     });
     if (roofMap.size === 0) return;
@@ -4082,6 +4085,7 @@
     const u7 = roofWallHeight.subscribe(() => refreshRoofPreviewMesh());
     const u8 = roofParapetHeight.subscribe(() => refreshRoofPreviewMesh());
     const u9 = roofSaltSkew.subscribe(() => refreshRoofPreviewMesh());
+    const u10 = roofHollow.subscribe(() => refreshRoofPreviewMesh());
     return () => {
       u1();
       u2();
@@ -4092,6 +4096,7 @@
       u7();
       u8();
       u9();
+      u10();
     };
   });
 

@@ -52,14 +52,20 @@ export function computeUndoDelta(
   const selectionRemoved: [string, Voxel][] = [];
   for (const [k, c] of newV) {
     const oldC = oldV.get(k);
-    if (!oldC || oldC.color !== c.color || oldC.material !== c.material) voxelAdded.push([k, c]);
+    if (!oldC || oldC.color !== c.color || oldC.material !== c.material) {
+      voxelAdded.push([k, c]);
+      if (oldC) voxelRemoved.push([k, oldC]);
+    }
   }
   for (const [k, c] of oldV) {
     if (!newV.has(k)) voxelRemoved.push([k, c]);
   }
   for (const [k, c] of newS) {
     const oldC = oldS.get(k);
-    if (!oldC || oldC.color !== c.color || oldC.material !== c.material) selectionAdded.push([k, c]);
+    if (!oldC || oldC.color !== c.color || oldC.material !== c.material) {
+      selectionAdded.push([k, c]);
+      if (oldC) selectionRemoved.push([k, oldC]);
+    }
   }
   for (const [k, c] of oldS) {
     if (!newS.has(k)) selectionRemoved.push([k, c]);

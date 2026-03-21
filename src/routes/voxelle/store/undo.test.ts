@@ -24,6 +24,21 @@ function commitDelta(
 }
 
 describe('createUndo', () => {
+  it('undo restores prior color when painting over an existing voxel', () => {
+    const voxels = writable(makeVoxels([['0,0,0', plasticVoxel(0xff0000)]]));
+    const selection = writable(new Map<string, Voxel>());
+    const undo = createUndo(voxels, selection);
+
+    commitDelta(undo, voxels, selection, () => {
+      voxels.set(makeVoxels([['0,0,0', plasticVoxel(0x00ff00)]]));
+    });
+
+    undo.doUndo();
+
+    expect(get(voxels).get('0,0,0')!.color).toBe(0xff0000);
+    expect(get(voxels).size).toBe(1);
+  });
+
   it('delta undo restores prior voxels and selection', () => {
     const voxels = writable(makeVoxels([['0,0,0', plasticVoxel(0xff0000)]]));
     const selection = writable(new Map<string, Voxel>());

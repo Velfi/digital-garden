@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { coordKey } from '../../coordUtils';
+import { coordKey, parseCoordKey } from '../../coordUtils';
 import type { FaceNormal, RoofStyleId } from '../core';
 import type { Voxel } from '../../voxelMaterial';
 import { plasticVoxel } from '../../voxelMaterial';
@@ -25,8 +25,40 @@ export type GenerateRoofOptions = {
   parapetHeight?: number;
   /** Saltbox: skew along shed direction (-1…1, applied to normalized ramp). */
   saltSkew?: number;
+  /** Keep only voxels with at least one empty 6-neighbor (hollow shell). */
+  hollow?: boolean;
   color: number;
 };
+
+const ROOF_NEIGHBOR_DXYZ: [number, number, number][] = [
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1]
+];
+
+function roofMapSurfaceOnly(map: Map<string, Voxel>): Map<string, Voxel> {
+  const surface = new Map<string, Voxel>();
+  for (const [key, v] of map) {
+    const [x, y, z] = parseCoordKey(key);
+    let exposed = false;
+    for (const [dx, dy, dz] of ROOF_NEIGHBOR_DXYZ) {
+      if (!map.has(coordKey(x + dx, y + dy, z + dz))) {
+        exposed = true;
+        break;
+      }
+    }
+    if (exposed) surface.set(key, v);
+  }
+  return surface;
+}
+
+function finalizeRoofMap(m: Map<string, Voxel>, hollow?: boolean): Map<string, Voxel> {
+  if (!hollow || m.size === 0) return m;
+  return roofMapSurfaceOnly(m);
+}
 
 function integerRoofStep(
   planeNx: number,
@@ -269,13 +301,13 @@ export function generateRoofVoxels(
   options: GenerateRoofOptions
 ): Map<string, Voxel> {
   const out = new Map<string, Voxel>();
-  if (points.length < 4) return out;
+  if (points.length < 4) return finalizeRoofMap(out, options.hollow);
 
   const footprint = getCoplanarPolygonFillPositions(points);
-  if (footprint === null || footprint.length === 0) return out;
+  if (footprint === null || footprint.length === 0) return finalizeRoofMap(out, options.hollow);
 
   const n = planeUnitNormalFromPoints(points);
-  if (!n) return out;
+  if (!n) return finalizeRoofMap(out, options.hollow);
 
   const step = integerRoofStep(n.x, n.y, n.z, placementNormal);
   const { uAxis, vAxis } = getDropUVAxes(n);
@@ -289,7 +321,7 @@ export function generateRoofVoxels(
     for (const p of footprint) {
       placeColumn(out, p, step, t, pv, 0);
     }
-    return out;
+    return finalizeRoofMap(out, options.hollow);
   }
 
   if (options.style === 'flat_parapet') {
@@ -304,7 +336,7 @@ export function generateRoofVoxels(
         placeColumn(out, p, step, ph, pv, tb);
       }
     }
-    return out;
+    return finalizeRoofMap(out, options.hollow);
   }
 
   const H = Math.max(1, Math.min(64, Math.floor(options.height)));
@@ -323,7 +355,7 @@ export function generateRoofVoxels(
       const layers = columnLayersShedGable(frac, H);
       placeColumn(out, p, step, layers, pv, 0);
     }
-    return out;
+    return finalizeRoofMap(out, options.hollow);
   }
 
   if (options.style === 'cone') {
@@ -349,12 +381,12 @@ export function generateRoofVoxels(
       const layers = columnLayersShedGable(frac, H);
       placeColumn(out, p, step, layers, pv, 0);
     }
-    return out;
+    return finalizeRoofMap(out, options.hollow);
   }
 
   if (options.style === 'shed') {
     const basis = shedBasis(verts2D, footprintUV, options.shedEdgeIndex, points.length);
-    if (!basis) return out;
+    if (!basis) return finalizeRoofMap(out, options.hollow);
     const { Vi, perp, tMin, span } = basis;
     for (let i = 0; i < footprint.length; i++) {
       const p = footprint[i]!;
@@ -364,12 +396,12 @@ export function generateRoofVoxels(
       const layers = columnLayersShedGable(frac, H);
       placeColumn(out, p, step, layers, pv, 0);
     }
-    return out;
+    return finalizeRoofMap(out, options.hollow);
   }
 
   if (options.style === 'saltbox') {
     const basis = shedBasis(verts2D, footprintUV, options.shedEdgeIndex, points.length);
-    if (!basis) return out;
+    if (!basis) return finalizeRoofMap(out, options.hollow);
     const { Vi, perp, tMin, span } = basis;
     /**
      * Asymmetric gable in the shed direction: ridge at fraction `r` of span from the
@@ -394,7 +426,7 @@ export function generateRoofVoxels(
       const layers = columnLayersShedGable(frac, H);
       placeColumn(out, p, step, layers, pv, 0);
     }
-    return out;
+    return finalizeRoofMap(out, options.hollow);
   }
 
   const bb = bboxFromFootprintUV(footprintUV);
@@ -416,7 +448,7 @@ export function generateRoofVoxels(
       const layers = columnLayersShedGable(frac, H);
       placeColumn(out, p, step, layers, pv, 0);
     }
-    return out;
+    return finalizeRoofMap(out, options.hollow);
   }
 
   if (options.style === 'hip') {
@@ -438,7 +470,7 @@ export function generateRoofVoxels(
       const layers = columnLayersShedGable(frac, H);
       placeColumn(out, p, step, layers, pv, 0);
     }
-    return out;
+    return finalizeRoofMap(out, options.hollow);
   }
 
   if (options.style === 'barrel') {
@@ -457,7 +489,7 @@ export function generateRoofVoxels(
       const layers = columnLayersShedGable(arc, H);
       placeColumn(out, p, step, layers, pv, 0);
     }
-    return out;
+    return finalizeRoofMap(out, options.hollow);
   }
 
   if (options.style === 'mansard' || options.style === 'gambrel' || options.style === 'pavilion') {
@@ -478,7 +510,7 @@ export function generateRoofVoxels(
       const layers = Math.max(1, Math.min(H, Math.round(fh * H)));
       placeColumn(out, p, step, layers, pv, 0);
     }
-    return out;
+    return finalizeRoofMap(out, options.hollow);
   }
 
   if (options.style === 'dutch_gable') {
@@ -501,8 +533,8 @@ export function generateRoofVoxels(
         placeColumn(out, p, step, capLayers, pv, W);
       }
     }
-    return out;
+    return finalizeRoofMap(out, options.hollow);
   }
 
-  return out;
+  return finalizeRoofMap(out, options.hollow);
 }

@@ -82,6 +82,20 @@ describe('generateRoofVoxels', () => {
     expect(pyr.size).toBeLessThan(2000);
   });
 
+  it('hollow keeps a smaller shell than solid for a thick flat slab', () => {
+    const base = {
+      style: 'flat' as const,
+      height: 1,
+      thickness: 6,
+      shedEdgeIndex: 0,
+      color: 0x888888
+    };
+    const solid = generateRoofVoxels(squareY0, [0, 1, 0], { ...base, hollow: false });
+    const hollow = generateRoofVoxels(squareY0, [0, 1, 0], { ...base, hollow: true });
+    expect(hollow.size).toBeLessThan(solid.size);
+    expect(hollow.size).toBeGreaterThan(20);
+  });
+
   it('shed and gable return non-empty maps for a square', () => {
     const shed = generateRoofVoxels(squareY0, [0, 1, 0], {
       style: 'shed',

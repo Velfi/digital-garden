@@ -23,6 +23,7 @@
     roofParapetHeight,
     roofSaltSkew,
     roofWindingFlipTick,
+    roofHollow,
     MAX_BRUSH_SIZE
   } from '../store/index';
   const BRUSH_SIZE_MAX = MAX_BRUSH_SIZE - 1;
@@ -289,6 +290,17 @@
         <option value="pavilion">Pavilion</option>
         <option value="dutch_gable">Dutch gable</option>
       </select>
+    </div>
+    <div class="tool-panel-row">
+      <label class="tool-panel-check">
+        <input
+          type="checkbox"
+          checked={$roofHollow}
+          onchange={(e) => roofHollow.set((e.target as HTMLInputElement).checked)}
+          title="Keep only surface voxels (hollow interior)"
+        />
+        Hollow (shell only)
+      </label>
     </div>
     <div class="tool-panel-row tool-panel-row--roof-edge">
       <span class="tool-panel-label">Winding</span>

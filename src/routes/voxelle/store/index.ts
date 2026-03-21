@@ -94,6 +94,7 @@ export {
   roofParapetHeight,
   roofSaltSkew,
   roofWindingFlipTick,
+  roofHollow,
   type RoofStyleId,
   showGrid,
   renderingMode,

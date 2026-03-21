@@ -327,6 +327,8 @@ export const roofParapetHeight = writable<number>(2);
 export const roofSaltSkew = writable<number>(0);
 /** Incremented from UI to reverse roof corner order (polygon winding). */
 export const roofWindingFlipTick = writable<number>(0);
+/** Roof generator: keep only surface voxels (6-neighbor shell). */
+export const roofHollow = writable<boolean>(false);
 
 export const showGrid = writable<boolean>(false);
 const renderingModeInner = writable<RenderingMode>('greedy');
