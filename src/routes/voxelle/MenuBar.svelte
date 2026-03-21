@@ -21,6 +21,7 @@
     canRedo,
     copySelection,
     cutSelection,
+    deleteSelectedVoxels,
     pasteFromClipboard,
     hollowOut,
     scaleProjectBy2,
@@ -113,6 +114,11 @@
 
   async function handlePaste() {
     await pasteFromClipboard();
+    closeMenus();
+  }
+
+  function handleDeleteSelected() {
+    deleteSelectedVoxels();
     closeMenus();
   }
 
@@ -369,13 +375,23 @@
           Redo
         </button>
         <div class="menu-separator" role="separator"></div>
-        <button type="button" role="menuitem" onclick={handleCut} disabled={$selection.size === 0}>
-          Cut
-        </button>
         <button type="button" role="menuitem" onclick={handleCopy} disabled={$selection.size === 0}>
           Copy
         </button>
+        <button type="button" role="menuitem" onclick={handleCut} disabled={$selection.size === 0}>
+          Cut
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleDeleteSelected}
+          disabled={$selection.size === 0}
+          title="X"
+        >
+          Delete selected
+        </button>
         <button type="button" role="menuitem" onclick={handlePaste}> Paste </button>
+        <div class="menu-separator" role="separator"></div>
         <button
           type="button"
           role="menuitem"

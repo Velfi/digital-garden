@@ -45,6 +45,12 @@ export function parseBucketKey(key: string): { color: number; material: VoxelMat
   return { color, material: mat };
 }
 
+/** `THREE.Mesh.userData` key: selective post-process bloom applies only when `true` (glow buckets). */
+export const VOXELLE_GLOW_BLOOM_USERDATA_KEY = 'voxelleGlowBloom';
+
+/** `THREE.Mesh.userData` key: bucket `VoxelMaterialId` (shadow receive, etc.). */
+export const VOXELLE_MESH_MATERIAL_USERDATA_KEY = 'voxelleMaterialId';
+
 /** Selection / tools: same paint color regardless of material. */
 export function sameVoxelColor(a: Voxel, b: Voxel): boolean {
   return a.color === b.color;
@@ -92,18 +98,38 @@ export function cloneVoxel(v: Voxel | number): Voxel {
   return { color: v.color & 0xffffff, material: v.material };
 }
 
+/** Base IBL strength per preset (before scene environment multiplier). */
+export function voxelMaterialBaseEnvMapIntensity(materialId: VoxelMaterialId): number {
+  const plastic = 0.45;
+  switch (materialId) {
+    case 'plastic':
+      return plastic;
+    case 'glass':
+      return plastic * 1.25;
+    case 'metal':
+      return 0.52;
+    case 'glow':
+      return plastic * 0.85;
+    default:
+      return plastic;
+  }
+}
+
 /**
  * Three.js material for one greedy-mesh bucket (same color + material).
- * @param color24 - RGB only (vertex colors still carry AO-tinted albedo)
+ * @param color24 - Bucket RGB; used for glow emissive (vertex colors still carry AO-tinted albedo).
  */
 export function createVoxelSurfaceMaterial(
   materialId: VoxelMaterialId,
-  envMap: THREE.Texture | null
+  envMap: THREE.Texture | null,
+  color24: number = 0xffffff,
+  environmentIntensity: number = 1
 ): THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial {
+  const baseIntensity = voxelMaterialBaseEnvMapIntensity(materialId) * environmentIntensity;
   const base = {
     vertexColors: true,
     envMap,
-    envMapIntensity: materialId === 'glass' ? 1.25 : 1
+    envMapIntensity: baseIntensity
   } as const;
 
   if (materialId === 'glass') {
@@ -130,27 +156,13 @@ export function createVoxelSurfaceMaterial(
   }
 
   if (materialId === 'glow') {
-    const m = new THREE.MeshStandardMaterial({
+    return new THREE.MeshStandardMaterial({
       ...base,
       metalness: 0,
       roughness: 0.28,
-      envMapIntensity: (base.envMapIntensity ?? 1) * 0.85
+      emissive: new THREE.Color(color24 & 0xffffff),
+      emissiveIntensity: 2.5
     });
-    // MeshStandard uses <opaque_fragment>, not <output_fragment>; inject before final write.
-    // Keep shadow influence, but let emissive-style glow overpower it.
-    m.onBeforeCompile = (shader) => {
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <opaque_fragment>',
-        `float voxelleShadowMask = 1.0;
-#ifdef USE_SHADOWMAP
-voxelleShadowMask = getShadowMask();
-#endif
-outgoingLight += diffuseColor.rgb * (2.2 + 1.0 * voxelleShadowMask);
-#include <opaque_fragment>`
-      );
-    };
-    m.customProgramCacheKey = () => 'voxelle_glow';
-    return m;
   }
 
   return new THREE.MeshStandardMaterial({

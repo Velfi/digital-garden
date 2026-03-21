@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { voxels } from '../store/index';
+  import { get } from 'svelte/store';
+  import { voxels, sceneEnvironmentIntensity } from '../store/index';
   import { exportVoxelsToGltf } from '../exportGltf';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -16,7 +17,10 @@
 
   async function handleExport() {
     if ($voxels.size === 0) return;
-    await exportVoxelsToGltf($voxels, filename, { greedyRemesh });
+    await exportVoxelsToGltf($voxels, filename, {
+      greedyRemesh,
+      environmentIntensity: get(sceneEnvironmentIntensity)
+    });
     open = false;
   }
 </script>

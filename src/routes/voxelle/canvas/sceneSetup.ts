@@ -249,6 +249,7 @@ export function createSceneSetup(
   const dirLight = new THREE.DirectionalLight(lightColorHex, directionalLightIntensity);
   dirLight.castShadow = enableShadows;
   dirLight.shadow.mapSize.set(4096, 4096);
+  dirLight.shadow.autoUpdate = false;
   dirLight.shadow.bias = -0.0002;
   dirLight.shadow.normalBias = 0.02;
   dirLight.target.position.set(0, 0, 0);
@@ -308,8 +309,9 @@ export function createSceneSetup(
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.shadowMap.enabled = enableShadows;
+  renderer.shadowMap.autoUpdate = false;
   renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 1;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.appendChild(renderer.domElement);

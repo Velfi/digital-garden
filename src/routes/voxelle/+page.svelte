@@ -21,7 +21,8 @@
     voxels,
     gridSize,
     focalLength,
-    orthographic
+    orthographic,
+    deleteSelectedVoxels
   } from './store/index';
 
   let colorChangeMounted = false;
@@ -213,6 +214,16 @@
       e.preventDefault();
       e.stopPropagation();
       selectAll();
+    } else if (
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      e.code === 'KeyX' &&
+      get(selection).size > 0
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteSelectedVoxels();
     }
   }}
 />

@@ -58,7 +58,7 @@ export const LIGHT_PRESETS: readonly LightPreset[] = [
     ambientIntensity: 0.35,
     sunlightIntensity: 1.2,
     lightColor: '#ffc080',
-    lightAngle: 40,
+    lightAngle: 35,
     lightElevation: 55,
     enableShadows: true,
     sceneEnvironmentIntensity: 0.55

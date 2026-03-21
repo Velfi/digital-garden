@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import {
+  getBoundsFromPositions,
   getSelectionBounds,
   selectionAabbWireframePositions,
   VOXELLE_SELECTION_BBOX_WIREFRAME_KEY,
@@ -13,25 +14,108 @@ import {
 } from '../coordUtils';
 import { buildGridPositions } from '../gridLines';
 import { buildGreedyMesh, buildPreviewGeometry, PREVIEW_MESH_OPTIONS } from '../greedyMesh';
+import {
+  alignPreviewMeshToLod,
+  computePreviewLodStride,
+  createPreviewRefinementScheduler,
+  downsamplePositionsToPreviewMap,
+  downsampleVoxelMapToPreviewMap,
+  resetPreviewMeshTransform
+} from '../previewMeshLod';
 import type { SceneSetupRefs } from './sceneSetup';
 import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
-import { createVoxelSurfaceMaterial, parseBucketKey } from '../voxelMaterial';
+import {
+  createVoxelSurfaceMaterial,
+  parseBucketKey,
+  VOXELLE_GLOW_BLOOM_USERDATA_KEY,
+  VOXELLE_MESH_MATERIAL_USERDATA_KEY
+} from '../voxelMaterial';
 
 export interface MeshManagerOptions {
   enableShadows: boolean;
   renderingMode: 'greedy' | 'marchingCubes';
   aoStrength: number;
+  sceneEnvironmentIntensity: number;
 }
 
 export interface MeshManagerCallbacks {
   onLoadingChange: (loading: boolean) => void;
   onSpinnerChange: (show: boolean) => void;
   render: () => void;
+  /** Called after greedy mesh buckets are rebuilt (worker finished). */
+  onVoxelMeshesRebuilt?: () => void;
 }
 
 const CHUNK_THRESHOLD = 50000;
 const SPINNER_DELAY_MS = 2000;
 const SELECTION_OVERLAY_HEX = 0x3399ff;
+
+/** Remap mesh transmittance before driving shadow depth offset (darker / less “empty” glass). */
+const GLASS_SHADOW_TRANSMIT_POW = 1.55;
+const GLASS_SHADOW_TRANSMIT_SCALE = 0.8;
+/** Max depth push (non-reversed Z) for fully transmissive glass; thick glass → ~0 push. */
+const GLASS_SHADOW_DEPTH_PUSH = 0.042;
+
+/**
+ * Glass uses depthWrite:false on the visible material; shadow pass uses this instead.
+ * Stochastic discard made sparse shadow-map texels → noisy PCF; we always write depth and only bias Z
+ * by thickness so shadows stay smooth with a hint of transmittance.
+ *
+ * Tries both bundled `depth_frag` (compact) and source-style layout (comment after logdepthbuf).
+ */
+function createGlassShadowDepthMaterial(baseColor24: number): THREE.MeshDepthMaterial {
+  const depthMat = new THREE.MeshDepthMaterial({
+    depthPacking: THREE.RGBADepthPacking,
+    vertexColors: true
+  });
+  const baseColor = new THREE.Color(baseColor24 & 0xffffff);
+  depthMat.onBeforeCompile = (shader) => {
+    shader.uniforms.glassBaseColor = { value: baseColor };
+    shader.uniforms.glassShadowTransmitPow = { value: GLASS_SHADOW_TRANSMIT_POW };
+    shader.uniforms.glassShadowTransmitScale = { value: GLASS_SHADOW_TRANSMIT_SCALE };
+    shader.uniforms.glassShadowDepthPush = { value: GLASS_SHADOW_DEPTH_PUSH };
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <clipping_planes_pars_vertex>',
+      '#include <clipping_planes_pars_vertex>\n#include <color_pars_vertex>'
+    );
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      '#include <begin_vertex>\n#include <color_vertex>'
+    );
+
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <clipping_planes_pars_fragment>',
+      '#include <clipping_planes_pars_fragment>\nuniform vec3 glassBaseColor;\nuniform float glassShadowTransmitPow;\nuniform float glassShadowTransmitScale;\nuniform float glassShadowDepthPush;\n#include <color_pars_fragment>'
+    );
+
+    const glassFragCoordPatch =
+      '\n#ifdef USE_COLOR\n\tvec3 glassDenom = max(glassBaseColor, vec3(0.0001));\n\tvec3 glassRatio = vColor.rgb / glassDenom;\n\tfloat rawT = clamp((glassRatio.r + glassRatio.g + glassRatio.b) / 3.0, 0.0, 1.0);\n\tfloat glassT = clamp(pow(rawT, glassShadowTransmitPow) * glassShadowTransmitScale, 0.0, 1.0);\n\tfloat glassPush = glassShadowDepthPush * glassT;\n\t#ifdef USE_REVERSED_DEPTH_BUFFER\n\tfragCoordZ -= glassPush;\n\t#else\n\tfragCoordZ += glassPush;\n\t#endif\n\tfragCoordZ = clamp(fragCoordZ, 0.0, 1.0);\n#endif\n';
+
+    const fragCoordZCompactBlock =
+      '\t#include <logdepthbuf_fragment>\n\t#ifdef USE_REVERSED_DEPTH_BUFFER\n\t\tfloat fragCoordZ = vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ];\n\t#else\n\t\tfloat fragCoordZ = 0.5 * vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ] + 0.5;\n\t#endif\n\t#if DEPTH_PACKING == 3200';
+    const fragCoordZCompactReplacement =
+      '\t#include <logdepthbuf_fragment>\n\t#ifdef USE_REVERSED_DEPTH_BUFFER\n\t\tfloat fragCoordZ = vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ];\n\t#else\n\t\tfloat fragCoordZ = 0.5 * vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ] + 0.5;\n\t#endif' +
+      glassFragCoordPatch +
+      '\t#if DEPTH_PACKING == 3200';
+
+    const fragCoordZSpacedBlock =
+      '\t#include <logdepthbuf_fragment>\n\n\t// Higher precision equivalent of gl_FragCoord.z\n\n\t#ifdef USE_REVERSED_DEPTH_BUFFER\n\n\t\tfloat fragCoordZ = vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ];\n\n\t#else\n\n\t\tfloat fragCoordZ = 0.5 * vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ] + 0.5;\n\n\t#endif\n\n\t#if DEPTH_PACKING == 3200';
+    const fragCoordZSpacedReplacement =
+      '\t#include <logdepthbuf_fragment>\n\n\t// Higher precision equivalent of gl_FragCoord.z\n\n\t#ifdef USE_REVERSED_DEPTH_BUFFER\n\n\t\tfloat fragCoordZ = vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ];\n\n\t#else\n\n\t\tfloat fragCoordZ = 0.5 * vHighPrecisionZW[ 0 ] / vHighPrecisionZW[ 1 ] + 0.5;\n\n\t#endif' +
+      glassFragCoordPatch +
+      '\n\t#if DEPTH_PACKING == 3200';
+
+    if (shader.fragmentShader.includes(fragCoordZCompactBlock)) {
+      shader.fragmentShader = shader.fragmentShader.replace(fragCoordZCompactBlock, fragCoordZCompactReplacement);
+    } else if (shader.fragmentShader.includes(fragCoordZSpacedBlock)) {
+      shader.fragmentShader = shader.fragmentShader.replace(fragCoordZSpacedBlock, fragCoordZSpacedReplacement);
+    } else {
+      console.warn('voxelle: glass shadow depth patch failed (three.js depth shader layout changed)');
+    }
+  };
+  return depthMat;
+}
 
 export function createMeshManager(
   refs: SceneSetupRefs,
@@ -61,6 +145,8 @@ export function createMeshManager(
   let selectionWireframe: THREE.LineSegments | null = null;
   let selectionWireframeMaterial: THREE.LineBasicMaterial | null = null;
   let spinnerTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  const selectionRefinementScheduler = createPreviewRefinementScheduler();
+  const previewRefinementScheduler = createPreviewRefinementScheduler();
 
   function applyVoxelMeshResults(
     results: Array<{
@@ -74,6 +160,10 @@ export function createMeshManager(
     if (!voxelGroup) return;
     for (const { mesh } of meshesByBucket.values()) {
       voxelGroup.remove(mesh);
+      if (mesh instanceof THREE.Mesh && mesh.customDepthMaterial) {
+        mesh.customDepthMaterial.dispose();
+        mesh.customDepthMaterial = undefined;
+      }
       (mesh.material as THREE.Material).dispose();
       if (mesh instanceof THREE.Mesh && mesh.geometry) mesh.geometry.dispose();
     }
@@ -91,14 +181,23 @@ export function createMeshManager(
       geo.computeVertexNormals();
       geo.computeBoundingSphere();
 
-      let materialId: VoxelMaterialId = 'plastic';
       const parsed = parseBucketKey(bucketKey);
-      if (parsed) materialId = parsed.material;
-      const mat = createVoxelSurfaceMaterial(materialId, envMap);
+      const materialId: VoxelMaterialId = parsed?.material ?? 'plastic';
+      const mat = createVoxelSurfaceMaterial(
+        materialId,
+        envMap,
+        parsed?.color ?? 0xffffff,
+        opts.sceneEnvironmentIntensity
+      );
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.castShadow = opts.enableShadows && materialId !== 'glass';
+      mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY] = materialId;
+      mesh.userData[VOXELLE_GLOW_BLOOM_USERDATA_KEY] = materialId === 'glow';
+      mesh.castShadow = opts.enableShadows;
       mesh.receiveShadow =
         opts.enableShadows && opts.renderingMode !== 'marchingCubes' && materialId !== 'glass';
+      if (materialId === 'glass') {
+        mesh.customDepthMaterial = createGlassShadowDepthMaterial(parsed?.color ?? 0xffffff);
+      }
       voxelGroup.add(mesh);
       meshesByBucket.set(bucketKey, { mesh, positions: null });
     }
@@ -118,6 +217,7 @@ export function createMeshManager(
         spinnerTimeoutId = null;
       }
       applyVoxelMeshResults(e.data.results as Parameters<typeof applyVoxelMeshResults>[0]);
+      callbacks.onVoxelMeshesRebuilt?.();
       callbacks.render();
     };
   }
@@ -270,6 +370,10 @@ export function createMeshManager(
     meshWorker = null;
     if (spinnerTimeoutId) clearTimeout(spinnerTimeoutId);
     for (const { mesh } of meshesByBucket.values()) {
+      if (mesh.customDepthMaterial) {
+        mesh.customDepthMaterial.dispose();
+        mesh.customDepthMaterial = undefined;
+      }
       mesh.geometry?.dispose();
       (mesh.material as THREE.Material).dispose();
     }

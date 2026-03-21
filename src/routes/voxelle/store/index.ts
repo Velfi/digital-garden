@@ -184,7 +184,7 @@ export {
 export { encodeModelForUrl } from './url';
 
 // Clipboard
-export { copySelection, cutSelection, pasteFromClipboard } from './clipboard';
+export { copySelection, cutSelection, deleteSelectedVoxels, pasteFromClipboard } from './clipboard';
 export type { VoxelleClipboard } from './clipboard';
 
 // Storage

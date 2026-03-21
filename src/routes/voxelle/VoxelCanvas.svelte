@@ -3,6 +3,11 @@
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+  import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+  import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+  import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+  import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+  import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import {
@@ -49,6 +54,7 @@
     lightColor,
     ambientIntensity,
     sunlightIntensity,
+    sceneEnvironmentIntensity,
     enableShadows,
     aoStrength,
     backgroundColor,
@@ -118,6 +124,11 @@
     type Voxel
   } from './store/index';
   import { generateRockVoxels, getRockPositions, generateAshlarVoxels, getAshlarPositions } from './store/generators/rock';
+  import {
+    VOXELLE_GLOW_BLOOM_USERDATA_KEY,
+    VOXELLE_MESH_MATERIAL_USERDATA_KEY,
+    voxelMaterialBaseEnvMapIntensity
+  } from './voxelMaterial';
   import { generateGrassVoxels, getGrassPositions } from './store/generators/grass';
   import { getShareFromIndexedDB } from './shareStorage';
   import {
@@ -150,13 +161,21 @@
   } from './flyControls';
   import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
   import { Sky } from 'three/addons/objects/Sky.js';
-  import { buildPreviewGeometry } from './greedyMesh';
+  import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+  import { buildGreedyMesh, buildPreviewGeometry, PREVIEW_MESH_OPTIONS } from './greedyMesh';
   import { createSceneSetup, POLYGON_POINTS_MAX } from './canvas/sceneSetup';
   import { createMeshManager } from './canvas/meshManager';
   import {
     applyAddShapeOccludedPreviewTint,
     assignSharedDualPreviewGeometry
   } from './canvas/previewMeshUtils';
+  import {
+    alignPreviewMeshToLod,
+    computePreviewLodStride,
+    createPreviewRefinementScheduler,
+    downsamplePositionsToPreviewMap,
+    resetPreviewMeshTransform
+  } from './previewMeshLod';
   import { createSelectionGizmoController } from './canvas/selectionGizmo';
   import { handlePointerDown as dispatchPointerDown, handlePointerMove as dispatchPointerMove } from './canvas/handlers/pointerHandler';
   import OrbitGizmo from './OrbitGizmo.svelte';
@@ -194,6 +213,15 @@
   let orthographicCamera: THREE.OrthographicCamera;
   let scene: THREE.Scene;
   let renderer: THREE.WebGLRenderer;
+  /** Selective glow bloom (glow voxels only); null if init failed. */
+  let bloomComposer: EffectComposer | null = null;
+  let finalComposer: EffectComposer | null = null;
+  let sharedSceneRenderPass: RenderPass | null = null;
+  let unrealBloomPass: UnrealBloomPass | null = null;
+  let bloomMixPass: ShaderPass | null = null;
+  let bloomOutputPass: OutputPass | null = null;
+  let bloomDarkMaterial: THREE.MeshBasicMaterial | null = null;
+  const bloomMaterialStash: Record<string, THREE.Material | THREE.Material[]> = {};
   let orbitControls = $state<OrbitControls>();
   let flyControls: InstanceType<typeof PointerLockControls> | null = null;
   let lastFrameTime = 0;
@@ -282,6 +310,7 @@
   let addPreviewMaterial: THREE.MeshBasicMaterial | null = null;
   let addPreviewOccludedMesh: THREE.Mesh | null = null;
   let addPreviewOccludedMaterial: THREE.MeshBasicMaterial | null = null;
+  const addPanelRefinementScheduler = createPreviewRefinementScheduler();
 
   let selectionGroup: THREE.Group | null = null;
 
@@ -434,6 +463,22 @@
       targets.push(ropePointsMesh);
     }
     return targets;
+  }
+
+  function syncVoxelMaterialEnvMaps() {
+    if (!scene || !meshManager) return;
+    const env = scene.environment ?? null;
+    const factor = get(sceneEnvironmentIntensity);
+    const byBucket = meshManager.getMeshesByBucket();
+    for (const { mesh } of byBucket.values()) {
+      const mat = mesh.material as THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial;
+      mat.envMap = env;
+      const matId = mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY];
+      if (matId) {
+        mat.envMapIntensity = voxelMaterialBaseEnvMapIntensity(matId) * factor;
+      }
+      mat.needsUpdate = true;
+    }
   }
 
   function getIntersection(): THREE.Intersection | null {
@@ -650,6 +695,13 @@
     cam.near = 0.5;
     cam.far = sz * 4;
     cam.updateProjectionMatrix();
+  }
+
+  /** Re-render directional shadow map on next frame (static lighting + mesh: skip shadow pass otherwise). */
+  function invalidateDirectionalShadowMap() {
+    if (!renderer?.shadowMap?.enabled || !get(enableShadows) || !dirLight?.shadow) return;
+    renderer.shadowMap.needsUpdate = true;
+    dirLight.shadow.needsUpdate = true;
   }
 
   function getAddPosition(hit: THREE.Intersection): [number, number, number] | null {
@@ -2899,6 +2951,110 @@
     orthographicCamera.updateProjectionMatrix();
   }
 
+  const BLOOM_MIX_VERTEX = /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
+
+  const BLOOM_MIX_FRAGMENT = /* glsl */ `
+    uniform sampler2D baseTexture;
+    uniform sampler2D bloomTexture;
+    uniform float bloomStrength;
+    varying vec2 vUv;
+    void main() {
+      gl_FragColor =
+        texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv) * bloomStrength;
+    }
+  `;
+
+  function disposeSelectiveBloomPipeline() {
+    unrealBloomPass?.dispose();
+    unrealBloomPass = null;
+    bloomMixPass?.dispose();
+    bloomMixPass = null;
+    bloomOutputPass?.dispose();
+    bloomOutputPass = null;
+    bloomComposer?.dispose();
+    bloomComposer = null;
+    finalComposer?.dispose();
+    finalComposer = null;
+    sharedSceneRenderPass = null;
+    if (bloomDarkMaterial) {
+      bloomDarkMaterial.dispose();
+      bloomDarkMaterial = null;
+    }
+  }
+
+  function setupSelectiveBloomPipeline() {
+    if (!renderer || !scene || !camera || !container) return;
+    disposeSelectiveBloomPipeline();
+    bloomDarkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    const bloomRenderTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+    const finalRenderTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+
+    sharedSceneRenderPass = new RenderPass(scene, camera);
+    unrealBloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.9, 0.42, 0.12);
+
+    bloomComposer = new EffectComposer(renderer, bloomRenderTarget);
+    bloomComposer.renderToScreen = false;
+    bloomComposer.addPass(sharedSceneRenderPass);
+    bloomComposer.addPass(unrealBloomPass);
+
+    const mixMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        baseTexture: { value: null },
+        bloomTexture: { value: bloomComposer.renderTarget2.texture },
+        bloomStrength: { value: 1 }
+      },
+      vertexShader: BLOOM_MIX_VERTEX,
+      fragmentShader: BLOOM_MIX_FRAGMENT,
+      defines: {}
+    });
+    bloomMixPass = new ShaderPass(mixMaterial, 'baseTexture');
+    bloomMixPass.needsSwap = true;
+
+    bloomOutputPass = new OutputPass();
+    finalComposer = new EffectComposer(renderer, finalRenderTarget);
+    finalComposer.addPass(sharedSceneRenderPass);
+    finalComposer.addPass(bloomMixPass);
+    finalComposer.addPass(bloomOutputPass);
+
+    bloomComposer.setSize(w, h);
+    finalComposer.setSize(w, h);
+  }
+
+  function stashNonGlowMaterialsForBloom(root: THREE.Object3D) {
+    if (!bloomDarkMaterial) return;
+    root.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      if (mesh.userData[VOXELLE_GLOW_BLOOM_USERDATA_KEY] === true) return;
+      const id = mesh.uuid;
+      if (bloomMaterialStash[id] !== undefined) return;
+      bloomMaterialStash[id] = mesh.material;
+      mesh.material = bloomDarkMaterial!;
+    });
+  }
+
+  function restoreStashedBloomMaterials(root: THREE.Object3D) {
+    root.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const id = mesh.uuid;
+      const st = bloomMaterialStash[id];
+      if (st !== undefined) {
+        mesh.material = st;
+        delete bloomMaterialStash[id];
+      }
+    });
+  }
+
   function onWindowResize() {
     if (!container || !camera || !renderer) return;
     const w = container.clientWidth;
@@ -2910,6 +3066,11 @@
       camera.updateProjectionMatrix();
     }
     renderer.setSize(w, h);
+    const pr = renderer.getPixelRatio();
+    bloomComposer?.setPixelRatio(pr);
+    bloomComposer?.setSize(w, h);
+    finalComposer?.setPixelRatio(pr);
+    finalComposer?.setSize(w, h);
     render();
   }
 
@@ -2951,7 +3112,18 @@
         }
       }
 
-      renderer.render(scene, camera);
+      if (bloomComposer && finalComposer && sharedSceneRenderPass && camera) {
+        sharedSceneRenderPass.camera = camera;
+        stashNonGlowMaterialsForBloom(scene);
+        try {
+          bloomComposer.render();
+        } finally {
+          restoreStashedBloomMaterials(scene);
+        }
+        finalComposer.render();
+      } else {
+        renderer.render(scene, camera);
+      }
     }
     gizmoRef?.draw();
   }
@@ -3034,23 +3206,20 @@
     if (byBucket) {
       for (const { mesh } of byBucket.values()) {
         mesh.castShadow = shadows;
-        mesh.receiveShadow = shadows && $renderingMode !== 'marchingCubes';
+        const matId = mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY];
+        mesh.receiveShadow =
+          shadows && $renderingMode !== 'marchingCubes' && matId !== 'glass';
       }
     }
+    if (shadows) invalidateDirectionalShadowMap();
     render();
   });
 
   $effect(() => {
     $enableSky;
     $backgroundColor;
-    const env = scene?.environment ?? null;
-    const byBucket = meshManager?.getMeshesByBucket();
-    if (!byBucket) return;
-    for (const { mesh } of byBucket.values()) {
-      const mat = mesh.material as THREE.MeshStandardMaterial & { envMap?: THREE.Texture | null };
-      mat.envMap = env;
-      mat.needsUpdate = true;
-    }
+    $sceneEnvironmentIntensity;
+    syncVoxelMaterialEnvMaps();
     render();
   });
 
@@ -3137,6 +3306,11 @@
     raycaster = setupRefs.raycaster;
     pointer = setupRefs.pointer;
     flyControls.pointerSpeed = FLY_POINTER_SPEED;
+    try {
+      setupSelectiveBloomPipeline();
+    } catch (e) {
+      console.warn('Voxelle: selective bloom disabled', e);
+    }
     orbitControls.addEventListener('change', updateZoomPercent);
 
     meshManager = createMeshManager(
@@ -3144,11 +3318,16 @@
       () => ({
         enableShadows: $enableShadows,
         renderingMode: $renderingMode,
-        aoStrength: $aoStrength
+        aoStrength: $aoStrength,
+        sceneEnvironmentIntensity: $sceneEnvironmentIntensity
       }),
       {
         onLoadingChange: (v) => (greedyMeshLoading = v),
         onSpinnerChange: (v) => (showGreedyMeshSpinner = v),
+        onVoxelMeshesRebuilt: () => {
+          invalidateDirectionalShadowMap();
+          syncVoxelMaterialEnvMaps();
+        },
         render
       }
     );
@@ -3213,6 +3392,7 @@
     window.addEventListener('resize', onWindowResize);
 
     meshManager?.requestRebuildVoxelMeshes($voxels);
+    invalidateDirectionalShadowMap();
     onWindowResize();
     animate();
   });
@@ -3250,6 +3430,7 @@
         groundPlane.scale.set(sz * 3, sz * 3, 1);
       }
     }
+    invalidateDirectionalShadowMap();
     render();
   });
 
@@ -3376,6 +3557,9 @@
     if (!addPreviewMesh || !addPreviewMaterial || !addPreviewOccludedMesh || !addPreviewOccludedMaterial)
       return;
     if (!s.open) {
+      addPanelRefinementScheduler.cancel();
+      resetPreviewMeshTransform(addPreviewMesh);
+      resetPreviewMeshTransform(addPreviewOccludedMesh);
       addPreviewMesh.visible = false;
       addPreviewOccludedMesh.visible = false;
       render();
@@ -3397,9 +3581,51 @@
       color: hexToInt(sel.length > 0 ? sel[0] : $color) & 0xffffff,
       material: $voxelMaterial
     };
-    const geo = buildPreviewGeometry(positions, addVx, $voxels);
     applyAddShapeOccludedPreviewTint(addVx.color, addPreviewOccludedMaterial);
-    assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo);
+    const stride = computePreviewLodStride(positions.length);
+    const bounds = getBoundsFromPositions(positions);
+    if (stride > 1 && bounds) {
+      const min: [number, number, number] = [bounds.minX, bounds.minY, bounds.minZ];
+      const coarseMap = downsamplePositionsToPreviewMap(
+        positions,
+        addVx,
+        stride,
+        min,
+        $voxels
+      );
+      const geoByBucket = buildGreedyMesh(coarseMap, PREVIEW_MESH_OPTIONS);
+      const geos = [...geoByBucket.values()];
+      const coarseGeo =
+        geos.length === 0
+          ? null
+          : geos.length === 1
+            ? geos[0]!
+            : (() => {
+                const m = mergeGeometries(geos);
+                geos.forEach((g) => g.dispose());
+                return m;
+              })();
+      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, coarseGeo);
+      if (coarseGeo) {
+        alignPreviewMeshToLod(addPreviewMesh, stride, min);
+        alignPreviewMeshToLod(addPreviewOccludedMesh, stride, min);
+        const capturedPositions = positions;
+        const capturedVoxel = addVx;
+        addPanelRefinementScheduler.schedule(() => {
+          const fullGeo = buildPreviewGeometry(capturedPositions, capturedVoxel, $voxels);
+          if (!fullGeo || !addPreviewMesh || !addPreviewOccludedMesh) return;
+          assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, fullGeo);
+          resetPreviewMeshTransform(addPreviewMesh);
+          resetPreviewMeshTransform(addPreviewOccludedMesh);
+          render();
+        });
+      }
+    } else {
+      resetPreviewMeshTransform(addPreviewMesh);
+      resetPreviewMeshTransform(addPreviewOccludedMesh);
+      const geo = buildPreviewGeometry(positions, addVx, $voxels);
+      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo);
+    }
     render();
   });
 
@@ -3428,6 +3654,7 @@
     orbitControls?.removeEventListener?.('change', updateZoomPercent);
     orbitControls?.dispose();
     flyControls?.dispose();
+    disposeSelectiveBloomPipeline();
     renderer?.dispose();
     envMap?.dispose();
     boxGeometry?.dispose();

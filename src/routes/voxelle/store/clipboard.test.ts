@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { voxels, selection, gridSize, resetUndo } from './core';
-import { copySelection, pasteFromClipboard, cutSelection } from './clipboard';
+import { copySelection, pasteFromClipboard, cutSelection, deleteSelectedVoxels } from './clipboard';
 import { plasticVoxel, type Voxel } from '../voxelMaterial';
 
 function makeVoxels(entries: [number, number, number, number][]): Map<string, Voxel> {
@@ -107,6 +107,23 @@ describe('clipboard', () => {
       const result = await cutSelection();
       expect(result).toBe(true);
       expect(writeText).toHaveBeenCalled();
+      expect(get(voxels).has('0,0,0')).toBe(false);
+      expect(get(selection).size).toBe(0);
+    });
+  });
+
+  describe('deleteSelectedVoxels', () => {
+    it('no-op when selection empty', () => {
+      voxels.set(makeVoxels([[0, 0, 0, 0xff0000]]));
+      deleteSelectedVoxels();
+      expect(get(voxels).has('0,0,0')).toBe(true);
+    });
+
+    it('removes voxels at selection and clears selection without clipboard', () => {
+      voxels.set(makeVoxels([[0, 0, 0, 0xff0000]]));
+      selection.set(makeVoxels([[0, 0, 0, 0xff0000]]));
+      deleteSelectedVoxels();
+      expect(writeText).not.toHaveBeenCalled();
       expect(get(voxels).has('0,0,0')).toBe(false);
       expect(get(selection).size).toBe(0);
     });
