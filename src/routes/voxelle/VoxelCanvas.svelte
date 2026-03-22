@@ -195,7 +195,11 @@
   } from './canvas/sceneSetup';
   import { createMeshManager, syncGlassShadowUniformsFromBuckets } from './canvas/meshManager';
   import { ddaPickVoxel, maxRayDistanceForVoxels } from './canvas/voxelRayDda';
-  import { VoxelRayProgressive, buildVoxelRayTraceParams } from './canvas/voxelRayProgressive';
+  import {
+    DEFAULT_RAY_TICK_BUDGET_MS,
+    VoxelRayProgressive,
+    buildVoxelRayTraceParams
+  } from './canvas/voxelRayProgressive';
   import { isWebGLRenderer, isWebGPURenderer } from './canvas/rendererUtils';
   import {
     createWebGPUBloomPipeline,
@@ -3964,7 +3968,8 @@
           get(voxels),
           params,
           contentDirty || camDirty,
-          camera
+          camera,
+          DEFAULT_RAY_TICK_BUDGET_MS
         );
         if (texBefore !== rayProgressive.texture) {
           scene.background = rayProgressive.texture;

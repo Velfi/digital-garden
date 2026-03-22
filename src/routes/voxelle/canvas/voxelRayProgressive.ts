@@ -22,6 +22,11 @@ export const RAY_TRACE_MAX_BUFFER_DIM = 1920;
 const MAX_BUFFER_DIM = RAY_TRACE_MAX_BUFFER_DIM;
 const STRIDES = [8, 4, 2, 1] as const;
 
+/** Max main-thread time per `tick()` for CPU ray mode (ms). */
+export const DEFAULT_RAY_TICK_BUDGET_MS = 8;
+/** Check wall clock every N primary-ray blocks to stay within budget. */
+const BUDGET_CHECK_INTERVAL_BLOCKS = 64;
+
 const MAX_GLASS_DEPTH = 4;
 const GLASS_MIN_TRANSMITTANCE = 0.35;
 const GLASS_IOR = 1.5;
@@ -435,6 +440,13 @@ export class VoxelRayProgressive {
   private bufH = 1;
   private strideIdx = 0;
   private converged = false;
+  /** Next block origin (u,v) within current stride pass; multiples of stride. */
+  private resumeU = 0;
+  private resumeV = 0;
+  /** Blocks finished in the current stride pass (for progress + resume). */
+  private completedBlocksThisStride = 0;
+  /** Total primary-ray blocks in current stride pass (bufW/s × bufH/s). */
+  private totalBlocksThisStride = 1;
   private readonly rayOrigin = new THREE.Vector3();
   private readonly rayFar = new THREE.Vector3();
   private readonly rayDir = new THREE.Vector3();
@@ -460,7 +472,9 @@ export class VoxelRayProgressive {
   /** 0..1 coarse-to-fine refinement; 1 when converged (full-res pass done). */
   getRefinementProgress(): number {
     if (this.converged) return 1;
-    return this.strideIdx / STRIDES.length;
+    const strideFrac =
+      this.totalBlocksThisStride > 0 ? this.completedBlocksThisStride / this.totalBlocksThisStride : 0;
+    return Math.min(1, (this.strideIdx + strideFrac) / STRIDES.length);
   }
 
   private setRayFromPixel(camera: THREE.Camera, u: number, v: number): void {
@@ -491,7 +505,8 @@ export class VoxelRayProgressive {
     voxels: Map<string, Voxel>,
     params: VoxelRayTraceParams,
     fullInvalidated: boolean,
-    camera: THREE.Camera
+    camera: THREE.Camera,
+    budgetMs: number = DEFAULT_RAY_TICK_BUDGET_MS
   ): void {
     let bufW = Math.max(1, Math.round(width * dpr));
     let bufH = Math.max(1, Math.round(height * dpr));
@@ -519,11 +534,17 @@ export class VoxelRayProgressive {
       this.bloomTexture.needsUpdate = true;
       this.strideIdx = 0;
       this.converged = false;
+      this.resumeU = 0;
+      this.resumeV = 0;
+      this.completedBlocksThisStride = 0;
     }
 
     if (fullInvalidated) {
       this.strideIdx = 0;
       this.converged = false;
+      this.resumeU = 0;
+      this.resumeV = 0;
+      this.completedBlocksThisStride = 0;
     } else if (this.converged) {
       return;
     }
@@ -532,8 +553,18 @@ export class VoxelRayProgressive {
     const maxDist = maxRayDistanceForVoxels(voxels);
     const maxShadowDist = maxDist;
 
-    for (let v = 0; v < bufH; v += stride) {
-      for (let u = 0; u < bufW; u += stride) {
+    const blocksW = Math.ceil(bufW / stride);
+    const blocksH = Math.ceil(bufH / stride);
+    this.totalBlocksThisStride = Math.max(1, blocksW * blocksH);
+
+    const effectiveBudget =
+      Number.isFinite(budgetMs) && budgetMs > 0 ? budgetMs : DEFAULT_RAY_TICK_BUDGET_MS;
+    const deadline = performance.now() + effectiveBudget;
+    let blocksSinceCheck = 0;
+
+    for (let v = this.resumeV; v < bufH; v += stride) {
+      const uStart = v === this.resumeV ? this.resumeU : 0;
+      for (let u = uStart; u < bufW; u += stride) {
         this.setRayFromPixel(camera, u, v);
         const ox = this.rayOrigin.x;
         const oy = this.rayOrigin.y;
@@ -561,8 +592,34 @@ export class VoxelRayProgressive {
         const bh = Math.min(stride, bufH - v);
         setBlock(this.data, bufW, bufH, u, v, bw, bh, lr, lg, lb);
         setBloomBlock(this.bloomData, bufW, bufH, u, v, bw, bh, br, bg, bb);
+
+        this.completedBlocksThisStride++;
+
+        let uNext = u + stride;
+        let vNext = v;
+        if (uNext >= bufW) {
+          uNext = 0;
+          vNext = v + stride;
+        }
+
+        blocksSinceCheck++;
+        if (blocksSinceCheck >= BUDGET_CHECK_INTERVAL_BLOCKS) {
+          blocksSinceCheck = 0;
+          const moreWork = vNext < bufH;
+          if (moreWork && performance.now() >= deadline) {
+            this.resumeU = uNext;
+            this.resumeV = vNext;
+            this.texture.needsUpdate = true;
+            this.bloomTexture.needsUpdate = true;
+            return;
+          }
+        }
       }
     }
+
+    this.resumeU = 0;
+    this.resumeV = 0;
+    this.completedBlocksThisStride = 0;
 
     if (this.strideIdx < STRIDES.length - 1) {
       this.strideIdx++;

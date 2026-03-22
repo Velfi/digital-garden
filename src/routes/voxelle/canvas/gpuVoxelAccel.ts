@@ -67,6 +67,20 @@ export type GpuVoxelAccelHash = {
 
 export type GpuVoxelAccel = GpuVoxelAccelEmpty | GpuVoxelAccelDense | GpuVoxelAccelHash;
 
+/** Uniform fields for WebGPU ray hash lookup (mask, slot count). */
+export function getHashTableUniformParams(
+  accel: GpuVoxelAccel
+): { mask: number; tableLen: number } {
+  if (accel.kind === 'empty') {
+    return { mask: 255, tableLen: 256 };
+  }
+  if (accel.kind === 'hash') {
+    return { mask: accel.mask, tableLen: accel.tableLen };
+  }
+  // Dense path not sent to GPU as-is; callers should flatten to hash first.
+  return { mask: 255, tableLen: 256 };
+}
+
 function maxRayDistanceForBounds(
   minX: number,
   minY: number,
