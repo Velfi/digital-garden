@@ -35,7 +35,7 @@ export function unpackVoxelPayload(packed: number): { color: number; materialInd
   return { color: u & 0xffffff, materialIndex: matEnc - 1 };
 }
 
-/** FNV-1a style u32 mix — keep in sync with `gpuVoxelRayPipeline` WGSL hash. */
+/** FNV-1a style u32 mix for open-addressed GPU hash keys. */
 export function hashCoords(x: number, y: number, z: number): number {
   const xi = x | 0;
   const yi = y | 0;

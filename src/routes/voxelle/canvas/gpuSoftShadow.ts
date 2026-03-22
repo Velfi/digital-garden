@@ -1,6 +1,6 @@
 /**
- * CPU mirror of WebGPU soft-shadow jitter in `gpuVoxelRayPipeline` (TSL).
- * Keep formulas in sync when changing the compute shader.
+ * CPU soft-shadow jitter for ray/shadow sampling.
+ * Keep formulas in sync with any GPU-side equivalent if one exists.
  */
 
 export const MAX_SOFT_SHADOW_SAMPLES = 8;
