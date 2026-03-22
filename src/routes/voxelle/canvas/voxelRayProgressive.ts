@@ -12,6 +12,10 @@ import {
   traceRayDda,
   traceShadowRayDda
 } from './voxelRayDda';
+import {
+  DEFAULT_SHADOW_RAY_SAMPLES,
+  DEFAULT_SHADOW_SOFTNESS_RADIANS
+} from './gpuSoftShadow';
 
 /** Shared cap for internal ray trace resolution (CPU progressive + WebGPU compute). */
 export const RAY_TRACE_MAX_BUFFER_DIM = 1920;
@@ -40,6 +44,13 @@ export type VoxelRayTraceParams = {
   backgroundB: number;
   enableSky: boolean;
   enableShadows: boolean;
+  /**
+   * WebGPU soft shadows: shadow rays toward the sun per shaded hit (1 = hard shadow).
+   * CPU progressive path ignores this.
+   */
+  shadowRaySamples: number;
+  /** Cone half-angle (radians) for jittering shadow rays toward the light. */
+  shadowSoftnessRadians: number;
 };
 
 function hexToLinearRgb(hex: number): [number, number, number] {
@@ -100,7 +111,9 @@ export function buildVoxelRayTraceParams(
     backgroundG: bg,
     backgroundB: bb,
     enableSky: opts.enableSky,
-    enableShadows: opts.enableShadows
+    enableShadows: opts.enableShadows,
+    shadowRaySamples: DEFAULT_SHADOW_RAY_SAMPLES,
+    shadowSoftnessRadians: DEFAULT_SHADOW_SOFTNESS_RADIANS
   };
 }
 

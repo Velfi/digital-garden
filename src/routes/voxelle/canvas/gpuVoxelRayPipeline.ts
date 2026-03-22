@@ -13,10 +13,14 @@ import {
   bitAnd,
   bitcast,
   bitXor,
+  cos,
+  cross,
   float,
   floor,
+  fract,
   int,
   instanceIndex,
+  length,
   max,
   min,
   mul,
@@ -24,8 +28,11 @@ import {
   pow,
   shiftRight,
   sign,
+  sin,
+  sqrt,
   storage,
   textureStore,
+  TWO_PI,
   uint,
   uniform,
   uvec2,
@@ -35,26 +42,19 @@ import {
 
 import type { GpuVoxelAccelEmpty, GpuVoxelAccelHash } from './gpuVoxelAccel';
 import { MAX_HASH_SLOTS } from './gpuVoxelAccel';
+import {
+  clampShadowSamples,
+  MAX_SOFT_SHADOW_SAMPLES,
+  shadowConeTanFromRadians
+} from './gpuSoftShadow';
+import type { VoxelRayTraceParams } from './voxelRayProgressive';
 
 const WORKGROUP = 8;
 const MAX_DDA_STEPS = 4096;
 const MAX_HASH_PROBES = 4096;
 const EPS = 1e-9;
 
-export type GpuRayTraceParams = {
-  toLightWorld: [number, number, number];
-  sunDiffuseR: number;
-  sunDiffuseG: number;
-  sunDiffuseB: number;
-  ambientR: number;
-  ambientG: number;
-  ambientB: number;
-  backgroundR: number;
-  backgroundG: number;
-  backgroundB: number;
-  enableSky: boolean;
-  enableShadows: boolean;
-};
+export type GpuRayTraceParams = VoxelRayTraceParams;
 
 export class GpuVoxelRayPipeline {
   readonly outTexture: StorageTexture;
@@ -86,6 +86,9 @@ export class GpuVoxelRayPipeline {
   private uBackground = uniform(new Vector3());
   private uEnableSky = uniform(0);
   private uEnableShadows = uniform(0);
+  /** Float for TSL comparisons; clamped 1..MAX_SOFT_SHADOW_SAMPLES. */
+  private uShadowSampleCount = uniform(6);
+  private uShadowConeTan = uniform(0.07);
 
   private scratchV = new Vector3();
 
@@ -139,6 +142,8 @@ export class GpuVoxelRayPipeline {
     this.uBackground.value.set(params.backgroundR, params.backgroundG, params.backgroundB);
     this.uEnableSky.value = params.enableSky ? 1 : 0;
     this.uEnableShadows.value = params.enableShadows ? 1 : 0;
+    this.uShadowSampleCount.value = clampShadowSamples(params.shadowRaySamples);
+    this.uShadowConeTan.value = shadowConeTanFromRadians(params.shadowSoftnessRadians);
   }
 
   setMaxDistance(d: number): void {
@@ -189,6 +194,8 @@ export class GpuVoxelRayPipeline {
     const uBackground = this.uBackground;
     const uEnableSky = this.uEnableSky;
     const uEnableShadows = this.uEnableShadows;
+    const uShadowSampleCount = this.uShadowSampleCount;
+    const uShadowConeTan = this.uShadowConeTan;
 
     const feps = float(EPS);
 
@@ -453,32 +460,81 @@ export class GpuVoxelRayPipeline {
           const hpx = ro.x.add(rdxn.mul(hitDist)).add(float(hitNx).mul(0.0002));
           const hpy = ro.y.add(rdyn.mul(hitDist)).add(float(hitNy).mul(0.0002));
           const hpz = ro.z.add(rdzn.mul(hitDist)).add(float(hitNz).mul(0.0002));
-          const shadowS = float(0.06).toVar();
-          Loop(100, () => {
-            shadowS.addAssign(float(0.1));
-            const sx = int(floor(hpx.add(lx.mul(shadowS))));
-            const sy = int(floor(hpy.add(ly.mul(shadowS))));
-            const sz = int(floor(hpz.add(lz.mul(shadowS))));
-            const pk = uint(0).toVar();
-            hashProbe(sx, sy, sz, pk);
-            If(pk.notEqual(uint(0)), () => {
-              const mtag = shiftRight(pk, uint(24));
-              If(mtag.equal(uint(3)), () => {
-                const cg2 = bitAnd(pk, uint(0xffffff));
-                const crr = float(bitAnd(shiftRight(cg2, uint(16)), uint(255))).div(255.0);
-                const cgg = float(bitAnd(shiftRight(cg2, uint(8)), uint(255))).div(255.0);
-                const cbb = float(bitAnd(cg2, uint(255))).div(255.0);
-                shx.assign(shx.mul(crr.mul(0.9)));
-                shy.assign(shy.mul(cgg.mul(0.9)));
-                shz.assign(shz.mul(cbb.mul(0.9)));
-              }).Else(() => {
-                shx.assign(float(0));
-                shy.assign(float(0));
-                shz.assign(float(0));
-                Break();
+
+          const Lraw = vec3(uToLight.x, uToLight.y, uToLight.z);
+          const Llen = max(length(Lraw), float(1e-20));
+          const Ln = vec3(Lraw.x.div(Llen), Lraw.y.div(Llen), Lraw.z.div(Llen));
+          const temp = vec3().toVar();
+          If(abs(Ln.y).lessThan(float(0.9)), () => {
+            temp.assign(vec3(0, 1, 0));
+          }).Else(() => {
+            temp.assign(vec3(1, 0, 0));
+          });
+          const Ut = normalize(cross(temp, Ln));
+          const Vt = cross(Ln, Ut);
+
+          const accShx = float(0).toVar();
+          const accShy = float(0).toVar();
+          const accShz = float(0).toVar();
+          const si = int(0).toVar();
+
+          Loop(MAX_SOFT_SHADOW_SAMPLES, () => {
+            If(uShadowSampleCount.lessThanEqual(float(si)), () => {
+              Break();
+            });
+
+            const fu = float(u).mul(12.9898).add(float(v).mul(78.233)).add(float(si).mul(19.1));
+            const fv = float(u).mul(93.9898).add(float(v).mul(67.345)).add(float(si).mul(13.7));
+            const h0 = fract(sin(fu).mul(43758.5453123));
+            const h1 = fract(sin(fv).mul(24634.6345123));
+            const diskR = sqrt(h0).mul(uShadowConeTan);
+            const ang = h1.mul(TWO_PI);
+            const off = Ut.mul(diskR.mul(cos(ang))).add(Vt.mul(diskR.mul(sin(ang))));
+            const Ls = normalize(Ln.add(off));
+            const lsx = Ls.x;
+            const lsy = Ls.y;
+            const lsz = Ls.z;
+
+            const shsx = float(1).toVar();
+            const shsy = float(1).toVar();
+            const shsz = float(1).toVar();
+            const shadowS = float(0.06).toVar();
+            Loop(100, () => {
+              shadowS.addAssign(float(0.1));
+              const sx = int(floor(hpx.add(lsx.mul(shadowS))));
+              const sy = int(floor(hpy.add(lsy.mul(shadowS))));
+              const sz = int(floor(hpz.add(lsz.mul(shadowS))));
+              const pk = uint(0).toVar();
+              hashProbe(sx, sy, sz, pk);
+              If(pk.notEqual(uint(0)), () => {
+                const mtag = shiftRight(pk, uint(24));
+                If(mtag.equal(uint(3)), () => {
+                  const cg2 = bitAnd(pk, uint(0xffffff));
+                  const crr = float(bitAnd(shiftRight(cg2, uint(16)), uint(255))).div(255.0);
+                  const cgg = float(bitAnd(shiftRight(cg2, uint(8)), uint(255))).div(255.0);
+                  const cbb = float(bitAnd(cg2, uint(255))).div(255.0);
+                  shsx.assign(shsx.mul(crr.mul(0.9)));
+                  shsy.assign(shsy.mul(cgg.mul(0.9)));
+                  shsz.assign(shsz.mul(cbb.mul(0.9)));
+                }).Else(() => {
+                  shsx.assign(float(0));
+                  shsy.assign(float(0));
+                  shsz.assign(float(0));
+                  Break();
+                });
               });
             });
+
+            accShx.addAssign(shsx);
+            accShy.addAssign(shsy);
+            accShz.addAssign(shsz);
+            si.addAssign(1);
           });
+
+          const invN = float(1).div(max(uShadowSampleCount, float(1)));
+          shx.assign(accShx.mul(invN));
+          shy.assign(accShy.mul(invN));
+          shz.assign(accShz.mul(invN));
         });
 
         const dr = cr.mul(uAmbient.x.add(uSunDiffuse.x.mul(ndotl).mul(shx))).toVar();
