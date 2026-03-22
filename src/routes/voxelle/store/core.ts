@@ -175,8 +175,8 @@ export const planeCuboidHollow = writable<boolean>(false);
 export const clayMode = writable<ClayMode>('bulk');
 /** Clay brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
 export const clayBrushRadius = writable<number>(2);
-/** Bulk mode: brush shape (cube, sphere, hemicube, hemisphere). */
-export type BulkBrushShape = 'cube' | 'sphere' | 'hemicube' | 'hemisphere';
+/** Bulk mode: footprint in the surface plane (square = Chebyshev, round = Euclidean disk). */
+export type BulkBrushShape = 'cube' | 'sphere';
 export const bulkBrushShape = writable<BulkBrushShape>('cube');
 /** Branch mode: taper from thick base to thin tip. */
 export const branchTaper = writable<boolean>(false);

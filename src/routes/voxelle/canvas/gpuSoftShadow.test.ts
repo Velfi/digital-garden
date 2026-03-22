@@ -5,6 +5,7 @@ import {
   MAX_SOFT_SHADOW_SAMPLES,
   shadowConeTanFromRadians,
   softShadowDiskPolar,
+  softShadowDiskStratified,
   softShadowHash01
 } from './gpuSoftShadow';
 
@@ -63,5 +64,24 @@ describe('softShadowDiskPolar', () => {
     const [h0, h1] = softShadowHash01(3, 7, 2);
     expect(radius).toBeCloseTo(Math.sqrt(h0), 12);
     expect(angle).toBeCloseTo(h1 * (Math.PI * 2), 12);
+  });
+});
+
+describe('softShadowDiskStratified', () => {
+  it('is deterministic and independent of screen position', () => {
+    expect(softShadowDiskStratified(2, 8)).toEqual(softShadowDiskStratified(2, 8));
+  });
+
+  it('uses center for single sample', () => {
+    expect(softShadowDiskStratified(0, 1)).toEqual({ radius: 0, angle: 0 });
+  });
+
+  it('keeps radius in unit disk for n>1', () => {
+    const n = MAX_SOFT_SHADOW_SAMPLES;
+    for (let i = 0; i < n; i++) {
+      const { radius } = softShadowDiskStratified(i, n);
+      expect(radius).toBeGreaterThanOrEqual(0);
+      expect(radius).toBeLessThanOrEqual(1);
+    }
   });
 });

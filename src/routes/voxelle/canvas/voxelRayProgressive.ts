@@ -13,17 +13,20 @@ import {
   traceShadowRayDda
 } from './voxelRayDda';
 import {
+  clampShadowSamples,
   DEFAULT_SHADOW_RAY_SAMPLES,
-  DEFAULT_SHADOW_SOFTNESS_RADIANS
+  DEFAULT_SHADOW_SOFTNESS_RADIANS,
+  shadowConeTanFromRadians,
+  softShadowDiskStratified
 } from './gpuSoftShadow';
 
-/** Shared cap for internal ray trace resolution (CPU progressive + WebGPU compute). */
+/** Shared cap for internal ray trace resolution (CPU progressive). */
 export const RAY_TRACE_MAX_BUFFER_DIM = 1920;
 const MAX_BUFFER_DIM = RAY_TRACE_MAX_BUFFER_DIM;
 const STRIDES = [8, 4, 2, 1] as const;
 
 /** Max main-thread time per `tick()` for CPU ray mode (ms). */
-export const DEFAULT_RAY_TICK_BUDGET_MS = 8;
+export const DEFAULT_RAY_TICK_BUDGET_MS = 12;
 /** Check wall clock every N primary-ray blocks to stay within budget. */
 const BUDGET_CHECK_INTERVAL_BLOCKS = 64;
 
@@ -49,10 +52,7 @@ export type VoxelRayTraceParams = {
   backgroundB: number;
   enableSky: boolean;
   enableShadows: boolean;
-  /**
-   * WebGPU soft shadows: shadow rays toward the sun per shaded hit (1 = hard shadow).
-   * CPU progressive path ignores this.
-   */
+  /** Shadow rays toward the sun per shaded hit (1 = hard shadow). */
   shadowRaySamples: number;
   /** Cone half-angle (radians) for jittering shadow rays toward the light. */
   shadowSoftnessRadians: number;
@@ -159,6 +159,112 @@ function schlickReflectance(cosI: number): number {
   return R0_FRESNEL + (1 - R0_FRESNEL) * Math.pow(1 - c, 5);
 }
 
+function configureRayDataTexture(tex: THREE.DataTexture): void {
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+}
+
+function orthonormalTangentBasis(lx: number, ly: number, lz: number): {
+  tx: number;
+  ty: number;
+  tz: number;
+  bx: number;
+  by: number;
+  bz: number;
+} {
+  let hx = 0;
+  let hy = 0;
+  let hz = 1;
+  if (Math.abs(lz) > 0.95) {
+    hx = 1;
+    hy = 0;
+    hz = 0;
+  }
+  let tx = hy * lz - hz * ly;
+  let ty = hz * lx - hx * lz;
+  let tz = hx * ly - hy * lx;
+  let tLen = Math.hypot(tx, ty, tz);
+  if (tLen < 1e-8) {
+    hx = 0;
+    hy = 1;
+    hz = 0;
+    tx = hy * lz - hz * ly;
+    ty = hz * lx - hx * lz;
+    tz = hx * ly - hy * lx;
+    tLen = Math.hypot(tx, ty, tz);
+  }
+  tx /= tLen;
+  ty /= tLen;
+  tz /= tLen;
+  const bx = ly * tz - lz * ty;
+  const by = lz * tx - lx * tz;
+  const bz = lx * ty - ly * tx;
+  return { tx, ty, tz, bx, by, bz };
+}
+
+function jitteredLightDirection(
+  lx: number,
+  ly: number,
+  lz: number,
+  sampleIdx: number,
+  nSamples: number,
+  softnessRad: number
+): [number, number, number] {
+  const tanHalf = shadowConeTanFromRadians(softnessRad);
+  const { radius, angle } = softShadowDiskStratified(sampleIdx, nSamples);
+  const scale = tanHalf * radius;
+  const { tx, ty, tz, bx, by, bz } = orthonormalTangentBasis(lx, ly, lz);
+  const ca = Math.cos(angle);
+  const sa = Math.sin(angle);
+  const ox = scale * (ca * tx + sa * bx);
+  const oy = scale * (ca * ty + sa * by);
+  const oz = scale * (ca * tz + sa * bz);
+  const jx = lx + ox;
+  const jy = ly + oy;
+  const jz = lz + oz;
+  const len = Math.hypot(jx, jy, jz);
+  if (len < 1e-12) return [lx, ly, lz];
+  return [jx / len, jy / len, jz / len];
+}
+
+/** Averaged glass-tinted shadow transmission (RGB) along jittered directions toward the light. */
+function traceSoftShadowTransmission(
+  ox: number,
+  oy: number,
+  oz: number,
+  baseLx: number,
+  baseLy: number,
+  baseLz: number,
+  params: VoxelRayTraceParams,
+  voxels: Map<string, Voxel>,
+  maxShadowDist: number
+): [number, number, number] {
+  const n = clampShadowSamples(params.shadowRaySamples);
+  if (n <= 1) {
+    return traceShadowRayDda(ox, oy, oz, baseLx, baseLy, baseLz, voxels, maxShadowDist);
+  }
+  let sr = 0;
+  let sg = 0;
+  let sb = 0;
+  for (let s = 0; s < n; s++) {
+    const [jx, jy, jz] = jitteredLightDirection(
+      baseLx,
+      baseLy,
+      baseLz,
+      s,
+      n,
+      params.shadowSoftnessRadians
+    );
+    const [a, b, c] = traceShadowRayDda(ox, oy, oz, jx, jy, jz, voxels, maxShadowDist);
+    sr += a;
+    sg += b;
+    sb += c;
+  }
+  const inv = 1 / n;
+  return [sr * inv, sg * inv, sb * inv];
+}
+
 function shadeOpaqueSurface(
   voxel: Voxel,
   faceNormal: [number, number, number],
@@ -182,7 +288,17 @@ function shadeOpaqueSurface(
     const ox = hx + nx * SHADOW_SURFACE_EPS;
     const oy = hy + ny * SHADOW_SURFACE_EPS;
     const oz = hz + nz * SHADOW_SURFACE_EPS;
-    [sr, sg, sb] = traceShadowRayDda(ox, oy, oz, lx, ly, lz, voxels, maxShadowDist);
+    [sr, sg, sb] = traceSoftShadowTransmission(
+      ox,
+      oy,
+      oz,
+      lx,
+      ly,
+      lz,
+      params,
+      voxels,
+      maxShadowDist
+    );
   }
 
   let dr = cr * params.ambientR + cr * params.sunDiffuseR * ndotl * sr;
@@ -243,7 +359,17 @@ function shadeGlassFallback(
     const ox = hx + nx * SHADOW_SURFACE_EPS;
     const oy = hy + ny * SHADOW_SURFACE_EPS;
     const oz = hz + nz * SHADOW_SURFACE_EPS;
-    [sr, sg, sb] = traceShadowRayDda(ox, oy, oz, lx, ly, lz, voxels, maxShadowDist);
+    [sr, sg, sb] = traceSoftShadowTransmission(
+      ox,
+      oy,
+      oz,
+      lx,
+      ly,
+      lz,
+      params,
+      voxels,
+      maxShadowDist
+    );
   }
 
   let dr = cr * params.ambientR + cr * params.sunDiffuseR * ndotl * sr;
@@ -457,10 +583,12 @@ export class VoxelRayProgressive {
     this.texture = new THREE.DataTexture(this.data, 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
     this.texture.colorSpace = THREE.SRGBColorSpace;
     this.texture.flipY = true;
+    configureRayDataTexture(this.texture);
     this.texture.needsUpdate = true;
     this.bloomTexture = new THREE.DataTexture(this.bloomData, 1, 1, THREE.RGBAFormat, THREE.FloatType);
     this.bloomTexture.colorSpace = THREE.LinearSRGBColorSpace;
     this.bloomTexture.flipY = true;
+    configureRayDataTexture(this.bloomTexture);
     this.bloomTexture.needsUpdate = true;
   }
 
@@ -526,11 +654,13 @@ export class VoxelRayProgressive {
       this.texture = new THREE.DataTexture(this.data, bufW, bufH, THREE.RGBAFormat, THREE.UnsignedByteType);
       this.texture.colorSpace = THREE.SRGBColorSpace;
       this.texture.flipY = true;
+      configureRayDataTexture(this.texture);
       this.texture.needsUpdate = true;
       this.bloomTexture.dispose();
       this.bloomTexture = new THREE.DataTexture(this.bloomData, bufW, bufH, THREE.RGBAFormat, THREE.FloatType);
       this.bloomTexture.colorSpace = THREE.LinearSRGBColorSpace;
       this.bloomTexture.flipY = true;
+      configureRayDataTexture(this.bloomTexture);
       this.bloomTexture.needsUpdate = true;
       this.strideIdx = 0;
       this.converged = false;

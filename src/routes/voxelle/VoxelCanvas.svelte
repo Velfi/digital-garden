@@ -3958,8 +3958,8 @@
 
       if (rayProgressive) {
         const texBefore = rayProgressive.texture;
-        // CPU fallback in WebGPU ray mode must stay responsive; use aggressive internal downscale.
-        const cpuRayDpr = Math.min(renderer.getPixelRatio(), 0.5);
+        // CPU ray trace: cap at 1× logical DPR (still clamped by RAY_TRACE_MAX_BUFFER_DIM inside tick).
+        const cpuRayDpr = Math.min(renderer.getPixelRatio(), 1);
         rayProgressive.tick(
           delta,
           container.clientWidth,

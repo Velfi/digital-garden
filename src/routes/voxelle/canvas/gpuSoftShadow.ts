@@ -5,7 +5,7 @@
 
 export const MAX_SOFT_SHADOW_SAMPLES = 8;
 
-export const DEFAULT_SHADOW_RAY_SAMPLES = 6;
+export const DEFAULT_SHADOW_RAY_SAMPLES = 8;
 
 /** Cone half-angle toward the light (radians). */
 export const DEFAULT_SHADOW_SOFTNESS_RADIANS = (4 * Math.PI) / 180;
@@ -46,4 +46,22 @@ export function softShadowDiskPolar(
 ): { radius: number; angle: number } {
   const [h0, h1] = softShadowHash01(u, v, sampleIdx);
   return { radius: Math.sqrt(h0), angle: h1 * (Math.PI * 2) };
+}
+
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+/**
+ * Quasi-uniform disk samples (Vogel / golden spiral). Same pattern for every pixel so soft
+ * shadows do not show high-frequency stippling from independent per-pixel jitter.
+ */
+export function softShadowDiskStratified(
+  sampleIdx: number,
+  nSamples: number
+): { radius: number; angle: number } {
+  const n = Math.max(1, Math.floor(nSamples));
+  if (n === 1) return { radius: 0, angle: 0 };
+  const i = Math.min(Math.max(0, sampleIdx), n - 1);
+  const r = Math.sqrt(i / (n - 0.5));
+  const angle = (i * GOLDEN_ANGLE) % (Math.PI * 2);
+  return { radius: r, angle };
 }

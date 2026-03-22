@@ -49,7 +49,7 @@
               type="button"
               class:active={$bulkBrushShape === 'cube'}
               onclick={() => bulkBrushShape.set('cube')}
-              title="Full cube (Chebyshev)"
+              title="Square footprint in the surface plane"
             >
               Cube
             </button>
@@ -57,25 +57,9 @@
               type="button"
               class:active={$bulkBrushShape === 'sphere'}
               onclick={() => bulkBrushShape.set('sphere')}
-              title="Full sphere"
+              title="Round footprint in the surface plane"
             >
               Sphere
-            </button>
-            <button
-              type="button"
-              class:active={$bulkBrushShape === 'hemicube'}
-              onclick={() => bulkBrushShape.set('hemicube')}
-              title="Half cube toward surface"
-            >
-              Hemicube
-            </button>
-            <button
-              type="button"
-              class:active={$bulkBrushShape === 'hemisphere'}
-              onclick={() => bulkBrushShape.set('hemisphere')}
-              title="Half sphere toward surface"
-            >
-              Hemisphere
             </button>
           </div>
         </div>

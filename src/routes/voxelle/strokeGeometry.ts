@@ -146,71 +146,44 @@ export function thickenPath(
   return result;
 }
 
-/** Expands each path point into half a cube (Chebyshev): only voxels where (p - center) · normal >= 0. */
-function thickenPathHemicube(
-  positions: [number, number, number][],
-  radius: number,
+/** Layer plane is perpendicular to this world axis (voxels share constant x, y, or z along the stroke). */
+function faceNormalToLayerAxis(
   normal: { x: number; y: number; z: number } | undefined
-): [number, number, number][] {
-  if (radius <= 0) return positions;
-  if (!normal) return thickenPath(positions, radius);
-  const { x: nx, y: ny, z: nz } = normal;
-  const lo = -Math.ceil(radius);
-  const hi = Math.floor(radius);
-  const seen = new Set<string>();
-  const result: [number, number, number][] = [];
-  for (const [px, py, pz] of positions) {
-    for (let dx = lo; dx <= hi; dx++) {
-      for (let dy = lo; dy <= hi; dy++) {
-        for (let dz = lo; dz <= hi; dz++) {
-          if (dx * nx + dy * ny + dz * nz >= 0) {
-            const x = px + dx;
-            const y = py + dy;
-            const z = pz + dz;
-            const k = `${x},${y},${z}`;
-            if (!seen.has(k)) {
-              seen.add(k);
-              result.push([x, y, z]);
-            }
-          }
-        }
-      }
-    }
-  }
-  return result;
+): 0 | 1 | 2 {
+  if (!normal) return 1;
+  const [nx, ny, nz] = snapNormalToAxis(normal);
+  if (nx !== 0) return 0;
+  if (ny !== 0) return 1;
+  return 2;
 }
 
-/** Expands each path point into half a sphere: only voxels where (p - center) · normal >= 0. */
-function hemispherePath(
+/** Euclidean disk in the plane perpendicular to normalAxis (single voxel thick). */
+function diskPathInPlane(
   positions: [number, number, number][],
   radius: number,
-  normal: { x: number; y: number; z: number } | undefined
+  normalAxis: 0 | 1 | 2
 ): [number, number, number][] {
   if (radius <= 0) return positions;
-  if (!normal) return puffPath(positions, radius, 0);
-  const { x: nx, y: ny, z: nz } = normal;
-  const r = Math.max(0, radius);
-  const lo = -Math.ceil(r);
-  const hi = Math.floor(r);
-  const rSq = r * r;
+  const lo = -Math.ceil(radius);
+  const hi = Math.floor(radius);
+  const rSq = radius * radius;
   const seen = new Set<string>();
   const result: [number, number, number][] = [];
   for (const [px, py, pz] of positions) {
     for (let dx = lo; dx <= hi; dx++) {
       for (let dy = lo; dy <= hi; dy++) {
         for (let dz = lo; dz <= hi; dz++) {
-          if (dx * dx + dy * dy + dz * dz <= rSq && dx * nx + dy * ny + dz * nz >= 0) {
-            const x = px + dx;
-            const y = py + dy;
-            const z = pz + dz;
-            const xi = Math.round(x);
-            const yi = Math.round(y);
-            const zi = Math.round(z);
-            const k = `${xi},${yi},${zi}`;
-            if (!seen.has(k)) {
-              seen.add(k);
-              result.push([xi, yi, zi]);
-            }
+          if (normalAxis === 0 && dx !== 0) continue;
+          if (normalAxis === 1 && dy !== 0) continue;
+          if (normalAxis === 2 && dz !== 0) continue;
+          if (dx * dx + dy * dy + dz * dz > rSq) continue;
+          const x = px + dx;
+          const y = py + dy;
+          const z = pz + dz;
+          const k = `${x},${y},${z}`;
+          if (!seen.has(k)) {
+            seen.add(k);
+            result.push([x, y, z]);
           }
         }
       }
@@ -464,8 +437,8 @@ export interface PathThickenParams {
   /** When true and drawBrushFaceNormal set, offset brush by radius*normal so it sits on surface */
   drawBrushSnapToSurface?: boolean;
   drawBrushFaceNormal?: { x: number; y: number; z: number };
-  /** Bulk mode: brush shape (cube, sphere, hemicube, hemisphere). */
-  bulkBrushShape?: 'cube' | 'sphere' | 'hemicube' | 'hemisphere';
+  /** Bulk mode: footprint in the surface plane. */
+  bulkBrushShape?: 'cube' | 'sphere';
   /** Optional seed for deterministic scatter/radius in puffPath (preview and apply use same seed per stroke). */
   seed?: number;
 }
@@ -537,17 +510,12 @@ export function thickenPathForStroke(
   }
   if (isClayPath && params.clayMode === 'bulk' && params.clayBrushRadius > 0) {
     const shape = params.bulkBrushShape ?? 'cube';
-    const normal = params.drawBrushFaceNormal;
-    switch (shape) {
-      case 'sphere':
-        return puffPath(positions, params.clayBrushRadius, 0);
-      case 'hemicube':
-        return thickenPathHemicube(positions, params.clayBrushRadius, normal);
-      case 'hemisphere':
-        return hemispherePath(positions, params.clayBrushRadius, normal);
-      default:
-        return thickenPath(positions, params.clayBrushRadius);
+    const axis = faceNormalToLayerAxis(params.drawBrushFaceNormal);
+    // Single layer on the painted surface: widen in the tangent plane only, not along the normal.
+    if (shape === 'sphere') {
+      return diskPathInPlane(positions, params.clayBrushRadius, axis);
     }
+    return thickenPathInPlane(positions, params.clayBrushRadius, axis);
   }
   if (isClayPath && params.clayBrushRadius > 0) {
     return thickenPath(positions, params.clayBrushRadius);
