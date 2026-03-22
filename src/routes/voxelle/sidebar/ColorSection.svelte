@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { color, palette, selectedColors } from '../store/index';
+  import { get } from 'svelte/store';
+  import { color, palette, selectedColors, tool, toolBeforeEyedropper } from '../store/index';
   import LospecPalette from '$lib/components/LospecPalette.svelte';
 </script>
 
@@ -26,6 +27,20 @@
         selectedColors.set([v]);
       }}
     />
+    <div class="color-row-eyedropper tool-buttons">
+      <button
+        type="button"
+        class:active={$tool === 'eyedropper'}
+        title="Pick color and material from a voxel (returns to previous tool after picking)"
+        onclick={() => {
+          const t = get(tool);
+          if (t !== 'eyedropper') toolBeforeEyedropper.set(t);
+          tool.set('eyedropper');
+        }}
+      >
+        Eyedropper
+      </button>
+    </div>
   </div>
   <LospecPalette {color} {palette} {selectedColors} defaultSlug="resurrect-64" />
 </div>
@@ -33,9 +48,21 @@
 <style>
   .color-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
     align-items: center;
     margin-bottom: 0.5rem;
+  }
+
+  .color-row-eyedropper {
+    margin-bottom: 0;
+    flex: 0 0 auto;
+  }
+
+  .color-row-eyedropper.tool-buttons button {
+    min-width: unset;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.8rem;
   }
 
   #color-picker {
@@ -50,6 +77,7 @@
 
   .color-hex {
     flex: 1;
+    min-width: 0;
     padding: 0.35rem 0.5rem;
     font-size: 0.85rem;
     font-family: monospace;

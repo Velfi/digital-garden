@@ -4,7 +4,7 @@ import { computeMarchingCubes } from './marchingCubesCore';
 import { voxelsFromInput } from './greedyMeshWorkerLogic';
 import type { Voxel } from './voxelMaterial';
 
-export type RenderingMode = 'greedy' | 'marchingCubes' | 'raycast';
+export type RenderingMode = 'greedy' | 'marchingCubes' | 'ray';
 
 const CHUNK_SIZE_DEFAULT = 0;
 
@@ -97,7 +97,7 @@ function mergeChunkResults(
 
 export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshWorkerOutput {
   const { voxels: voxelInput, mode = 'greedy', options = {}, gen } = input;
-  if (mode === 'raycast') {
+  if (mode === 'ray') {
     return { results: [], gen };
   }
   const voxels = voxelsFromInput(voxelInput);

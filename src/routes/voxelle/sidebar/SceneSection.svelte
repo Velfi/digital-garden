@@ -4,8 +4,15 @@
     enableSky,
     backgroundColor,
     renderingMode,
+    activeRendererIsWebGPU,
     type RenderingMode
   } from '../store/index';
+
+  $effect(() => {
+    if ($activeRendererIsWebGPU === false && $renderingMode === 'ray') {
+      renderingMode.set('greedy');
+    }
+  });
 </script>
 
 <h2>Scene</h2>
@@ -18,6 +25,9 @@
   >
     <option value="greedy">Blocky (greedy mesh)</option>
     <option value="marchingCubes">Smooth (marching cubes)</option>
+    {#if $activeRendererIsWebGPU === true}
+      <option value="ray">Ray (WebGPU)</option>
+    {/if}
   </select>
 </div>
 <div class="light-control">

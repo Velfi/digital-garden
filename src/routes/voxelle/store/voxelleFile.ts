@@ -173,6 +173,28 @@ export async function saveToFile(filename = 'voxelle.voxelle'): Promise<void> {
     compressed.byteOffset + compressed.byteLength
   ) as ArrayBuffer;
   const blob = new Blob([slice], { type: 'application/octet-stream' });
+
+  if (typeof window.showSaveFilePicker === 'function') {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [
+          {
+            description: 'Voxelle file',
+            accept: { 'application/octet-stream': ['.voxelle'] }
+          }
+        ]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      // Fall through to legacy download on other errors
+    }
+  }
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

@@ -25,7 +25,8 @@ import {
   beginStroke,
   applySelectionTranslationInStroke,
   applySelectionTranslationAlongAxis,
-  applySelectionRotationInStroke
+  applySelectionRotationInStroke,
+  type FaceNormal
 } from './core';
 import { plasticVoxel, type Voxel } from '../voxelMaterial';
 
@@ -91,7 +92,7 @@ describe('core', () => {
   describe('getPunchOffsetForFace', () => {
     it('single-voxel selection: inward -Y aligns maxY to hit layer (not one below)', () => {
       const one = { minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 };
-      const inwardY = [0, -1, 0] as const;
+      const inwardY: FaceNormal = [0, -1, 0];
       const [dx, dy, dz] = getPunchOffsetForFace([0, 0, 0], inwardY, one);
       expect([dx, dy, dz]).toEqual([0, 0, 0]);
     });

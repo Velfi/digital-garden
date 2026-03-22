@@ -37,6 +37,16 @@ describe('voxelMeshWorkerLogic', () => {
     expect(buckets.has(`${0x88ccff}|glass`)).toBe(true);
   });
 
+  it('returns no meshes for ray mode', () => {
+    const output = processVoxelMeshMessage({
+      mode: 'ray',
+      voxels: [['0,0,0', plasticVoxel(0xff5733)]],
+      gen: 3
+    });
+    expect(output.results).toHaveLength(0);
+    expect(output.gen).toBe(3);
+  });
+
   it('echoes gen for mode-independent rebuild tracking', () => {
     const output = processVoxelMeshMessage({
       mode: 'marchingCubes',

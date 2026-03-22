@@ -128,7 +128,8 @@ async function createVoxelleRenderer(
       const renderer = new WebGPURenderer({ antialias: true });
       await renderer.init();
       renderer.shadowMap.enabled = enableShadows;
-      renderer.shadowMap.type = THREE.PCFShadowMap;
+      // Match WebGL: BasicShadowMap avoids depth-compare / PCF issues with WebGPU + half-float beauty RT.
+      renderer.shadowMap.type = THREE.BasicShadowMap;
       /** Keep disabled: WebGPU transmitted shadows can punch through opaque occluders. */
       try {
         const sm = renderer.shadowMap as { transmitted?: boolean } | null | undefined;

@@ -89,20 +89,6 @@
   {/if}
 </div>
 
-<div class="tool-buttons">
-  <button
-    type="button"
-    class:active={$tool === 'eyedropper'}
-    onclick={() => {
-      tool.set('eyedropper');
-      lastDrawTool.set('eyedropper');
-    }}
-    title="Pick color from voxel"
-  >
-    Eyedropper
-  </button>
-</div>
-
 <style>
   .tool-group--selection {
     margin-bottom: 0.5rem;

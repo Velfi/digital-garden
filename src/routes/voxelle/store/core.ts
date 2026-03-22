@@ -99,9 +99,12 @@ export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect' | 'togg
 export type PlaneAxis = 'auto' | 0 | 1 | 2;
 
 export type FaceNormal = [number, number, number];
-export type RenderingMode = 'greedy' | 'marchingCubes' | 'raycast';
-function normalizeRenderingMode(mode: RenderingMode): RenderingMode {
-  return mode === 'raycast' ? 'greedy' : mode;
+export type RenderingMode = 'greedy' | 'marchingCubes' | 'ray';
+
+function normalizeRenderingMode(mode: RenderingMode | 'raycast'): RenderingMode {
+  if (mode === 'raycast') return 'ray';
+  if (mode === 'greedy' || mode === 'marchingCubes' || mode === 'ray') return mode;
+  return 'greedy';
 }
 
 export type AddPanelState = {
@@ -141,6 +144,8 @@ export const tool = writable<Tool>('voxel');
 export const toolPane = writable<ToolPane>('draw');
 /** Last selected draw tool, restored when switching from Clay back to Draw pane. */
 export const lastDrawTool = writable<Tool>('remove');
+/** Tool active before entering eyedropper; restored after a successful voxel color pick. */
+export const toolBeforeEyedropper = writable<Tool>('voxel');
 export const selection = writable<Map<string, Voxel>>(new Map());
 export const selectionMode = writable<SelectionMode>('replace');
 export const fillSelectDiagonals = writable<boolean>(false);
@@ -341,6 +346,8 @@ export const renderingMode = {
   update: (updater: (value: RenderingMode) => RenderingMode) =>
     renderingModeInner.update((value) => normalizeRenderingMode(updater(value)))
 };
+/** Active canvas renderer backend: true (WebGPU), false (WebGL), null (not initialized yet). */
+export const activeRendererIsWebGPU = writable<boolean | null>(null);
 /** Default lighting matches sunny-day preset in `store/lightPresets.ts`. */
 export const lightAngle = writable<number>(50);
 export const lightElevation = writable<number>(55);

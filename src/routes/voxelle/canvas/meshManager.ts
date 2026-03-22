@@ -36,7 +36,7 @@ import { GLASS_SHADOW_VERTEX_AO_POW, GLASS_SHADOW_VERTEX_AO_SCALE } from './glas
 
 export interface MeshManagerOptions {
   enableShadows: boolean;
-  renderingMode: 'greedy' | 'marchingCubes' | 'raycast';
+  renderingMode: 'greedy' | 'marchingCubes' | 'ray';
   aoStrength: number;
   sceneEnvironmentIntensity: number;
 }
@@ -118,13 +118,27 @@ export function syncGlassShadowUniformsFromBuckets(
   return changed;
 }
 
+type GlassShadowDepthMaterialOptions = {
+  /**
+   * Greedy mesh encodes AO + slab thickness in vertex colors for the shadow depth bias.
+   * Marching cubes uses plain albedo only; the same bias would max out and clamp glass out of the map.
+   */
+  marchingCubes?: boolean;
+};
+
 /**
  * Glass uses depthWrite:false on the visible material; shadow pass uses this instead.
  * Clip-space Z bias only in the depth vertex shader (Metal-safe; no `gl_FragDepth`): `netT` from
  * uniforms and per-vertex AO tint ratio. Do not re-apply the same push in the fragment shader (doubles
  * bias and can clamp packed depth to far → invisible glass shadows).
  */
-function createGlassShadowDepthMaterial(baseColor24: number): THREE.MeshDepthMaterial {
+function createGlassShadowDepthMaterial(
+  baseColor24: number,
+  options?: GlassShadowDepthMaterialOptions
+): THREE.MeshDepthMaterial {
+  const glassShadowVertexAOScaleValue = options?.marchingCubes
+    ? 0
+    : GLASS_SHADOW_VERTEX_AO_SCALE;
   const depthMat = new THREE.MeshDepthMaterial({
     /** Same as WebGLShadowMap's internal depth material so glass writes comparable depth to the PCF map. */
     depthPacking: THREE.BasicDepthPacking,
@@ -142,7 +156,7 @@ function createGlassShadowDepthMaterial(baseColor24: number): THREE.MeshDepthMat
   depthMat.onBeforeCompile = (shader) => {
     shader.uniforms.glassBaseColor = { value: baseColor };
     shader.uniforms.glassShadowVertexAOPow = { value: GLASS_SHADOW_VERTEX_AO_POW };
-    shader.uniforms.glassShadowVertexAOScale = { value: GLASS_SHADOW_VERTEX_AO_SCALE };
+    shader.uniforms.glassShadowVertexAOScale = { value: glassShadowVertexAOScaleValue };
     shader.uniforms.glassShadowDepthPushMax = glassU.glassShadowDepthPushMax;
     shader.uniforms.uGlassTransmission = glassU.uGlassTransmission;
     shader.uniforms.uGlassThickness = glassU.uGlassThickness;
@@ -262,15 +276,16 @@ export function createMeshManager(
       mesh.castShadow = opts.enableShadows;
       mesh.receiveShadow =
         opts.enableShadows &&
-        opts.renderingMode !== 'marchingCubes' &&
-        opts.renderingMode !== 'raycast' &&
+        opts.renderingMode !== 'ray' &&
         materialId !== 'glass';
       if (materialId === 'glass') {
         /**
          * Use the depth-material glass shadow path on both backends.
          * WebGPU transmitted shadows can render through opaque occluders.
          */
-        mesh.customDepthMaterial = createGlassShadowDepthMaterial(parsed?.color ?? 0xffffff);
+        mesh.customDepthMaterial = createGlassShadowDepthMaterial(parsed?.color ?? 0xffffff, {
+          marchingCubes: opts.renderingMode === 'marchingCubes'
+        });
       }
       voxelGroup.add(mesh);
       meshesByBucket.set(bucketKey, { mesh, positions: null });
@@ -300,7 +315,7 @@ export function createMeshManager(
     if (!meshWorker || !voxelGroup) return;
     const gen = ++meshRebuildGen;
     const opts = getOptions();
-    if (opts.renderingMode === 'raycast') {
+    if (opts.renderingMode === 'ray') {
       if (spinnerTimeoutId) {
         clearTimeout(spinnerTimeoutId);
         spinnerTimeoutId = null;
