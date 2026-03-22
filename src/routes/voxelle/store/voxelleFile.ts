@@ -2,12 +2,7 @@ import { get } from 'svelte/store';
 import { coordKey, parseCoordKey } from '../coordUtils';
 import { voxels, gridSize, focalLength, orthographic, resetUndo } from './core';
 import type { GridSize } from './core';
-import {
-  parseFormatPayload,
-  serializeFormatToBson,
-  VOXELLE_FORMAT_VERSION,
-  type VoxelleFileFormat
-} from './voxelleFormatCore';
+import { VOXELLE_FORMAT_VERSION, type VoxelleFileFormat } from './voxelleFormatCore';
 import type { Voxel } from '../voxelMaterial';
 import { parseVoxelMaterial } from '../voxelMaterial';
 
@@ -15,6 +10,14 @@ export { VOXELLE_FORMAT_VERSION, type VoxelleFileFormat };
 
 export type ParsePayloadImpl = (bytes: Uint8Array) => Promise<VoxelleFileFormat | null>;
 export type SerializeImpl = (data: VoxelleFileFormat) => Promise<Uint8Array>;
+
+/** File System Access API (Chromium); not on `Window` in all TS lib versions. */
+type WindowWithSaveFilePicker = Window & {
+  showSaveFilePicker?: (options: {
+    suggestedName?: string;
+    types?: Array<{ description: string; accept: Record<string, string[]> }>;
+  }) => Promise<FileSystemFileHandle>;
+};
 
 let parsePayloadImpl: ParsePayloadImpl;
 let serializeImpl: SerializeImpl;
@@ -174,9 +177,10 @@ export async function saveToFile(filename = 'voxelle.voxelle'): Promise<void> {
   ) as ArrayBuffer;
   const blob = new Blob([slice], { type: 'application/octet-stream' });
 
-  if (typeof window.showSaveFilePicker === 'function') {
+  const w = window as WindowWithSaveFilePicker;
+  if (typeof w.showSaveFilePicker === 'function') {
     try {
-      const handle = await window.showSaveFilePicker({
+      const handle = await w.showSaveFilePicker({
         suggestedName: filename,
         types: [
           {

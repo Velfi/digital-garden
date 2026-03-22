@@ -7,7 +7,6 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import {
-  getBoundsFromPositions,
   getSelectionBounds,
   selectionAabbWireframePositions,
   VOXELLE_SELECTION_BBOX_WIREFRAME_KEY,
@@ -15,14 +14,6 @@ import {
 } from '../coordUtils';
 import { buildGridPositions } from '../gridLines';
 import { buildGreedyMesh, buildPreviewGeometry, PREVIEW_MESH_OPTIONS } from '../greedyMesh';
-import {
-  alignPreviewMeshToLod,
-  computePreviewLodStride,
-  createPreviewRefinementScheduler,
-  downsamplePositionsToPreviewMap,
-  downsampleVoxelMapToPreviewMap,
-  resetPreviewMeshTransform
-} from '../previewMeshLod';
 import type { SceneSetupRefs } from './sceneSetup';
 import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
 import {
@@ -221,8 +212,6 @@ export function createMeshManager(
   let selectionWireframe: THREE.LineSegments | null = null;
   let selectionWireframeMaterial: THREE.LineBasicMaterial | null = null;
   let spinnerTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  const selectionRefinementScheduler = createPreviewRefinementScheduler();
-  const previewRefinementScheduler = createPreviewRefinementScheduler();
 
   function disposeAllVoxelMeshes() {
     if (!voxelGroup) return;

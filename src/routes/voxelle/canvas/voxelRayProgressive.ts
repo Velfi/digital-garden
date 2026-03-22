@@ -219,14 +219,13 @@ function shadeOpaqueSurface(
 function shadeGlassFallback(
   voxel: Voxel,
   faceNormal: [number, number, number],
-  rayDir: [number, number, number],
+  _rayDir: [number, number, number],
   params: VoxelRayTraceParams,
   hitPoint: [number, number, number],
   voxels: Map<string, Voxel>,
   maxShadowDist: number
 ): { rgb: [number, number, number]; bloom: [number, number, number] } {
   const [nx, ny, nz] = faceNormal;
-  const [vx, vy, vz] = rayDir;
   const [lx, ly, lz] = params.toLightWorld;
   const ndotl = Math.max(0, nx * lx + ny * ly + nz * lz);
   const [cr, cg, cb] = hexToLinearRgb(voxel.color & 0xffffff);

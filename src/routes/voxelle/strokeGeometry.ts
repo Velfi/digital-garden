@@ -393,7 +393,7 @@ export function getSprayDirectionVector(
 
 /** One voxel step perpendicular to direction (for 2-voxel wall width). */
 function perpendicularStep(dir: [number, number, number]): [number, number, number] {
-  const [dx, dy, dz] = dir;
+  const [dx, dy] = dir;
   if (dx !== 0) return [0, 1, 0];
   if (dy !== 0) return [1, 0, 0];
   return [0, 1, 0];

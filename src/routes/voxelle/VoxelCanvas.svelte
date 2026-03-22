@@ -195,14 +195,7 @@
   } from './canvas/sceneSetup';
   import { createMeshManager, syncGlassShadowUniformsFromBuckets } from './canvas/meshManager';
   import { ddaPickVoxel, maxRayDistanceForVoxels } from './canvas/voxelRayDda';
-  import {
-    VoxelRayProgressive,
-    buildVoxelRayTraceParams,
-    RAY_TRACE_MAX_BUFFER_DIM
-  } from './canvas/voxelRayProgressive';
-  import { buildGpuVoxelHashOnlyFromMap } from './canvas/gpuVoxelAccel';
-  import { GpuVoxelRayPipeline } from './canvas/gpuVoxelRayPipeline';
-  import type { WebGPURenderer } from 'three/webgpu';
+  import { VoxelRayProgressive, buildVoxelRayTraceParams } from './canvas/voxelRayProgressive';
   import { isWebGLRenderer, isWebGPURenderer } from './canvas/rendererUtils';
   import {
     createWebGPUBloomPipeline,
@@ -354,8 +347,6 @@
   let renderer: VoxelleRenderer;
   /** Matches last `createSceneSetupAsync`. */
   let canvasIsWebGPU = false;
-  /** WebGPU ray mode uses GPU compute + camera backdrop quad instead of CPU DataTexture. */
-  const ENABLE_WEBGPU_RAY_BACKDROP = false;
   /** WebGPU: TSL `RenderPipeline` + bloom; null if init failed. */
   let webgpuBloomPipeline: WebGPUBloomPipeline | null = null;
   /** Selective glow bloom (glow voxels only); null if init failed. */
@@ -378,13 +369,6 @@
   /** Synthetic object for DDA pick hits in ray rendering mode (face.normal used by tools). */
   let rayPickProxy: THREE.Object3D | null = null;
   let rayProgressive: VoxelRayProgressive | null = null;
-  /** WebGPU-only; `$state` so voxel effects run after the pipeline is created in `onMount`. */
-  let gpuRayPipeline = $state<GpuVoxelRayPipeline | null>(null);
-  /**
-   * WebGPU: `scene.background` as DataTexture breaks TSL/node builds; sample compute `StorageTexture`
-   * on a quad parented to the camera. The active camera is temporarily `scene.add`ed in ray mode.
-   */
-  let rayWebGpuBackdrop: THREE.Mesh | null = null;
   /** Baseline pose for ray progressive resets — must not use raw matrixWorld element diffs (OrbitControls damping changes them every frame). */
   const prevRayCamPos = new THREE.Vector3();
   const prevRayCamQuat = new THREE.Quaternion();
@@ -3601,54 +3585,6 @@
     }
   }
 
-  function updateRayWebGpuBackdropTransform(cam: THREE.PerspectiveCamera | THREE.OrthographicCamera) {
-    if (!rayWebGpuBackdrop) return;
-    const d =
-      cam instanceof THREE.PerspectiveCamera
-        ? THREE.MathUtils.clamp(cam.far * 0.02, Math.max(cam.near * 4, 0.5), 500)
-        : THREE.MathUtils.clamp(Math.abs(cam.far - cam.near) * 0.02, 2, 500);
-    let frW: number;
-    let frH: number;
-    if (cam instanceof THREE.PerspectiveCamera) {
-      const vFov = (cam.fov * Math.PI) / 180;
-      frH = 2 * Math.tan(vFov / 2) * d;
-      frW = frH * cam.aspect;
-    } else {
-      frW = cam.right - cam.left;
-      frH = cam.top - cam.bottom;
-    }
-    rayWebGpuBackdrop.position.set(0, 0, -d);
-    rayWebGpuBackdrop.rotation.set(0, Math.PI, 0);
-    rayWebGpuBackdrop.scale.set(frW / 2, frH / 2, 1);
-  }
-
-  /** WebGPU ray backdrop: only the active camera may be under `scene` so projectObject visits the quad. */
-  function syncRayWebGpuCameraInScene() {
-    if (!scene || !perspectiveCamera || !orthographicCamera || !camera) return;
-    if (perspectiveCamera !== camera && perspectiveCamera.parent === scene) {
-      scene.remove(perspectiveCamera);
-    }
-    if (orthographicCamera !== camera && orthographicCamera.parent === scene) {
-      scene.remove(orthographicCamera);
-    }
-    if (camera.parent !== scene) {
-      scene.add(camera);
-    }
-  }
-
-  function rayWebGpuSceneTeardown() {
-    detachRayWebGpuBackdrop();
-    if (!scene) return;
-    if (perspectiveCamera?.parent === scene) scene.remove(perspectiveCamera);
-    if (orthographicCamera?.parent === scene) scene.remove(orthographicCamera);
-  }
-
-  function detachRayWebGpuBackdrop() {
-    if (rayWebGpuBackdrop?.parent) {
-      rayWebGpuBackdrop.parent.remove(rayWebGpuBackdrop);
-    }
-  }
-
   function updateOrthoFrustum() {
     if (!orthographicCamera || !container) return;
     const w = container.clientWidth;
@@ -3837,76 +3773,12 @@
     render();
   }
 
-  /**
-   * WebGPU ray: run compute before any `renderer.render` (including `$effect` paths).
-   * Otherwise Svelte effects call `render()` before `animate()`'s RAF, so the backdrop
-   * samples the storage texture before the compute pass has written it.
-   */
-  function syncWebGpuRayTraceCompute(): void {
-    if (
-      !ENABLE_WEBGPU_RAY_BACKDROP ||
-      !renderer ||
-      !container ||
-      !camera ||
-      !dirLight ||
-      !hemisphereLight ||
-      get(renderingMode) !== 'ray' ||
-      !canvasIsWebGPU ||
-      !gpuRayPipeline
-    ) {
-      return;
-    }
-    const params = buildVoxelRayTraceParams(dirLight, hemisphereLight, {
-      enableSky: get(enableSky),
-      backgroundHex: hexToInt(get(backgroundColor)),
-      ambientIntensity: get(ambientIntensity),
-      sceneEnvironmentIntensity: get(sceneEnvironmentIntensity),
-      enableShadows: get(enableShadows)
-    });
-    const pr = renderer.getPixelRatio();
-    let bw = Math.max(1, Math.round(container.clientWidth * pr));
-    let bh = Math.max(1, Math.round(container.clientHeight * pr));
-    const m = Math.max(bw, bh);
-    if (m > RAY_TRACE_MAX_BUFFER_DIM) {
-      const s = RAY_TRACE_MAX_BUFFER_DIM / m;
-      bw = Math.max(1, Math.round(bw * s));
-      bh = Math.max(1, Math.round(bh * s));
-    }
-    gpuRayPipeline.setOutputSize(bw, bh);
-    gpuRayPipeline.setTraceParams(params);
-    gpuRayPipeline.setMaxDistance(maxRayDistanceForVoxels(get(voxels)));
-    gpuRayPipeline.setCameraRays(camera);
-    gpuRayPipeline.dispatch();
-  }
-
   function render() {
     moveGizmoDragLabel = null;
     if (renderer && scene && camera) {
       selectionGizmo?.updateGizmoPreviewOffset();
       selectionGizmo?.updateMoveGizmoTransform();
       scene.updateMatrixWorld(true);
-
-      syncWebGpuRayTraceCompute();
-
-      if (
-        get(renderingMode) === 'ray' &&
-        ENABLE_WEBGPU_RAY_BACKDROP &&
-        canvasIsWebGPU &&
-        gpuRayPipeline &&
-        rayWebGpuBackdrop &&
-        camera &&
-        perspectiveCamera &&
-        orthographicCamera
-      ) {
-        if (scene.background === null) {
-          scene.background = new THREE.Color(hexToInt(get(backgroundColor)));
-        }
-        syncRayWebGpuCameraInScene();
-        if (rayWebGpuBackdrop.parent !== camera) {
-          camera.add(rayWebGpuBackdrop);
-        }
-        updateRayWebGpuBackdropTransform(camera);
-      }
 
       if (meshManager && get(enableShadows) && !canvasIsWebGPU) {
         const glassUniformsChanged = syncGlassShadowUniformsFromBuckets(
@@ -3946,10 +3818,7 @@
         }
       }
 
-      const cpuRayBloomEligible =
-        get(renderingMode) === 'ray' &&
-        rayProgressive != null &&
-        (!ENABLE_WEBGPU_RAY_BACKDROP || !canvasIsWebGPU || !gpuRayPipeline);
+      const cpuRayBloomEligible = get(renderingMode) === 'ray' && rayProgressive != null;
       const rayProg = rayProgressive;
 
       if (webgpuBloomPipeline && camera && isWebGPURenderer(renderer)) {
@@ -4083,7 +3952,7 @@
         enableShadows: get(enableShadows)
       });
 
-      if (rayProgressive && (!ENABLE_WEBGPU_RAY_BACKDROP || !canvasIsWebGPU || !gpuRayPipeline)) {
+      if (rayProgressive) {
         const texBefore = rayProgressive.texture;
         // CPU fallback in WebGPU ray mode must stay responsive; use aggressive internal downscale.
         const cpuRayDpr = Math.min(renderer.getPixelRatio(), 0.5);
@@ -4101,8 +3970,6 @@
           scene.background = rayProgressive.texture;
         }
         rayRefinementProgress = rayProgressive.getRefinementProgress();
-      } else if (ENABLE_WEBGPU_RAY_BACKDROP && canvasIsWebGPU && gpuRayPipeline) {
-        rayRefinementProgress = 1;
       }
     } else {
       rayRefinementProgress = 0;
@@ -4224,14 +4091,6 @@
     const _renderingMode = $renderingMode;
     meshManager?.requestRebuildVoxelMeshes(v);
     render();
-  });
-
-  $effect(() => {
-    const v = $voxels;
-    const p = gpuRayPipeline;
-    if (!canvasIsWebGPU || !p) return;
-    p.syncAccel(buildGpuVoxelHashOnlyFromMap(v));
-    rayTraceContentDirty = true;
   });
 
   $effect(() => {
@@ -4476,39 +4335,9 @@
 
     rayPickProxy = new THREE.Object3D();
     rayProgressive = new VoxelRayProgressive();
-    if (isWebGPURenderer(renderer)) {
-      gpuRayPipeline = new GpuVoxelRayPipeline(renderer as WebGPURenderer);
-      gpuRayPipeline.outTexture.colorSpace = THREE.SRGBColorSpace;
-      gpuRayPipeline.outTexture.generateMipmaps = false;
-      gpuRayPipeline.outTexture.minFilter = THREE.LinearFilter;
-      gpuRayPipeline.outTexture.magFilter = THREE.LinearFilter;
-      /** Keep the backdrop unlit and unaffected by tonemapping. */
-      const bgMat = new THREE.MeshBasicMaterial({
-        map: gpuRayPipeline.outTexture,
-        depthTest: false,
-        depthWrite: false,
-        toneMapped: false,
-        side: THREE.DoubleSide,
-        reflectivity: 0
-      });
-      const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat);
-      bgMesh.name = 'voxelleRayWebGpuBackdrop';
-      bgMesh.renderOrder = -2000;
-      bgMesh.frustumCulled = false;
-      bgMesh.raycast = () => {};
-      rayWebGpuBackdrop = bgMesh;
-    }
     if (get(renderingMode) === 'ray') {
       voxelGroup.visible = false;
-      if (ENABLE_WEBGPU_RAY_BACKDROP && canvasIsWebGPU && gpuRayPipeline && rayWebGpuBackdrop && camera) {
-        scene.background = new THREE.Color(hexToInt(get(backgroundColor)));
-        syncRayWebGpuCameraInScene();
-        camera.add(rayWebGpuBackdrop);
-        updateRayWebGpuBackdropTransform(camera);
-      } else {
-        rayWebGpuSceneTeardown();
-        scene.background = rayProgressive?.texture ?? new THREE.Color(hexToInt(get(backgroundColor)));
-      }
+      scene.background = rayProgressive?.texture ?? new THREE.Color(hexToInt(get(backgroundColor)));
     }
 
     const moveDragLineMat = new THREE.LineBasicMaterial({
@@ -4594,19 +4423,8 @@
     updateSkyLightingColors();
     if (scene) {
       if ($renderingMode === 'ray') {
-        if (ENABLE_WEBGPU_RAY_BACKDROP && canvasIsWebGPU && gpuRayPipeline && rayWebGpuBackdrop && camera) {
-          scene.background = new THREE.Color(hexToInt($backgroundColor));
-          syncRayWebGpuCameraInScene();
-          if (rayWebGpuBackdrop.parent !== camera) {
-            camera.add(rayWebGpuBackdrop);
-          }
-          updateRayWebGpuBackdropTransform(camera);
-        } else {
-          rayWebGpuSceneTeardown();
-          scene.background = rayProgressive?.texture ?? new THREE.Color(hexToInt($backgroundColor));
-        }
+        scene.background = rayProgressive?.texture ?? new THREE.Color(hexToInt($backgroundColor));
       } else {
-        rayWebGpuSceneTeardown();
         scene.background = useSky ? null : new THREE.Color(hexToInt($backgroundColor));
       }
     }
@@ -4884,16 +4702,6 @@
     polygonLineMaterial?.dispose();
     polygonPointsMaterial?.dispose();
     ropePointsMaterial?.dispose();
-    if (rayWebGpuBackdrop) {
-      rayWebGpuSceneTeardown();
-      const bm = rayWebGpuBackdrop.material as THREE.MeshBasicMaterial;
-      bm.map = null;
-      bm.dispose();
-      rayWebGpuBackdrop.geometry.dispose();
-      rayWebGpuBackdrop = null;
-    }
-    gpuRayPipeline?.dispose();
-    gpuRayPipeline = null;
     rayProgressive?.dispose();
     rayProgressive = null;
     rayPickProxy = null;

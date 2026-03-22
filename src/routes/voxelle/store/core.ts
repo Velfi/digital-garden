@@ -2,7 +2,6 @@ import { writable, get, derived } from 'svelte/store';
 import {
   coordKey,
   parseCoordKey,
-  getSelectionBounds,
   getVoxelBounds,
   getVoxelCenter,
   getSelectionCenter,

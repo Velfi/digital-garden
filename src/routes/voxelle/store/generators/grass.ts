@@ -17,7 +17,7 @@ function createRng(seed: number): () => number {
 
 /** Two integer tangent vectors perpendicular to normal (axis-aligned). */
 function getTangentVectors(normal: FaceNormal): [FaceNormal, FaceNormal] {
-  const [nx, ny, nz] = normal;
+  const [nx, ny] = normal;
   if (nx !== 0) return [[0, 1, 0], [0, 0, 1]];
   if (ny !== 0) return [[1, 0, 0], [0, 0, 1]];
   return [[1, 0, 0], [0, 1, 0]];

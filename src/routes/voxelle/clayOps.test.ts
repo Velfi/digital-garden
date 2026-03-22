@@ -17,7 +17,7 @@ describe('applySmooth', () => {
     v.set(coordKey(0, 1, 1), gray);
     v.set(coordKey(2, 1, 1), gray);
     const brush: [number, number, number][] = [[1, 1, 1]];
-    const { toAdd, toRemove } = applySmooth(v, brush, 8);
+    const { toAdd } = applySmooth(v, brush, 8);
     expect(toAdd.has(coordKey(1, 1, 1))).toBe(true);
   });
 
@@ -26,7 +26,7 @@ describe('applySmooth', () => {
     v.set(coordKey(0, 0, 0), gray);
     v.set(coordKey(1, 0, 0), gray);
     const brush: [number, number, number][] = [[0, 0, 0]];
-    const { toAdd, toRemove } = applySmooth(v, brush, 8);
+    const { toRemove } = applySmooth(v, brush, 8);
     expect(toRemove.has(coordKey(0, 0, 0))).toBe(true);
   });
 

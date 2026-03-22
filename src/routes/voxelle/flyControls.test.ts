@@ -1,11 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as THREE from 'three';
-import {
-  createFlyMoveState,
-  resetFlyMoveState,
-  applyFlyMovement,
-  FLY_MOVE_SPEED
-} from './flyControls';
+import { createFlyMoveState, resetFlyMoveState, applyFlyMovement } from './flyControls';
 
 describe('flyControls', () => {
   describe('createFlyMoveState', () => {

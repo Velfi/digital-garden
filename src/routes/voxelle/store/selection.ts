@@ -4,7 +4,6 @@ import {
   parseCoordKey,
   inBoundsBox,
   getEffectiveBounds,
-  getSelectionBounds,
   getVoxelBounds,
   type SelectionBounds
 } from '../coordUtils';

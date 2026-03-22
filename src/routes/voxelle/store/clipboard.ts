@@ -17,7 +17,7 @@ export async function copySelection(): Promise<boolean> {
   const bounds = getSelectionBounds(sel);
   if (!bounds) return false;
   const entries: VoxelleClipboard['entries'] = [];
-  for (const [key, selV] of sel) {
+  for (const [key] of sel) {
     if (!v.has(key)) continue;
     const vx = v.get(key)!;
     const [x, y, z] = parseCoordKey(key);
