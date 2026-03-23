@@ -68,6 +68,35 @@ export function buildPreviewGeometry(
   return merged;
 }
 
+/**
+ * Multi-voxel preview (e.g. paste placement ghost). Darkens cells that overlap existing voxels.
+ */
+export function buildPreviewGeometryFromVoxelMap(
+  voxelMap: Map<string, Voxel>,
+  existingVoxels: Map<string, Voxel>
+): THREE.BufferGeometry | null {
+  if (voxelMap.size === 0) return null;
+  let map: Map<string, Voxel>;
+  if (existingVoxels.size > 0) {
+    map = new Map();
+    for (const [key, vx] of voxelMap) {
+      map.set(key, {
+        color: existingVoxels.has(key) ? darkenHex(vx.color, OVERLAP_DARKEN) : vx.color,
+        material: vx.material
+      });
+    }
+  } else {
+    map = voxelMap;
+  }
+  const geoByBucket = buildGreedyMesh(map, PREVIEW_MESH_OPTIONS);
+  const geos = [...geoByBucket.values()];
+  if (geos.length === 0) return null;
+  if (geos.length === 1) return geos[0];
+  const merged = mergeGeometries(geos);
+  geos.forEach((g) => g.dispose());
+  return merged;
+}
+
 export function buildGreedyMesh(
   voxels: Map<string, Voxel>,
   options: GreedyMeshOptions = {}
@@ -84,6 +113,7 @@ export function buildGreedyMesh(
     geo.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(data.normals, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(data.colors, 3));
+    geo.setAttribute('slabThickness', new THREE.Float32BufferAttribute(data.slabThickness, 1));
     geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
     geo.computeBoundingSphere();
     result.set(bucketKey, geo);

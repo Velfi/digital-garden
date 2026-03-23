@@ -1,7 +1,74 @@
 import * as THREE from 'three';
 import { ConvexHull } from 'three/addons/math/ConvexHull.js';
+import { parseCoordKey } from './coordUtils';
 
 export type Vec3Like = { x: number; y: number; z: number };
+
+const NEIGHBORS6: [number, number, number][] = [
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1]
+];
+
+/** 4-neighbors in the plane normal to world X, Y, or Z (fixed axis index 0|1|2). */
+function neighborsInFixedPlane(fixedAxis: 0 | 1 | 2): [number, number, number][] {
+  if (fixedAxis === 0)
+    return [
+      [0, 1, 0],
+      [0, -1, 0],
+      [0, 0, 1],
+      [0, 0, -1]
+    ];
+  if (fixedAxis === 1)
+    return [
+      [1, 0, 0],
+      [-1, 0, 0],
+      [0, 0, 1],
+      [0, 0, -1]
+    ];
+  return [
+    [1, 0, 0],
+    [-1, 0, 0],
+    [0, 1, 0],
+    [0, -1, 0]
+  ];
+}
+
+/**
+ * Voxels within `thickness` layers of the solid boundary (morphological shell).
+ * `thickness` 1 = outer boundary only; larger values include inward bands.
+ */
+function hollowSolidToShell(
+  solid: [number, number, number][],
+  thickness: number,
+  neighbors: [number, number, number][]
+): [number, number, number][] {
+  const t = Math.max(1, Math.floor(thickness));
+  if (solid.length === 0) return [];
+  let r = new Set(solid.map((p) => `${p[0]},${p[1]},${p[2]}`));
+  for (let i = 0; i < t; i++) {
+    if (r.size === 0) break;
+    const next = new Set<string>();
+    for (const ks of r) {
+      const [x, y, z] = parseCoordKey(ks);
+      let allInside = true;
+      for (const [dx, dy, dz] of neighbors) {
+        const nk = `${x + dx},${y + dy},${z + dz}`;
+        if (!r.has(nk)) {
+          allInside = false;
+          break;
+        }
+      }
+      if (allInside) next.add(ks);
+    }
+    r = next;
+  }
+  const core = r;
+  return solid.filter((p) => !core.has(`${p[0]},${p[1]},${p[2]}`));
+}
 
 /** Path from origin stepping along direction for length voxel steps. Direction is normalized. */
 export function getRayDirectionPath(
@@ -811,12 +878,13 @@ export function getAxisAlignedPlaneFromNormal(
   a: [number, number, number],
   b: [number, number, number],
   faceNormal: Vec3Like,
-  hollow = false
+  hollow = false,
+  hollowWallThickness = 1
 ): [number, number, number][] {
   const ax = Math.abs(faceNormal.x);
   const ay = Math.abs(faceNormal.y);
   const az = Math.abs(faceNormal.z);
-  const fixedAxis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+  const fixedAxis = (ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2) as 0 | 1 | 2;
   const positions: [number, number, number][] = [];
   if (fixedAxis === 0) {
     const x = a[0];
@@ -824,71 +892,27 @@ export function getAxisAlignedPlaneFromNormal(
     const y1 = Math.max(a[1], b[1]);
     const z0 = Math.min(a[2], b[2]);
     const z1 = Math.max(a[2], b[2]);
-    if (hollow) {
-      if (y0 === y1 && z0 === z1) {
-        positions.push([x, y0, z0]);
-      } else if (y0 === y1) {
-        for (let pz = z0; pz <= z1; pz++) positions.push([x, y0, pz]);
-      } else if (z0 === z1) {
-        for (let py = y0; py <= y1; py++) positions.push([x, py, z0]);
-      } else {
-        for (let py = y0; py <= y1; py++) positions.push([x, py, z0]);
-        for (let py = y0; py <= y1; py++) positions.push([x, py, z1]);
-        for (let pz = z0 + 1; pz < z1; pz++) positions.push([x, y0, pz]);
-        for (let pz = z0 + 1; pz < z1; pz++) positions.push([x, y1, pz]);
-      }
-    } else {
-      for (let py = y0; py <= y1; py++)
-        for (let pz = z0; pz <= z1; pz++) positions.push([x, py, pz]);
-    }
+    for (let py = y0; py <= y1; py++)
+      for (let pz = z0; pz <= z1; pz++) positions.push([x, py, pz]);
   } else if (fixedAxis === 1) {
     const y = a[1];
     const x0 = Math.min(a[0], b[0]);
     const x1 = Math.max(a[0], b[0]);
     const z0 = Math.min(a[2], b[2]);
     const z1 = Math.max(a[2], b[2]);
-    if (hollow) {
-      if (x0 === x1 && z0 === z1) {
-        positions.push([x0, y, z0]);
-      } else if (x0 === x1) {
-        for (let pz = z0; pz <= z1; pz++) positions.push([x0, y, pz]);
-      } else if (z0 === z1) {
-        for (let px = x0; px <= x1; px++) positions.push([px, y, z0]);
-      } else {
-        for (let px = x0; px <= x1; px++) positions.push([px, y, z0]);
-        for (let px = x0; px <= x1; px++) positions.push([px, y, z1]);
-        for (let pz = z0 + 1; pz < z1; pz++) positions.push([x0, y, pz]);
-        for (let pz = z0 + 1; pz < z1; pz++) positions.push([x1, y, pz]);
-      }
-    } else {
-      for (let px = x0; px <= x1; px++)
-        for (let pz = z0; pz <= z1; pz++) positions.push([px, y, pz]);
-    }
+    for (let px = x0; px <= x1; px++)
+      for (let pz = z0; pz <= z1; pz++) positions.push([px, y, pz]);
   } else {
     const z = a[2];
     const x0 = Math.min(a[0], b[0]);
     const x1 = Math.max(a[0], b[0]);
     const y0 = Math.min(a[1], b[1]);
     const y1 = Math.max(a[1], b[1]);
-    if (hollow) {
-      if (x0 === x1 && y0 === y1) {
-        positions.push([x0, y0, z]);
-      } else if (x0 === x1) {
-        for (let py = y0; py <= y1; py++) positions.push([x0, py, z]);
-      } else if (y0 === y1) {
-        for (let px = x0; px <= x1; px++) positions.push([px, y0, z]);
-      } else {
-        for (let px = x0; px <= x1; px++) positions.push([px, y0, z]);
-        for (let px = x0; px <= x1; px++) positions.push([px, y1, z]);
-        for (let py = y0 + 1; py < y1; py++) positions.push([x0, py, z]);
-        for (let py = y0 + 1; py < y1; py++) positions.push([x1, py, z]);
-      }
-    } else {
-      for (let px = x0; px <= x1; px++)
-        for (let py = y0; py <= y1; py++) positions.push([px, py, z]);
-    }
+    for (let px = x0; px <= x1; px++)
+      for (let py = y0; py <= y1; py++) positions.push([px, py, z]);
   }
-  return positions;
+  if (!hollow) return positions;
+  return hollowSolidToShell(positions, hollowWallThickness, neighborsInFixedPlane(fixedAxis));
 }
 
 /** Disk in the plane normal to `faceNormal`, center at `center`, radius to `edge` in the two free axes (integer lattice). */
@@ -896,12 +920,13 @@ export function getAxisAlignedCircleFromNormal(
   center: [number, number, number],
   edge: [number, number, number],
   faceNormal: Vec3Like,
-  hollow = false
+  hollow = false,
+  hollowWallThickness = 1
 ): [number, number, number][] {
   const ax = Math.abs(faceNormal.x);
   const ay = Math.abs(faceNormal.y);
   const az = Math.abs(faceNormal.z);
-  const fixedAxis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+  const fixedAxis = (ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2) as 0 | 1 | 2;
 
   let cu: number;
   let cv: number;
@@ -946,34 +971,7 @@ export function getAxisAlignedCircleFromNormal(
   }
 
   if (!hollow) return filled;
-
-  const isInsideUv = (u: number, v: number) => {
-    const ddu = u - cu;
-    const ddv = v - cv;
-    return ddu * ddu + ddv * ddv <= rSq;
-  };
-
-  const boundary: [number, number, number][] = [];
-  for (const pos of filled) {
-    const [px, py, pz] = pos;
-    const u = fixedAxis === 0 ? py : px;
-    const v = fixedAxis === 0 ? pz : fixedAxis === 1 ? pz : py;
-    const neigh: [number, number][] = [
-      [u + 1, v],
-      [u - 1, v],
-      [u, v + 1],
-      [u, v - 1]
-    ];
-    let onEdge = false;
-    for (const [nu, nv] of neigh) {
-      if (!isInsideUv(nu, nv)) {
-        onEdge = true;
-        break;
-      }
-    }
-    if (onEdge) boundary.push(pos);
-  }
-  return boundary;
+  return hollowSolidToShell(filled, hollowWallThickness, neighborsInFixedPlane(fixedAxis));
 }
 
 export function getAxisAlignedCuboid(
@@ -981,15 +979,20 @@ export function getAxisAlignedCuboid(
   b: [number, number, number],
   faceNormal: Vec3Like,
   depth: number,
-  hollow = false
+  hollow = false,
+  hollowWallThickness = 1
 ): [number, number, number][] {
-  const planePositions = getAxisAlignedPlaneFromNormal(a, b, faceNormal, hollow);
-  if (depth === 0) return planePositions;
-  const positions: [number, number, number][] = [...planePositions];
   const ax = Math.abs(faceNormal.x);
   const ay = Math.abs(faceNormal.y);
   const az = Math.abs(faceNormal.z);
-  const axis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+  const fixedAxis = (ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2) as 0 | 1 | 2;
+  const planePositions = getAxisAlignedPlaneFromNormal(a, b, faceNormal, false);
+  if (depth === 0) {
+    if (!hollow) return planePositions;
+    return hollowSolidToShell(planePositions, hollowWallThickness, neighborsInFixedPlane(fixedAxis));
+  }
+  const positions: [number, number, number][] = [...planePositions];
+  const axis = fixedAxis;
   const comp = [faceNormal.x, faceNormal.y, faceNormal.z][axis];
   const step = comp > 0 ? 1 : -1;
   const layers = Math.abs(depth);
@@ -1002,19 +1005,8 @@ export function getAxisAlignedCuboid(
       positions.push(pos);
     }
   }
-  if (hollow) {
-    const minX = Math.min(...positions.map((p) => p[0]));
-    const maxX = Math.max(...positions.map((p) => p[0]));
-    const minY = Math.min(...positions.map((p) => p[1]));
-    const maxY = Math.max(...positions.map((p) => p[1]));
-    const minZ = Math.min(...positions.map((p) => p[2]));
-    const maxZ = Math.max(...positions.map((p) => p[2]));
-    return positions.filter(
-      ([px, py, pz]) =>
-        px === minX || px === maxX || py === minY || py === maxY || pz === minZ || pz === maxZ
-    );
-  }
-  return positions;
+  if (!hollow) return positions;
+  return hollowSolidToShell(positions, hollowWallThickness, NEIGHBORS6);
 }
 
 const PIP_EDGE_TOL = 1e-6;

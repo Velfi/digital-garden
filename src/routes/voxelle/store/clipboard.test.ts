@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { voxels, selection, gridSize, resetUndo } from './core';
-import { copySelection, pasteFromClipboard, cutSelection, deleteSelectedVoxels } from './clipboard';
+import { voxels, selection, gridSize, resetUndo, addPanelStore } from './core';
+import {
+  copySelection,
+  pasteFromClipboard,
+  cutSelection,
+  deleteSelectedVoxels,
+  placePastePatternAt
+} from './clipboard';
 import { plasticVoxel, type Voxel } from '../voxelMaterial';
 
 function makeVoxels(entries: [number, number, number, number][]): Map<string, Voxel> {
@@ -15,6 +21,7 @@ describe('clipboard', () => {
   const readText = vi.fn();
 
   beforeEach(() => {
+    vi.spyOn(console, 'debug').mockImplementation(() => {});
     gridSize.set(32);
     voxels.set(new Map());
     selection.set(new Map());
@@ -83,7 +90,7 @@ describe('clipboard', () => {
       expect(result).toBe(false);
     });
 
-    it('pastes valid voxelle data', async () => {
+    it('opens placement panel for valid voxelle data', async () => {
       const payload = {
         type: 'voxelle',
         entries: [
@@ -94,9 +101,40 @@ describe('clipboard', () => {
       readText.mockResolvedValue(JSON.stringify(payload));
       const result = await pasteFromClipboard();
       expect(result).toBe(true);
+      expect(get(voxels).size).toBe(0);
+      const ap = get(addPanelStore);
+      expect(ap.open).toBe(true);
+      expect(ap.mode).toBe('paste');
+      expect(ap.pasteEntries).toEqual(payload.entries);
+    });
+  });
+
+  describe('placePastePatternAt', () => {
+    it('writes voxels at placement with rotation', () => {
+      voxels.set(new Map());
+      placePastePatternAt(
+        [10, 0, 0],
+        [0, 1, 0],
+        [
+          [0, 0, 0, 0xff0000],
+          [1, 0, 0, 0x00ff00]
+        ]
+      );
       const v = get(voxels);
-      expect(v.get('0,0,0')).toEqual(plasticVoxel(0xff0000));
-      expect(v.get('1,1,1')).toEqual(plasticVoxel(0x00ff00));
+      // 90° about Y: (0,0,0)->(0,0,0)+(10,0,0); (1,0,0)->(0,0,-1)+(10,0,0)
+      expect(v.get('10,0,0')).toEqual(plasticVoxel(0xff0000));
+      expect(v.get('10,0,-1')).toEqual(plasticVoxel(0x00ff00));
+    });
+
+    it('replaces existing voxel when paste footprint overlaps', () => {
+      voxels.set(new Map([['10,0,0', plasticVoxel(0x111111)]]));
+      placePastePatternAt(
+        [10, 0, 0],
+        [0, 0, 0],
+        [[0, 0, 0, 0xeeeeee, 'metal']]
+      );
+      const v = get(voxels);
+      expect(v.get('10,0,0')).toEqual({ color: 0xeeeeee, material: 'metal' });
     });
   });
 

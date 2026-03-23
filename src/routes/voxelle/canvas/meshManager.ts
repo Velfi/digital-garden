@@ -9,9 +9,11 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import {
   getSelectionBounds,
   selectionAabbWireframePositions,
+  type SelectionBounds,
   VOXELLE_SELECTION_BBOX_WIREFRAME_KEY,
   VOXELLE_SELECTION_PIVOT_CHILD_KEY
 } from '../coordUtils';
+import { SELECTION_OVERLAY_MESH_THRESHOLD } from '../strokePreviewBounds';
 import { buildGridPositions } from '../gridLines';
 import { buildGreedyMesh, buildPreviewGeometry, PREVIEW_MESH_OPTIONS } from '../greedyMesh';
 import type { SceneSetupRefs } from './sceneSetup';
@@ -233,6 +235,7 @@ export function createMeshManager(
       positions: Float32Array;
       normals: Float32Array;
       colors: Float32Array;
+      slabThickness: Float32Array;
       indices: Uint32Array;
     }>
   ) {
@@ -242,11 +245,12 @@ export function createMeshManager(
     const opts = getOptions();
     const envMap = scene?.environment ?? null;
 
-    for (const { bucketKey, positions, normals, colors, indices } of results) {
+    for (const { bucketKey, positions, normals, colors, slabThickness, indices } of results) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
       geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geo.setAttribute('slabThickness', new THREE.BufferAttribute(slabThickness, 1));
       geo.setIndex(new THREE.BufferAttribute(indices, 1));
       geo.computeVertexNormals();
       geo.computeBoundingSphere();
@@ -355,67 +359,111 @@ export function createMeshManager(
       }
     }
     if (sel.size === 0) return;
-    const overlayVoxel: Voxel = { color: SELECTION_OVERLAY_HEX, material: 'plastic' };
-    const overlayMap = new Map<string, Voxel>();
-    for (const key of sel.keys()) overlayMap.set(key, overlayVoxel);
-    const geoByBucket = buildGreedyMesh(overlayMap, PREVIEW_MESH_OPTIONS);
-    const geo = geoByBucket.get(`${SELECTION_OVERLAY_HEX}|plastic`);
-    if (!geo) return;
-
-    selectionMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      vertexColors: true,
-      opacity: 0.35,
-      transparent: true,
-      depthTest: true,
-      depthWrite: false
-    });
-    selectionMesh = new THREE.Mesh(geo, selectionMaterial);
-    selectionMesh.raycast = () => {};
-    selectionMesh.renderOrder = 1001;
-    selectionMesh.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
-    selectionGroup.add(selectionMesh);
-
-    const occRgb = new THREE.Color(SELECTION_OVERLAY_HEX);
-    occRgb.multiplyScalar(0.48);
-    occRgb.lerp(new THREE.Color(0x5577ee), 0.42);
-    selectionOccludedMaterial = new THREE.MeshBasicMaterial({
-      vertexColors: false,
-      color: occRgb,
-      opacity: 0.32,
-      transparent: true,
-      depthTest: true,
-      depthWrite: false,
-      depthFunc: THREE.GreaterDepth,
-      polygonOffset: true,
-      polygonOffsetFactor: 1,
-      polygonOffsetUnits: 1
-    });
-    selectionOccludedMesh = new THREE.Mesh(geo, selectionOccludedMaterial);
-    selectionOccludedMesh.raycast = () => {};
-    selectionOccludedMesh.renderOrder = 1000;
-    selectionOccludedMesh.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
-    selectionGroup.add(selectionOccludedMesh);
-
     const bounds = getSelectionBounds(sel);
-    if (bounds) {
-      const wfPos = selectionAabbWireframePositions(bounds);
-      const wfGeo = new THREE.BufferGeometry();
-      wfGeo.setAttribute('position', new THREE.BufferAttribute(wfPos, 3));
-      selectionWireframeMaterial = new THREE.LineBasicMaterial({
-        color: 0x9fd8ff,
+    if (!bounds) return;
+
+    const useBboxOnly = sel.size >= SELECTION_OVERLAY_MESH_THRESHOLD;
+
+    if (!useBboxOnly) {
+      const overlayVoxel: Voxel = { color: SELECTION_OVERLAY_HEX, material: 'plastic' };
+      const overlayMap = new Map<string, Voxel>();
+      for (const key of sel.keys()) overlayMap.set(key, overlayVoxel);
+      const geoByBucket = buildGreedyMesh(overlayMap, PREVIEW_MESH_OPTIONS);
+      const geo = geoByBucket.get(`${SELECTION_OVERLAY_HEX}|plastic`);
+      if (!geo) {
+        /* fall through to wireframe only */
+      } else {
+        selectionMaterial = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          vertexColors: true,
+          opacity: 0.35,
+          transparent: true,
+          depthTest: true,
+          depthWrite: false
+        });
+        selectionMesh = new THREE.Mesh(geo, selectionMaterial);
+        selectionMesh.raycast = () => {};
+        selectionMesh.renderOrder = 1001;
+        selectionMesh.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
+        selectionGroup.add(selectionMesh);
+
+        const occRgb = new THREE.Color(SELECTION_OVERLAY_HEX);
+        occRgb.multiplyScalar(0.48);
+        occRgb.lerp(new THREE.Color(0x5577ee), 0.42);
+        selectionOccludedMaterial = new THREE.MeshBasicMaterial({
+          vertexColors: false,
+          color: occRgb,
+          opacity: 0.32,
+          transparent: true,
+          depthTest: true,
+          depthWrite: false,
+          depthFunc: THREE.GreaterDepth,
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+          polygonOffsetUnits: 1
+        });
+        selectionOccludedMesh = new THREE.Mesh(geo, selectionOccludedMaterial);
+        selectionOccludedMesh.raycast = () => {};
+        selectionOccludedMesh.renderOrder = 1000;
+        selectionOccludedMesh.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
+        selectionGroup.add(selectionOccludedMesh);
+      }
+    } else {
+      const boxGeo = selectionBoundsToBoxGeometry(bounds);
+      selectionMaterial = new THREE.MeshBasicMaterial({
+        color: SELECTION_OVERLAY_HEX,
+        vertexColors: false,
+        opacity: 0.35,
         transparent: true,
-        opacity: 0.52,
         depthTest: true,
         depthWrite: false
       });
-      selectionWireframe = new THREE.LineSegments(wfGeo, selectionWireframeMaterial);
-      selectionWireframe.raycast = () => {};
-      selectionWireframe.renderOrder = 1002;
-      selectionWireframe.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
-      selectionWireframe.userData[VOXELLE_SELECTION_BBOX_WIREFRAME_KEY] = true;
-      selectionGroup.add(selectionWireframe);
+      selectionMesh = new THREE.Mesh(boxGeo, selectionMaterial);
+      selectionMesh.raycast = () => {};
+      selectionMesh.renderOrder = 1001;
+      selectionMesh.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
+      positionMeshAtSelectionBounds(selectionMesh, bounds);
+      selectionGroup.add(selectionMesh);
+
+      const occRgb = new THREE.Color(SELECTION_OVERLAY_HEX);
+      occRgb.multiplyScalar(0.48);
+      occRgb.lerp(new THREE.Color(0x5577ee), 0.42);
+      selectionOccludedMaterial = new THREE.MeshBasicMaterial({
+        vertexColors: false,
+        color: occRgb,
+        opacity: 0.32,
+        transparent: true,
+        depthTest: true,
+        depthWrite: false,
+        depthFunc: THREE.GreaterDepth,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1
+      });
+      selectionOccludedMesh = new THREE.Mesh(boxGeo, selectionOccludedMaterial);
+      selectionOccludedMesh.raycast = () => {};
+      selectionOccludedMesh.renderOrder = 1000;
+      selectionOccludedMesh.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
+      positionMeshAtSelectionBounds(selectionOccludedMesh, bounds);
+      selectionGroup.add(selectionOccludedMesh);
     }
+
+    const wfPos = selectionAabbWireframePositions(bounds);
+    const wfGeo = new THREE.BufferGeometry();
+    wfGeo.setAttribute('position', new THREE.BufferAttribute(wfPos, 3));
+    selectionWireframeMaterial = new THREE.LineBasicMaterial({
+      color: 0x9fd8ff,
+      transparent: true,
+      opacity: 0.52,
+      depthTest: true,
+      depthWrite: false
+    });
+    selectionWireframe = new THREE.LineSegments(wfGeo, selectionWireframeMaterial);
+    selectionWireframe.raycast = () => {};
+    selectionWireframe.renderOrder = 1002;
+    selectionWireframe.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
+    selectionWireframe.userData[VOXELLE_SELECTION_BBOX_WIREFRAME_KEY] = true;
+    selectionGroup.add(selectionWireframe);
   }
 
   function buildGrid(_size: number, v: Map<string, Voxel>) {
@@ -446,6 +494,38 @@ export function createMeshManager(
     }
   }
 
+  function selectionBoundsToBoxGeometry(b: SelectionBounds): THREE.BoxGeometry {
+    const wx = b.maxX - b.minX + 1;
+    const wy = b.maxY - b.minY + 1;
+    const wz = b.maxZ - b.minZ + 1;
+    return new THREE.BoxGeometry(wx, wy, wz);
+  }
+
+  function positionMeshAtSelectionBounds(mesh: THREE.Mesh, b: SelectionBounds) {
+    const wx = b.maxX - b.minX + 1;
+    const wy = b.maxY - b.minY + 1;
+    const wz = b.maxZ - b.minZ + 1;
+    mesh.position.set(b.minX + wx / 2, b.minY + wy / 2, b.minZ + wz / 2);
+  }
+
+  /** Translucent single box; same voxel-space convention as selection AABB wireframe. */
+  function updatePreviewBoundingBox(bounds: SelectionBounds, voxel: Voxel) {
+    if (!previewMesh || !previewMaterial) return;
+    const wx = bounds.maxX - bounds.minX + 1;
+    const wy = bounds.maxY - bounds.minY + 1;
+    const wz = bounds.maxZ - bounds.minZ + 1;
+    if (wx <= 0 || wy <= 0 || wz <= 0) {
+      previewMesh.visible = false;
+      return;
+    }
+    if (previewMesh.geometry) previewMesh.geometry.dispose();
+    previewMesh.geometry = new THREE.BoxGeometry(wx, wy, wz);
+    positionMeshAtSelectionBounds(previewMesh, bounds);
+    previewMaterial.vertexColors = false;
+    previewMaterial.color.setHex(voxel.color & 0xffffff);
+    previewMesh.visible = true;
+  }
+
   function updatePreviewMesh(
     positions: [number, number, number][],
     voxel: Voxel,
@@ -454,8 +534,14 @@ export function createMeshManager(
     if (!previewMesh || !previewMaterial) return;
     if (positions.length === 0) {
       previewMesh.visible = false;
+      previewMesh.position.set(0, 0, 0);
+      previewMaterial.vertexColors = true;
+      previewMaterial.color.setHex(0xffffff);
       return;
     }
+    previewMesh.position.set(0, 0, 0);
+    previewMaterial.vertexColors = true;
+    previewMaterial.color.setHex(0xffffff);
     const geo = buildPreviewGeometry(positions, voxel, existingVoxels);
     if (geo) {
       if (previewMesh.geometry) previewMesh.geometry.dispose();
@@ -505,6 +591,7 @@ export function createMeshManager(
     rebuildSelectionOverlay,
     buildGrid,
     updatePreviewMesh,
+    updatePreviewBoundingBox,
     destroy,
     getMeshesByBucket: () => meshesByBucket
   };

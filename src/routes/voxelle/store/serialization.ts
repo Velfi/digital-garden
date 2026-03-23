@@ -1,5 +1,20 @@
+import { coordKey, parseCoordKey } from '../coordUtils';
 import type { Voxel } from '../voxelMaterial';
 import { cloneVoxel, normalizeLegacyVoxel, parseVoxelMaterial } from '../voxelMaterial';
+
+/**
+ * One voxel per integer cell for persistence. Re-keys with `coordKey(floor(x),…)` so aliased
+ * map keys (e.g. fractional coords) merge; later entries win the same as `Map.set`.
+ */
+export function canonicalizeVoxelMap(voxelMap: Map<string, Voxel>): Map<string, Voxel> {
+  const out = new Map<string, Voxel>();
+  for (const [key, vx] of voxelMap) {
+    const [x, y, z] = parseCoordKey(key);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    out.set(coordKey(x, y, z), vx);
+  }
+  return out;
+}
 
 export function cloneVoxels(voxels: Map<string, Voxel>): Map<string, Voxel> {
   const next = new Map<string, Voxel>();
@@ -8,7 +23,7 @@ export function cloneVoxels(voxels: Map<string, Voxel>): Map<string, Voxel> {
 }
 
 export function serializeVoxels(voxelMap: Map<string, Voxel>): string {
-  return JSON.stringify([...voxelMap.entries()]);
+  return JSON.stringify([...canonicalizeVoxelMap(voxelMap).entries()]);
 }
 
 export function deserializeVoxels(json: string): Map<string, Voxel> {

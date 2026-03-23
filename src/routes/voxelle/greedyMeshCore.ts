@@ -257,15 +257,24 @@ function greedyMerge(cells: [number, number][]): { u: number; v: number; w: numb
 function weldVertices(
   positions: number[],
   normals: number[],
-  colors: number[]
-): { positions: Float32Array; normals: Float32Array; colors: Float32Array; indices: Uint32Array } {
+  colors: number[],
+  slabThickness: number[]
+): {
+  positions: Float32Array;
+  normals: Float32Array;
+  colors: Float32Array;
+  slabThickness: Float32Array;
+  indices: Uint32Array;
+} {
   const map = new Map<string, number>();
   const outPos: number[] = [];
   const outNorm: number[] = [];
   const outCol: number[] = [];
+  const outSlab: number[] = [];
   const indices: number[] = [];
 
   for (let i = 0; i < positions.length; i += 3) {
+    const vi = i / 3;
     const x = positions[i];
     const y = positions[i + 1];
     const z = positions[i + 2];
@@ -283,6 +292,7 @@ function weldVertices(
       outPos.push(x, y, z);
       outNorm.push(nx, ny, nz);
       outCol.push(colors[i], colors[i + 1], colors[i + 2]);
+      outSlab.push(slabThickness[vi] ?? 1);
       indices.push(idx);
     }
   }
@@ -291,6 +301,7 @@ function weldVertices(
     positions: new Float32Array(outPos),
     normals: new Float32Array(outNorm),
     colors: new Float32Array(outCol),
+    slabThickness: new Float32Array(outSlab),
     indices: new Uint32Array(indices)
   };
 }
@@ -315,6 +326,8 @@ export interface GreedyMeshCoreResult {
   positions: Float32Array;
   normals: Float32Array;
   colors: Float32Array;
+  /** Per vertex: contiguous glass depth (voxel count) for transmission; 1 for non-glass. */
+  slabThickness: Float32Array;
   indices: Uint32Array;
 }
 
@@ -450,6 +463,7 @@ export function computeGreedyMesh(
     const verts: number[] = [];
     const normals: number[] = [];
     const colors: number[] = [];
+    const slabT: number[] = [];
     const r = ((col >> 16) & 0xff) / 255;
     const g = ((col >> 8) & 0xff) / 255;
     const b = (col & 0xff) / 255;
@@ -485,6 +499,7 @@ export function computeGreedyMesh(
       const signN = nx !== 0 ? nx : ny !== 0 ? ny : nz;
       const ccw = signN > 0 !== (ny !== 0);
 
+      const slabPerVert = material === 'glass' ? q.t : 1;
       const emitTri = (t: number[][], tao: number[]) => {
         for (let i = 0; i < 3; i++) {
           verts.push(t[i][0], t[i][1], t[i][2]);
@@ -493,6 +508,7 @@ export function computeGreedyMesh(
           const glassMul = material === 'glass' ? glassDepthToTransmittance(q.t) : 1;
           const m = aoMul * glassMul;
           colors.push(r * m, g * m, b * m);
+          slabT.push(slabPerVert);
         }
       };
 
@@ -582,7 +598,7 @@ export function computeGreedyMesh(
       }
     }
 
-    const welded = weldVertices(verts, normals, colors);
+    const welded = weldVertices(verts, normals, colors, slabT);
     result.set(bucketKey, welded);
   }
 

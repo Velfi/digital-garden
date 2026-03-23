@@ -18,6 +18,7 @@ export interface GreedyMeshWorkerOutput {
     positions: Float32Array;
     normals: Float32Array;
     colors: Float32Array;
+    slabThickness: Float32Array;
     indices: Uint32Array;
   }>;
 }
@@ -68,6 +69,7 @@ export function processGreedyMeshMessage(input: GreedyMeshWorkerInput): GreedyMe
       positions: data.positions,
       normals: data.normals,
       colors: data.colors,
+      slabThickness: data.slabThickness,
       indices: data.indices
     });
   }

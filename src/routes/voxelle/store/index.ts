@@ -38,6 +38,8 @@ export {
   lineAxisAlign,
   planeAxis,
   planeCuboidHollow,
+  PLANE_CUBOID_HOLLOW_WALL_MAX,
+  planeCuboidHollowWallThickness,
   clayMode,
   clayBrushRadius,
   bulkBrushShape,
@@ -70,6 +72,7 @@ export {
   sidebarOpen,
   modalRequest,
   addPanelStore,
+  closeAddPanel,
   selectionGizmoMode,
   stampRotation,
   stampOriginMode,
@@ -171,6 +174,7 @@ export type {
   SprayDirection,
   FaceNormal,
   AddPanelState,
+  AddPanelMode,
   StampRotation,
   StampOriginMode,
   RockSinkDirection,
@@ -214,8 +218,38 @@ export {
 export { encodeModelForUrl } from './url';
 
 // Clipboard
-export { copySelection, cutSelection, deleteSelectedVoxels, pasteFromClipboard } from './clipboard';
+export {
+  copySelection,
+  cutSelection,
+  deleteSelectedVoxels,
+  pasteFromClipboard,
+  placePastePatternAt,
+  buildPastePlacementVoxelMap,
+  clipboardEntryToVoxel
+} from './clipboard';
 export type { VoxelleClipboard } from './clipboard';
+
+// Stamp book
+export {
+  bookStampPattern,
+  selectionToStampEntries,
+  entriesToSelectionMap,
+  canSaveSelectionAsStamp,
+  saveSelectionAsStamp,
+  applyStampRecordToSelection,
+  updateStampName,
+  updateStampTags,
+  removeStamp,
+  reorderStamps,
+  listStampsOrdered,
+  normalizeStampTags,
+  stampMatchesSearch,
+  parseStampLibraryJson,
+  stampRecordsToLibraryJson,
+  importStampsFromParsed,
+  downloadTextFile
+} from './stampBook';
+export type { ParsedStampImport, StampBookRecord, StampBookEntryTuple } from './stampBook';
 
 // Storage
 export {

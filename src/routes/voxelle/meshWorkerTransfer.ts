@@ -4,6 +4,7 @@ export function transferablesFromMeshResults(
     positions: Float32Array;
     normals: Float32Array;
     colors: Float32Array;
+    slabThickness: Float32Array;
     indices: Uint32Array;
   }>
 ): Transferable[] {
@@ -13,6 +14,7 @@ export function transferablesFromMeshResults(
       r.positions.buffer,
       r.normals.buffer,
       r.colors.buffer,
+      r.slabThickness.buffer,
       r.indices.buffer
     );
   }

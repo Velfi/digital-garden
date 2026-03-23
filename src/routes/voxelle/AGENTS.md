@@ -25,6 +25,9 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 - `store/undo.ts` – pushUndo, history
 - `store/url.ts` – encodeModelForUrl (delegate to voxelleFile encodeForTransport)
 - `shareStorage.ts` – IndexedDB storage for localhost shares (storeShareInIndexedDB, getShareFromIndexedDB)
+- `stampBookStorage.ts` – IndexedDB stamp book (`voxelle-stamp-book`): ordered stamps with voxel entries + optional PNG preview blob
+- `store/stampBook.ts` – selection ↔ clipboard-shaped entries, optional **tags** (normalized lowercase), search/filter (`stampMatchesSearch`), import/export JSON (`voxelleStampLibrary: 1`); **Use** from stamp book sets `bookStampPattern` + clears edit `selection` (stamp/punch read book pattern or selection); non-empty selection clears `bookStampPattern`
+- `stampBookThumbnail.ts` – offscreen WebGL greedy-mesh snapshot → PNG for stamp previews
 - `api/voxelle/share` (POST) – stores model in Vercel Blob, returns short id
 - `api/voxelle/model/[id]` (GET) – fetches stored model by id
 - `store/clipboard.ts` – copySelection, cutSelection, pasteFromClipboard
@@ -75,6 +78,8 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 | `sidebar/OriginSection.svelte`    | Center controls, shift inputs                                      |
 | `sidebar/ShareModal.svelte`       | Share URL modal                                                    |
 | `sidebar/PreferencesModal.svelte` | Preferences (File menu); settings in `localStorage` via `store/preferences.ts` |
+| `sidebar/StampBookModal.svelte` | Stamp book (View menu): two-page spread UI—thumbnail grid + detail/library panel; skeuomorphic styling; IndexedDB + JSON import/export |
+| `MenuBar.svelte` | Top menus: **View** → Stamp book… (`modalRequest`); File, Edit, Add, Selection, Help |
 | `sidebar/NewGridModal.svelte`     | New grid size/shape modal                                          |
 | `ToolPanel.svelte`                | Shell; shows `toolPanel/SelectionGizmoTabs` when a selection exists or Add panel is open; plus `DrawToolOptions`, `ClayToolOptions`, etc. by tool/pane. |
 | `AddPanel.svelte`                 | Add shape modal: ghost preview in scene; Done runs `addShapeAt`; position/rotation/size fields + canvas gizmo / wheel shortcuts |

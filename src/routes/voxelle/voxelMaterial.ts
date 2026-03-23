@@ -166,6 +166,33 @@ export function createVoxelSurfaceMaterial(
       attenuationColor: tint,
       attenuationDistance: g.attenuationDistance
     });
+    /**
+     * Greedy mesh provides `slabThickness` (voxel count through the glass slab, world-query via
+     * `occlusionVoxels` when chunking). Scale the physical transmission volume thickness so refraction /
+     * attenuation match thick caps and stay consistent when merge topology differs per chunk.
+     */
+    m.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <common>',
+        `#include <common>
+attribute float slabThickness;
+varying float voxelleSlabThickness;`
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+voxelleSlabThickness = slabThickness;`
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `#include <common>
+varying float voxelleSlabThickness;`
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '\tmaterial.thickness = thickness;',
+        '\tmaterial.thickness = thickness * max( voxelleSlabThickness, 1.0 );'
+      );
+    };
     return m;
   }
 

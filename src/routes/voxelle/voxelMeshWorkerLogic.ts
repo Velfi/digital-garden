@@ -24,6 +24,7 @@ export interface VoxelMeshWorkerOutput {
     positions: Float32Array;
     normals: Float32Array;
     colors: Float32Array;
+    slabThickness: Float32Array;
     indices: Uint32Array;
   }>;
 }
@@ -55,23 +56,18 @@ function partitionByChunks(
 }
 
 function mergeChunkResults(
-  chunkResults: Array<{
-    bucketKey: string;
-    positions: Float32Array;
-    normals: Float32Array;
-    colors: Float32Array;
-    indices: Uint32Array;
-  }>
+  chunkResults: VoxelMeshWorkerOutput['results']
 ): VoxelMeshWorkerOutput['results'] {
   const byBucket = new Map<
     string,
-    { positions: number[]; normals: number[]; colors: number[]; indices: number[] }
+    { positions: number[]; normals: number[]; colors: number[]; slabThickness: number[]; indices: number[] }
   >();
   for (const r of chunkResults) {
     const pos = byBucket.get(r.bucketKey) ?? {
       positions: [],
       normals: [],
       colors: [],
+      slabThickness: [],
       indices: []
     };
     if (!byBucket.has(r.bucketKey)) byBucket.set(r.bucketKey, pos);
@@ -79,6 +75,7 @@ function mergeChunkResults(
     for (let i = 0; i < r.positions.length; i++) pos.positions.push(r.positions[i]);
     for (let i = 0; i < r.normals.length; i++) pos.normals.push(r.normals[i]);
     for (let i = 0; i < r.colors.length; i++) pos.colors.push(r.colors[i]);
+    for (let i = 0; i < r.slabThickness.length; i++) pos.slabThickness.push(r.slabThickness[i]!);
     for (let i = 0; i < r.indices.length; i++) pos.indices.push(r.indices[i] + base);
     byBucket.set(r.bucketKey, pos);
   }
@@ -89,6 +86,7 @@ function mergeChunkResults(
       positions: new Float32Array(pos.positions),
       normals: new Float32Array(pos.normals),
       colors: new Float32Array(pos.colors),
+      slabThickness: new Float32Array(pos.slabThickness),
       indices: new Uint32Array(pos.indices)
     });
   }
@@ -119,6 +117,7 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
           positions: data.positions,
           normals: data.normals,
           colors: data.colors,
+          slabThickness: data.slabThickness,
           indices: data.indices
         });
       }
@@ -131,11 +130,13 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
     const coreResults = computeMarchingCubes(voxels);
     const results: VoxelMeshWorkerOutput['results'] = [];
     for (const [bucketKey, data] of coreResults) {
+      const n = data.positions.length / 3;
       results.push({
         bucketKey,
         positions: data.positions,
         normals: data.normals,
         colors: data.colors,
+        slabThickness: new Float32Array(n).fill(1),
         indices: data.indices
       });
     }
@@ -150,6 +151,7 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
       positions: data.positions,
       normals: data.normals,
       colors: data.colors,
+      slabThickness: data.slabThickness,
       indices: data.indices
     });
   }

@@ -24,9 +24,8 @@
   const airbrushVisible = $derived($strokeMode === 'airbrush' && isStrokeTool($tool));
   const fillVisible = $derived($strokeMode === 'fill' && isStrokeTool($tool));
   const polygonVisible = $derived($strokeMode === 'polygon' && isStrokeTool($tool));
-  const stampVisible = $derived(
-    ($tool === 'stamp' || $tool === 'punch') && $selection.size > 0
-  );
+  /** Stamp / punch: show tool panel for stamp book link even when selection is empty. */
+  const stampVisible = $derived($tool === 'stamp' || $tool === 'punch');
   const clayVisible = $derived($tool === 'clay');
   const rockVisible = $derived($tool === 'rocks');
   const grassVisible = $derived($tool === 'grass');

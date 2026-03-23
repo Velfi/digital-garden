@@ -25,6 +25,8 @@
     lineAxisAlign,
     planeAxis,
     planeCuboidHollow,
+    PLANE_CUBOID_HOLLOW_WALL_MAX,
+    planeCuboidHollowWallThickness,
     clayMode,
     clayBrushRadius,
     bulkBrushShape,
@@ -96,6 +98,7 @@
     getVoxelBounds,
     rotatePositionAroundOrigin,
     getSelectionCenter,
+    bookStampPattern,
     selectionMode,
     type SelectionMode,
     mergeSelection,
@@ -113,6 +116,8 @@
     getShapePositionsAt,
     clampQuarterTurn,
     addPanelStore,
+    buildPastePlacementVoxelMap,
+    clipboardEntryToVoxel,
     MAX_GRID_SIZE,
     defaultAddShapePlacementAnchor,
     symmetryX,
@@ -160,6 +165,7 @@
     getEffectiveBounds,
     expandPositionsWithSymmetry,
     expandPositionsWithSymmetryAroundCenter,
+    type SelectionBounds,
     type SymmetryAxes
   } from './coordUtils';
   import {
@@ -177,6 +183,16 @@
     getSprayDirectionVector,
     type PathThickenParams
   } from './strokeGeometry';
+  import {
+    PREVIEW_BBOX_VOXEL_THRESHOLD,
+    planeStrokeBounds,
+    cuboidStrokeBounds,
+    cuboidSolidVoxelCount,
+    lineStrokeBounds,
+    inflateStrokePreviewBoundsForDrawBrush,
+    expandStrokePreviewBoundsOriginMirror,
+    expandStrokePreviewBoundsAroundCenter
+  } from './strokePreviewBounds';
   import { applySmooth, applyLevel, applyMelt, applyInflate } from './clayOps';
   import {
     FLY_MOVE_SPEED,
@@ -189,7 +205,12 @@
   import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
   import { Sky } from 'three/addons/objects/Sky.js';
   import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-  import { buildGreedyMesh, buildPreviewGeometry, PREVIEW_MESH_OPTIONS } from './greedyMesh';
+  import {
+    buildGreedyMesh,
+    buildPreviewGeometry,
+    buildPreviewGeometryFromVoxelMap,
+    PREVIEW_MESH_OPTIONS
+  } from './greedyMesh';
   import {
     createSceneSetupAsync,
     POLYGON_POINTS_MAX,
@@ -227,6 +248,11 @@
 
   function formatSignedDelta(n: number): string {
     return n > 0 ? `+${n}` : String(n);
+  }
+
+  function clampPlaneCuboidHollowWallThickness(): number {
+    const raw = Math.floor(get(planeCuboidHollowWallThickness));
+    return Math.min(PLANE_CUBOID_HOLLOW_WALL_MAX, Math.max(1, raw));
   }
 
   /** Voxel tool + fill only: capped BFS when plane unconstrained; full flood after confirm. */
@@ -629,6 +655,19 @@
     return [-normal[0], -normal[1], -normal[2]] as FaceNormal;
   }
 
+  /** Stamp/punch footprint: book-loaded pattern wins over edit selection. */
+  function getEffectiveStampPatternMap(): Map<string, Voxel> {
+    const book = get(bookStampPattern);
+    if (book !== null && book.size > 0) return book;
+    return get(selection);
+  }
+
+  function hasStampLikePattern(): boolean {
+    const book = get(bookStampPattern);
+    if (book !== null && book.size > 0) return true;
+    return get(selection).size > 0;
+  }
+
   /** Extrude punch footprint `depth` layers along `inward` (deduped). */
   function expandPunchAlongDepth(
     base: [number, number, number][],
@@ -662,7 +701,7 @@
     placeVoxel: [number, number, number],
     normal: FaceNormal
   ): [number, number, number][] {
-    const sel = $selection;
+    const sel = getEffectiveStampPatternMap();
     const center = getSelectionCenter(sel);
     if (!center) return [];
     const [cx, cy, cz] = center;
@@ -693,7 +732,7 @@
     place: [number, number, number],
     normal: FaceNormal
   ): [number, number, number][] {
-    const sel = $selection;
+    const sel = getEffectiveStampPatternMap();
     const center = getSelectionCenter(sel);
     if (!center) return [];
     const [cx, cy, cz] = center;
@@ -1492,7 +1531,7 @@
   }
 
   function placeStamp(place: [number, number, number], normal: FaceNormal) {
-    const sel = $selection;
+    const sel = getEffectiveStampPatternMap();
     const center = getSelectionCenter(sel);
     if (!center) return;
     const [cx, cy, cz] = center;
@@ -1527,7 +1566,7 @@
   }
 
   function placePunch(placeVoxel: [number, number, number], normal: FaceNormal) {
-    const sel = $selection;
+    const sel = getEffectiveStampPatternMap();
     const center = getSelectionCenter(sel);
     if (!center) return;
     const [cx, cy, cz] = center;
@@ -1752,16 +1791,40 @@
     });
   }
 
-  function updatePreviewMesh(positions: [number, number, number][]) {
+  function strokePreviewSymmetryExpansionFactor(): number {
+    if (isShiftPlaneSymmetryActive()) {
+      const a = getShiftPlaneSymmetryAxes();
+      return (a.x ? 2 : 1) * (a.y ? 2 : 1) * (a.z ? 2 : 1);
+    }
+    const a = getCurrentSymmetryAxes();
+    return (a.x ? 2 : 1) * (a.y ? 2 : 1) * (a.z ? 2 : 1);
+  }
+
+  function drawBrushInflateParams(): Pick<PathThickenParams, 'drawBrushShape' | 'drawBrushSize'> {
+    return {
+      drawBrushShape: get(drawBrushShape),
+      drawBrushSize: (get(drawBrushSize) as number) * 0.5
+    };
+  }
+
+  type StrokePreviewBboxHint = {
+    primaryBounds: SelectionBounds;
+    drawBrushInflate?: Pick<PathThickenParams, 'drawBrushShape' | 'drawBrushSize'>;
+    /** When true, use bbox preview without building voxel arrays (e.g. large cuboid depth). */
+    forceUseBbox?: boolean;
+  };
+
+  function updatePreviewMesh(
+    positions: [number, number, number][],
+    bboxHint: StrokePreviewBboxHint | null = null
+  ) {
     if (!meshManager) return;
-    positions = expandPositionsForActiveSymmetry(positions);
     const sel = $selection;
-    const filtered =
-      sel.size > 0 && ($tool === 'paint' || $tool === 'remove')
-        ? positions.filter(([x, y, z]) => sel.has(coordKey(x, y, z)))
-        : positions;
-    const previewVoxel: Voxel =
-      filtered.length === 0
+    const bboxGated =
+      sel.size > 0 && ($tool === 'paint' || $tool === 'remove') ? null : bboxHint;
+
+    const previewVoxelFor = (count: number): Voxel =>
+      count === 0
         ? { color: 0, material: 'plastic' }
         : $tool === 'remove' || $tool === 'punch'
           ? { color: 0xff4444, material: 'plastic' }
@@ -1771,6 +1834,39 @@
               $tool === 'selectCoplanarEmpty'
             ? { color: 0x33aaff, material: 'plastic' }
             : getPaintColorResolver()();
+
+    const useBbox =
+      bboxGated !== null &&
+      (bboxGated.forceUseBbox === true ||
+        (positions.length > 0 &&
+          positions.length * strokePreviewSymmetryExpansionFactor() >=
+            PREVIEW_BBOX_VOXEL_THRESHOLD));
+
+    if (useBbox) {
+      let b = bboxGated.primaryBounds;
+      if (bboxGated.drawBrushInflate) {
+        b = inflateStrokePreviewBoundsForDrawBrush(b, bboxGated.drawBrushInflate);
+      }
+      if (isShiftPlaneSymmetryActive() && shiftPlaneSymmetryCenter) {
+        b = expandStrokePreviewBoundsAroundCenter(
+          b,
+          shiftPlaneSymmetryCenter,
+          getShiftPlaneSymmetryAxes()
+        );
+      } else {
+        b = expandStrokePreviewBoundsOriginMirror(b, getCurrentSymmetryAxes());
+      }
+      const pv = previewVoxelFor(positions.length > 0 ? positions.length : 1);
+      meshManager.updatePreviewBoundingBox(b, pv);
+      return;
+    }
+
+    const expanded = expandPositionsForActiveSymmetry(positions);
+    const filtered =
+      sel.size > 0 && ($tool === 'paint' || $tool === 'remove')
+        ? expanded.filter(([x, y, z]) => sel.has(coordKey(x, y, z)))
+        : expanded;
+    const previewVoxel = previewVoxelFor(filtered.length);
     meshManager.updatePreviewMesh(
       filtered,
       previewVoxel,
@@ -1787,14 +1883,35 @@
     const d: [number, number, number] = [0, 0, 0];
     d[axis] = cuboidDepth;
     deltaDisplay = { dx: d[0], dy: d[1], dz: d[2] };
-    pendingStrokePositions = getAxisAlignedCuboid(
-      cuboidPlane.a,
-      cuboidPlane.b,
-      cuboidPlane.normal,
-      cuboidDepth,
-      get(planeCuboidHollow)
-    );
-    updatePreviewMesh(pendingStrokePositions);
+    const bboxHintBase: StrokePreviewBboxHint = {
+      primaryBounds: cuboidStrokeBounds(
+        cuboidPlane.a,
+        cuboidPlane.b,
+        cuboidPlane.normal,
+        cuboidDepth
+      )
+    };
+    const solidEst =
+      cuboidSolidVoxelCount(
+        cuboidPlane.a,
+        cuboidPlane.b,
+        cuboidPlane.normal,
+        cuboidDepth
+      ) * strokePreviewSymmetryExpansionFactor();
+    if (solidEst >= PREVIEW_BBOX_VOXEL_THRESHOLD) {
+      pendingStrokePositions = [];
+      updatePreviewMesh([], { ...bboxHintBase, forceUseBbox: true });
+    } else {
+      pendingStrokePositions = getAxisAlignedCuboid(
+        cuboidPlane.a,
+        cuboidPlane.b,
+        cuboidPlane.normal,
+        cuboidDepth,
+        get(planeCuboidHollow),
+        clampPlaneCuboidHollowWallThickness()
+      );
+      updatePreviewMesh(pendingStrokePositions, bboxHintBase);
+    }
     render();
   }
 
@@ -1805,7 +1922,8 @@
       cuboidPlane.b,
       cuboidPlane.normal,
       cuboidDepth,
-      get(planeCuboidHollow)
+      get(planeCuboidHollow),
+      clampPlaneCuboidHollowWallThickness()
     );
     if (positions.length > 0) {
       if ($tool === 'select') {
@@ -2765,7 +2883,7 @@
     }
 
     // Stamp / punch: stamp uses adjacent empty cell; punch uses hit voxel (cut inward)
-    if (($tool === 'stamp' || $tool === 'punch') && $selection.size > 0) {
+    if (($tool === 'stamp' || $tool === 'punch') && hasStampLikePattern()) {
       const normal = getFaceNormalFromHit(hit);
       const place =
         $tool === 'stamp' ? getAddPosition(hit) : getVoxelPosition(hit);
@@ -2898,7 +3016,7 @@
         return;
       }
     // Stamp / punch drag: re-raycast so preview follows cursor onto any surface
-    if (isStampDrag && $selection.size > 0) {
+    if (isStampDrag && hasStampLikePattern()) {
       const hit = getIntersection();
       if (hit) {
         const normal = getFaceNormalFromHit(hit);
@@ -3035,7 +3153,13 @@
               false
             );
             if (pendingStrokePositions.length === 0) pendingStrokePositions = [dragStartPos];
-            updatePreviewMesh(pendingStrokePositions);
+            updatePreviewMesh(pendingStrokePositions, {
+              primaryBounds: planeStrokeBounds(dragStartPos, planePos, {
+                x: preciseNormal.x,
+                y: preciseNormal.y,
+                z: preciseNormal.z
+              })
+            });
             deltaDisplay = {
               dx: planePos[0] - dragStartPos[0],
               dy: planePos[1] - dragStartPos[1],
@@ -3153,10 +3277,12 @@
               normal
             ) {
               const hollow = get(planeCuboidHollow);
+              const hollowWall =
+                strokeModeVal === 'circle' ? 1 : clampPlaneCuboidHollowWallThickness();
               pendingStrokePositions =
                 strokeModeVal === 'circle'
-                  ? getAxisAlignedCircleFromNormal(dragStartPos, currentPos, normal, hollow)
-                  : getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, normal, hollow);
+                  ? getAxisAlignedCircleFromNormal(dragStartPos, currentPos, normal, hollow, hollowWall)
+                  : getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, normal, hollow, hollowWall);
             } else if (strokeModeVal === 'line' && !get(lineAxisAlign) && dragFaceNormal) {
               const projected = projectPointOntoPlane(currentPos, dragStartPos, {
                 x: dragFaceNormal.x,
@@ -3166,6 +3292,35 @@
               pendingStrokePositions = getBresenham3DLine(dragStartPos, projected);
             } else {
               pendingStrokePositions = getAxisAlignedLine(dragStartPos, currentPos);
+            }
+          }
+          let strokeBboxHint: StrokePreviewBboxHint | null = null;
+          if (
+            !isClayPathFollow &&
+            !isAirbrushPath &&
+            dragStartPos &&
+            (strokeModeVal === 'plane' ||
+              strokeModeVal === 'cuboid' ||
+              strokeModeVal === 'line')
+          ) {
+            const nPlane = getEffectivePlaneNormal();
+            if (
+              (strokeModeVal === 'plane' || strokeModeVal === 'cuboid') &&
+              nPlane
+            ) {
+              strokeBboxHint = {
+                primaryBounds: planeStrokeBounds(dragStartPos, currentPos, nPlane),
+                drawBrushInflate: drawBrushInflateParams()
+              };
+            } else if (strokeModeVal === 'line') {
+              strokeBboxHint = {
+                primaryBounds: lineStrokeBounds(
+                  dragStartPos,
+                  currentPos,
+                  !get(lineAxisAlign) && !!dragFaceNormal
+                ),
+                drawBrushInflate: drawBrushInflateParams()
+              };
             }
           }
           // Clay path modes: show thickened preview (brush radius); airbrush: sphere preview
@@ -3201,7 +3356,8 @@
                 ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
                 : undefined,
               seed: currentStrokeSeed
-            })
+            }),
+            strokeBboxHint
           );
           deltaDisplay = {
             dx: currentPos[0] - dragStartPos[0],
@@ -3245,7 +3401,7 @@
       return;
     }
     // Stamp / punch hover preview
-    if (($tool === 'stamp' || $tool === 'punch') && $selection.size > 0 && !isStampDrag) {
+    if (($tool === 'stamp' || $tool === 'punch') && hasStampLikePattern() && !isStampDrag) {
       const hit = getIntersection();
       if (hit) {
         const normal = getFaceNormalFromHit(hit);
@@ -3750,14 +3906,7 @@
           normal
         };
         cuboidDepth = 1;
-        pendingStrokePositions = getAxisAlignedCuboid(
-          cuboidPlane.a,
-          cuboidPlane.b,
-          cuboidPlane.normal,
-          cuboidDepth,
-          get(planeCuboidHollow)
-        );
-        updatePreviewMesh(pendingStrokePositions);
+        updateCuboidFromDepth();
       } else {
         // Apply the stroke on release (line/plane / clay modes)
         if (pendingStrokePositions.length > 0) {
@@ -3887,11 +4036,13 @@
       if (event.ctrlKey) {
         event.preventDefault();
         event.stopPropagation();
-        const d = event.deltaY < 0 ? 1 : -1;
-        addPanelStore.update((s) => ({
-          ...s,
-          size: Math.max(1, Math.min(addMax, Math.floor(s.size) + d))
-        }));
+        if ($addPanelStore.mode !== 'paste') {
+          const d = event.deltaY < 0 ? 1 : -1;
+          addPanelStore.update((s) => ({
+            ...s,
+            size: Math.max(1, Math.min(addMax, Math.floor(s.size) + d))
+          }));
+        }
         render();
         return;
       }
@@ -3962,15 +4113,23 @@
             : getVoxelPosition(hit)
           : null;
       }
+      let altScrollBbox: StrokePreviewBboxHint | null = null;
       if (currentPos) {
         const hollow = get(planeCuboidHollow);
+        const hollowWall = mode === 'circle' ? 1 : clampPlaneCuboidHollowWallThickness();
         const n = axisVector(next);
         pendingStrokePositions =
           mode === 'circle'
-            ? getAxisAlignedCircleFromNormal(dragStartPos, currentPos, n, hollow)
-            : getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, n, hollow);
+            ? getAxisAlignedCircleFromNormal(dragStartPos, currentPos, n, hollow, hollowWall)
+            : getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, n, hollow, hollowWall);
+        if (mode === 'plane' || mode === 'cuboid') {
+          altScrollBbox = {
+            primaryBounds: planeStrokeBounds(dragStartPos, currentPos, n),
+            drawBrushInflate: drawBrushInflateParams()
+          };
+        }
       }
-      updatePreviewMesh(pendingStrokePositions);
+      updatePreviewMesh(pendingStrokePositions, altScrollBbox);
       render();
       return;
     }
@@ -4525,9 +4684,12 @@
     void $stampOriginMode;
     void $punchDepth;
     void $tool;
+    void $bookStampPattern;
     const selSize = $selection.size;
+    const book = get(bookStampPattern);
+    const patternSize = book !== null && book.size > 0 ? book.size : selSize;
     if (!meshManager || !camera) return;
-    if (($tool !== 'stamp' && $tool !== 'punch') || selSize === 0) return;
+    if (($tool !== 'stamp' && $tool !== 'punch') || patternSize === 0) return;
     const hit = getIntersection();
     if (!hit) return;
     const normal = getFaceNormalFromHit(hit);
@@ -5019,6 +5181,25 @@
       resetPreviewMeshTransform(addPreviewOccludedMesh);
       addPreviewMesh.visible = false;
       addPreviewOccludedMesh.visible = false;
+      render();
+      return;
+    }
+    if (s.mode === 'paste' && s.pasteEntries && s.pasteEntries.length > 0) {
+      addPanelRefinementScheduler.cancel();
+      const voxelMap = buildPastePlacementVoxelMap(
+        s.pasteEntries,
+        [s.posX, s.posY, s.posZ],
+        [clampQuarterTurn(s.rotX), clampQuarterTurn(s.rotY), clampQuarterTurn(s.rotZ)],
+        { x: get(symmetryX), y: get(symmetryY), z: get(symmetryZ) }
+      );
+      applyAddShapeOccludedPreviewTint(
+        clipboardEntryToVoxel(s.pasteEntries[0]!).color,
+        addPreviewOccludedMaterial
+      );
+      resetPreviewMeshTransform(addPreviewMesh);
+      resetPreviewMeshTransform(addPreviewOccludedMesh);
+      const geo = buildPreviewGeometryFromVoxelMap(voxelMap, $voxels);
+      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo);
       render();
       return;
     }

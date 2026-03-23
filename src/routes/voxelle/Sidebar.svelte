@@ -28,6 +28,7 @@
   import NewGridModal from './sidebar/NewGridModal.svelte';
   import ExportGltfModal from './sidebar/ExportGltfModal.svelte';
   import PreferencesModal from './sidebar/PreferencesModal.svelte';
+  import StampBookModal from './sidebar/StampBookModal.svelte';
   import StartupScreen from './StartupScreen.svelte';
 
   const STARTUP_URL = '/voxelle/STARTUP.md';
@@ -37,6 +38,7 @@
   let showNewGridModal = $state(false);
   let showExportGltfModal = $state(false);
   let showPreferencesModal = $state(false);
+  let showStampBookModal = $state(false);
   let showStartupScreen = $state(false);
   let startupContentUrl = $state(STARTUP_URL);
   let shareUrl = $state('');
@@ -83,7 +85,9 @@
       rotY: 0,
       rotZ: 0,
       shape: 'cube',
-      size: 8
+      size: 8,
+      mode: 'shape',
+      pasteEntries: null
     });
   }
 
@@ -103,6 +107,9 @@
       modalRequest.set(null);
     } else if (req === 'preferences') {
       showPreferencesModal = true;
+      modalRequest.set(null);
+    } else if (req === 'stampBook') {
+      showStampBookModal = true;
       modalRequest.set(null);
     } else if (req === 'help') {
       startupContentUrl = HELP_URL;
@@ -230,6 +237,7 @@
   <NewGridModal bind:open={showNewGridModal} />
   <ExportGltfModal bind:open={showExportGltfModal} />
   <PreferencesModal bind:open={showPreferencesModal} />
+  <StampBookModal bind:open={showStampBookModal} />
   <StartupScreen
     bind:open={showStartupScreen}
     contentUrl={startupContentUrl}

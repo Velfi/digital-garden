@@ -107,6 +107,9 @@ function normalizeRenderingMode(mode: RenderingMode | 'raycast'): RenderingMode 
   return 'greedy';
 }
 
+/** Add shape: parametric primitive. Paste: clipboard pattern (same placement gizmo). */
+export type AddPanelMode = 'shape' | 'paste';
+
 export type AddPanelState = {
   open: boolean;
   /** When true, VoxelCanvas seeds pos once from model center or orbit target. */
@@ -119,6 +122,9 @@ export type AddPanelState = {
   rotZ: number;
   shape: StartShape;
   size: number;
+  mode: AddPanelMode;
+  /** Clipboard entries relative to bbox min; used when `mode === 'paste'`. */
+  pasteEntries: [number, number, number, number, string?][] | null;
 };
 
 const defaultAddPanel: AddPanelState = {
@@ -131,8 +137,15 @@ const defaultAddPanel: AddPanelState = {
   rotY: 0,
   rotZ: 0,
   shape: 'cube',
-  size: 8
+  size: 8,
+  mode: 'shape',
+  pasteEntries: null
 };
+
+/** Reset add panel to closed defaults (shape mode, no paste). */
+export function closeAddPanel(): void {
+  addPanelStore.set({ ...defaultAddPanel });
+}
 
 /** Draw vs Clay vs Hand vs Fly vs Generators tab pane. Generators = procedural tools (e.g. rocks). */
 export type ToolPane = 'draw' | 'clay' | 'hand' | 'fly' | 'generators';
@@ -173,6 +186,9 @@ export const lineAxisAlign = writable<boolean>(true);
 export const planeAxis = writable<PlaneAxis>(1);
 /** When true, plane/cuboid stroke selects only perimeter (plane) or 6-face shell (cuboid). */
 export const planeCuboidHollow = writable<boolean>(false);
+/** Voxel layers kept from the outer surface when hollow (plane/cuboid); 1 = thinnest shell. */
+export const PLANE_CUBOID_HOLLOW_WALL_MAX = 32;
+export const planeCuboidHollowWallThickness = writable<number>(1);
 export const clayMode = writable<ClayMode>('bulk');
 /** Clay brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
 export const clayBrushRadius = writable<number>(2);
@@ -256,6 +272,7 @@ export const modalRequest = writable<
   | 'startup'
   | 'exportGltf'
   | 'preferences'
+  | 'stampBook'
   | null
 >(null);
 export const addPanelStore = writable<AddPanelState>({ ...defaultAddPanel });

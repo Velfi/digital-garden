@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { tool, selection, lastDrawTool } from '../store/index';
+  import { tool, selection, lastDrawTool, bookStampPattern } from '../store/index';
 
-  const stampPunchNeedSelection = $derived($selection.size === 0);
+  const stampPunchNeedSelection = $derived(
+    ($bookStampPattern?.size ?? 0) === 0 && $selection.size === 0
+  );
 </script>
 
 <h2>Tool</h2>
@@ -62,7 +64,7 @@
         tool.set('stamp');
         lastDrawTool.set('stamp');
       }}
-      title="Requires a selection — use Select (or menu select tools) first. Places a copy of the selection."
+      title="Requires a stamp shape: select voxels, or load a stamp from the Stamp book. Places a copy on click."
       disabled={stampPunchNeedSelection}
       aria-describedby={stampPunchNeedSelection ? 'stamp-punch-hint' : undefined}
     >
@@ -75,7 +77,7 @@
         tool.set('punch');
         lastDrawTool.set('punch');
       }}
-      title="Requires a selection — use Select (or menu select tools) first. Cuts the selection shape into voxels (into the surface)."
+      title="Requires a stamp shape: select voxels, or load from the Stamp book. Cuts that shape into the surface."
       disabled={stampPunchNeedSelection}
       aria-describedby={stampPunchNeedSelection ? 'stamp-punch-hint' : undefined}
     >
@@ -84,7 +86,7 @@
   </div>
   {#if stampPunchNeedSelection}
     <p id="stamp-punch-hint" class="selection-hint dimmed">
-      Select voxels first, then use Stamp or Punch.
+      Select voxels or open Stamp book… and use a stamp, then use Stamp or Punch.
     </p>
   {/if}
 </div>

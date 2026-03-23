@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { cloneVoxels, serializeVoxels, deserializeVoxels } from './serialization';
+import {
+  cloneVoxels,
+  serializeVoxels,
+  deserializeVoxels,
+  canonicalizeVoxelMap
+} from './serialization';
 import { plasticVoxel, voxelEquals } from '../voxelMaterial';
 
 describe('serialization', () => {
@@ -53,6 +58,28 @@ describe('serialization', () => {
       ]);
       const restored = deserializeVoxels(json);
       expect(restored.get('0,0,0')).toEqual({ color: 0xff5733, material: 'plastic' });
+    });
+
+    it('serialize merges keys that canonicalize to the same cell', () => {
+      const map = new Map([
+        ['10.9,0,0', plasticVoxel(0xff0000)],
+        ['10,0,0', plasticVoxel(0x00ff00)]
+      ]);
+      const restored = deserializeVoxels(serializeVoxels(map));
+      expect(restored.size).toBe(1);
+      expect(restored.get('10,0,0')).toEqual(plasticVoxel(0x00ff00));
+    });
+  });
+
+  describe('canonicalizeVoxelMap', () => {
+    it('drops entries with non-finite coordinates', () => {
+      const map = new Map([
+        ['0,0,0', plasticVoxel(1)],
+        ['NaN,0,0', plasticVoxel(2)]
+      ]);
+      const c = canonicalizeVoxelMap(map);
+      expect(c.size).toBe(1);
+      expect(c.get('0,0,0')).toEqual(plasticVoxel(1));
     });
   });
 });

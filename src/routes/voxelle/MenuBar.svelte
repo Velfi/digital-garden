@@ -33,12 +33,14 @@
 
   let fileOpen = $state(false);
   let editOpen = $state(false);
+  let viewOpen = $state(false);
   let addOpen = $state(false);
   let selectionOpen = $state(false);
   let helpOpen = $state(false);
   let selectionMenuRef: HTMLDivElement;
   let fileMenuRef: HTMLDivElement;
   let editMenuRef: HTMLDivElement;
+  let viewMenuRef: HTMLDivElement;
   let addMenuRef: HTMLDivElement;
   let helpMenuRef: HTMLDivElement;
   let fileInputRef: HTMLInputElement;
@@ -47,6 +49,7 @@
   function closeMenus() {
     fileOpen = false;
     editOpen = false;
+    viewOpen = false;
     addOpen = false;
     selectionOpen = false;
     helpOpen = false;
@@ -54,6 +57,7 @@
 
   function toggleFile() {
     editOpen = false;
+    viewOpen = false;
     addOpen = false;
     selectionOpen = false;
     helpOpen = false;
@@ -62,15 +66,26 @@
 
   function toggleEdit() {
     fileOpen = false;
+    viewOpen = false;
     addOpen = false;
     selectionOpen = false;
     helpOpen = false;
     editOpen = !editOpen;
   }
 
+  function toggleView() {
+    fileOpen = false;
+    editOpen = false;
+    addOpen = false;
+    selectionOpen = false;
+    helpOpen = false;
+    viewOpen = !viewOpen;
+  }
+
   function toggleAdd() {
     fileOpen = false;
     editOpen = false;
+    viewOpen = false;
     selectionOpen = false;
     helpOpen = false;
     addOpen = !addOpen;
@@ -79,6 +94,7 @@
   function toggleSelection() {
     fileOpen = false;
     editOpen = false;
+    viewOpen = false;
     addOpen = false;
     helpOpen = false;
     selectionOpen = !selectionOpen;
@@ -87,6 +103,7 @@
   function toggleHelp() {
     fileOpen = false;
     editOpen = false;
+    viewOpen = false;
     addOpen = false;
     selectionOpen = false;
     helpOpen = !helpOpen;
@@ -114,6 +131,11 @@
 
   async function handlePaste() {
     await pasteFromClipboard();
+    closeMenus();
+  }
+
+  function handleStampBook() {
+    modalRequest.set('stampBook');
     closeMenus();
   }
 
@@ -286,6 +308,8 @@
       !fileMenuRef.contains(target) &&
       editMenuRef &&
       !editMenuRef.contains(target) &&
+      viewMenuRef &&
+      !viewMenuRef.contains(target) &&
       addMenuRef &&
       !addMenuRef.contains(target) &&
       helpMenuRef &&
@@ -416,6 +440,24 @@
         >
           Scale project up by 2×
         </button>
+      </div>
+    {/if}
+  </div>
+
+  <div class="menu-item" role="none" bind:this={viewMenuRef}>
+    <button
+      type="button"
+      class="menu-trigger"
+      class:active={viewOpen}
+      onclick={toggleView}
+      aria-haspopup="menu"
+      aria-expanded={viewOpen}
+    >
+      View
+    </button>
+    {#if viewOpen}
+      <div class="dropdown" role="menu">
+        <button type="button" role="menuitem" onclick={handleStampBook}> Stamp book… </button>
       </div>
     {/if}
   </div>

@@ -3,7 +3,9 @@
     addPanelStore,
     addShapeAt,
     clampQuarterTurn,
+    closeAddPanel,
     getPaintColorResolver,
+    placePastePatternAt,
     sidebarOpen,
     MAX_GRID_SIZE,
     type StartShape
@@ -13,22 +15,26 @@
 
   function handleDone() {
     const s = $addPanelStore;
-    const size = Math.max(1, Math.min(ADD_SHAPE_MAX_SIZE, Math.floor(s.size)));
     const rx = clampQuarterTurn(s.rotX);
     const ry = clampQuarterTurn(s.rotY);
     const rz = clampQuarterTurn(s.rotZ);
-    addShapeAt({
-      position: [s.posX, s.posY, s.posZ],
-      rotation: [rx, ry, rz],
-      shape: s.shape,
-      size,
-      getVoxel: getPaintColorResolver()
-    });
-    addPanelStore.update((x) => ({ ...x, open: false, placementAnchorPending: false }));
+    if (s.mode === 'paste' && s.pasteEntries && s.pasteEntries.length > 0) {
+      placePastePatternAt([s.posX, s.posY, s.posZ], [rx, ry, rz], s.pasteEntries);
+    } else {
+      const size = Math.max(1, Math.min(ADD_SHAPE_MAX_SIZE, Math.floor(s.size)));
+      addShapeAt({
+        position: [s.posX, s.posY, s.posZ],
+        rotation: [rx, ry, rz],
+        shape: s.shape,
+        size,
+        getVoxel: getPaintColorResolver()
+      });
+    }
+    closeAddPanel();
   }
 
   function handleCancel() {
-    addPanelStore.update((x) => ({ ...x, open: false, placementAnchorPending: false }));
+    closeAddPanel();
   }
 
   function update<K extends keyof typeof $addPanelStore>(k: K, v: (typeof $addPanelStore)[K]) {
@@ -47,10 +53,15 @@
     tabindex="-1"
     onkeydown={(e) => e.key === 'Escape' && handleCancel()}
   >
-    <h3 id="add-panel-title">Add shape</h3>
+    <h3 id="add-panel-title">{$addPanelStore.mode === 'paste' ? 'Place paste' : 'Add shape'}</h3>
     <p class="add-panel-hint">
-      Ghost preview only until Done. Drag RGB axes to move. Wheel: <kbd>Ctrl</kbd> size,
-      <kbd>Shift</kbd>/<kbd>Alt</kbd>/<kbd>Shift</kbd>+<kbd>Alt</kbd> rotate X / Y / Z (90° steps).
+      {#if $addPanelStore.mode === 'paste'}
+        Ghost preview until Done. Drag RGB axes to move. Wheel: <kbd>Shift</kbd> / <kbd>Alt</kbd> /
+        <kbd>Shift</kbd>+<kbd>Alt</kbd> rotate X / Y / Z (90° steps). Mirror symmetry applies on Done.
+      {:else}
+        Ghost preview only until Done. Drag RGB axes to move. Wheel: <kbd>Ctrl</kbd> size,
+        <kbd>Shift</kbd>/<kbd>Alt</kbd>/<kbd>Shift</kbd>+<kbd>Alt</kbd> rotate X / Y / Z (90° steps).
+      {/if}
     </p>
     <div class="add-panel-row">
       <span class="add-panel-label">Pos</span>
@@ -103,31 +114,33 @@
         title="Z"
       />
     </div>
-    <div class="add-panel-row">
-      <span class="add-panel-label">Shape</span>
-      <select
-        value={$addPanelStore.shape}
-        onchange={(e) => update('shape', (e.target as HTMLSelectElement).value as StartShape)}
-      >
-        <option value="cube">Cube</option>
-        <option value="orb">Orb</option>
-        <option value="cylinder">Cylinder</option>
-        <option value="hollowCube">Hollow cube</option>
-        <option value="plane">Plane</option>
-        <option value="circle">Circle</option>
-      </select>
-    </div>
-    <div class="add-panel-row">
-      <span class="add-panel-label">Size</span>
-      <input
-        type="number"
-        min="1"
-        max={ADD_SHAPE_MAX_SIZE}
-        step="1"
-        value={$addPanelStore.size}
-        oninput={(e) => update('size', Number((e.target as HTMLInputElement).value))}
-      />
-    </div>
+    {#if $addPanelStore.mode === 'shape'}
+      <div class="add-panel-row">
+        <span class="add-panel-label">Shape</span>
+        <select
+          value={$addPanelStore.shape}
+          onchange={(e) => update('shape', (e.target as HTMLSelectElement).value as StartShape)}
+        >
+          <option value="cube">Cube</option>
+          <option value="orb">Orb</option>
+          <option value="cylinder">Cylinder</option>
+          <option value="hollowCube">Hollow cube</option>
+          <option value="plane">Plane</option>
+          <option value="circle">Circle</option>
+        </select>
+      </div>
+      <div class="add-panel-row">
+        <span class="add-panel-label">Size</span>
+        <input
+          type="number"
+          min="1"
+          max={ADD_SHAPE_MAX_SIZE}
+          step="1"
+          value={$addPanelStore.size}
+          oninput={(e) => update('size', Number((e.target as HTMLInputElement).value))}
+        />
+      </div>
+    {/if}
     <div class="add-panel-buttons">
       <button type="button" onclick={handleDone}>Done</button>
       <button type="button" onclick={handleCancel}>Cancel</button>

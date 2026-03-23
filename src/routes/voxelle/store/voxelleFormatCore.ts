@@ -1,4 +1,9 @@
-import { serialize as bsonSerialize, deserialize as bsonDeserialize } from 'bson';
+import {
+  calculateObjectSize,
+  deserialize as bsonDeserialize,
+  serialize as bsonSerialize,
+  type Document
+} from 'bson';
 import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
 import { normalizeLegacyVoxel, parseVoxelMaterial } from '../voxelMaterial';
 
@@ -73,9 +78,18 @@ export function parseFormatPayload(bytes: Uint8Array): VoxelleFileFormat | null 
   }
 }
 
+/** bson `serialize` default internal buffer (~17 MiB); large models need a larger working buffer. */
+const BSON_DEFAULT_INTERNAL = 1024 * 1024 * 17;
+const BSON_SERIALIZE_MARGIN = 65536;
+
 /** Serialize VoxelleFileFormat to BSON bytes. Used by worker and tests. */
 export function serializeFormatToBson(data: VoxelleFileFormat): Uint8Array {
-  const bsonBytes = bsonSerialize(data);
+  const doc = data as Document;
+  const estimated = calculateObjectSize(doc) + BSON_SERIALIZE_MARGIN;
+  const minInternalBufferSize = Math.max(BSON_DEFAULT_INTERNAL, estimated);
+  const bsonBytes = bsonSerialize(doc, {
+    minInternalBufferSize
+  } as Parameters<typeof bsonSerialize>[1] & { minInternalBufferSize: number });
   return new Uint8Array(
     bsonBytes.buffer.slice(bsonBytes.byteOffset, bsonBytes.byteOffset + bsonBytes.byteLength)
   );

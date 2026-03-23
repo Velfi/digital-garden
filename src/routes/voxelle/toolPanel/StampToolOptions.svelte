@@ -2,19 +2,37 @@
   import {
     tool,
     selection,
+    bookStampPattern,
     stampRotation,
     stampOriginMode,
     punchDepth,
     PUNCH_DEPTH_MAX,
     clampQuarterTurn,
+    modalRequest,
     type StampRotation
   } from '../store/index';
+
+  const hasStampShape = $derived(
+    ($bookStampPattern?.size ?? 0) > 0 || $selection.size > 0
+  );
   function updateStamp<K extends keyof StampRotation>(k: K, v: StampRotation[K]) {
     stampRotation.update((s: StampRotation) => ({ ...s, [k]: v }));
   }
 </script>
 
-{#if ($tool === 'stamp' || $tool === 'punch') && $selection.size > 0}
+{#if $tool === 'stamp' || $tool === 'punch'}
+  <div class="stamp-book-link-row">
+    <button
+      type="button"
+      class="stamp-book-open"
+      onclick={() => modalRequest.set('stampBook')}
+    >
+      Stamp book…
+    </button>
+  </div>
+{/if}
+
+{#if ($tool === 'stamp' || $tool === 'punch') && hasStampShape}
   <section class="tool-panel-section" aria-label="Stamp and punch">
     {#if $tool === 'punch'}
       <div class="tool-panel-row tool-panel-row--wide-label">
@@ -133,3 +151,24 @@
     </div>
   </section>
 {/if}
+
+<style>
+  .stamp-book-link-row {
+    margin-bottom: 0.35rem;
+  }
+
+  .stamp-book-open {
+    width: 100%;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-color);
+    color: var(--text-color);
+    cursor: pointer;
+  }
+
+  .stamp-book-open:hover {
+    background: var(--block-quote-bg-color);
+  }
+</style>

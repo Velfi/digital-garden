@@ -454,6 +454,18 @@ describe('getAxisAlignedPlaneFromNormal', () => {
     expect(result).toContainEqual([2, 0, 0]);
     expect(new Set(result.map((p) => p.join(','))).size).toBe(3);
   });
+
+  it('hollow wall thickness 2 on 5×5 plane removes only center voxel', () => {
+    const result = getAxisAlignedPlaneFromNormal(
+      [0, 0, 0],
+      [4, 0, 4],
+      { x: 0, y: 1, z: 0 },
+      true,
+      2
+    );
+    expect(result.length).toBe(24);
+    expect(result.some(([x, , z]) => x === 2 && z === 2)).toBe(false);
+  });
 });
 
 describe('getAxisAlignedCircleFromNormal', () => {

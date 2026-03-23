@@ -7,6 +7,8 @@
     lineAxisAlign,
     planeAxis,
     planeCuboidHollow,
+    PLANE_CUBOID_HOLLOW_WALL_MAX,
+    planeCuboidHollowWallThickness,
     drawBrushShape,
     drawBrushSize,
     drawBrushSnapToSurface,
@@ -33,6 +35,7 @@
     ($strokeMode === 'plane' || $strokeMode === 'circle' || $strokeMode === 'cuboid') &&
       isStrokeTool($tool)
   );
+  const planeOrCuboidStroke = $derived($strokeMode === 'plane' || $strokeMode === 'cuboid');
   const lineAxisAlignVisible = $derived($strokeMode === 'line' && isStrokeTool($tool));
   const airbrushVisible = $derived($strokeMode === 'airbrush' && isStrokeTool($tool));
   const fillVisible = $derived($strokeMode === 'fill' && isStrokeTool($tool));
@@ -141,6 +144,32 @@
       />
       Hollow
     </label>
+    {#if $planeCuboidHollow && planeOrCuboidStroke}
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Wall thickness</span>
+        <input
+          type="range"
+          min="1"
+          max={PLANE_CUBOID_HOLLOW_WALL_MAX}
+          step="1"
+          value={Math.min(
+            PLANE_CUBOID_HOLLOW_WALL_MAX,
+            Math.max(1, Math.floor($planeCuboidHollowWallThickness))
+          )}
+          oninput={(e) =>
+            planeCuboidHollowWallThickness.set(
+              Number((e.target as HTMLInputElement).value)
+            )}
+          title="Hollow shell depth in voxels (plane and cuboid)"
+        />
+        <span class="tool-panel-value"
+          >{Math.min(
+            PLANE_CUBOID_HOLLOW_WALL_MAX,
+            Math.max(1, Math.floor($planeCuboidHollowWallThickness))
+          )}</span
+        >
+      </div>
+    {/if}
   </section>
 {/if}
 

@@ -3,6 +3,7 @@ import { coordKey, parseCoordKey } from '../coordUtils';
 import { voxels, gridSize, focalLength, orthographic, resetUndo } from './core';
 import type { GridSize } from './core';
 import { VOXELLE_FORMAT_VERSION, type VoxelleFileFormat } from './voxelleFormatCore';
+import { canonicalizeVoxelMap } from './serialization';
 import type { Voxel } from '../voxelMaterial';
 import { parseVoxelMaterial } from '../voxelMaterial';
 
@@ -86,7 +87,7 @@ export function setWorkerImpls(parse?: ParsePayloadImpl, serialize?: SerializeIm
 useWorker();
 
 export function serializeToVoxelleFormat(): VoxelleFileFormat {
-  const v = get(voxels);
+  const v = canonicalizeVoxelMap(get(voxels));
   let sz = get(gridSize);
   if (v.size > 0) {
     let maxAbs = 0;
