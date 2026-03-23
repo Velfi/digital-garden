@@ -9,6 +9,8 @@ import {
   getSelectionBounds,
   getVoxelBounds,
   getVoxelCenter,
+  getMirrorCoordKeysAroundCenter,
+  expandPositionsWithSymmetryAroundCenter,
   defaultAddShapePlacementAnchor,
   getBoundsFromPositions,
   getSelectionCenter,
@@ -35,6 +37,40 @@ describe('parseCoordKey', () => {
   it('parses "x,y,z" to [x,y,z]', () => {
     expect(parseCoordKey('0,0,0')).toEqual([0, 0, 0]);
     expect(parseCoordKey('1,-2,3')).toEqual([1, -2, 3]);
+  });
+});
+
+describe('centered symmetry helpers', () => {
+  it('mirrors around custom center on one axis', () => {
+    const keys = getMirrorCoordKeysAroundCenter(5, 3, 4, [2, 3, 4], {
+      x: true,
+      y: false,
+      z: false
+    });
+    expect(new Set(keys)).toEqual(new Set(['5,3,4', '-1,3,4']));
+  });
+
+  it('expands Cartesian combinations across enabled axes', () => {
+    const expanded = expandPositionsWithSymmetryAroundCenter(
+      [[3, 4, 5]],
+      [1, 2, 3],
+      { x: true, y: true, z: false }
+    );
+    expect(new Set(expanded.map(([x, y, z]) => coordKey(x, y, z)))).toEqual(
+      new Set(['3,4,5', '-1,4,5', '3,0,5', '-1,0,5'])
+    );
+  });
+
+  it('deduplicates when point lies on mirrored center plane', () => {
+    const expanded = expandPositionsWithSymmetryAroundCenter(
+      [
+        [2, 8, 9],
+        [2, 8, 9]
+      ],
+      [2, 5, 5],
+      { x: true, y: false, z: false }
+    );
+    expect(expanded).toEqual([[2, 8, 9]]);
   });
 });
 

@@ -76,6 +76,7 @@ export type StrokeMode =
   | 'line'
   | 'plane'
   | 'circle'
+  | 'precise'
   | 'cuboid'
   | 'polygon'
   | 'fill'

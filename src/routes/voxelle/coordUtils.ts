@@ -68,6 +68,54 @@ export function expandPositionsWithSymmetry(
   return [...keys].map((k) => parseCoordKey(k) as [number, number, number]);
 }
 
+/**
+ * Returns coord keys for (x,y,z) and all mirror positions for the given axes,
+ * mirrored about a custom integer center.
+ */
+export function getMirrorCoordKeysAroundCenter(
+  x: number,
+  y: number,
+  z: number,
+  center: [number, number, number],
+  axes: SymmetryAxes
+): string[] {
+  const keys = new Set<string>();
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const zi = Math.floor(z);
+  const [cx, cy, cz] = center.map(Math.floor) as [number, number, number];
+  const xMirror = 2 * cx - xi;
+  const yMirror = 2 * cy - yi;
+  const zMirror = 2 * cz - zi;
+  const xVals = axes.x ? [xi, xMirror] : [xi];
+  const yVals = axes.y ? [yi, yMirror] : [yi];
+  const zVals = axes.z ? [zi, zMirror] : [zi];
+  for (const px of xVals) {
+    for (const py of yVals) {
+      for (const pz of zVals) {
+        keys.add(coordKey(px, py, pz));
+      }
+    }
+  }
+  return [...keys];
+}
+
+/** Expands positions with symmetry mirrored about a custom center. Deduplicated. */
+export function expandPositionsWithSymmetryAroundCenter(
+  positions: [number, number, number][],
+  center: [number, number, number],
+  axes: SymmetryAxes
+): [number, number, number][] {
+  if (!axes.x && !axes.y && !axes.z) return positions;
+  const keys = new Set<string>();
+  for (const [x, y, z] of positions) {
+    for (const k of getMirrorCoordKeysAroundCenter(x, y, z, center, axes)) {
+      keys.add(k);
+    }
+  }
+  return [...keys].map((k) => parseCoordKey(k) as [number, number, number]);
+}
+
 /** Grid bounds: x,y,z in [-size/2, size/2). When size is undefined or null, always true (unbounded). */
 export function inBounds(x: number, y: number, z: number, size?: number | null): boolean {
   if (size == null || size === undefined) return true;

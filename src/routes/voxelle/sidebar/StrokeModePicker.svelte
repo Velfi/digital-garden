@@ -17,7 +17,7 @@
       type="button"
       class:active={$strokeMode === 'plane'}
       onclick={() => strokeMode.set('plane')}
-      title="Fill whole plane (Alt+scroll to cycle orientation)"
+      title="Fill whole plane (Alt+scroll to cycle orientation, hold Shift while dragging to mirror around drag start)"
     >
       Plane
     </button>
@@ -28,6 +28,14 @@
       title="Drag from center to edge: disk in the plane (Alt+scroll to cycle orientation)"
     >
       Circle
+    </button>
+    <button
+      type="button"
+      class:active={$strokeMode === 'precise'}
+      onclick={() => strokeMode.set('precise')}
+      title="Click voxel to lock plane from face normal, then click to place one voxel or drag to place a plane"
+    >
+      Precise
     </button>
     <button
       type="button"
