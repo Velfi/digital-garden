@@ -671,10 +671,40 @@
   const ZOOM_FACTOR_OUT = 1.2;
   const MIN_DISTANCE = 5;
   const MAX_DISTANCE = 50000;
+  /** three@0.183 OrbitControls internal _STATE.NONE — wheel zoom only applies in this state. */
+  const ORBIT_INTERNAL_STATE_NONE = -1;
+  let pendingOrbitWheelDeltaSum = 0;
+  let pendingOrbitWheelClientX = 0;
+  let pendingOrbitWheelClientY = 0;
 
   // 35mm equivalent: sensor height 24mm; FOV = 2 * atan(12 / focalLength)
   function focalLengthToFov(mm: number): number {
     return (2 * Math.atan(12 / mm) * 180) / Math.PI;
+  }
+
+  /** Matches OrbitControls._customWheelEvent deltaY scaling. */
+  function orbitWheelNormalizedDeltaY(event: WheelEvent): number {
+    let dy = event.deltaY;
+    switch (event.deltaMode) {
+      case 1:
+        dy *= 16;
+        break;
+      case 2:
+        dy *= 100;
+        break;
+      default:
+        break;
+    }
+    if (event.ctrlKey) {
+      dy *= 10;
+    }
+    return dy;
+  }
+
+  /** Same base as OrbitControls._getZoomScale (three/examples OrbitControls.js). */
+  function orbitZoomScaleFromWheelDelta(controls: OrbitControls, deltaY: number): number {
+    const normalizedDelta = Math.abs(deltaY * 0.01);
+    return Math.pow(0.95, controls.zoomSpeed * normalizedDelta);
   }
 
   const pointerHelper = new THREE.Vector3();
@@ -4579,6 +4609,16 @@
       render();
       return;
     }
+
+    if ($tool === 'fly') return;
+    const oc = orbitControls;
+    if (!oc?.enabled || !oc.enableZoom) return;
+    if ((oc as OrbitControls & { state?: number }).state !== ORBIT_INTERNAL_STATE_NONE) return;
+    event.preventDefault();
+    event.stopPropagation();
+    pendingOrbitWheelDeltaSum += orbitWheelNormalizedDeltaY(event);
+    pendingOrbitWheelClientX = event.clientX;
+    pendingOrbitWheelClientY = event.clientY;
   }
 
   function updateOrthoFrustum() {
@@ -4927,6 +4967,31 @@
       controlsDirty = true;
     } else {
       controlsDirty = orbitControls?.update() ?? false;
+    }
+
+    if (
+      orbitControls &&
+      pendingOrbitWheelDeltaSum !== 0 &&
+      get(tool) !== 'fly' &&
+      orbitControls.enabled &&
+      orbitControls.enableZoom
+    ) {
+      const dy = pendingOrbitWheelDeltaSum;
+      pendingOrbitWheelDeltaSum = 0;
+      if (orbitControls.zoomToCursor === true) {
+        (
+          orbitControls as unknown as {
+            _updateZoomParameters(x: number, y: number): void;
+          }
+        )._updateZoomParameters(pendingOrbitWheelClientX, pendingOrbitWheelClientY);
+      }
+      const scale = orbitZoomScaleFromWheelDelta(orbitControls, dy);
+      if (dy < 0) {
+        orbitControls.dollyIn(scale);
+      } else if (dy > 0) {
+        orbitControls.dollyOut(scale);
+      }
+      controlsDirty = true;
     }
 
     if (camera && renderer && container && get(renderingMode) === 'ray') {
