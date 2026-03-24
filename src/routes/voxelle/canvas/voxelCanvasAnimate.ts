@@ -1,0 +1,182 @@
+/**
+ * Per-frame animation step for VoxelCanvas (controls, ray refinement, conditional render).
+ */
+import * as THREE from 'three';
+import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import type { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { applyFlyMovement, FLY_MOVE_SPEED, type FlyMoveState } from '../flyControls';
+import { hexToInt } from '../store/index';
+import type { Voxel } from '../store/index';
+import { buildVoxelRayTraceParams } from './voxelRayShared';
+import { DEFAULT_RAY_TICK_BUDGET_MS } from './voxelRayProgressive';
+import type { VoxelRayTsl } from './voxelRayTsl';
+import type { VoxelleRenderer } from './sceneSetup';
+
+export type VoxelCanvasAnimateContext = {
+  nowMs: number;
+  showFpsCounter: boolean;
+  setFpsCounterDisplayed: (n: number) => void;
+  getFpsCounterPeriodStartMs: () => number;
+  setFpsCounterPeriodStartMs: (n: number) => void;
+  getFpsCounterAccumFrames: () => number;
+  setFpsCounterAccumFrames: (n: number) => void;
+  getLastFrameTime: () => number;
+  setLastFrameTime: (n: number) => void;
+  flyControls: InstanceType<typeof PointerLockControls> | null;
+  camera: THREE.PerspectiveCamera | THREE.OrthographicCamera | undefined;
+  flyMoveState: FlyMoveState;
+  orbitControls: OrbitControls | undefined;
+  getTool: () => string;
+  getPendingOrbitWheelDeltaSum: () => number;
+  setPendingOrbitWheelDeltaSum: (n: number) => void;
+  getPendingOrbitWheelClientX: () => number;
+  getPendingOrbitWheelClientY: () => number;
+  orbitZoomScaleFromWheelDelta: (controls: OrbitControls, deltaY: number) => number;
+  getRenderingMode: () => 'greedy' | 'marchingCubes' | 'ray';
+  rayRenderer: VoxelRayTsl | null;
+  container: HTMLElement;
+  renderer: VoxelleRenderer;
+  scene: THREE.Scene;
+  dirLight: THREE.DirectionalLight;
+  hemisphereLight: THREE.HemisphereLight;
+  getVoxels: () => Map<string, Voxel>;
+  getEnableSky: () => boolean;
+  getBackgroundColor: () => string;
+  getAmbientIntensity: () => number;
+  getSceneEnvironmentIntensity: () => number;
+  getEnableShadows: () => boolean;
+  getRayTraceContentDirty: () => boolean;
+  setRayTraceContentDirty: (v: boolean) => void;
+  getPrevRayCamInitialized: () => boolean;
+  prevRayCamPos: THREE.Vector3;
+  prevRayCamQuat: THREE.Quaternion;
+  setRayRefinementProgress: (v: number) => void;
+  isVoxelDrag: boolean;
+  isStampDrag: boolean;
+  selectionGizmoDragging: boolean;
+  getCuboidPhase: () => 'plane' | 'depth' | null;
+  getPolygonPhase: () => 'placing' | null;
+  getRoofPhase: () => 'placing' | null;
+  getRopePhase: () => 'placing' | 'tension' | null;
+  getFlyControlsEnabled: () => boolean;
+  render: () => void;
+};
+
+export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void {
+  const t = ctx.nowMs;
+
+  if (ctx.showFpsCounter) {
+    let fpsCounterPeriodStartMs = ctx.getFpsCounterPeriodStartMs();
+    if (!fpsCounterPeriodStartMs) {
+      fpsCounterPeriodStartMs = t;
+      ctx.setFpsCounterPeriodStartMs(t);
+      ctx.setFpsCounterAccumFrames(0);
+    }
+    ctx.setFpsCounterAccumFrames(ctx.getFpsCounterAccumFrames() + 1);
+    const fpsElapsed = t - fpsCounterPeriodStartMs;
+    if (fpsElapsed >= 1000) {
+      ctx.setFpsCounterDisplayed(Math.round((ctx.getFpsCounterAccumFrames() * 1000) / fpsElapsed));
+      ctx.setFpsCounterAccumFrames(0);
+      ctx.setFpsCounterPeriodStartMs(t);
+    }
+  } else {
+    ctx.setFpsCounterPeriodStartMs(0);
+  }
+
+  const lastFt = ctx.getLastFrameTime();
+  const delta = lastFt ? (t - lastFt) / 1000 : 0;
+  ctx.setLastFrameTime(t);
+
+  let controlsDirty = false;
+  if (ctx.flyControls?.enabled && ctx.camera) {
+    applyFlyMovement(ctx.camera, ctx.flyControls, ctx.flyMoveState, delta, {
+      moveSpeed: FLY_MOVE_SPEED
+    });
+    controlsDirty = true;
+  } else {
+    controlsDirty = ctx.orbitControls?.update() ?? false;
+  }
+
+  const oc = ctx.orbitControls;
+  if (
+    oc &&
+    ctx.getPendingOrbitWheelDeltaSum() !== 0 &&
+    ctx.getTool() !== 'fly' &&
+    oc.enabled &&
+    oc.enableZoom
+  ) {
+    const dy = ctx.getPendingOrbitWheelDeltaSum();
+    ctx.setPendingOrbitWheelDeltaSum(0);
+    if (oc.zoomToCursor === true) {
+      (
+        oc as unknown as { _updateZoomParameters(x: number, y: number): void }
+      )._updateZoomParameters(ctx.getPendingOrbitWheelClientX(), ctx.getPendingOrbitWheelClientY());
+    }
+    const scale = ctx.orbitZoomScaleFromWheelDelta(oc, dy);
+    if (dy < 0) oc.dollyIn(scale);
+    else if (dy > 0) oc.dollyOut(scale);
+    controlsDirty = true;
+  }
+
+  if (ctx.camera && ctx.renderer && ctx.container && ctx.getRenderingMode() === 'ray') {
+    ctx.camera.updateMatrixWorld(true);
+
+    let camDirty = false;
+    if (ctx.getPrevRayCamInitialized()) {
+      const posMoved = ctx.prevRayCamPos.distanceToSquared(ctx.camera.position) > 1e-8;
+      const rotAlign = Math.abs(ctx.prevRayCamQuat.dot(ctx.camera.quaternion));
+      const rotMoved = rotAlign < 1 - 1e-6;
+      camDirty = posMoved || rotMoved;
+      if (camDirty) {
+        ctx.prevRayCamPos.copy(ctx.camera.position);
+        ctx.prevRayCamQuat.copy(ctx.camera.quaternion);
+      }
+    }
+
+    const contentDirty = ctx.getRayTraceContentDirty();
+    ctx.setRayTraceContentDirty(false);
+    const params = buildVoxelRayTraceParams(ctx.dirLight, ctx.hemisphereLight, {
+      enableSky: ctx.getEnableSky(),
+      backgroundHex: hexToInt(ctx.getBackgroundColor()),
+      ambientIntensity: ctx.getAmbientIntensity(),
+      sceneEnvironmentIntensity: ctx.getSceneEnvironmentIntensity(),
+      enableShadows: ctx.getEnableShadows(),
+      timeSeconds: performance.now() * 0.001
+    });
+
+    if (ctx.rayRenderer) {
+      const texBefore = ctx.rayRenderer.output.beautyTexture;
+      ctx.rayRenderer.tick(
+        delta,
+        ctx.container.clientWidth,
+        ctx.container.clientHeight,
+        ctx.renderer.getPixelRatio(),
+        ctx.getVoxels(),
+        params,
+        contentDirty || camDirty,
+        ctx.camera,
+        DEFAULT_RAY_TICK_BUDGET_MS
+      );
+      const texAfter = ctx.rayRenderer.output.beautyTexture;
+      if (texBefore !== texAfter) {
+        ctx.scene.background = texAfter;
+      }
+      ctx.setRayRefinementProgress(ctx.rayRenderer.output.refinementProgress);
+    }
+  } else {
+    ctx.setRayRefinementProgress(0);
+  }
+
+  const mode = ctx.getRenderingMode();
+  const hasActiveInteraction =
+    ctx.isVoxelDrag ||
+    ctx.isStampDrag ||
+    ctx.selectionGizmoDragging ||
+    ctx.getCuboidPhase() !== null ||
+    ctx.getPolygonPhase() !== null ||
+    ctx.getRoofPhase() !== null ||
+    ctx.getRopePhase() !== null;
+  if (mode === 'ray' || controlsDirty || hasActiveInteraction || ctx.getFlyControlsEnabled()) {
+    ctx.render();
+  }
+}

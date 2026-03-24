@@ -52,7 +52,10 @@
     prefs = { ...prefs, rendererBackend: value };
     savePreferences(prefs);
     if (rendererBackendBeforeOpen !== null && value !== rendererBackendBeforeOpen) {
-      if (typeof window !== 'undefined' && window.confirm('Reload the page to switch the graphics backend?')) {
+      if (
+        typeof window !== 'undefined' &&
+        window.confirm('Reload the page to switch the graphics backend?')
+      ) {
         window.location.reload();
       }
     }
@@ -116,7 +119,9 @@
           <option value="webgpu">WebGPU</option>
           <option value="webgl">WebGL</option>
         </select>
-        <span class="field-hint">Changing this reloads the page. WebGPU: TSL bloom + simpler grid/sky.</span>
+        <span class="field-hint"
+          >Changing this reloads the page. WebGPU: TSL bloom + simpler grid/sky.</span
+        >
       </label>
       <label class="select-label">
         <span class="select-label-text">Viewport tone mapping</span>

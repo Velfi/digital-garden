@@ -99,8 +99,7 @@
               max={BRUSH_SIZE_MAX}
               step="1"
               value={$branchTaperEndSize}
-              oninput={(e) =>
-                branchTaperEndSize.set(Number((e.target as HTMLInputElement).value))}
+              oninput={(e) => branchTaperEndSize.set(Number((e.target as HTMLInputElement).value))}
               title="Taper end size (1–{MAX_BRUSH_SIZE} voxels)"
             />
             <span class="tool-panel-value">{$branchTaperEndSize + 1}</span>
@@ -164,8 +163,7 @@
           max="20"
           step="1"
           value={$wallHeight}
-          oninput={(e) =>
-            wallHeight.set(Math.max(2, Number((e.target as HTMLInputElement).value)))}
+          oninput={(e) => wallHeight.set(Math.max(2, Number((e.target as HTMLInputElement).value)))}
           title="Voxels to extend along direction (min 2)"
         />
         <span class="tool-panel-value">{$wallHeight}</span>

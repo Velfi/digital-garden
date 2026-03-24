@@ -4,9 +4,7 @@ import type { Voxel } from './voxelMaterial';
 import { normalizeLegacyVoxel, parseVoxelMaterial, VOXEL_MATERIAL_IDS } from './voxelMaterial';
 
 export interface GreedyMeshWorkerInput {
-  voxels:
-    | [string, Voxel][]
-    | { coords: Int32Array; colors: Uint32Array; materials?: Uint8Array };
+  voxels: [string, Voxel][] | { coords: Int32Array; colors: Uint32Array; materials?: Uint8Array };
   options?: { aoEnabled?: boolean };
   gen?: number;
 }

@@ -62,7 +62,8 @@ export function computeTransmissionBound(
   const depthBound = Math.max(MATERIAL_MIN_TRANSMITTANCE[material], base);
 
   const lum = colorLuminance(color24 & 0xffffff);
-  const colorBound = MATERIAL_MIN_COLOR_FACTOR[material] + (1 - MATERIAL_MIN_COLOR_FACTOR[material]) * lum;
+  const colorBound =
+    MATERIAL_MIN_COLOR_FACTOR[material] + (1 - MATERIAL_MIN_COLOR_FACTOR[material]) * lum;
 
   const finalBound = depthBound * colorBound;
   return clamp01(Math.max(MATERIAL_MIN_FINAL_FACTOR[material], finalBound));

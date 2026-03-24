@@ -175,7 +175,10 @@
     <div class="autosave-alert" role="alert">
       <p><strong>Autosave failed: {$autosaveError}</strong></p>
       <p>Your work may be lost if you refresh or close the tab.</p>
-      <p>Use File → Save now to download a <code>.voxelle</code> backup. Free browser storage, close private browsing, or allow site data, then try again.</p>
+      <p>
+        Use File → Save now to download a <code>.voxelle</code> backup. Free browser storage, close private
+        browsing, or allow site data, then try again.
+      </p>
     </div>
   {/if}
   {#if webglSupported}

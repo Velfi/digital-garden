@@ -487,12 +487,17 @@ describe('getAxisAlignedCircleFromNormal', () => {
   });
 
   it('hollow omits strictly interior voxels', () => {
-    const filled = getAxisAlignedCircleFromNormal([0, 1, 0], [2, 1, 0], { x: 0, y: 1, z: 0 }, false);
+    const filled = getAxisAlignedCircleFromNormal(
+      [0, 1, 0],
+      [2, 1, 0],
+      { x: 0, y: 1, z: 0 },
+      false
+    );
     const hollow = getAxisAlignedCircleFromNormal([0, 1, 0], [2, 1, 0], { x: 0, y: 1, z: 0 }, true);
     expect(hollow.length).toBeLessThan(filled.length);
-    expect(hollow.every((p) => filled.some((q) => q[0] === p[0] && q[1] === p[1] && q[2] === p[2]))).toBe(
-      true
-    );
+    expect(
+      hollow.every((p) => filled.some((q) => q[0] === p[0] && q[1] === p[1] && q[2] === p[2]))
+    ).toBe(true);
     expect(hollow).not.toContainEqual([0, 1, 0]);
     expect(hollow).toContainEqual([-2, 1, 0]);
     expect(hollow).toContainEqual([2, 1, 0]);

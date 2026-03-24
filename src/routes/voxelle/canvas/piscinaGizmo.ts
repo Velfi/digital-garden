@@ -48,13 +48,7 @@ export type PiscinaGizmoFrame = {
   up: [number, number, number];
 };
 
-export type PiscinaFinGizmoId =
-  | 'dorsal'
-  | 'adipose'
-  | 'anal'
-  | 'caudal'
-  | 'pectoral'
-  | 'pelvic';
+export type PiscinaFinGizmoId = 'dorsal' | 'adipose' | 'anal' | 'caudal' | 'pectoral' | 'pelvic';
 
 const AXIS_DRAG_SENSITIVITY = 0.58;
 const TRANSLATE_DRAG_SENSITIVITY = 0.55;
@@ -143,16 +137,11 @@ function gizmoPlaneNormalForWorldAxis(
   return gizmoPlaneNormalScratch.normalize();
 }
 
-function gizmoPlaneNormalForVector(
-  dragAxis: THREE.Vector3,
-  camera: THREE.Camera
-): THREE.Vector3 {
+function gizmoPlaneNormalForVector(dragAxis: THREE.Vector3, camera: THREE.Camera): THREE.Vector3 {
   const gizmoCamDir = new THREE.Vector3();
   camera.getWorldDirection(gizmoCamDir);
   const ax = dragAxis.clone().normalize();
-  const out = new THREE.Vector3()
-    .copy(gizmoCamDir)
-    .addScaledVector(ax, -gizmoCamDir.dot(ax));
+  const out = new THREE.Vector3().copy(gizmoCamDir).addScaledVector(ax, -gizmoCamDir.dot(ax));
   if (out.lengthSq() < 1e-8) {
     out.crossVectors(ax, new THREE.Vector3(0, 1, 0));
     if (out.lengthSq() < 1e-8) out.set(0, 1, 0);
@@ -490,11 +479,7 @@ function setupFinRotPlane(
   }
 }
 
-function layoutFinGroups(
-  group: THREE.Group,
-  lengthVox: number,
-  species: FishSpeciesId
-): void {
+function layoutFinGroups(group: THREE.Group, lengthVox: number, species: FishSpeciesId): void {
   const layout = group.userData.piscinaLayout as PiscinaGizmoLayout | undefined;
   if (!layout) return;
   const finT = getPiscinaFinT(species);
@@ -677,8 +662,7 @@ export function createPiscinaGizmoController(deps: PiscinaGizmoDeps) {
     isDrag = true;
     dragKind = picked.kind;
     dragAxis = picked.kind === 'axis' ? picked.axis : null;
-    dragFinId =
-      picked.kind === 'fin' || picked.kind === 'finRot' ? picked.finId : null;
+    dragFinId = picked.kind === 'fin' || picked.kind === 'finRot' ? picked.finId : null;
 
     forward.set(...frame.forward);
     side.set(...frame.side);
@@ -804,10 +788,7 @@ export function createPiscinaGizmoController(deps: PiscinaGizmoDeps) {
       setupFinRotPlane(dragFinId, forward, side, up, finRotNormal, finRotE1, finRotE2);
       finRotDeltaScratch.copy(gizmoHitScratch).sub(finRotPivot);
       finRotDeltaScratch.addScaledVector(finRotNormal, -finRotDeltaScratch.dot(finRotNormal));
-      const a1 = Math.atan2(
-        finRotDeltaScratch.dot(finRotE2),
-        finRotDeltaScratch.dot(finRotE1)
-      );
+      const a1 = Math.atan2(finRotDeltaScratch.dot(finRotE2), finRotDeltaScratch.dot(finRotE1));
       const deltaDeg = wrapAngleRad(a1 - finRotAngleStart) * FIN_ROT_RAD_TO_DEG;
       if (dragFinId === 'dorsal') {
         piscinaFinDorsalPitch.set(Math.max(-45, Math.min(45, baseFinRotValue + deltaDeg)));

@@ -70,8 +70,7 @@ export async function renderStampPreviewPng(
   const geos = [...geoByBucket.values()];
   if (geos.length === 0) return null;
 
-  const merged =
-    geos.length === 1 ? geos[0]! : (mergeGeometries(geos) as THREE.BufferGeometry);
+  const merged = geos.length === 1 ? geos[0]! : (mergeGeometries(geos) as THREE.BufferGeometry);
   if (geos.length > 1) geos.forEach((g) => g.dispose());
 
   const bounds = voxelMapBounds(voxelMap);

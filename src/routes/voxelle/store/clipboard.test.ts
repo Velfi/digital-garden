@@ -128,11 +128,7 @@ describe('clipboard', () => {
 
     it('replaces existing voxel when paste footprint overlaps', () => {
       voxels.set(new Map([['10,0,0', plasticVoxel(0x111111)]]));
-      placePastePatternAt(
-        [10, 0, 0],
-        [0, 0, 0],
-        [[0, 0, 0, 0xeeeeee, 'metal']]
-      );
+      placePastePatternAt([10, 0, 0], [0, 0, 0], [[0, 0, 0, 0xeeeeee, 'metal']]);
       const v = get(voxels);
       expect(v.get('10,0,0')).toEqual({ color: 0xeeeeee, material: 'metal' });
     });

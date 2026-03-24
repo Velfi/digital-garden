@@ -41,7 +41,19 @@
         aria-pressed={matchesPreset(preset.id)}
         onclick={() => applyLightPreset(preset.id)}
       >
-        <span class="preset-emoji" aria-hidden="true">{preset.id === 'sunny' ? '☀️' : preset.id === 'cloudy' ? '☁️' : preset.id === 'incandescent' ? '💡' : preset.id === 'fluorescent' ? '🔦' : preset.id === 'moonlight' ? '🌙' : '🌑'}</span>
+        <span class="preset-emoji" aria-hidden="true"
+          >{preset.id === 'sunny'
+            ? '☀️'
+            : preset.id === 'cloudy'
+              ? '☁️'
+              : preset.id === 'incandescent'
+                ? '💡'
+                : preset.id === 'fluorescent'
+                  ? '🔦'
+                  : preset.id === 'moonlight'
+                    ? '🌙'
+                    : '🌑'}</span
+        >
       </button>
     {/each}
   </div>

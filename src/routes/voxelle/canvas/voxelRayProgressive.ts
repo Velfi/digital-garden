@@ -61,10 +61,7 @@ function jitterHash01(x: number, y: number, sampleIdx: number, axis: number): nu
 }
 
 function temporalJitter(x: number, y: number, sampleIdx: number): [number, number] {
-  return [
-    jitterHash01(x, y, sampleIdx, 0) - 0.5,
-    jitterHash01(x, y, sampleIdx, 1) - 0.5
-  ];
+  return [jitterHash01(x, y, sampleIdx, 0) - 0.5, jitterHash01(x, y, sampleIdx, 1) - 0.5];
 }
 
 function linearToSrgbByte(x: number): number {
@@ -254,7 +251,11 @@ function configureRayDataTexture(tex: THREE.DataTexture): void {
   tex.magFilter = THREE.LinearFilter;
 }
 
-function orthonormalTangentBasis(lx: number, ly: number, lz: number): {
+function orthonormalTangentBasis(
+  lx: number,
+  ly: number,
+  lz: number
+): {
   tx: number;
   ty: number;
   tz: number;
@@ -524,11 +525,7 @@ function traceAndShade(
         maxShadowDist
       );
       return {
-        rgb: [
-          accR + tr * surf.rgb[0],
-          accG + tg * surf.rgb[1],
-          accB + tb * surf.rgb[2]
-        ],
+        rgb: [accR + tr * surf.rgb[0], accG + tg * surf.rgb[1], accB + tb * surf.rgb[2]],
         bloom: [tr * surf.bloom[0], tg * surf.bloom[1], tb * surf.bloom[2]]
       };
     }
@@ -575,7 +572,12 @@ function traceAndShade(
       rdz - 2 * ndoti * shadingNormal[2]
     ];
     const refl = envReflectDirectional(params, reflDir, hit.voxel.material);
-    const sunSpec = transmissiveSunSpecular(hit.voxel.material, shadingNormal, [rdx, rdy, rdz], params);
+    const sunSpec = transmissiveSunSpecular(
+      hit.voxel.material,
+      shadingNormal,
+      [rdx, rdy, rdz],
+      params
+    );
     accR += tr * R * refl[0];
     accG += tg * R * refl[1];
     accB += tb * R * refl[2];
@@ -617,7 +619,8 @@ function traceAndShade(
       const ncy = Math.floor(npy);
       const ncz = Math.floor(npz);
       const next = lookupVoxel(voxels, ncx, ncy, ncz);
-      if (!next || !isTransmissiveMaterial(next.material) || next.material !== curGlass.material) break;
+      if (!next || !isTransmissiveMaterial(next.material) || next.material !== curGlass.material)
+        break;
       cx = ncx;
       cy = ncy;
       cz = ncz;
@@ -747,7 +750,13 @@ export class VoxelRayProgressive {
     this.texture.flipY = true;
     configureRayDataTexture(this.texture);
     this.texture.needsUpdate = true;
-    this.bloomTexture = new THREE.DataTexture(this.bloomData, 1, 1, THREE.RGBAFormat, THREE.FloatType);
+    this.bloomTexture = new THREE.DataTexture(
+      this.bloomData,
+      1,
+      1,
+      THREE.RGBAFormat,
+      THREE.FloatType
+    );
     this.bloomTexture.colorSpace = THREE.LinearSRGBColorSpace;
     this.bloomTexture.flipY = true;
     configureRayDataTexture(this.bloomTexture);
@@ -765,7 +774,9 @@ export class VoxelRayProgressive {
     const strideCount = STRIDES.length;
     if (this.strideIdx < strideCount) {
       const strideFrac =
-        this.totalBlocksThisStride > 0 ? this.completedBlocksThisStride / this.totalBlocksThisStride : 0;
+        this.totalBlocksThisStride > 0
+          ? this.completedBlocksThisStride / this.totalBlocksThisStride
+          : 0;
       return Math.min(0.5, ((this.strideIdx + strideFrac) / strideCount) * 0.5);
     }
     const inTemporalPass =
@@ -799,9 +810,7 @@ export class VoxelRayProgressive {
       this.rayDir.copy(this.rayFar).sub(this.rayOrigin).normalize();
     } else {
       const cam = camera as THREE.OrthographicCamera;
-      this.rayOrigin
-        .set(nx, ny, (cam.near + cam.far) / (cam.near - cam.far))
-        .unproject(cam);
+      this.rayOrigin.set(nx, ny, (cam.near + cam.far) / (cam.near - cam.far)).unproject(cam);
       this.rayDir.set(0, 0, -1).transformDirection(cam.matrixWorld);
     }
   }
@@ -836,13 +845,25 @@ export class VoxelRayProgressive {
       this.accumData = new Float32Array(bufW * bufH * 4);
       this.accumBloomData = new Float32Array(bufW * bufH * 4);
       this.texture.dispose();
-      this.texture = new THREE.DataTexture(this.data, bufW, bufH, THREE.RGBAFormat, THREE.UnsignedByteType);
+      this.texture = new THREE.DataTexture(
+        this.data,
+        bufW,
+        bufH,
+        THREE.RGBAFormat,
+        THREE.UnsignedByteType
+      );
       this.texture.colorSpace = THREE.SRGBColorSpace;
       this.texture.flipY = true;
       configureRayDataTexture(this.texture);
       this.texture.needsUpdate = true;
       this.bloomTexture.dispose();
-      this.bloomTexture = new THREE.DataTexture(this.bloomData, bufW, bufH, THREE.RGBAFormat, THREE.FloatType);
+      this.bloomTexture = new THREE.DataTexture(
+        this.bloomData,
+        bufW,
+        bufH,
+        THREE.RGBAFormat,
+        THREE.FloatType
+      );
       this.bloomTexture.colorSpace = THREE.LinearSRGBColorSpace;
       this.bloomTexture.flipY = true;
       configureRayDataTexture(this.bloomTexture);

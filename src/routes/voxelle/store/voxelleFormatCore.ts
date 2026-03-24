@@ -25,7 +25,9 @@ export type VoxelleFileFormat = {
   };
 };
 
-function rowToVoxel(row: VoxelleFileVoxelRow): { x: number; y: number; z: number; voxel: Voxel } | null {
+function rowToVoxel(
+  row: VoxelleFileVoxelRow
+): { x: number; y: number; z: number; voxel: Voxel } | null {
   if (!Array.isArray(row) || row.length < 4) return null;
   const [x, y, z, col] = row;
   if (
@@ -35,7 +37,7 @@ function rowToVoxel(row: VoxelleFileVoxelRow): { x: number; y: number; z: number
     typeof col !== 'number'
   )
     return null;
-  const color = col >>> 0 & 0xffffff;
+  const color = (col >>> 0) & 0xffffff;
   if (row.length >= 5 && typeof row[4] === 'string') {
     return {
       x: Math.floor(x),

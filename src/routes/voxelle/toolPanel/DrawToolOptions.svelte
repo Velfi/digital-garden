@@ -157,9 +157,7 @@
             Math.max(1, Math.floor($planeCuboidHollowWallThickness))
           )}
           oninput={(e) =>
-            planeCuboidHollowWallThickness.set(
-              Number((e.target as HTMLInputElement).value)
-            )}
+            planeCuboidHollowWallThickness.set(Number((e.target as HTMLInputElement).value))}
           title="Hollow shell depth in voxels (plane and cuboid)"
         />
         <span class="tool-panel-value"
@@ -180,8 +178,7 @@
         <input
           type="checkbox"
           checked={$constrainToPlaneEnabled}
-          onchange={(e) =>
-            constrainToPlaneEnabled.set((e.target as HTMLInputElement).checked)}
+          onchange={(e) => constrainToPlaneEnabled.set((e.target as HTMLInputElement).checked)}
           title="Limit fill flood and airbrush stroke to a plane through the click/drag start"
         />
         Constrain to plane
@@ -344,8 +341,7 @@
         max="8"
         step="1"
         value={$polygonOffsetFromNormal}
-        oninput={(e) =>
-          polygonOffsetFromNormal.set(Number((e.target as HTMLInputElement).value))}
+        oninput={(e) => polygonOffsetFromNormal.set(Number((e.target as HTMLInputElement).value))}
         title="Voxel steps along the face normal from the latest polygon anchor click"
       />
       <span class="tool-panel-value">{$polygonOffsetFromNormal}</span>

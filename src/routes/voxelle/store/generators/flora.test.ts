@@ -67,7 +67,12 @@ describe('flora generator', () => {
 
   it('multi-stem produces more voxels than single when clustered', () => {
     const single = getFloraPositions(7, [0, 0, 0], [0, 1, 0], opts({ stemCount: 1, height: 8 }));
-    const multi = getFloraPositions(7, [0, 0, 0], [0, 1, 0], opts({ stemCount: 4, clusterRadius: 2, height: 8 }));
+    const multi = getFloraPositions(
+      7,
+      [0, 0, 0],
+      [0, 1, 0],
+      opts({ stemCount: 4, clusterRadius: 2, height: 8 })
+    );
     expect(multi.length).toBeGreaterThanOrEqual(single.length);
   });
 

@@ -214,9 +214,7 @@ export function thickenPath(
 }
 
 /** Layer plane is perpendicular to this world axis (voxels share constant x, y, or z along the stroke). */
-function faceNormalToLayerAxis(
-  normal: { x: number; y: number; z: number } | undefined
-): 0 | 1 | 2 {
+function faceNormalToLayerAxis(normal: { x: number; y: number; z: number } | undefined): 0 | 1 | 2 {
   if (!normal) return 1;
   const [nx, ny, nz] = snapNormalToAxis(normal);
   if (nx !== 0) return 0;
@@ -892,24 +890,21 @@ export function getAxisAlignedPlaneFromNormal(
     const y1 = Math.max(a[1], b[1]);
     const z0 = Math.min(a[2], b[2]);
     const z1 = Math.max(a[2], b[2]);
-    for (let py = y0; py <= y1; py++)
-      for (let pz = z0; pz <= z1; pz++) positions.push([x, py, pz]);
+    for (let py = y0; py <= y1; py++) for (let pz = z0; pz <= z1; pz++) positions.push([x, py, pz]);
   } else if (fixedAxis === 1) {
     const y = a[1];
     const x0 = Math.min(a[0], b[0]);
     const x1 = Math.max(a[0], b[0]);
     const z0 = Math.min(a[2], b[2]);
     const z1 = Math.max(a[2], b[2]);
-    for (let px = x0; px <= x1; px++)
-      for (let pz = z0; pz <= z1; pz++) positions.push([px, y, pz]);
+    for (let px = x0; px <= x1; px++) for (let pz = z0; pz <= z1; pz++) positions.push([px, y, pz]);
   } else {
     const z = a[2];
     const x0 = Math.min(a[0], b[0]);
     const x1 = Math.max(a[0], b[0]);
     const y0 = Math.min(a[1], b[1]);
     const y1 = Math.max(a[1], b[1]);
-    for (let px = x0; px <= x1; px++)
-      for (let py = y0; py <= y1; py++) positions.push([px, py, z]);
+    for (let px = x0; px <= x1; px++) for (let py = y0; py <= y1; py++) positions.push([px, py, z]);
   }
   if (!hollow) return positions;
   return hollowSolidToShell(positions, hollowWallThickness, neighborsInFixedPlane(fixedAxis));
@@ -989,7 +984,11 @@ export function getAxisAlignedCuboid(
   const planePositions = getAxisAlignedPlaneFromNormal(a, b, faceNormal, false);
   if (depth === 0) {
     if (!hollow) return planePositions;
-    return hollowSolidToShell(planePositions, hollowWallThickness, neighborsInFixedPlane(fixedAxis));
+    return hollowSolidToShell(
+      planePositions,
+      hollowWallThickness,
+      neighborsInFixedPlane(fixedAxis)
+    );
   }
   const positions: [number, number, number][] = [...planePositions];
   const axis = fixedAxis;

@@ -1,12 +1,6 @@
 import { get, writable } from 'svelte/store';
 import { coordKey, parseCoordKey, getSelectionBounds } from '../coordUtils';
-import {
-  commitUndoAfter,
-  ensureGridFitsPositions,
-  selection,
-  tool,
-  voxels
-} from './core';
+import { commitUndoAfter, ensureGridFitsPositions, selection, tool, voxels } from './core';
 import { clipboardEntryToVoxel } from './clipboard';
 import type { Voxel } from '../voxelMaterial';
 import type { StampBookEntryTuple, StampBookRecord } from '../stampBookStorage';
@@ -143,7 +137,9 @@ export async function saveSelectionAsStamp(
       ? crypto.randomUUID()
       : `stamp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-  const tags = Array.isArray(tagInput) ? normalizeStampTags(tagInput) : normalizeStampTags(tagInput);
+  const tags = Array.isArray(tagInput)
+    ? normalizeStampTags(tagInput)
+    : normalizeStampTags(tagInput);
 
   const record: StampBookRecord = {
     id,
@@ -186,7 +182,9 @@ export async function updateStampName(id: string, name: string): Promise<void> {
 export async function updateStampTags(id: string, tagInput: string | string[]): Promise<void> {
   const rec = await getStampById(id);
   if (!rec) return;
-  const tags = Array.isArray(tagInput) ? normalizeStampTags(tagInput) : normalizeStampTags(tagInput);
+  const tags = Array.isArray(tagInput)
+    ? normalizeStampTags(tagInput)
+    : normalizeStampTags(tagInput);
   await putStamp(withNormalizedTags({ ...rec, tags }));
 }
 

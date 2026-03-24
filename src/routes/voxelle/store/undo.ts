@@ -8,9 +8,7 @@ import type { Voxel } from '../voxelMaterial';
 const MAX_UNDO = 50;
 
 /** Delta step (forward: state before edit → state after) or legacy full snapshot. */
-export type UndoStackEntry =
-  | { k: 'd'; d: UndoDelta }
-  | { k: 'f'; v: string; s: string };
+export type UndoStackEntry = { k: 'd'; d: UndoDelta } | { k: 'f'; v: string; s: string };
 
 export type UndoSnapshot = {
   undoStack: UndoStackEntry[];

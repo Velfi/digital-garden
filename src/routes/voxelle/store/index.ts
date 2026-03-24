@@ -382,7 +382,12 @@ export { LIGHT_PRESETS, applyLightPreset } from './lightPresets';
 export type { LightPresetId, LightPreset } from './lightPresets';
 
 // Generators
-export { generateRockVoxels, getRockPositions, generateAshlarVoxels, getAshlarPositions } from './generators/rock';
+export {
+  generateRockVoxels,
+  getRockPositions,
+  generateAshlarVoxels,
+  getAshlarPositions
+} from './generators/rock';
 export { generateGrassVoxels, getGrassPositions } from './generators/grass';
 export {
   generateFloraVoxels,

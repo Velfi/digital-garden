@@ -12,9 +12,7 @@
     type StampRotation
   } from '../store/index';
 
-  const hasStampShape = $derived(
-    ($bookStampPattern?.size ?? 0) > 0 || $selection.size > 0
-  );
+  const hasStampShape = $derived(($bookStampPattern?.size ?? 0) > 0 || $selection.size > 0);
   function updateStamp<K extends keyof StampRotation>(k: K, v: StampRotation[K]) {
     stampRotation.update((s: StampRotation) => ({ ...s, [k]: v }));
   }
@@ -22,11 +20,7 @@
 
 {#if $tool === 'stamp' || $tool === 'punch'}
   <div class="stamp-book-link-row">
-    <button
-      type="button"
-      class="stamp-book-open"
-      onclick={() => modalRequest.set('stampBook')}
-    >
+    <button type="button" class="stamp-book-open" onclick={() => modalRequest.set('stampBook')}>
       Stamp book…
     </button>
   </div>

@@ -9,7 +9,6 @@ export type VoxelMaterialId = (typeof VOXEL_MATERIAL_IDS)[number];
 
 export type Voxel = { color: number; material: VoxelMaterialId };
 
-
 /** Solid plastic voxel (common default for generators / import). */
 export function plasticVoxel(color: number): Voxel {
   return { color: color & 0xffffff, material: PLASTIC };
@@ -17,16 +16,24 @@ export function plasticVoxel(color: number): Voxel {
 
 /** Legacy bare RGB number → plastic voxel. */
 export function normalizeLegacyVoxel(value: number): Voxel {
-  return { color: value >>> 0 & 0xffffff, material: PLASTIC };
+  return { color: (value >>> 0) & 0xffffff, material: PLASTIC };
 }
 
 export function isVoxelMaterialId(s: string): s is VoxelMaterialId {
   return (VOXEL_MATERIAL_IDS as readonly string[]).includes(s);
 }
 
-export function parseVoxelMaterial(value: unknown, fallback: VoxelMaterialId = PLASTIC): VoxelMaterialId {
+export function parseVoxelMaterial(
+  value: unknown,
+  fallback: VoxelMaterialId = PLASTIC
+): VoxelMaterialId {
   if (typeof value === 'string' && isVoxelMaterialId(value)) return value;
-  if (typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < VOXEL_MATERIAL_IDS.length) {
+  if (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value < VOXEL_MATERIAL_IDS.length
+  ) {
     return VOXEL_MATERIAL_IDS[value]!;
   }
   return fallback;
@@ -75,7 +82,9 @@ export function blendVoxelsForSmooth(neighbors: Voxel[]): Voxel {
   }
   const n = neighbors.length;
   const color =
-    ((Math.round(sr / n) & 0xff) << 16) | ((Math.round(sg / n) & 0xff) << 8) | (Math.round(sb / n) & 0xff);
+    ((Math.round(sr / n) & 0xff) << 16) |
+    ((Math.round(sg / n) & 0xff) << 8) |
+    (Math.round(sb / n) & 0xff);
 
   const counts = new Map<VoxelMaterialId, number>();
   for (const v of neighbors) {

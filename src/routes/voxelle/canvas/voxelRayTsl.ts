@@ -5,10 +5,7 @@ import {
   RAY_TRACE_MAX_BUFFER_DIM,
   VoxelRayProgressive
 } from './voxelRayProgressive';
-import {
-  buildVoxelRayGpuResources,
-  type VoxelRayGpuResources
-} from './voxelRayGpuResources';
+import { buildVoxelRayGpuResources, type VoxelRayGpuResources } from './voxelRayGpuResources';
 import type { VoxelRayTraceParams } from './voxelRayShared';
 
 export type VoxelRayTslOutput = {

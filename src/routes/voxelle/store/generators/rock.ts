@@ -172,12 +172,7 @@ export function generateAshlarVoxels(
     for (let y = 0; y < wy; y++) {
       for (let z = 0; z < wz; z++) {
         const onBoundary =
-          x === 0 ||
-          x === wx - 1 ||
-          y === 0 ||
-          y === wy - 1 ||
-          z === 0 ||
-          z === wz - 1;
+          x === 0 || x === wx - 1 || y === 0 || y === wy - 1 || z === 0 || z === wz - 1;
         if (onBoundary && rough > 0) {
           const h = hash3(seed + 0xabcd, x, y, z);
           if (h < rough * 0.4) continue;

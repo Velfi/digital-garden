@@ -40,13 +40,7 @@ function tailFlare(t: number, amp: number): number {
   return amp * smoothstep(0.86, 1, t);
 }
 
-function upFromThickness(
-  u: number,
-  p: number,
-  tail: number,
-  k: number,
-  minUp: number
-): number {
+function upFromThickness(u: number, p: number, tail: number, k: number, minUp: number): number {
   const raw = u * (p + tail) * k;
   const uFloor = u >= 2 ? 0.18 * u : 0;
   return Math.max(minUp, raw, uFloor);
@@ -73,8 +67,7 @@ export const outlineTrout: SpeciesOutlineFn = (t, W, T) => {
   const w = W * 0.5;
   const u = T * 0.5;
   const belly = Math.exp(-Math.pow((t - 0.38) / 0.22, 2));
-  const trunk =
-    0.64 * trunkEnvelope(t) * (0.4 + belly * 0.68) * peduncleNarrow(t);
+  const trunk = 0.64 * trunkEnvelope(t) * (0.4 + belly * 0.68) * peduncleNarrow(t);
   const head = headHump(t, 0.43, 0.13, 0.11);
   const base = Math.max(trunk, head);
   const tailAmp = 0.28 * Math.min(1, 6 / Math.max(W, 2));
@@ -124,8 +117,7 @@ export const outlineBass: SpeciesOutlineFn = (t, W, T) => {
   const u = T * 0.5;
   const midDepth = Math.exp(-Math.pow((t - 0.24) / 0.26, 2)) * 0.3;
   const belly = Math.exp(-Math.pow((t - 0.44) / 0.24, 2)) * 0.37;
-  const trunk =
-    0.6 * trunkEnvelope(t) * peduncleNarrow(t) * (0.45 + midDepth + belly);
+  const trunk = 0.6 * trunkEnvelope(t) * peduncleNarrow(t) * (0.45 + midDepth + belly);
   const head = headHump(t, 0.47, 0.125, 0.12);
   const base = Math.max(trunk, head);
   const tail = tailFlare(t, 0.22);
@@ -155,8 +147,7 @@ export const outlineTuna: SpeciesOutlineFn = (t, W, T) => {
   const ped = 1 - smoothstep(0.52, 0.92, t) * 0.58;
   const belly = Math.exp(-Math.pow((t - 0.52) / 0.26, 2)) * 0.48;
   const shoulder = Math.exp(-Math.pow((t - 0.24) / 0.19, 2)) * 0.28;
-  const trunk =
-    0.62 * trunkEnvelope(t) * (0.46 + belly + shoulder) * ped;
+  const trunk = 0.62 * trunkEnvelope(t) * (0.46 + belly + shoulder) * ped;
   const head = headHump(t, 0.38, 0.095, 0.088);
   const base = Math.max(trunk, head);
   const tail = tailFlare(t, 0.12);

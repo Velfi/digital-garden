@@ -123,9 +123,12 @@ const FISH_SPECIES_DEFAULT_NUMERIC_RAW: Record<FishSpeciesId, PiscinaPresetNumer
  */
 export const FISH_SPECIES_DEFAULT_NUMERIC: Record<FishSpeciesId, PiscinaPresetNumericFields> =
   Object.fromEntries(
-    (Object.entries(FISH_SPECIES_DEFAULT_NUMERIC_RAW) as [FishSpeciesId, PiscinaPresetNumericFields][]).map(
-      ([id, p]) => [id, id === 'goldfish' ? p : scaleBodyToGoldfishVolumeRef(p)]
-    )
+    (
+      Object.entries(FISH_SPECIES_DEFAULT_NUMERIC_RAW) as [
+        FishSpeciesId,
+        PiscinaPresetNumericFields
+      ][]
+    ).map(([id, p]) => [id, id === 'goldfish' ? p : scaleBodyToGoldfishVolumeRef(p)])
   ) as Record<FishSpeciesId, PiscinaPresetNumericFields>;
 
 /** @deprecated Use FISH_SPECIES_DEFAULT_NUMERIC */
@@ -140,9 +143,39 @@ export type PiscinaPresetFinModes = {
 };
 
 export const FISH_SPECIES_DEFAULT_FIN_MODES: Record<FishSpeciesId, PiscinaPresetFinModes> = {
-  bass: { dorsalMode: 'pointed', analMode: 'rounded', pectoralMode: 'pointed', pelvicMode: 'rounded', adiposeMode: 'pointed' },
-  trout: { dorsalMode: 'rounded', analMode: 'rounded', pectoralMode: 'rounded', pelvicMode: 'rounded', adiposeMode: 'rounded' },
-  goldfish: { dorsalMode: 'rounded', analMode: 'rounded', pectoralMode: 'rounded', pelvicMode: 'rounded', adiposeMode: 'pointed' },
-  tuna: { dorsalMode: 'pointed', analMode: 'pointed', pectoralMode: 'pointed', pelvicMode: 'pointed', adiposeMode: 'pointed' },
-  eel: { dorsalMode: 'ribbon', analMode: 'ribbon', pectoralMode: 'ribbon', pelvicMode: 'ribbon', adiposeMode: 'pointed' }
+  bass: {
+    dorsalMode: 'pointed',
+    analMode: 'rounded',
+    pectoralMode: 'pointed',
+    pelvicMode: 'rounded',
+    adiposeMode: 'pointed'
+  },
+  trout: {
+    dorsalMode: 'rounded',
+    analMode: 'rounded',
+    pectoralMode: 'rounded',
+    pelvicMode: 'rounded',
+    adiposeMode: 'rounded'
+  },
+  goldfish: {
+    dorsalMode: 'rounded',
+    analMode: 'rounded',
+    pectoralMode: 'rounded',
+    pelvicMode: 'rounded',
+    adiposeMode: 'pointed'
+  },
+  tuna: {
+    dorsalMode: 'pointed',
+    analMode: 'pointed',
+    pectoralMode: 'pointed',
+    pelvicMode: 'pointed',
+    adiposeMode: 'pointed'
+  },
+  eel: {
+    dorsalMode: 'ribbon',
+    analMode: 'ribbon',
+    pectoralMode: 'ribbon',
+    pelvicMode: 'ribbon',
+    adiposeMode: 'pointed'
+  }
 };

@@ -54,10 +54,12 @@ export function applySmooth(
 
     if (!filled && filledCount >= 4) {
       const blended =
-        neighborVoxels.length > 0 ? blendVoxelsForSmooth(neighborVoxels) : {
-            color: 0x888888,
-            material: 'plastic' as const
-          };
+        neighborVoxels.length > 0
+          ? blendVoxelsForSmooth(neighborVoxels)
+          : {
+              color: 0x888888,
+              material: 'plastic' as const
+            };
       toAdd.set(key, blended);
     } else if (filled && filledCount <= 2) {
       toRemove.add(key);

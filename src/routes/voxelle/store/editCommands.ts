@@ -3,13 +3,7 @@
  */
 import { get } from 'svelte/store';
 import type { Voxel } from '../voxelMaterial';
-import {
-  commitUndoAfter,
-  runVoxelStroke,
-  selection,
-  voxels,
-  type SelectionMode
-} from './core';
+import { commitUndoAfter, runVoxelStroke, selection, voxels, type SelectionMode } from './core';
 import { mergeSelection } from './selection';
 
 export { commitUndoAfter, runVoxelStroke };

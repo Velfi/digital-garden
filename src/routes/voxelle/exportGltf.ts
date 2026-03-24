@@ -20,7 +20,10 @@ function buildExportMeshes(
   voxels: Map<string, Voxel>,
   greedyRemesh: boolean,
   environmentIntensity: number = 1
-): { scene: THREE.Scene; disposables: { geometry: THREE.BufferGeometry; material: THREE.Material }[] } {
+): {
+  scene: THREE.Scene;
+  disposables: { geometry: THREE.BufferGeometry; material: THREE.Material }[];
+} {
   const disposables: { geometry: THREE.BufferGeometry; material: THREE.Material }[] = [];
   const scene = new THREE.Scene();
 

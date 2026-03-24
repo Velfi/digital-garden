@@ -129,7 +129,10 @@ export function inBoundsBox(x: number, y: number, z: number, b: SelectionBounds)
 }
 
 /** Bounds for operations that need a finite search space: voxel extent ± margin per axis, or ±margin around origin when empty. */
-export function getEffectiveBounds(voxels: Map<string, Voxel>, margin: number = 256): SelectionBounds {
+export function getEffectiveBounds(
+  voxels: Map<string, Voxel>,
+  margin: number = 256
+): SelectionBounds {
   const b = getVoxelBounds(voxels);
   if (b) {
     return {
@@ -331,11 +334,7 @@ export function defaultAddShapePlacementAnchor(
   if (c) {
     return [Math.round(c[0]), Math.round(c[1]), Math.round(c[2])];
   }
-  return [
-    Math.round(orbitTarget.x),
-    Math.round(orbitTarget.y),
-    Math.round(orbitTarget.z)
-  ];
+  return [Math.round(orbitTarget.x), Math.round(orbitTarget.y), Math.round(orbitTarget.z)];
 }
 
 /** Bounding box of positions array; null if empty. */

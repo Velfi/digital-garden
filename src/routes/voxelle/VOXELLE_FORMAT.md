@@ -8,18 +8,18 @@ After decompression (if gzipped), the payload is BSON. The logical structure is:
 
 | Field                | Type    | Required | Description                                                                                                                                                       |
 | -------------------- | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `version`            | number  | yes      | Format version. Current writers use **2**. Readers accept **1** and **2** (legacy v1 rows are normalized on load).                                              |
+| `version`            | number  | yes      | Format version. Current writers use **2**. Readers accept **1** and **2** (legacy v1 rows are normalized on load).                                                |
 | `gridSize`           | number  | yes      | Grid size (integer ≥ 1). Nominal bounds `[-size/2, size/2)` per axis; the editor treats space as unbounded. When saving, gridSize is at least the content extent. |
 | `voxels`             | array   | yes      | Array of voxel rows (see below).                                                                                                                                  |
-| `scene`              | object  | no       | Optional camera/view settings.                                                                                                                                     |
-| `scene.focalLength`  | number  | no       | Camera focal length (typically 15–200).                                                                                                                            |
-| `scene.orthographic` | boolean | no       | Whether the camera is orthographic.                                                                                                                                |
+| `scene`              | object  | no       | Optional camera/view settings.                                                                                                                                    |
+| `scene.focalLength`  | number  | no       | Camera focal length (typically 15–200).                                                                                                                           |
+| `scene.orthographic` | boolean | no       | Whether the camera is orthographic.                                                                                                                               |
 
 ### Voxel rows
 
-- **Version 2 (preferred):** `[x, y, z, color, material]`  
-  - `x, y, z` — integers  
-  - `color` — 24-bit RGB as a number (`0xRRGGBB`)  
+- **Version 2 (preferred):** `[x, y, z, color, material]`
+  - `x, y, z` — integers
+  - `color` — 24-bit RGB as a number (`0xRRGGBB`)
   - `material` — string: `plastic` \| `metal` \| `glass` \| `glow`
 
 - **Legacy (version 1):** `[x, y, z, color]` — treated as **`plastic`** for `material` when loading.

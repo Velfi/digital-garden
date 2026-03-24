@@ -61,13 +61,9 @@ export function loadPreferences(): VoxellePreferences {
           ? o.showMovementDeltaHint
           : DEFAULTS.showMovementDeltaHint,
       showDragDeltaHint:
-        typeof o.showDragDeltaHint === 'boolean'
-          ? o.showDragDeltaHint
-          : DEFAULTS.showDragDeltaHint,
+        typeof o.showDragDeltaHint === 'boolean' ? o.showDragDeltaHint : DEFAULTS.showDragDeltaHint,
       gizmosAlwaysOnTop:
-        typeof o.gizmosAlwaysOnTop === 'boolean'
-          ? o.gizmosAlwaysOnTop
-          : DEFAULTS.gizmosAlwaysOnTop,
+        typeof o.gizmosAlwaysOnTop === 'boolean' ? o.gizmosAlwaysOnTop : DEFAULTS.gizmosAlwaysOnTop,
       toneMapping: isToneMappingPreference(o.toneMapping) ? o.toneMapping : DEFAULTS.toneMapping,
       rendererBackend: isRendererBackendPreference(o.rendererBackend)
         ? o.rendererBackend
@@ -75,7 +71,9 @@ export function loadPreferences(): VoxellePreferences {
       showFpsCounter:
         typeof o.showFpsCounter === 'boolean' ? o.showFpsCounter : DEFAULTS.showFpsCounter,
       maxPixelRatio:
-        typeof o.maxPixelRatio === 'number' && Number.isFinite(o.maxPixelRatio) && o.maxPixelRatio >= 0
+        typeof o.maxPixelRatio === 'number' &&
+        Number.isFinite(o.maxPixelRatio) &&
+        o.maxPixelRatio >= 0
           ? o.maxPixelRatio
           : DEFAULTS.maxPixelRatio
     };

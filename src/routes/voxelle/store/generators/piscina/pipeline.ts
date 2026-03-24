@@ -41,9 +41,20 @@ export function computePiscinaVoxelCap(L: number, W: number, T: number): number 
 
 function getTangentVectors(normal: FaceNormal): [FaceNormal, FaceNormal] {
   const [nx, ny] = normal;
-  if (nx !== 0) return [[0, 1, 0], [0, 0, 1]];
-  if (ny !== 0) return [[1, 0, 0], [0, 0, 1]];
-  return [[1, 0, 0], [0, 1, 0]];
+  if (nx !== 0)
+    return [
+      [0, 1, 0],
+      [0, 0, 1]
+    ];
+  if (ny !== 0)
+    return [
+      [1, 0, 0],
+      [0, 0, 1]
+    ];
+  return [
+    [1, 0, 0],
+    [0, 1, 0]
+  ];
 }
 
 /**
@@ -147,10 +158,7 @@ function finLateralSpanRef(W: number): number {
 
 /** Median dorsal fin height scale from body size (extent along local `u`, wing span along `s`). */
 function dorsalHeightRef(W: number, T: number): number {
-  return Math.min(
-    14,
-    2 + 0.28 * Math.max(0, W - 2) + 0.26 * Math.max(0, T - 2)
-  );
+  return Math.min(14, 2 + 0.28 * Math.max(0, W - 2) + 0.26 * Math.max(0, T - 2));
 }
 
 function dorsalBaseWing(mulD: number): 1 | 2 {
@@ -161,11 +169,7 @@ function dorsalBaseWing(mulD: number): 1 | 2 {
  * Lateral spread along `s` (side–side). Pointed/rounded taper to a tip (wing 0 on deep layers).
  * Ribbon keeps wing ≥ 1 on every layer so long dorsal/anal ribbons stay a filled sheet, not a 1-voxel “tube”.
  */
-function medianFinLateralWing(
-  layer: number,
-  peak: 1 | 2,
-  mode: PiscinaMedianFinMode
-): number {
+function medianFinLateralWing(layer: number, peak: 1 | 2, mode: PiscinaMedianFinMode): number {
   if (mode === 'ribbon') {
     if (layer === 1) return peak;
     return 1;
@@ -216,18 +220,8 @@ function insideCrossSection(
   halfVentral: number,
   p: number
 ): boolean {
-  const hLat =
-    dv === 0
-      ? Math.max(halfSidePos, halfSideNeg)
-      : dv > 0
-        ? halfSidePos
-        : halfSideNeg;
-  const hDw =
-    dw === 0
-      ? Math.max(halfDorsal, halfVentral)
-      : dw > 0
-        ? halfDorsal
-        : halfVentral;
+  const hLat = dv === 0 ? Math.max(halfSidePos, halfSideNeg) : dv > 0 ? halfSidePos : halfSideNeg;
+  const hDw = dw === 0 ? Math.max(halfDorsal, halfVentral) : dw > 0 ? halfDorsal : halfVentral;
   const lateralR = Math.max(hLat, 0.45);
   const dvR = Math.max(hDw, 0.35);
   const dvN = Math.abs(dv) / lateralR;
@@ -247,9 +241,7 @@ export function midlineMaxPositiveDw(
   let best = 0;
   const lim = Math.max(0, dwMaxScan);
   for (let dw = 0; dw <= lim; dw++) {
-    if (
-      insideCrossSection(0, dw, halfSidePos, halfSideNeg, halfDorsal, halfVentral, p)
-    ) {
+    if (insideCrossSection(0, dw, halfSidePos, halfSideNeg, halfDorsal, halfVentral, p)) {
       best = dw;
     }
   }
@@ -268,9 +260,7 @@ export function midlineMinNegativeDw(
   let best = 0;
   const lim = Math.max(0, dwMaxScan);
   for (let dw = -1; dw >= -lim; dw--) {
-    if (
-      insideCrossSection(0, dw, halfSidePos, halfSideNeg, halfDorsal, halfVentral, p)
-    ) {
+    if (insideCrossSection(0, dw, halfSidePos, halfSideNeg, halfDorsal, halfVentral, p)) {
       best = dw;
     }
   }
@@ -294,17 +284,7 @@ function minNegativeDwAtDv(
   let best = 0;
   const lim = Math.max(0, dwMaxScan);
   for (let dw = -1; dw >= -lim; dw--) {
-    if (
-      insideCrossSection(
-        dv,
-        dw,
-        halfSidePos,
-        halfSideNeg,
-        halfDorsal,
-        halfVentral,
-        p
-      )
-    ) {
+    if (insideCrossSection(dv, dw, halfSidePos, halfSideNeg, halfDorsal, halfVentral, p)) {
       best = dw;
     }
   }
@@ -370,18 +350,11 @@ function spineLateralOffset(
   const amp2 = sCtl * bodyRef * 0.24;
   const sEnvelope = smoothstep(0.06, 0.22, t) * (1 - smoothstep(0.78, 0.98, t));
   return (
-    amp * Math.sin(t * Math.PI * 1.05) +
-    amp2 * sEnvelope * Math.sin((t - 0.02) * Math.PI * 2.12)
+    amp * Math.sin(t * Math.PI * 1.05) + amp2 * sEnvelope * Math.sin((t - 0.02) * Math.PI * 2.12)
   );
 }
 
-function spineVerticalOffset(
-  t: number,
-  L: number,
-  W: number,
-  T: number,
-  sCurve: number
-): number {
+function spineVerticalOffset(t: number, L: number, W: number, T: number, sCurve: number): number {
   const sCtl = mapSpineControl(sCurve);
   const bodyRef = spineScaleRef(L, W, T);
   const envelope = smoothstep(0.08, 0.24, t) * (1 - smoothstep(0.72, 0.96, t));
@@ -541,7 +514,10 @@ function collectFishVoxels(
   const caudalSpreadR = o.finCaudalSpread * toRad;
   const pectoralCantR = o.finPectoralCant * toRad;
   const pectoralSweepR = o.finPectoralSweep * toRad;
-  const pecShape = mergePectoralShapeWithMode(getPiscinaPectoralParams(o.species), o.finPectoralMode);
+  const pecShape = mergePectoralShapeWithMode(
+    getPiscinaPectoralParams(o.species),
+    o.finPectoralMode
+  );
 
   const finB = getPiscinaFinBands(o.species);
   const speciesTail = SPECIES_TAIL_PARAMS[o.species] ?? SPECIES_TAIL_PARAMS.trout;
@@ -551,7 +527,7 @@ function collectFishVoxels(
   /** Limit snout lateral skew change per spine step so slice centers do not jump >~1 voxel along T. */
   const skewScale = Math.max(0.25, W * 0.22);
   const maxSkewStepLo = 0.17;
-  const maxSkewStepHi = Math.max(0.22, 0.18 * Math.min(L, 24) / Math.max(L - 1, 1));
+  const maxSkewStepHi = Math.max(0.22, (0.18 * Math.min(L, 24)) / Math.max(L - 1, 1));
   let prevSkewAmt = 0;
 
   for (let k = 0; k < L; k++) {
@@ -646,10 +622,8 @@ function collectFishVoxels(
       pwr,
       dvRi
     );
-    const dorsalReach =
-      maxDwD > 0 ? maxDwD + FIN_ROOT_SKIN_NUDGE : sec.halfDorsal;
-    const ventralReach =
-      minDwV < 0 ? minDwV - FIN_ROOT_SKIN_NUDGE : -sec.halfVentral;
+    const dorsalReach = maxDwD > 0 ? maxDwD + FIN_ROOT_SKIN_NUDGE : sec.halfDorsal;
+    const ventralReach = minDwV < 0 ? minDwV - FIN_ROOT_SKIN_NUDGE : -sec.halfVentral;
     const dorsalRootX = bx + dorsalReach * ux;
     const dorsalRootY = by + dorsalReach * uy;
     const dorsalRootZ = bz + dorsalReach * uz;
@@ -657,14 +631,12 @@ function collectFishVoxels(
     const ventralRootY = by + ventralReach * uy;
     const ventralRootZ = bz + ventralReach * uz;
 
-    if (
-      o.showFinDorsal &&
-      out.size < voxelCap
-    ) {
+    if (o.showFinDorsal && out.size < voxelCap) {
       const dMin = finB.dorsal.min;
-      const dMax = o.finDorsalMode === 'ribbon'
-        ? Math.max(finB.dorsal.max, tailP.tStart - 0.02)
-        : finB.dorsal.max;
+      const dMax =
+        o.finDorsalMode === 'ribbon'
+          ? Math.max(finB.dorsal.max, tailP.tStart - 0.02)
+          : finB.dorsal.max;
       const dCenterBase = (dMin + dMax) * 0.5;
       const dCenter = Math.max(0.04, Math.min(0.96, dCenterBase + o.finDorsalPosition));
       const dHalfBase = (dMax - dMin) * 0.5;
@@ -673,32 +645,27 @@ function collectFishVoxels(
       if (envH <= 0) {
         // Dorsal length/position now define fin occupancy along t; skip outside envelope.
       } else {
-      const envMode = medianFinHeightEnvelope(envH, o.finDorsalMode);
-      const finH = Math.max(1, Math.ceil(envMode * dorsalHeightRef(W, T) * 0.44 * mulD));
-      const peak = dorsalBaseWing(mulD);
-      let d0x = ux,
-        d0y = uy,
-        d0z = uz;
-      [d0x, d0y, d0z] = rotateAroundAxis(d0x, d0y, d0z, sx, sy, sz, dorsalPitchR);
-      [d0x, d0y, d0z] = rotateAroundAxis(d0x, d0y, d0z, tx, ty, tz, dorsalSweepR);
-      for (let layer = 1; layer <= finH; layer++) {
-        const wing = medianFinLateralWing(layer, peak, o.finDorsalMode);
-        for (let j = -wing; j <= wing; j++) {
-          const ox = j * sx * 0.9 + layer * d0x;
-          const oy = j * sy * 0.9 + layer * d0y;
-          const oz = j * sz * 0.9 + layer * d0z;
-          tryAdd(dorsalRootX + ox, dorsalRootY + oy, dorsalRootZ + oz);
+        const envMode = medianFinHeightEnvelope(envH, o.finDorsalMode);
+        const finH = Math.max(1, Math.ceil(envMode * dorsalHeightRef(W, T) * 0.44 * mulD));
+        const peak = dorsalBaseWing(mulD);
+        let d0x = ux,
+          d0y = uy,
+          d0z = uz;
+        [d0x, d0y, d0z] = rotateAroundAxis(d0x, d0y, d0z, sx, sy, sz, dorsalPitchR);
+        [d0x, d0y, d0z] = rotateAroundAxis(d0x, d0y, d0z, tx, ty, tz, dorsalSweepR);
+        for (let layer = 1; layer <= finH; layer++) {
+          const wing = medianFinLateralWing(layer, peak, o.finDorsalMode);
+          for (let j = -wing; j <= wing; j++) {
+            const ox = j * sx * 0.9 + layer * d0x;
+            const oy = j * sy * 0.9 + layer * d0y;
+            const oz = j * sz * 0.9 + layer * d0z;
+            tryAdd(dorsalRootX + ox, dorsalRootY + oy, dorsalRootZ + oz);
+          }
         }
-      }
       }
     }
 
-    if (
-      o.showFinAdipose &&
-      t >= finB.adipose.min &&
-      t <= finB.adipose.max &&
-      out.size < voxelCap
-    ) {
+    if (o.showFinAdipose && t >= finB.adipose.min && t <= finB.adipose.max && out.size < voxelCap) {
       const adHalf = Math.max(0.04, (finB.adipose.max - finB.adipose.min) * 0.42);
       const envA = Math.max(0, 1 - Math.abs(t - finB.adipose.peak) / adHalf);
       let finAH = Math.max(1, Math.ceil(envA * 2.85 * mulAd));
@@ -725,14 +692,10 @@ function collectFishVoxels(
       }
     }
 
-    if (
-      o.showFinAnal &&
-      out.size < voxelCap
-    ) {
+    if (o.showFinAnal && out.size < voxelCap) {
       const aMin = finB.anal.min;
-      const aMax = o.finAnalMode === 'ribbon'
-        ? Math.max(finB.anal.max, tailP.tStart - 0.02)
-        : finB.anal.max;
+      const aMax =
+        o.finAnalMode === 'ribbon' ? Math.max(finB.anal.max, tailP.tStart - 0.02) : finB.anal.max;
       const aCenter = (aMin + aMax) * 0.5;
       const aHalfBase = (aMax - aMin) * 0.5;
       const aHalf = Math.max(0.06, aHalfBase * o.finAnalLength);
@@ -740,29 +703,24 @@ function collectFishVoxels(
       if (envA <= 0) {
         // Anal length controls envelope along t; skip outside envelope.
       } else {
-      const envMode = medianFinHeightEnvelope(envA, o.finAnalMode);
-      const finH = Math.ceil(
-        envMode *
-          Math.min(W + T * 0.35, 22) *
-          0.28 *
-          mulA
-      );
-      let d0x = -ux,
-        d0y = -uy,
-        d0z = -uz;
-      [d0x, d0y, d0z] = rotateAroundAxis(d0x, d0y, d0z, sx, sy, sz, -analPitchR);
-      const finHLimited = Math.max(1, finH);
-      const peakA = dorsalBaseWing(mulA);
-      for (let layer = 1; layer <= finHLimited; layer++) {
-        const wing = medianFinLateralWing(layer, peakA, o.finAnalMode);
-        for (let j = -wing; j <= wing; j++) {
-          tryAdd(
-            ventralRootX + j * sx * 0.85 + layer * d0x,
-            ventralRootY + j * sy * 0.85 + layer * d0y,
-            ventralRootZ + j * sz * 0.85 + layer * d0z
-          );
+        const envMode = medianFinHeightEnvelope(envA, o.finAnalMode);
+        const finH = Math.ceil(envMode * Math.min(W + T * 0.35, 22) * 0.28 * mulA);
+        let d0x = -ux,
+          d0y = -uy,
+          d0z = -uz;
+        [d0x, d0y, d0z] = rotateAroundAxis(d0x, d0y, d0z, sx, sy, sz, -analPitchR);
+        const finHLimited = Math.max(1, finH);
+        const peakA = dorsalBaseWing(mulA);
+        for (let layer = 1; layer <= finHLimited; layer++) {
+          const wing = medianFinLateralWing(layer, peakA, o.finAnalMode);
+          for (let j = -wing; j <= wing; j++) {
+            tryAdd(
+              ventralRootX + j * sx * 0.85 + layer * d0x,
+              ventralRootY + j * sy * 0.85 + layer * d0y,
+              ventralRootZ + j * sz * 0.85 + layer * d0z
+            );
+          }
         }
-      }
       }
     }
 
@@ -803,10 +761,7 @@ function collectFishVoxels(
         (1 - Math.abs(t - finB.pectoral.peak) / pRad) * 3.85 * mulP * pecShape.envelopeMul
       );
       if (pec > 0.2) {
-        const pecSteps = Math.max(
-          1,
-          Math.min(18, Math.round(2.2 * mulP * pecShape.reachMul))
-        );
+        const pecSteps = Math.max(1, Math.min(18, Math.round(2.2 * mulP * pecShape.reachMul)));
         const fanR = Math.max(1, Math.min(9, Math.round(pecShape.fanRows)));
         const uStep = 0.22 * pecShape.uFanScale;
         for (const dir of [-1, 1] as const) {
@@ -850,18 +805,10 @@ function collectFishVoxels(
       }
     }
 
-    if (
-      o.showFinPelvic &&
-      t >= finB.pelvic.min &&
-      t <= finB.pelvic.max &&
-      out.size < voxelCap
-    ) {
+    if (o.showFinPelvic && t >= finB.pelvic.min && t <= finB.pelvic.max && out.size < voxelCap) {
       const pvHalf = Math.max(0.06, (finB.pelvic.max - finB.pelvic.min) * 0.45);
       const finPH0 = Math.ceil(
-        (1 - Math.abs(t - finB.pelvic.peak) / pvHalf) *
-          Math.min(W + T * 0.28, 18) *
-          0.24 *
-          mulPv
+        (1 - Math.abs(t - finB.pelvic.peak) / pvHalf) * Math.min(W + T * 0.28, 18) * 0.24 * mulPv
       );
       const phMul = o.finPelvicMode === 'ribbon' ? 1.22 : o.finPelvicMode === 'rounded' ? 1.08 : 1;
       const finPH = Math.max(1, Math.ceil(finPH0 * phMul));
@@ -890,8 +837,7 @@ function collectFishVoxels(
             dvRi
           );
         }
-        const dwSkin =
-          dwAtLat < 0 ? dwAtLat - FIN_ROOT_SKIN_NUDGE : ventralReach;
+        const dwSkin = dwAtLat < 0 ? dwAtLat - FIN_ROOT_SKIN_NUDGE : ventralReach;
         if (dwAtLat >= 0) {
           dvUse = 0;
         }
@@ -905,7 +851,8 @@ function collectFishVoxels(
         for (let layer = 1; layer <= Math.max(1, finPH); layer++) {
           let wing = medianFinLateralWing(layer, peakPv, o.finPelvicMode);
           if (o.finPelvicMode === 'rounded' && layer === 1) wing = Math.min(2, wing + 1);
-          if (o.finPelvicMode === 'ribbon' && layer <= 2) wing = Math.max(wing, Math.min(2, peakPv));
+          if (o.finPelvicMode === 'ribbon' && layer <= 2)
+            wing = Math.max(wing, Math.min(2, peakPv));
           for (let j = -wing; j <= wing; j++) {
             tryAdd(
               px0 + j * sx * 0.52 + layer * d0x * 0.92,
@@ -1036,9 +983,9 @@ function placeCaudalFinVoxels(ctx: CaudalCtx): void {
     const spanTaper = mode === 'lunate' ? spanTaperLunate : spanTaperDefault;
     const spanHere = Math.max(1, Math.round(span * spanTaper));
     /** Crescent: center carve grows with backT so the rear edge curves inward (yellowfin reference). */
-    const centerGapFrac =
-      mode === 'lunate' ? gapHalfSpan * (0.38 + 0.62 * backT) : gapHalfSpan;
-    const jEdgeCut = mode === 'lunate' ? Math.min(0.995, outerJ2Cutoff + 0.04 * backT * backT) : outerJ2Cutoff;
+    const centerGapFrac = mode === 'lunate' ? gapHalfSpan * (0.38 + 0.62 * backT) : gapHalfSpan;
+    const jEdgeCut =
+      mode === 'lunate' ? Math.min(0.995, outerJ2Cutoff + 0.04 * backT * backT) : outerJ2Cutoff;
 
     for (let j = -spanHere; j <= spanHere; j++) {
       const jn = spanHere > 0 ? Math.abs(j) / spanHere : 0;

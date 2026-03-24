@@ -4,10 +4,7 @@
  */
 import type { PointerHandlerContext } from './types';
 import { handleFlyPointerDown, handleFlyPointerUp } from './fly';
-import {
-  tryHandleGeneratorToolRmb,
-  type GeneratorRmbDeps
-} from './generatorPointer';
+import { tryHandleGeneratorToolRmb, type GeneratorRmbDeps } from './generatorPointer';
 
 export type { PointerHandlerContext } from './types';
 export type { GeneratorRmbDeps } from './generatorPointer';
@@ -28,10 +25,7 @@ export function handlePointerDown(
 }
 
 /** Returns true if the event was handled and the caller should return. */
-export function handlePointerMove(
-  _ctx: PointerHandlerContext,
-  _event?: PointerEvent
-): boolean {
+export function handlePointerMove(_ctx: PointerHandlerContext, _event?: PointerEvent): boolean {
   if (_ctx.getTool() === 'fly') return true; // PointerLockControls handles move
   return false;
 }

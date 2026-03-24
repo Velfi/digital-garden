@@ -77,14 +77,7 @@ function createEnvMap(): THREE.CubeTexture {
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d')!;
-    const gradient = ctx.createRadialGradient(
-      size / 2,
-      size / 2,
-      0,
-      size / 2,
-      size / 2,
-      size / 2
-    );
+    const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
     gradient.addColorStop(0, '#ffffff');
     gradient.addColorStop(1, '#888888');
     ctx.fillStyle = gradient;
@@ -203,12 +196,7 @@ export async function createSceneSetupAsync(
   const envMap = createEnvMap();
   scene.environment = envMap;
 
-  const perspectiveCamera = new THREE.PerspectiveCamera(
-    focalLengthToFov(focalLength),
-    1,
-    1,
-    10000
-  );
+  const perspectiveCamera = new THREE.PerspectiveCamera(focalLengthToFov(focalLength), 1, 1, 10000);
   const dist = sz * 2.5;
   perspectiveCamera.position.set(dist * 0.6, dist * 0.8, dist);
   perspectiveCamera.lookAt(0, 0, 0);
@@ -282,7 +270,10 @@ export async function createSceneSetupAsync(
     polygonOffsetFactor: 1,
     polygonOffsetUnits: 1
   });
-  const addPreviewOccludedMesh = new THREE.Mesh(addPreviewSharedGeometry, addPreviewOccludedMaterial);
+  const addPreviewOccludedMesh = new THREE.Mesh(
+    addPreviewSharedGeometry,
+    addPreviewOccludedMaterial
+  );
   addPreviewOccludedMesh.visible = false;
   addPreviewOccludedMesh.renderOrder = 1000;
   addPreviewOccludedMesh.raycast = () => {};
@@ -294,7 +285,10 @@ export async function createSceneSetupAsync(
     depthTest: true,
     depthWrite: false
   });
-  const polygonLineSegments = new THREE.LineSegments(placeholderLineGeometry(), polygonLineMaterial);
+  const polygonLineSegments = new THREE.LineSegments(
+    placeholderLineGeometry(),
+    polygonLineMaterial
+  );
   polygonLineSegments.visible = false;
   polygonLineSegments.raycast = () => {};
   scene.add(polygonLineSegments);
@@ -346,7 +340,11 @@ export async function createSceneSetupAsync(
   const az = (lightAngle * Math.PI) / 180;
   const elev = (lightElevation * Math.PI) / 180;
   const h = Math.cos(elev);
-  dirLight.position.set(Math.cos(az) * h * lightDist, Math.sin(elev) * lightDist, Math.sin(az) * h * lightDist);
+  dirLight.position.set(
+    Math.cos(az) * h * lightDist,
+    Math.sin(elev) * lightDist,
+    Math.sin(az) * h * lightDist
+  );
   if (enableShadows) {
     const ext = sz * 1.2;
     const cam = dirLight.shadow.camera;

@@ -137,32 +137,16 @@ export interface GeneratorPrimaryPointerUpDeps {
   randomSeed32: () => number;
   getNextRockSeed: () => number;
   setNextRockSeed: (n: number) => void;
-  placeRocks: (
-    place: [number, number, number],
-    normal: FaceNormal,
-    seed: number
-  ) => void;
+  placeRocks: (place: [number, number, number], normal: FaceNormal, seed: number) => void;
   getNextGrassSeed: () => number;
   setNextGrassSeed: (n: number) => void;
-  placeGrass: (
-    place: [number, number, number],
-    normal: FaceNormal,
-    seed: number
-  ) => void;
+  placeGrass: (place: [number, number, number], normal: FaceNormal, seed: number) => void;
   getNextFloraSeed: () => number;
   setNextFloraSeed: (n: number) => void;
-  placeFlora: (
-    place: [number, number, number],
-    normal: FaceNormal,
-    seed: number
-  ) => void;
+  placeFlora: (place: [number, number, number], normal: FaceNormal, seed: number) => void;
   getNextAshlarSeed: () => number;
   setNextAshlarSeed: (n: number) => void;
-  placeAshlar: (
-    place: [number, number, number],
-    normal: FaceNormal,
-    seed: number
-  ) => void;
+  placeAshlar: (place: [number, number, number], normal: FaceNormal, seed: number) => void;
   getNextPiscinaSeed: () => number;
   setNextPiscinaSeed: (n: number) => void;
   commitPiscinaSurfacePick: (place: [number, number, number], normal: FaceNormal) => void;
@@ -182,8 +166,7 @@ export function applyGeneratorFaceClickPointerUp(
       const place = ctx.getAddPosition(hit);
       const normal = ctx.getFaceNormalFromHit(hit);
       if (place && normal) {
-        const seed =
-          ctx.getNextRockSeed() === 0 ? ctx.randomSeed32() : ctx.getNextRockSeed();
+        const seed = ctx.getNextRockSeed() === 0 ? ctx.randomSeed32() : ctx.getNextRockSeed();
         ctx.placeRocks(place, normal, seed);
         ctx.setNextRockSeed(ctx.randomSeed32());
       }
@@ -196,8 +179,7 @@ export function applyGeneratorFaceClickPointerUp(
       const place = ctx.getAddPosition(hit);
       const normal = ctx.getFaceNormalFromHit(hit);
       if (place && normal) {
-        const seed =
-          ctx.getNextGrassSeed() === 0 ? ctx.randomSeed32() : ctx.getNextGrassSeed();
+        const seed = ctx.getNextGrassSeed() === 0 ? ctx.randomSeed32() : ctx.getNextGrassSeed();
         ctx.placeGrass(place, normal, seed);
         ctx.setNextGrassSeed(ctx.randomSeed32());
       }
@@ -210,8 +192,7 @@ export function applyGeneratorFaceClickPointerUp(
       const place = ctx.getAddPosition(hit);
       const normal = ctx.getFaceNormalFromHit(hit);
       if (place && normal) {
-        const seed =
-          ctx.getNextFloraSeed() === 0 ? ctx.randomSeed32() : ctx.getNextFloraSeed();
+        const seed = ctx.getNextFloraSeed() === 0 ? ctx.randomSeed32() : ctx.getNextFloraSeed();
         ctx.placeFlora(place, normal, seed);
         ctx.setNextFloraSeed(ctx.randomSeed32());
       }
@@ -242,8 +223,7 @@ export function applyGeneratorFaceClickPointerUp(
       const place = ctx.getAddPosition(hit);
       const normal = ctx.getFaceNormalFromHit(hit);
       if (place && normal) {
-        const seed =
-          ctx.getNextAshlarSeed() === 0 ? ctx.randomSeed32() : ctx.getNextAshlarSeed();
+        const seed = ctx.getNextAshlarSeed() === 0 ? ctx.randomSeed32() : ctx.getNextAshlarSeed();
         ctx.placeAshlar(place, normal, seed);
         ctx.setNextAshlarSeed(ctx.randomSeed32());
       }

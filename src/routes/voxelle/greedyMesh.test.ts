@@ -280,7 +280,9 @@ describe('buildGreedyMesh', () => {
   });
 
   it('transmissive boundaries against non-matching material remain visible', () => {
-    const water = new Map<string, Voxel>([[coordKey(0, 0, 0), { color: 0x2288ff, material: 'water' }]]);
+    const water = new Map<string, Voxel>([
+      [coordKey(0, 0, 0), { color: 0x2288ff, material: 'water' }]
+    ]);
     const waterWithGlassNeighbor = new Map<string, Voxel>([
       [coordKey(0, 0, 0), { color: 0x2288ff, material: 'water' }],
       [coordKey(1, 0, 0), { color: 0xaad7ff, material: 'glass' }]
@@ -315,7 +317,10 @@ describe('buildGreedyMesh', () => {
       return min;
     };
 
-    expect(minChannel(thinColors)).toBeCloseTo((0x88 / 255) * computeTransmissionBound(0x88ccff, 'glass', 1), 6);
+    expect(minChannel(thinColors)).toBeCloseTo(
+      (0x88 / 255) * computeTransmissionBound(0x88ccff, 'glass', 1),
+      6
+    );
     expect(minChannel(thickColors)).toBeLessThan(minChannel(thinColors));
   });
 

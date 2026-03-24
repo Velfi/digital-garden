@@ -10,9 +10,7 @@ const CHUNK_SIZE_DEFAULT = 0;
 const GLASS_FULL_SCENE_REBUILD_THRESHOLD = 256;
 
 export interface VoxelMeshWorkerInput {
-  voxels:
-    | [string, Voxel][]
-    | { coords: Int32Array; colors: Uint32Array; materials?: Uint8Array };
+  voxels: [string, Voxel][] | { coords: Int32Array; colors: Uint32Array; materials?: Uint8Array };
   mode?: RenderingMode;
   options?: { aoEnabled?: boolean; aoStrength?: 0 | 1 | 2; chunkSize?: number };
   gen?: number;
@@ -61,7 +59,13 @@ function mergeChunkResults(
 ): VoxelMeshWorkerOutput['results'] {
   const byBucket = new Map<
     string,
-    { positions: number[]; normals: number[]; colors: number[]; slabThickness: number[]; indices: number[] }
+    {
+      positions: number[];
+      normals: number[];
+      colors: number[];
+      slabThickness: number[];
+      indices: number[];
+    }
   >();
   for (const r of chunkResults) {
     const pos = byBucket.get(r.bucketKey) ?? {

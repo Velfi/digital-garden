@@ -60,15 +60,16 @@ function signAxis(v: number): number {
   return 0;
 }
 
-export function lookupVoxel(voxels: Map<string, Voxel>, x: number, y: number, z: number): Voxel | null {
+export function lookupVoxel(
+  voxels: Map<string, Voxel>,
+  x: number,
+  y: number,
+  z: number
+): Voxel | null {
   return voxels.get(coordKey(x, y, z)) ?? null;
 }
 
-function dominantAxisFromDir(
-  dx: number,
-  dy: number,
-  dz: number
-): [number, number, number] {
+function dominantAxisFromDir(dx: number, dy: number, dz: number): [number, number, number] {
   const ax = Math.abs(dx);
   const ay = Math.abs(dy);
   const az = Math.abs(dz);

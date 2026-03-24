@@ -158,9 +158,20 @@ function clusterRng(seed: number): () => number {
 
 export function getTangentVectors(normal: FaceNormal): [FaceNormal, FaceNormal] {
   const [nx, ny] = normal;
-  if (nx !== 0) return [[0, 1, 0], [0, 0, 1]];
-  if (ny !== 0) return [[1, 0, 0], [0, 0, 1]];
-  return [[1, 0, 0], [0, 1, 0]];
+  if (nx !== 0)
+    return [
+      [0, 1, 0],
+      [0, 0, 1]
+    ];
+  if (ny !== 0)
+    return [
+      [1, 0, 0],
+      [0, 0, 1]
+    ];
+  return [
+    [1, 0, 0],
+    [0, 1, 0]
+  ];
 }
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -186,7 +197,12 @@ function clampOptions(o: GenerateFloraOptions): GenerateFloraOptions {
   };
 }
 
-function effectiveGirthAt(stepIndex: number, height: number, baseGirth: number, taper01: number): number {
+function effectiveGirthAt(
+  stepIndex: number,
+  height: number,
+  baseGirth: number,
+  taper01: number
+): number {
   const g = Math.max(0, Math.floor(baseGirth));
   if (g === 0) return 0;
   if (taper01 <= 0 || height <= 1) return g;
@@ -454,9 +470,7 @@ export function getFloraPositions(
   options: GenerateFloraOptions
 ): [number, number, number][] {
   const keys = collectFloraKeys(seed, center, normal, options);
-  return [...keys]
-    .sort()
-    .map((k) => parseCoordKey(k) as [number, number, number]);
+  return [...keys].sort().map((k) => parseCoordKey(k) as [number, number, number]);
 }
 
 export function generateFloraVoxels(

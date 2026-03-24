@@ -30,7 +30,6 @@
     clayMode,
     clayBrushRadius,
     bulkBrushShape,
-    inflateStrength,
     branchTaper,
     branchTaperStartSize,
     branchTaperEndSize,
@@ -93,10 +92,8 @@
     stampRotation,
     stampOriginMode,
     punchDepth,
-    PUNCH_DEPTH_MAX,
     getBoundsFromPositions,
     getVoxelBounds,
-    rotatePositionAroundOrigin,
     getSelectionCenter,
     bookStampPattern,
     selectionMode,
@@ -137,7 +134,6 @@
     grassRadius,
     grassDensity,
     grassHeight,
-    generateFloraVoxels,
     getFloraPositions,
     floraPreset,
     floraHeight,
@@ -188,11 +184,7 @@
     piscinaFinCaudalSpread,
     piscinaFinPectoralCant,
     piscinaFinPectoralSweep,
-    generatePiscinaVoxels,
     getPiscinaPositions,
-    type GenerateFloraOptions,
-    type GeneratePiscinaOptions,
-    type FishSpeciesId,
     roofStyle,
     roofHeight,
     roofThickness,
@@ -209,18 +201,20 @@
     voxellePreferences,
     type Voxel
   } from './store/index';
-  import { generateRockVoxels, getRockPositions, generateAshlarVoxels, getAshlarPositions } from './store/generators/rock';
   import {
-    VOXELLE_GLOW_BLOOM_USERDATA_KEY,
+    generateRockVoxels,
+    getRockPositions,
+    generateAshlarVoxels,
+    getAshlarPositions
+  } from './store/generators/rock';
+  import {
     VOXELLE_MESH_MATERIAL_USERDATA_KEY,
     voxelMaterialBaseEnvMapIntensity
   } from './voxelMaterial';
   import { generateGrassVoxels, getGrassPositions } from './store/generators/grass';
   import { generateRoofVoxels } from './store/generators/roof';
-  import { getShareFromIndexedDB } from './shareStorage';
   import {
     inBounds,
-    getEffectiveBounds,
     expandPositionsWithSymmetry,
     expandPositionsWithSymmetryAroundCenter,
     type SelectionBounds,
@@ -251,14 +245,11 @@
     expandStrokePreviewBoundsOriginMirror,
     expandStrokePreviewBoundsAroundCenter
   } from './strokePreviewBounds';
-  import { applySmooth, applyLevel, applyMelt, applyInflate } from './clayOps';
   import {
-    FLY_MOVE_SPEED,
     FLY_POINTER_SPEED,
     createFlyMoveState,
     createFlyKeyHandlers,
-    resetFlyMoveState,
-    applyFlyMovement
+    resetFlyMoveState
   } from './flyControls';
   import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
   import { Sky } from 'three/addons/objects/Sky.js';
@@ -275,15 +266,9 @@
     type VoxelleRenderer
   } from './canvas/sceneSetup';
   import { createMeshManager, syncGlassShadowUniformsFromBuckets } from './canvas/meshManager';
-  import { ddaPickVoxel, maxRayDistanceForVoxels } from './canvas/voxelRayDda';
-  import { DEFAULT_RAY_TICK_BUDGET_MS } from './canvas/voxelRayProgressive';
-  import { buildVoxelRayTraceParams } from './canvas/voxelRayShared';
   import { VoxelRayTsl } from './canvas/voxelRayTsl';
   import { isWebGLRenderer, isWebGPURenderer } from './canvas/rendererUtils';
-  import {
-    createWebGPUBloomPipeline,
-    type WebGPUBloomPipeline
-  } from './canvas/webgpuBloom';
+  import { createWebGPUBloomPipeline, type WebGPUBloomPipeline } from './canvas/webgpuBloom';
   import {
     applyAddShapeOccludedPreviewTint,
     assignSharedDualPreviewGeometry
@@ -302,16 +287,56 @@
     handlePointerMove as dispatchPointerMove,
     handleFlyPointerUp
   } from './canvas/handlers/pointerHandler';
+  import { applyGeneratorFaceClickPointerUp } from './canvas/handlers/generatorPointer';
   import {
-    applyGeneratorFaceClickPointerUp,
-    type GeneratorPrimaryPointerUpDeps,
-    type GeneratorRmbDeps
-  } from './canvas/handlers/generatorPointer';
+    buildVoxelGeneratorPrimaryPointerUpDeps,
+    buildVoxelGeneratorRmbDeps,
+    type VoxelGeneratorPrimaryPointerUpBridge,
+    type VoxelGeneratorRmbBridge
+  } from './canvas/handlers/voxelPointerCore';
+  import {
+    createPreciseGuidePlaneInScene,
+    loadVoxelCanvasBootstrapModel,
+    PRECISE_GUIDE_TEX_SIZE
+  } from './canvas/voxelCanvasInit';
   import { isGeneratorFaceClickTool } from './store/generators/registry';
   import { shouldEnableOrbitControls } from './store/interactionMode';
-  import OrbitGizmo from './OrbitGizmo.svelte';
-  import ToolPanel from './ToolPanel.svelte';
-  import SelectionCountPanel from './SelectionCountPanel.svelte';
+  import {
+    getRaycastTargetsFrom,
+    getIntersectionFrom,
+    snapToGrid,
+    dominantAxisNormal,
+    axisVector,
+    getDominantAxisOfNormal,
+    getFaceNormalFromHit as raycastFaceNormalFromHit,
+    getIntersectionWithLockedPlane as raycastIntersectionWithLockedPlane,
+    getIntersectionWithPlane as raycastIntersectionWithPlane,
+    getEffectivePlaneNormal as raycastEffectivePlaneNormal,
+    getCameraPlaneNormal as raycastCameraPlaneNormal,
+    getAddPositionFromHit,
+    getVoxelPositionFromHit,
+    getStrokeStartFromHit as raycastStrokeStartFromHit
+  } from './canvas/voxelCanvasRaycast';
+  import {
+    updateDirLightPosition as lightingUpdateDirLightPosition,
+    updateSkyLightingColors as lightingUpdateSkyLightingColors,
+    updateShadowCamera as lightingUpdateShadowCamera,
+    invalidateDirectionalShadowMap as lightingInvalidateDirectionalShadowMap
+  } from './canvas/voxelCanvasLighting';
+  import {
+    hasGlowInVoxelGroup as sceneHasGlowInVoxelGroup,
+    renderVoxelCanvasPrimaryScene
+  } from './canvas/voxelCanvasBloomRender';
+  import { runVoxelCanvasAnimateStep } from './canvas/voxelCanvasAnimate';
+  import {
+    createVoxelCanvasStrokeCommit,
+    defaultPlayPlaceSound,
+    getAshlarThicknessAxis,
+    nextRockClusterRng,
+    buildFloraOptionsFromStores,
+    buildPiscinaOptionsFromStores
+  } from './canvas/voxelCanvasStrokeCommit';
+  import VoxelCanvasOverlays from './VoxelCanvasOverlays.svelte';
 
   type FillOperationPhase = 'exploring' | 'committing';
   let fillBusy = $state(false);
@@ -355,14 +380,7 @@
       if (full.cancelled) return null;
       return full.region;
     }
-    const probe = getFillEmptyAt(
-      x,
-      y,
-      z,
-      diagonals,
-      FILL_UNCONSTRAINED_LARGE_THRESHOLD,
-      planeCtx
-    );
+    const probe = getFillEmptyAt(x, y, z, diagonals, FILL_UNCONSTRAINED_LARGE_THRESHOLD, planeCtx);
     if (probe.truncated) {
       fillMessage = `Large fill detected. Exploring full region…`;
     }
@@ -467,7 +485,7 @@
 
   let container: HTMLDivElement;
   let containerResizeObserver: ResizeObserver | null = null;
-  let gizmoRef = $state<ReturnType<typeof OrbitGizmo>>();
+  let gizmoRef = $state<{ draw: () => void } | undefined>(undefined);
   let camera = $state<THREE.PerspectiveCamera | THREE.OrthographicCamera>();
   let perspectiveCamera: THREE.PerspectiveCamera;
   let orthographicCamera: THREE.OrthographicCamera;
@@ -492,13 +510,7 @@
   const bloomMaterialStash: Record<string, THREE.Material | THREE.Material[]> = {};
 
   function hasGlowInVoxelGroup(): boolean {
-    if (!voxelGroup) return false;
-    for (const child of voxelGroup.children) {
-      const mesh = child as THREE.Mesh;
-      if (!mesh?.isMesh) continue;
-      if (mesh.userData?.[VOXELLE_GLOW_BLOOM_USERDATA_KEY] === true) return true;
-    }
-    return false;
+    return sceneHasGlowInVoxelGroup(voxelGroup);
   }
   let orbitControls = $state<OrbitControls>();
   let flyControls: InstanceType<typeof PointerLockControls> | null = null;
@@ -581,10 +593,6 @@
   let depthAdjustPointerId: number | null = null;
   let lastDepthPhaseClientY = 0;
   let depthPhaseAccumulator = 0; // fractional pixels, accumulate to avoid jerky rounding
-  let depthSliderPointerId: number | null = null;
-  let depthSliderStartY = 0;
-  let depthSliderStartDepth = 0;
-
   // Precise two-phase: click voxel face to lock plane, then click/drag on that plane to place.
   let precisePhase = $state<'idle' | 'armed' | 'placing'>('idle');
   let preciseAnchor: [number, number, number] | null = null;
@@ -613,10 +621,6 @@
   let ropePhase = $state<'placing' | 'tension' | null>(null);
   let ropePointsMesh: THREE.InstancedMesh | null = null;
   let ropePointsMaterial: THREE.MeshBasicMaterial | null = null;
-  let ropeTensionSliderPointerId: number | null = null;
-  let ropeTensionSliderStartY = 0;
-  let ropeTensionSliderStartVal = 0;
-
   let previewMesh: THREE.Mesh | null = null;
   let previewMaterial: THREE.MeshBasicMaterial | null = null;
   let preciseGuidePlaneMesh: THREE.Mesh | null = null;
@@ -715,7 +719,6 @@
   const preciseGuideLightUv = new THREE.Vector2(0.5, 0.5);
   const preciseGuideLocalScratch = new THREE.Vector3();
   const preciseGuideInvQuatScratch = new THREE.Quaternion();
-  const PRECISE_GUIDE_TEX_SIZE = 512;
   const centroidToCameraScratch = new THREE.Vector3();
   const fitHelperBox = new THREE.Box3();
   const fitHelperCenter = new THREE.Vector3();
@@ -766,49 +769,6 @@
     meshManager?.rebuildSelectionOverlay(sel);
   }
 
-  /** Same face anchor as rocks/ashlar: `place` from getAddPosition (+0.5 along normal). */
-  function getStampTargetForPlaceOnFace(
-    place: [number, number, number],
-    normal: FaceNormal,
-    bounds: NonNullable<ReturnType<typeof getBoundsFromPositions>>,
-    originMode: 'center' | 'corner'
-  ): [number, number, number] {
-    const halfW = (bounds.maxX - bounds.minX) / 2;
-    const halfH = (bounds.maxY - bounds.minY) / 2;
-    const halfD = (bounds.maxZ - bounds.minZ) / 2;
-    const surfaceTarget: [number, number, number] = [
-      place[0] - normal[0],
-      place[1] - normal[1],
-      place[2] - normal[2]
-    ];
-    return [
-      normal[0] ? surfaceTarget[0] : originMode === 'corner' ? place[0] : place[0] - halfW,
-      normal[1] ? surfaceTarget[1] : originMode === 'corner' ? place[1] : place[1] - halfH,
-      normal[2] ? surfaceTarget[2] : originMode === 'corner' ? place[2] : place[2] - halfD
-    ];
-  }
-
-  /** Punch: anchor on the hit voxel (inside solid); tangent sliding uses that cell like stamp uses add-cell. */
-  function getPunchTargetForPlaceOnFace(
-    placeVoxel: [number, number, number],
-    normal: FaceNormal,
-    bounds: NonNullable<ReturnType<typeof getBoundsFromPositions>>,
-    originMode: 'center' | 'corner'
-  ): [number, number, number] {
-    const halfW = (bounds.maxX - bounds.minX) / 2;
-    const halfH = (bounds.maxY - bounds.minY) / 2;
-    const halfD = (bounds.maxZ - bounds.minZ) / 2;
-    return [
-      normal[0] ? placeVoxel[0] : originMode === 'corner' ? placeVoxel[0] : placeVoxel[0] - halfW,
-      normal[1] ? placeVoxel[1] : originMode === 'corner' ? placeVoxel[1] : placeVoxel[1] - halfH,
-      normal[2] ? placeVoxel[2] : originMode === 'corner' ? placeVoxel[2] : placeVoxel[2] - halfD
-    ];
-  }
-
-  function inwardFaceNormal(normal: FaceNormal): FaceNormal {
-    return [-normal[0], -normal[1], -normal[2]] as FaceNormal;
-  }
-
   /** Stamp/punch footprint: book-loaded pattern wins over edit selection. */
   function getEffectiveStampPatternMap(): Map<string, Voxel> {
     const book = get(bookStampPattern);
@@ -822,120 +782,19 @@
     return get(selection).size > 0;
   }
 
-  /** Extrude punch footprint `depth` layers along `inward` (deduped). */
-  function expandPunchAlongDepth(
-    base: [number, number, number][],
-    inward: FaceNormal,
-    depth: number
-  ): [number, number, number][] {
-    const d = Math.floor(depth);
-    const layers = Math.max(
-      1,
-      Math.min(PUNCH_DEPTH_MAX, Number.isFinite(d) ? d : 1)
-    );
-    const [ix, iy, iz] = inward;
-    const seen = new Set<string>();
-    const out: [number, number, number][] = [];
-    for (const [x, y, z] of base) {
-      for (let k = 0; k < layers; k++) {
-        const px = x + k * ix;
-        const py = y + k * iy;
-        const pz = z + k * iz;
-        const key = coordKey(px, py, pz);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push([px, py, pz]);
-      }
-    }
-    return out;
-  }
-
-  /** Snaps punch shape into the solid along -normal (same rotation/origin as stamp). */
-  function getPunchPositionsForFace(
-    placeVoxel: [number, number, number],
-    normal: FaceNormal
-  ): [number, number, number][] {
-    const sel = getEffectiveStampPatternMap();
-    const center = getSelectionCenter(sel);
-    if (!center) return [];
-    const [cx, cy, cz] = center;
-    const { rotX, rotY, rotZ } = $stampRotation;
-    const rotated: [number, number, number][] = [];
-    for (const key of sel.keys()) {
-      const [x, y, z] = parseCoordKey(key);
-      const centered: [number, number, number] = [x - cx, y - cy, z - cz];
-      const r = rotatePositionAroundOrigin(centered, [rotX, rotY, rotZ]);
-      rotated.push([r[0] + cx, r[1] + cy, r[2] + cz]);
-    }
-    const bounds = getBoundsFromPositions(rotated);
-    if (!bounds) return [];
-    const targetForPunch = getPunchTargetForPlaceOnFace(
-      placeVoxel,
-      normal,
-      bounds,
-      $stampOriginMode
-    );
-    const inward = inwardFaceNormal(normal);
-    const [dx, dy, dz] = getPunchOffsetForFace(targetForPunch, inward, bounds);
-    const base = rotated.map(([x, y, z]) => [x + dx, y + dy, z + dz] as [number, number, number]);
-    return expandPunchAlongDepth(base, inward, get(punchDepth));
-  }
-
-  /** Snaps stamp to face under cursor (placement cell + tangent centering match generators). */
-  function getStampPositionsForFace(
-    place: [number, number, number],
-    normal: FaceNormal
-  ): [number, number, number][] {
-    const sel = getEffectiveStampPatternMap();
-    const center = getSelectionCenter(sel);
-    if (!center) return [];
-    const [cx, cy, cz] = center;
-    const { rotX, rotY, rotZ } = $stampRotation;
-    const rotated: [number, number, number][] = [];
-    for (const key of sel.keys()) {
-      const [x, y, z] = parseCoordKey(key);
-      const centered: [number, number, number] = [x - cx, y - cy, z - cz];
-      const r = rotatePositionAroundOrigin(centered, [rotX, rotY, rotZ]);
-      rotated.push([r[0] + cx, r[1] + cy, r[2] + cz]);
-    }
-    const bounds = getBoundsFromPositions(rotated);
-    if (!bounds) return [];
-    const targetForStamp = getStampTargetForPlaceOnFace(place, normal, bounds, $stampOriginMode);
-    const [dx, dy, dz] = getStampOffsetForFace(targetForStamp, normal, bounds);
-    return rotated.map(([x, y, z]) => [x + dx, y + dy, z + dz]);
-  }
-
-  function dominantAxisNormal(n: THREE.Vector3): FaceNormal {
-    const ax = Math.abs(n.x);
-    const ay = Math.abs(n.y);
-    const az = Math.abs(n.z);
-    if (ax >= ay && ax >= az) return [Math.sign(n.x) || 1, 0, 0];
-    if (ay >= ax && ay >= az) return [0, Math.sign(n.y) || 1, 0];
-    return [0, 0, Math.sign(n.z) || 1];
-  }
-
   function getFaceNormalFromHit(hit: THREE.Intersection): FaceNormal | null {
-    if (!hit.face) return null;
-    hit.object.getWorldQuaternion(worldQuaternion);
-    const n = hit.face.normal.clone().applyQuaternion(worldQuaternion);
-    return dominantAxisNormal(n);
+    return raycastFaceNormalFromHit(hit, worldQuaternion);
   }
 
   function getRaycastTargets(): THREE.Object3D[] {
-    const targets: THREE.Object3D[] = [];
-    const byBucket = meshManager?.getMeshesByBucket();
-    if (byBucket) {
-      for (const { mesh } of byBucket.values()) {
-        targets.push(mesh);
-      }
-    }
-    if ((polygonPhase || roofPhase) && polygonPointsMesh) {
-      targets.push(polygonPointsMesh);
-    }
-    if (ropePhase && ropePointsMesh) {
-      targets.push(ropePointsMesh);
-    }
-    return targets;
+    return getRaycastTargetsFrom({
+      meshManager,
+      polygonPhase,
+      roofPhase,
+      polygonPointsMesh,
+      ropePhase,
+      ropePointsMesh
+    });
   }
 
   function syncVoxelMaterialEnvMaps() {
@@ -955,38 +814,15 @@
   }
 
   function getIntersection(): THREE.Intersection | null {
-    if (!camera) return null;
-    raycaster.setFromCamera(pointer, camera);
-    if (get(renderingMode) === 'ray') {
-      const r = raycaster.ray;
-      const maxDist = maxRayDistanceForVoxels(get(voxels), [r.origin.x, r.origin.y, r.origin.z]);
-      const hit = ddaPickVoxel(
-        r.origin.x,
-        r.origin.y,
-        r.origin.z,
-        r.direction.x,
-        r.direction.y,
-        r.direction.z,
-        get(voxels),
-        maxDist
-      );
-      if (!hit || !rayPickProxy) return null;
-      const p = new THREE.Vector3(hit.point[0], hit.point[1], hit.point[2]);
-      const fn = new THREE.Vector3(hit.faceNormal[0], hit.faceNormal[1], hit.faceNormal[2]);
-      return {
-        distance: r.origin.distanceTo(p),
-        point: p,
-        face: { normal: fn, materialIndex: 0 } as THREE.Face,
-        object: rayPickProxy
-      };
-    }
-    const targets = getRaycastTargets();
-    const intersects = raycaster.intersectObjects(targets, false);
-    return intersects.length > 0 ? intersects[0] : null;
-  }
-
-  function snapToGrid(point: THREE.Vector3): [number, number, number] {
-    return [Math.round(point.x), Math.round(point.y), Math.round(point.z)];
+    return getIntersectionFrom({
+      camera: camera ?? null,
+      raycaster,
+      pointer,
+      renderingMode: get(renderingMode),
+      voxels: get(voxels),
+      rayPickProxy,
+      getTargets: getRaycastTargets
+    });
   }
 
   /** Intersect the current raycaster ray with the axis-aligned plane at lockedValue. Used when Lock start height is on and cursor is in empty space. */
@@ -995,14 +831,8 @@
     lockedValue: number
   ): [number, number, number] | null {
     if (!camera || !raycaster) return null;
-    const normal = new THREE.Vector3(0, 0, 0).setComponent(axis, 1);
-    const point = new THREE.Vector3(0, 0, 0).setComponent(axis, lockedValue);
-    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, point);
-    const target = new THREE.Vector3();
-    const hit = raycaster.ray.intersectPlane(plane, target);
-    if (!hit) return null;
-    if (target.clone().sub(raycaster.ray.origin).dot(raycaster.ray.direction) < 0) return null;
-    return snapToGrid(target);
+    raycaster.setFromCamera(pointer, camera);
+    return raycastIntersectionWithLockedPlane(raycaster, axis, lockedValue);
   }
 
   /** Intersect the current raycaster ray with a plane through planePoint with the given normal. Used for airbrush constrain-to-plane in empty space. */
@@ -1011,49 +841,18 @@
     normal: THREE.Vector3
   ): [number, number, number] | null {
     if (!camera || !raycaster) return null;
-    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
-      normal.clone().normalize(),
-      planePoint
-    );
-    const target = new THREE.Vector3();
-    const hit = raycaster.ray.intersectPlane(plane, target);
-    if (!hit) return null;
-    if (target.clone().sub(raycaster.ray.origin).dot(raycaster.ray.direction) < 0) return null;
-    return snapToGrid(target);
-  }
-
-  /** Returns voxel positions along axis-aligned line from a to b (dominant axis). */
-  function axisVector(axis: 0 | 1 | 2): THREE.Vector3 {
-    const v = new THREE.Vector3(0, 0, 0);
-    v.setComponent(axis, 1);
-    return v;
+    raycaster.setFromCamera(pointer, camera);
+    return raycastIntersectionWithPlane(raycaster, planePoint, normal);
   }
 
   /** Effective plane normal: Alt+scroll override, or sidebar planeAxis, or face normal. */
   function getEffectivePlaneNormal(): THREE.Vector3 | null {
-    if (!dragFaceNormal) return null;
-    if (dragPlaneAxisOverride !== null) return axisVector(dragPlaneAxisOverride);
-    const pa = get(planeAxis);
-    if (pa !== 'auto') return axisVector(pa);
-    return dragFaceNormal;
-  }
-
-  /** Axis (0=X, 1=Y, 2=Z) with largest absolute component. Used for airbrush constrain plane (plane normal = that axis). */
-  function getDominantAxisOfNormal(n: THREE.Vector3): 0 | 1 | 2 {
-    const ax = Math.abs(n.x);
-    const ay = Math.abs(n.y);
-    const az = Math.abs(n.z);
-    if (ax >= ay && ax >= az) return 0;
-    if (ay >= az) return 1;
-    return 2;
+    return raycastEffectivePlaneNormal(dragFaceNormal, dragPlaneAxisOverride, get(planeAxis));
   }
 
   /** Camera look direction (view plane normal) for airbrush constrain to camera plane. */
   function getCameraPlaneNormal(): { x: number; y: number; z: number } | undefined {
-    if (!camera) return undefined;
-    const v = new THREE.Vector3();
-    camera.getWorldDirection(v);
-    return { x: v.x, y: v.y, z: v.z };
+    return raycastCameraPlaneNormal(camera ?? null);
   }
 
   function buildGrid(sz: number, v: Map<string, Voxel>) {
@@ -1207,7 +1006,11 @@
         maxX = Math.max(maxX, Math.abs(fitRelative.dot(fitCameraRight)));
         maxY = Math.max(maxY, Math.abs(fitRelative.dot(fitCameraUp)));
       }
-      const frustumHalfHeight = Math.max(maxY * fitPadding, (maxX * fitPadding) / Math.max(aspect, 1e-6), 0.5);
+      const frustumHalfHeight = Math.max(
+        maxY * fitPadding,
+        (maxX * fitPadding) / Math.max(aspect, 1e-6),
+        0.5
+      );
       camera.left = -frustumHalfHeight * aspect;
       camera.right = frustumHalfHeight * aspect;
       camera.top = frustumHalfHeight;
@@ -1240,113 +1043,42 @@
 
   function updateDirLightPosition(azimuthDeg: number, elevationDeg: number, distance: number) {
     if (!dirLight) return;
-    const az = (azimuthDeg * Math.PI) / 180;
-    const elev = (elevationDeg * Math.PI) / 180;
-    const h = Math.cos(elev);
-    const d = Math.max(distance, 10);
-    dirLight.position.set(Math.cos(az) * h * d, Math.sin(elev) * d, Math.sin(az) * h * d);
+    lightingUpdateDirLightPosition(dirLight, azimuthDeg, elevationDeg, distance);
   }
 
-  const baseZenithColor = new THREE.Color(0x7fb3e6);
-  const baseHorizonColor = new THREE.Color(0xddeefe);
-  const baseGroundColor = new THREE.Color(0x394555);
-  const tmpSunColor = new THREE.Color();
-  const tmpZenithColor = new THREE.Color();
-  const tmpHorizonColor = new THREE.Color();
-  const tmpGroundColor = new THREE.Color();
-  const tmpBackgroundColor = new THREE.Color();
-  const tmpHorizonPlaneColor = new THREE.Color();
-
   function updateSkyLightingColors(): void {
-    if (!sky || !dirLight || !hemisphereLight) return;
-    const sunIntensityN = THREE.MathUtils.clamp($sunlightIntensity / 2.3, 0, 2);
-    const ambientIntensityN = THREE.MathUtils.clamp($ambientIntensity / 0.45, 0, 2);
-    const elevationN = THREE.MathUtils.clamp(($lightElevation - 5) / 85, 0, 1);
-    tmpSunColor.copy(dirLight.color);
-    tmpZenithColor.copy(baseZenithColor).lerp(tmpSunColor, THREE.MathUtils.clamp(0.2 * sunIntensityN + 0.08 * ambientIntensityN, 0, 0.45));
-    tmpHorizonColor.copy(baseHorizonColor).lerp(tmpSunColor, THREE.MathUtils.clamp(0.28 * sunIntensityN * (1 - elevationN) + 0.06 * ambientIntensityN, 0, 0.5));
-    const skyBrightness = THREE.MathUtils.clamp(
-      0.35 + 0.35 * ambientIntensityN + 0.5 * sunIntensityN * (0.25 + 0.75 * elevationN),
-      0.2,
-      1.9
-    );
-    tmpZenithColor.multiplyScalar(skyBrightness);
-    tmpHorizonColor.multiplyScalar(THREE.MathUtils.clamp(skyBrightness * 1.06, 0.25, 2));
-    tmpGroundColor.copy(baseGroundColor).lerp(tmpSunColor, THREE.MathUtils.clamp(0.08 * sunIntensityN, 0, 0.16));
-    tmpGroundColor.multiplyScalar(THREE.MathUtils.clamp(0.35 + 0.35 * ambientIntensityN, 0.2, 1.25));
-    tmpBackgroundColor.setHex(hexToInt($backgroundColor));
-
-    hemisphereLight.color.copy(tmpZenithColor);
-    hemisphereLight.groundColor.copy(tmpGroundColor);
-
-    if (groundPlane?.material instanceof THREE.MeshStandardMaterial) {
-      // In sky mode, the scene background picker drives the horizon plane hue.
-      groundPlane.material.color.copy(
-        tmpHorizonPlaneColor.copy(tmpBackgroundColor).lerp(tmpGroundColor, 0.15)
-      );
-      groundPlane.material.needsUpdate = true;
-    }
-
-    if (sky instanceof Sky) {
-      const uniforms = (sky.material as THREE.ShaderMaterial).uniforms;
-      if (uniforms['turbidity']) uniforms['turbidity'].value = THREE.MathUtils.lerp(1.8, 8.5, 1 - elevationN);
-      if (uniforms['rayleigh']) uniforms['rayleigh'].value = THREE.MathUtils.lerp(0.75, 2.6, ambientIntensityN * 0.5);
-      if (uniforms['mieCoefficient']) uniforms['mieCoefficient'].value = THREE.MathUtils.lerp(0.002, 0.028, 1 - elevationN);
-      if (uniforms['mieDirectionalG']) uniforms['mieDirectionalG'].value = 0.78;
-    } else if (sky instanceof THREE.Mesh && sky.material instanceof THREE.MeshBasicMaterial) {
-      sky.material.color.copy(tmpZenithColor).lerp(tmpHorizonColor, 0.4);
-      sky.material.needsUpdate = true;
-    }
+    lightingUpdateSkyLightingColors({
+      sky,
+      dirLight,
+      hemisphereLight,
+      groundPlane,
+      sunlightIntensity: $sunlightIntensity,
+      ambientIntensity: $ambientIntensity,
+      lightElevation: $lightElevation,
+      backgroundColorHex: $backgroundColor
+    });
   }
 
   function updateShadowCamera(sz: number) {
-    if (!dirLight?.shadow) return;
-    const ext = sz * 1.2;
-    const cam = dirLight.shadow.camera;
-    cam.left = -ext;
-    cam.right = ext;
-    cam.top = ext;
-    cam.bottom = -ext;
-    cam.near = 0.5;
-    cam.far = sz * 4;
-    cam.updateProjectionMatrix();
+    if (!dirLight) return;
+    lightingUpdateShadowCamera(dirLight, sz);
   }
 
   /** Re-render directional shadow map on next frame (static lighting + mesh: skip shadow pass otherwise). */
   function invalidateDirectionalShadowMap() {
-    if (!renderer?.shadowMap?.enabled || !get(enableShadows) || !dirLight?.shadow) return;
-    const sm = renderer.shadowMap as { needsUpdate?: boolean };
-    if (typeof sm.needsUpdate === 'boolean') sm.needsUpdate = true;
-    dirLight.shadow.needsUpdate = true;
+    lightingInvalidateDirectionalShadowMap(renderer, get(enableShadows), dirLight);
   }
 
   function getAddPosition(hit: THREE.Intersection): [number, number, number] | null {
-    if (!hit.face) return null;
-    hit.object.getWorldQuaternion(worldQuaternion);
-    const worldNormal = hit.face.normal.clone().applyQuaternion(worldQuaternion);
-    const [nx, ny, nz] = dominantAxisNormal(worldNormal);
-    // Add 0.5 * normal to reach adjacent cell center (hit.point is on face, full normal overshoots)
-    pointerHelper.copy(hit.point).addScaledVector(axisNormalHelper.set(nx, ny, nz), 0.5);
-    return snapToGrid(pointerHelper);
+    return getAddPositionFromHit(hit, worldQuaternion);
   }
 
   function getVoxelPosition(hit: THREE.Intersection): [number, number, number] | null {
-    const mesh = hit.object as THREE.InstancedMesh | THREE.Mesh;
-    const positions = mesh.userData?.positions as [number, number, number][] | undefined;
-    if (positions && hit.instanceId != null) {
-      return positions[hit.instanceId] ?? null;
-    }
-    // Mesh raycast: derive from hit point and dominant face normal
-    if (!hit.face) return null;
-    mesh.getWorldQuaternion(worldQuaternion);
-    const worldNormal = hit.face.normal.clone().applyQuaternion(worldQuaternion);
-    const [nx, ny, nz] = dominantAxisNormal(worldNormal);
-    pointerHelper.copy(hit.point).addScaledVector(axisNormalHelper.set(nx, ny, nz), -0.5);
-    return snapToGrid(pointerHelper);
+    return getVoxelPositionFromHit(hit, worldQuaternion);
   }
 
   function getStrokeStartFromHit(hit: THREE.Intersection): [number, number, number] | null {
-    return $tool === 'voxel' || $tool === 'clay' ? getAddPosition(hit) : getVoxelPosition(hit);
+    return raycastStrokeStartFromHit($tool, hit, worldQuaternion);
   }
 
   function redrawPreciseGuideTexture() {
@@ -1354,10 +1086,7 @@
     const ctx = preciseGuidePlaneCtx;
     const size = PRECISE_GUIDE_TEX_SIZE;
     // ~1 voxel per cell on the guide plane (world width = preciseGuidePlaneSize maps to full UV 0..1).
-    const cellPx = Math.max(
-      2,
-      Math.min(48, Math.round(size / Math.max(8, preciseGuidePlaneSize)))
-    );
+    const cellPx = Math.max(2, Math.min(48, Math.round(size / Math.max(8, preciseGuidePlaneSize))));
     const radiusPx = Math.max(48, Math.min(200, Math.round(size * 0.28)));
     const cx = preciseGuideLightUv.x * size;
     const cy = (1 - preciseGuideLightUv.y) * size;
@@ -1388,7 +1117,8 @@
   }
 
   function updatePreciseGuideLight(planePos: [number, number, number] | null) {
-    if (!preciseGuidePlaneMaterial || !preciseAnchor || !preciseNormal || !preciseGuidePlaneMesh) return;
+    if (!preciseGuidePlaneMaterial || !preciseAnchor || !preciseNormal || !preciseGuidePlaneMesh)
+      return;
     const target = planePos ?? preciseAnchor;
     precisePlaneLightOffset.set(
       target[0] - preciseAnchor[0],
@@ -1424,11 +1154,7 @@
     const size = Math.max(192, get(gridSize) * 4);
     preciseGuidePlaneSize = size;
     preciseGuidePlaneMesh.scale.set(size, size, 1);
-    preciseGuidePlaneMesh.position.set(
-      anchor[0] + 0.5,
-      anchor[1] + 0.5,
-      anchor[2] + 0.5
-    );
+    preciseGuidePlaneMesh.position.set(anchor[0] + 0.5, anchor[1] + 0.5, anchor[2] + 0.5);
     preciseGuidePlaneMesh.quaternion.setFromUnitVectors(
       precisePlaneNormalBasis,
       precisePlaneNormalTarget.copy(normal).normalize()
@@ -1483,7 +1209,12 @@
   }
 
   function supportsShiftPlaneSymmetry(activeTool: Tool): boolean {
-    return activeTool === 'voxel' || activeTool === 'remove' || activeTool === 'paint' || activeTool === 'select';
+    return (
+      activeTool === 'voxel' ||
+      activeTool === 'remove' ||
+      activeTool === 'paint' ||
+      activeTool === 'select'
+    );
   }
 
   function getCurrentSymmetryAxes(): SymmetryAxes {
@@ -1543,467 +1274,30 @@
     return expandPositionsWithSymmetry(positions, axes);
   }
 
-  function applyLineStroke(positions: [number, number, number][]) {
-    const useCenteredShiftSymmetry = isShiftPlaneSymmetryActive();
-    const sourcePositions = useCenteredShiftSymmetry
-      ? expandPositionsForActiveSymmetry(positions)
-      : positions;
-    const sel = $selection;
-    // When selection is active, paint/remove only affect selected voxels
-    const effective =
-      sel.size > 0 && ($tool === 'paint' || $tool === 'remove')
-        ? sourcePositions.filter(([x, y, z]) => sel.has(coordKey(x, y, z)))
-        : sourcePositions;
-    ensureGridFitsPositions(effective);
-    const boundSize: number | undefined = undefined;
-    const getCol = getPaintColorResolver();
-    const applyToMap = (v: Map<string, Voxel>) => {
-      for (const [x, y, z] of effective) {
-        if (!inBounds(x, y, z, boundSize)) continue;
-        const key = coordKey(x, y, z);
-        if ($tool === 'remove') {
-          v.delete(key);
-        } else if ($tool === 'voxel' || $tool === 'clay') {
-          if (!v.has(key)) v.set(key, getCol());
-        } else if ($tool === 'paint') {
-          if (v.has(key)) v.set(key, getCol());
-        }
-      }
-    };
-    if (useCenteredShiftSymmetry) {
-      voxels.update((existing) => {
-        const next = new Map(existing);
-        applyToMap(next);
-        return next;
-      });
-      return;
-    }
-    updateVoxelsInStroke((v) => {
-      applyToMap(v);
-    });
-  }
-
-  function applyClayStroke(
-    positions: [number, number, number][],
-    clayModeVal:
-      | 'bulk'
-      | 'smooth'
-      | 'level'
-      | 'gouge'
-      | 'branch'
-      | 'melt'
-      | 'rope'
-      | 'wall'
-      | 'inflate',
-    levelY: number
-  ) {
-    ensureGridFitsPositions(positions);
-    const clayBoundsOrSize = getEffectiveBounds($voxels, 512);
-    const boundSize: number | undefined = undefined;
-    const getCol = getPaintColorResolver();
-    const v = $voxels;
-    if (clayModeVal === 'melt') {
-      const { toAdd, toRemove } = applyMelt(v, positions, clayBoundsOrSize);
-      updateVoxelsInStroke((next) => {
-        for (const key of toRemove) next.delete(key);
-        for (const [key, c] of toAdd) next.set(key, c);
-      });
-      return;
-    }
-    if (clayModeVal === 'gouge') {
-      updateVoxelsInStroke((next) => {
-        for (const [x, y, z] of positions) {
-          if (!inBounds(x, y, z, boundSize)) continue;
-          next.delete(coordKey(x, y, z));
-        }
-      });
-      return;
-    }
-    if (
-      clayModeVal === 'bulk' ||
-      clayModeVal === 'branch' ||
-      clayModeVal === 'rope' ||
-      clayModeVal === 'wall'
-    ) {
-      updateVoxelsInStroke((next) => {
-        for (const [x, y, z] of positions) {
-          if (!inBounds(x, y, z, boundSize)) continue;
-          const key = coordKey(x, y, z);
-          if (!next.has(key)) next.set(key, getCol());
-        }
-      });
-      return;
-    }
-    if (clayModeVal === 'smooth') {
-      const { toAdd, toRemove } = applySmooth(v, positions, clayBoundsOrSize);
-      updateVoxelsInStroke((next) => {
-        for (const key of toRemove) next.delete(key);
-        for (const [key, c] of toAdd) next.set(key, c);
-      });
-      return;
-    }
-    if (clayModeVal === 'inflate') {
-      const { toAdd, toRemove } = applyInflate(
-        v,
-        positions,
-        clayBoundsOrSize,
-        get(inflateStrength)
-      );
-      updateVoxelsInStroke((next) => {
-        for (const key of toRemove) next.delete(key);
-        for (const [key, c] of toAdd) next.set(key, c);
-      });
-      return;
-    }
-    if (clayModeVal === 'level') {
-      const { toAdd, toRemove } = applyLevel(v, positions, levelY, getCol, clayBoundsOrSize);
-      updateVoxelsInStroke((next) => {
-        for (const key of toRemove) next.delete(key);
-        for (const [key, c] of toAdd) next.set(key, c);
-      });
-    }
-  }
-
-  function applySelectStroke(positions: [number, number, number][], mode?: SelectionMode) {
-    const expandedPositions = isShiftPlaneSymmetryActive()
-      ? expandPositionsForActiveSymmetry(positions)
-      : positions;
-    commitUndoAfter(() => {
-      const v = $voxels;
-      const boundSize: number | undefined = undefined;
-      const modeToUse = mode ?? get(selectionMode);
-      const incoming = new Map<string, Voxel>();
-      for (const [x, y, z] of expandedPositions) {
-        if (!inBounds(x, y, z, boundSize)) continue;
-        const key = coordKey(x, y, z);
-        const col = v.get(key);
-        if (col !== undefined) incoming.set(key, col);
-      }
-      const next = mergeSelection($selection, incoming, modeToUse);
-      selection.set(next);
-    });
-  }
-
-  function placeStamp(place: [number, number, number], normal: FaceNormal) {
-    const sel = getEffectiveStampPatternMap();
-    const center = getSelectionCenter(sel);
-    if (!center) return;
-    const [cx, cy, cz] = center;
-    const { rotX, rotY, rotZ } = $stampRotation;
-    const rotated: [number, number, number][] = [];
-    const colors: Voxel[] = [];
-    for (const [key, col] of sel) {
-      const [x, y, z] = parseCoordKey(key);
-      const centered: [number, number, number] = [x - cx, y - cy, z - cz];
-      const r = rotatePositionAroundOrigin(centered, [rotX, rotY, rotZ]);
-      rotated.push([r[0] + cx, r[1] + cy, r[2] + cz]);
-      colors.push(col);
-    }
-    const bounds = getBoundsFromPositions(rotated);
-    if (!bounds) return;
-    playPlaceSound();
-    const targetForStamp = getStampTargetForPlaceOnFace(place, normal, bounds, $stampOriginMode);
-    const [dx, dy, dz] = getStampOffsetForFace(targetForStamp, normal, bounds);
-    const stampPositions = rotated.map(
-      ([x, y, z]) => [x + dx, y + dy, z + dz] as [number, number, number]
-    );
-    ensureGridFitsPositions(stampPositions);
-    const stampBoundSize: number | undefined = undefined;
-    runVoxelStroke(() => {
-      updateVoxelsInStroke((v) => {
-        stampPositions.forEach(([x, y, z], i) => {
-          if (!inBounds(x, y, z, stampBoundSize)) return;
-          v.set(coordKey(x, y, z), colors[i]);
-        });
-      });
-    });
-  }
-
-  function placePunch(placeVoxel: [number, number, number], normal: FaceNormal) {
-    const sel = getEffectiveStampPatternMap();
-    const center = getSelectionCenter(sel);
-    if (!center) return;
-    const [cx, cy, cz] = center;
-    const { rotX, rotY, rotZ } = $stampRotation;
-    const rotated: [number, number, number][] = [];
-    for (const key of sel.keys()) {
-      const [x, y, z] = parseCoordKey(key);
-      const centered: [number, number, number] = [x - cx, y - cy, z - cz];
-      const r = rotatePositionAroundOrigin(centered, [rotX, rotY, rotZ]);
-      rotated.push([r[0] + cx, r[1] + cy, r[2] + cz]);
-    }
-    const bounds = getBoundsFromPositions(rotated);
-    if (!bounds) return;
-    const targetForPunch = getPunchTargetForPlaceOnFace(
-      placeVoxel,
-      normal,
-      bounds,
-      $stampOriginMode
-    );
-    const inward = inwardFaceNormal(normal);
-    const [dx, dy, dz] = getPunchOffsetForFace(targetForPunch, inward, bounds);
-    const base = rotated.map(
-      ([x, y, z]) => [x + dx, y + dy, z + dz] as [number, number, number]
-    );
-    const punchPositions = expandPunchAlongDepth(base, inward, get(punchDepth));
-    ensureGridFitsPositions(punchPositions);
-    const punchBoundSize: number | undefined = undefined;
-    runVoxelStroke(() => {
-      updateVoxelsInStroke((v) => {
-        punchPositions.forEach(([x, y, z]) => {
-          if (!inBounds(x, y, z, punchBoundSize)) return;
-          v.delete(coordKey(x, y, z));
-        });
-      });
-    });
-  }
-
-  /** Seeded RNG for cluster offset. Returns 0–1. */
-  function nextRockClusterRng(seed: number): () => number {
-    let state = seed >>> 0;
-    return () => {
-      state = (state + 0x6d2b79f5) | 0;
-      let t = state;
-      t = Math.imul(t ^ (t >>> 15), t | 1);
-      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  }
-
-  function playPlaceSound() {
-    const a = new Audio('/voxelle/pop.ogg');
-    a.play().catch(() => {});
-  }
-
-  function placeRocks(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
-    const getCol = getPaintColorResolver();
-    const size = get(rockSize) as number;
-    const roughness = get(rockRoughness) as number;
-    const count = get(rockCount) as number;
-    const clusterR = get(rockClusterRadius) as number;
-    const sinkDir = get(rockSinkDirection) as 'none' | 'under' | 'over';
-    const sinkAmount = get(rockSinkAmount) as number;
-    const allPositions: [number, number, number][] = [];
-    const allVoxels: Voxel[] = [];
-    // Surface for placement: none = on surface; under = buried; over = floating
-    const N = sinkDir !== 'none' ? Math.min(5, Math.max(0, sinkAmount)) : 0;
-    const surfaceTarget: [number, number, number] =
-      sinkDir === 'under'
-        ? [
-            place[0] - (1 + N) * normal[0],
-            place[1] - (1 + N) * normal[1],
-            place[2] - (1 + N) * normal[2]
-          ]
-        : sinkDir === 'over'
-          ? [
-              place[0] + (N - 1) * normal[0],
-              place[1] + (N - 1) * normal[1],
-              place[2] + (N - 1) * normal[2]
-            ]
-          : [place[0] - normal[0], place[1] - normal[1], place[2] - normal[2]];
-
-    for (let i = 0; i < count; i++) {
-      const rng = nextRockClusterRng(placementSeed + i);
-      const dx = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
-      const dy = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
-      const dz = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
-      const placeI: [number, number, number] = [place[0] + dx, place[1] + dy, place[2] + dz];
-      const rockMap = generateRockVoxels(
-        placementSeed + i,
-        size,
-        roughness,
-        getCol().color
-      );
-      const localPositions = [...rockMap.keys()].map(
-        (k) => parseCoordKey(k) as [number, number, number]
-      );
-      const bounds = getBoundsFromPositions(localPositions);
-      if (!bounds) continue;
-      // Surface for normal axis (rock sits on plane); center on cursor in tangent plane (placeI - halfSize)
-      const halfW = (bounds.maxX - bounds.minX) / 2;
-      const halfH = (bounds.maxY - bounds.minY) / 2;
-      const halfD = (bounds.maxZ - bounds.minZ) / 2;
-      const targetForStamp: [number, number, number] = [
-        normal[0] ? surfaceTarget[0] : placeI[0] - halfW,
-        normal[1] ? surfaceTarget[1] : placeI[1] - halfH,
-        normal[2] ? surfaceTarget[2] : placeI[2] - halfD
-      ];
-      const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
-      for (const [key, vx] of rockMap) {
-        const [lx, ly, lz] = parseCoordKey(key);
-        allPositions.push([lx + ox, ly + oy, lz + oz]);
-        allVoxels.push(vx);
-      }
-    }
-
-    if (allPositions.length === 0) return;
-    playPlaceSound();
-    ensureGridFitsPositions(allPositions);
-    const boundSize: number | undefined = undefined;
-    runVoxelStroke(() => {
-      updateVoxelsInStroke((v) => {
-        allPositions.forEach(([x, y, z], i) => {
-          if (!inBounds(x, y, z, boundSize)) return;
-          v.set(coordKey(x, y, z), allVoxels[i]!);
-        });
-      });
-    });
-  }
-
-  function getAshlarThicknessAxis(normal: FaceNormal): 0 | 1 | 2 {
-    const ax = Math.abs(normal[0]);
-    const ay = Math.abs(normal[1]);
-    const az = Math.abs(normal[2]);
-    return ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
-  }
-
-  function placeAshlar(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
-    const getCol = getPaintColorResolver();
-    const size = get(ashlarSize) as number;
-    const roughness = get(ashlarRoughness) as number;
-    const thickness = get(ashlarThickness) as number;
-    const thicknessAxis = getAshlarThicknessAxis(normal);
-    const surfaceTarget: [number, number, number] = [
-      place[0] - normal[0],
-      place[1] - normal[1],
-      place[2] - normal[2]
-    ];
-    const ashlarMap = generateAshlarVoxels(
-      placementSeed,
-      size,
-      roughness,
-      getCol().color,
-      thickness,
-      thicknessAxis
-    );
-    const localPositions = [...ashlarMap.keys()].map(
-      (k) => parseCoordKey(k) as [number, number, number]
-    );
-    const bounds = getBoundsFromPositions(localPositions);
-    if (!bounds) return;
-    const halfW = (bounds.maxX - bounds.minX) / 2;
-    const halfH = (bounds.maxY - bounds.minY) / 2;
-    const halfD = (bounds.maxZ - bounds.minZ) / 2;
-    const targetForStamp: [number, number, number] = [
-      normal[0] ? surfaceTarget[0] : place[0] - halfW,
-      normal[1] ? surfaceTarget[1] : place[1] - halfH,
-      normal[2] ? surfaceTarget[2] : place[2] - halfD
-    ];
-    const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
-    const allPositions: [number, number, number][] = [];
-    const allVoxelsAsh: Voxel[] = [];
-    for (const [key, vx] of ashlarMap) {
-      const [lx, ly, lz] = parseCoordKey(key);
-      allPositions.push([lx + ox, ly + oy, lz + oz]);
-      allVoxelsAsh.push(vx);
-    }
-    if (allPositions.length === 0) return;
-    playPlaceSound();
-    ensureGridFitsPositions(allPositions);
-    const boundSize: number | undefined = undefined;
-    runVoxelStroke(() => {
-      updateVoxelsInStroke((v) => {
-        allPositions.forEach(([x, y, z], i) => {
-          if (!inBounds(x, y, z, boundSize)) return;
-          v.set(coordKey(x, y, z), allVoxelsAsh[i]!);
-        });
-      });
-    });
-  }
-
-  function placeGrass(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
-    const getCol = getPaintColorResolver();
-    const radius = get(grassRadius) as number;
-    const density = get(grassDensity) as number;
-    const height = get(grassHeight) as number;
-    const grassMap = generateGrassVoxels(
-      placementSeed,
-      place,
-      normal,
-      radius,
-      density,
-      height,
-      getCol().color
-    );
-    const allPositions: [number, number, number][] = [];
-    const allVoxelsGrass: Voxel[] = [];
-    for (const [key, vx] of grassMap) {
-      allPositions.push(parseCoordKey(key) as [number, number, number]);
-      allVoxelsGrass.push(vx);
-    }
-    if (allPositions.length === 0) return;
-    playPlaceSound();
-    ensureGridFitsPositions(allPositions);
-    const boundSize: number | undefined = undefined;
-    runVoxelStroke(() => {
-      updateVoxelsInStroke((v) => {
-        allPositions.forEach(([x, y, z], i) => {
-          if (!inBounds(x, y, z, boundSize)) return;
-          v.set(coordKey(x, y, z), allVoxelsGrass[i]!);
-        });
-      });
-    });
-  }
-
-  function buildFloraOptions(): GenerateFloraOptions {
-    return {
-      preset: get(floraPreset),
-      height: get(floraHeight) as number,
-      girth: get(floraGirth) as number,
-      wobble: get(floraWobble) as number,
-      taper: get(floraTaper) as number,
-      stemCount: get(floraStemCount) as number,
-      clusterRadius: get(floraClusterRadius) as number,
-      branchCount: get(floraBranchCount) as number,
-      branchDepth: get(floraBranchDepth) as number,
-      branchStart: get(floraBranchStart) as number,
-      branchSpread: get(floraBranchSpread) as number,
-      braidStrands: get(floraBraidStrands) as number,
-      braidTwist: get(floraBraidTwist) as number,
-      barkJitter: get(floraBarkJitter) as number
-    };
-  }
-
-  function buildPiscinaOptions(): GeneratePiscinaOptions {
-    return {
-      species: get(piscinaSpecies) as FishSpeciesId,
-      length: get(piscinaLength) as number,
-      /** Lateral half is `piscinaThickness`, DV half is `piscinaWidth` (see generatorSettings / tool panel wiring). */
-      width: get(piscinaThickness) as number,
-      thickness: get(piscinaWidth) as number,
-      finDorsal: get(piscinaFinDorsal) as number,
-      finAnal: get(piscinaFinAnal) as number,
-      finCaudal: get(piscinaFinCaudal) as number,
-      finPectoral: get(piscinaFinPectoral) as number,
-      finPelvic: get(piscinaFinPelvic) as number,
-      finAdipose: get(piscinaFinAdipose) as number,
-      showFinDorsal: get(piscinaShowFinDorsal) as boolean,
-      showFinAnal: get(piscinaShowFinAnal) as boolean,
-      showFinCaudal: get(piscinaShowFinCaudal) as boolean,
-      showFinPectoral: get(piscinaShowFinPectoral) as boolean,
-      showFinPelvic: get(piscinaShowFinPelvic) as boolean,
-      showFinAdipose: get(piscinaShowFinAdipose) as boolean,
-      anchorOffsetU: get(piscinaAnchorOffsetU) as number,
-      anchorOffsetV: get(piscinaAnchorOffsetV) as number,
-      spineBend: get(piscinaSpineBend) as number,
-      spineSCurve: get(piscinaSpineSCurve) as number,
-      finDorsalPitch: get(piscinaFinDorsalPitch) as number,
-      finDorsalSweep: get(piscinaFinDorsalSweep) as number,
-      finAnalPitch: get(piscinaFinAnalPitch) as number,
-      finDorsalMode: get(piscinaFinDorsalMode),
-      finAnalMode: get(piscinaFinAnalMode),
-      finCaudalMode: get(piscinaFinCaudalMode),
-      finPectoralMode: get(piscinaFinPectoralMode),
-      finPelvicMode: get(piscinaFinPelvicMode),
-      finAdiposeMode: get(piscinaFinAdiposeMode),
-      finDorsalLength: get(piscinaFinDorsalLength) as number,
-      finAnalLength: get(piscinaFinAnalLength) as number,
-      finDorsalPosition: get(piscinaFinDorsalPosition) as number,
-      finCaudalSpread: get(piscinaFinCaudalSpread) as number,
-      finPectoralCant: get(piscinaFinPectoralCant) as number,
-      finPectoralSweep: get(piscinaFinPectoralSweep) as number
-    };
-  }
+  const {
+    applyLineStroke,
+    applyClayStroke,
+    applySelectStroke,
+    placeStamp,
+    placePunch,
+    placeRocks,
+    placeAshlar,
+    placeGrass,
+    placePiscina,
+    placeFlora,
+    getPunchPositionsForFace,
+    getStampPositionsForFace
+  } = createVoxelCanvasStrokeCommit({
+    getTool: () => get(tool),
+    getLiveSelection: () => get(selection),
+    getLiveVoxels: () => get(voxels),
+    isShiftPlaneSymmetryActive,
+    expandPositionsForActiveSymmetry,
+    getStampRotation: () => get(stampRotation),
+    getStampOriginMode: () => get(stampOriginMode),
+    getEffectiveStampPatternMap,
+    playPlaceSound: defaultPlayPlaceSound
+  });
 
   function resetPiscinaPlacementFlow() {
     piscinaPhase = 'pick';
@@ -2029,54 +1323,6 @@
     nextPiscinaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
     resetPiscinaPlacementFlow();
     render();
-  }
-
-  function placePiscina(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
-    const getCol = getPaintColorResolver();
-    const options = buildPiscinaOptions();
-    const map = generatePiscinaVoxels(placementSeed, place, normal, options, () => getCol());
-    const allPositions: [number, number, number][] = [];
-    const allVoxelsPiscina: Voxel[] = [];
-    for (const [key, vx] of map) {
-      allPositions.push(parseCoordKey(key) as [number, number, number]);
-      allVoxelsPiscina.push(vx);
-    }
-    if (allPositions.length === 0) return;
-    playPlaceSound();
-    ensureGridFitsPositions(allPositions);
-    const boundSize: number | undefined = undefined;
-    runVoxelStroke(() => {
-      updateVoxelsInStroke((v) => {
-        allPositions.forEach(([x, y, z], i) => {
-          if (!inBounds(x, y, z, boundSize)) return;
-          v.set(coordKey(x, y, z), allVoxelsPiscina[i]!);
-        });
-      });
-    });
-  }
-
-  function placeFlora(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
-    const getCol = getPaintColorResolver();
-    const options = buildFloraOptions();
-    const floraMap = generateFloraVoxels(placementSeed, place, normal, options, () => getCol());
-    const allPositions: [number, number, number][] = [];
-    const allVoxelsFlora: Voxel[] = [];
-    for (const [key, vx] of floraMap) {
-      allPositions.push(parseCoordKey(key) as [number, number, number]);
-      allVoxelsFlora.push(vx);
-    }
-    if (allPositions.length === 0) return;
-    playPlaceSound();
-    ensureGridFitsPositions(allPositions);
-    const boundSize: number | undefined = undefined;
-    runVoxelStroke(() => {
-      updateVoxelsInStroke((v) => {
-        allPositions.forEach(([x, y, z], i) => {
-          if (!inBounds(x, y, z, boundSize)) return;
-          v.set(coordKey(x, y, z), allVoxelsFlora[i]!);
-        });
-      });
-    });
   }
 
   function strokePreviewSymmetryExpansionFactor(): number {
@@ -2108,8 +1354,7 @@
   ) {
     if (!meshManager) return;
     const sel = $selection;
-    const bboxGated =
-      sel.size > 0 && ($tool === 'paint' || $tool === 'remove') ? null : bboxHint;
+    const bboxGated = sel.size > 0 && ($tool === 'paint' || $tool === 'remove') ? null : bboxHint;
 
     const previewVoxelFor = (count: number): Voxel =>
       count === 0
@@ -2180,12 +1425,8 @@
       )
     };
     const solidEst =
-      cuboidSolidVoxelCount(
-        cuboidPlane.a,
-        cuboidPlane.b,
-        cuboidPlane.normal,
-        cuboidDepth
-      ) * strokePreviewSymmetryExpansionFactor();
+      cuboidSolidVoxelCount(cuboidPlane.a, cuboidPlane.b, cuboidPlane.normal, cuboidDepth) *
+      strokePreviewSymmetryExpansionFactor();
     if (solidEst >= PREVIEW_BBOX_VOXEL_THRESHOLD) {
       pendingStrokePositions = [];
       updatePreviewMesh([], { ...bboxHintBase, forceUseBbox: true });
@@ -2236,8 +1477,7 @@
     if (positions.length === 0 || !normal || steps === 0) return positions;
     const [nx, ny, nz] = normal;
     return positions.map(
-      ([x, y, z]) =>
-        [x + nx * steps, y + ny * steps, z + nz * steps] as [number, number, number]
+      ([x, y, z]) => [x + nx * steps, y + ny * steps, z + nz * steps] as [number, number, number]
     );
   }
 
@@ -2301,7 +1541,7 @@
       allPositions.push(parseCoordKey(key) as [number, number, number]);
       allVoxels.push(vx);
     }
-    playPlaceSound();
+    defaultPlayPlaceSound();
     ensureGridFitsPositions(allPositions);
     const boundSize: number | undefined = undefined;
     runVoxelStroke(() => {
@@ -2508,36 +1748,36 @@
     getContainer: () => container
   };
 
-  function buildGeneratorRmbDeps(): GeneratorRmbDeps {
-    return {
-      tool: get(tool),
-      piscinaPhase,
-      render,
-      randomSeed32: () => Math.floor(Math.random() * 0xffffffff),
-      setNextRockSeed: (n) => {
-        nextRockPlacementSeed = n;
-      },
-      setNextGrassSeed: (n) => {
-        nextGrassPlacementSeed = n;
-      },
-      setNextFloraSeed: (n) => {
-        nextFloraPlacementSeed = n;
-      },
-      setNextPiscinaSeed: (n) => {
-        nextPiscinaPlacementSeed = n;
-      },
-      setNextAshlarSeed: (n) => {
-        nextAshlarPlacementSeed = n;
-      },
-      getAshlarPlacementSeed: () => nextAshlarPlacementSeed,
-      getIntersection,
-      getAddPosition,
-      getFaceNormalFromHit,
-      updatePreviewMesh,
-      setRollOverVisible: (v) => {
-        rollOverMesh.visible = v;
-      },
-      shouldCancelActiveGesture: !!(
+  const voxelGeneratorRmbBridge: VoxelGeneratorRmbBridge = {
+    getTool: () => get(tool),
+    getPiscinaPhase: () => piscinaPhase,
+    render,
+    randomSeed32: () => Math.floor(Math.random() * 0xffffffff),
+    setNextRockSeed: (n) => {
+      nextRockPlacementSeed = n;
+    },
+    setNextGrassSeed: (n) => {
+      nextGrassPlacementSeed = n;
+    },
+    setNextFloraSeed: (n) => {
+      nextFloraPlacementSeed = n;
+    },
+    setNextPiscinaSeed: (n) => {
+      nextPiscinaPlacementSeed = n;
+    },
+    setNextAshlarSeed: (n) => {
+      nextAshlarPlacementSeed = n;
+    },
+    getAshlarPlacementSeed: () => nextAshlarPlacementSeed,
+    getIntersection,
+    getAddPosition,
+    getFaceNormalFromHit,
+    updatePreviewMesh,
+    setRollOverVisible: (v) => {
+      rollOverMesh.visible = v;
+    },
+    shouldCancelActiveGesture: () =>
+      !!(
         isVoxelDrag ||
         selectionGizmo?.isGizmoDrag ||
         cuboidPhase ||
@@ -2545,58 +1785,61 @@
         roofPhase ||
         ropePhase
       ),
-      cancelDrag
-    };
-  }
+    cancelDrag
+  };
 
-  function buildGeneratorPrimaryUpDeps(): GeneratorPrimaryPointerUpDeps {
-    return {
-      tool: get(tool),
-      addPanelOpen: get(addPanelStore).open,
-      piscinaGizmoUp: false,
-      piscinaPhase,
-      getIntersection,
-      updatePointerFromEvent,
-      getAddPosition,
-      getFaceNormalFromHit,
-      randomSeed32: () => Math.floor(Math.random() * 0xffffffff),
-      getNextRockSeed: () => nextRockPlacementSeed,
-      setNextRockSeed: (n) => {
-        nextRockPlacementSeed = n;
-      },
-      placeRocks,
-      getNextGrassSeed: () => nextGrassPlacementSeed,
-      setNextGrassSeed: (n) => {
-        nextGrassPlacementSeed = n;
-      },
-      placeGrass,
-      getNextFloraSeed: () => nextFloraPlacementSeed,
-      setNextFloraSeed: (n) => {
-        nextFloraPlacementSeed = n;
-      },
-      placeFlora,
-      getNextAshlarSeed: () => nextAshlarPlacementSeed,
-      setNextAshlarSeed: (n) => {
-        nextAshlarPlacementSeed = n;
-      },
-      placeAshlar,
-      getNextPiscinaSeed: () => nextPiscinaPlacementSeed,
-      setNextPiscinaSeed: (n) => {
-        nextPiscinaPlacementSeed = n;
-      },
-      commitPiscinaSurfacePick: (place, normal) => {
-        piscinaLockedPlace = place;
-        piscinaLockedNormal = normal;
-        piscinaHoverPlace = null;
-        piscinaHoverNormal = null;
-        piscinaPhase = 'shape';
-      },
-      scheduleRender: () => requestAnimationFrame(() => render())
-    };
-  }
+  const voxelGeneratorPrimaryPointerUpBridge: VoxelGeneratorPrimaryPointerUpBridge = {
+    getTool: () => get(tool),
+    getAddPanelOpen: () => get(addPanelStore).open,
+    getPiscinaPhase: () => piscinaPhase,
+    getIntersection,
+    updatePointerFromEvent,
+    getAddPosition,
+    getFaceNormalFromHit,
+    randomSeed32: () => Math.floor(Math.random() * 0xffffffff),
+    getNextRockSeed: () => nextRockPlacementSeed,
+    setNextRockSeed: (n) => {
+      nextRockPlacementSeed = n;
+    },
+    placeRocks,
+    getNextGrassSeed: () => nextGrassPlacementSeed,
+    setNextGrassSeed: (n) => {
+      nextGrassPlacementSeed = n;
+    },
+    placeGrass,
+    getNextFloraSeed: () => nextFloraPlacementSeed,
+    setNextFloraSeed: (n) => {
+      nextFloraPlacementSeed = n;
+    },
+    placeFlora,
+    getNextAshlarSeed: () => nextAshlarPlacementSeed,
+    setNextAshlarSeed: (n) => {
+      nextAshlarPlacementSeed = n;
+    },
+    placeAshlar,
+    getNextPiscinaSeed: () => nextPiscinaPlacementSeed,
+    setNextPiscinaSeed: (n) => {
+      nextPiscinaPlacementSeed = n;
+    },
+    commitPiscinaSurfacePick: (place, normal) => {
+      piscinaLockedPlace = place;
+      piscinaLockedNormal = normal;
+      piscinaHoverPlace = null;
+      piscinaHoverNormal = null;
+      piscinaPhase = 'shape';
+    },
+    scheduleRender: () => requestAnimationFrame(() => render())
+  };
 
   async function handlePointerDown(event: PointerEvent) {
-    if (dispatchPointerDown(pointerHandlerContext, event, buildGeneratorRmbDeps())) return;
+    if (
+      dispatchPointerDown(
+        pointerHandlerContext,
+        event,
+        buildVoxelGeneratorRmbDeps(voxelGeneratorRmbBridge)
+      )
+    )
+      return;
     if (event.button === 2) {
       if (
         isVoxelDrag ||
@@ -2662,7 +1905,13 @@
     }
 
     // Polygon mode only when current tool uses stroke mode (effectiveStrokeMode is null for clay)
-    if (hit && get(effectiveStrokeMode) === 'polygon' && polygonPhase && polygonPointsMesh && camera) {
+    if (
+      hit &&
+      get(effectiveStrokeMode) === 'polygon' &&
+      polygonPhase &&
+      polygonPointsMesh &&
+      camera
+    ) {
       raycaster.setFromCamera(pointer, camera);
       const pointHits = raycaster.intersectObject(polygonPointsMesh, false);
       if (pointHits.length > 0) hit = pointHits[0];
@@ -2704,7 +1953,9 @@
         preciseAnchor[1] + 0.5,
         preciseAnchor[2] + 0.5
       );
-      const startPos = getIntersectionWithPlane(planePoint, preciseNormal) ?? (hit ? getStrokeStartFromHit(hit) : null);
+      const startPos =
+        getIntersectionWithPlane(planePoint, preciseNormal) ??
+        (hit ? getStrokeStartFromHit(hit) : null);
       if (!startPos) {
         isVoxelDrag = false;
         precisePhase = 'armed';
@@ -3196,11 +2447,7 @@
     if ($tool === 'selectCoplanarEmpty' && hit.object !== polygonPointsMesh) {
       const air = getAddPosition(hit);
       const normal = getFaceNormalFromHit(hit);
-      if (
-        air &&
-        normal &&
-        !$voxels.has(coordKey(air[0], air[1], air[2]))
-      ) {
+      if (air && normal && !$voxels.has(coordKey(air[0], air[1], air[2]))) {
         const incoming = getCoplanarEmptySelectionAt(air[0], air[1], air[2], normal);
         if (incoming.size > 0) {
           commitUndoAfter(() => {
@@ -3305,8 +2552,7 @@
     // Stamp / punch: stamp uses adjacent empty cell; punch uses hit voxel (cut inward)
     if (($tool === 'stamp' || $tool === 'punch') && hasStampLikePattern()) {
       const normal = getFaceNormalFromHit(hit);
-      const place =
-        $tool === 'stamp' ? getAddPosition(hit) : getVoxelPosition(hit);
+      const place = $tool === 'stamp' ? getAddPosition(hit) : getVoxelPosition(hit);
       if (place && normal) {
         isStampDrag = true;
         stampLikeDragMode = $tool;
@@ -3436,321 +2682,77 @@
         render();
         return;
       }
-    // Stamp / punch drag: re-raycast so preview follows cursor onto any surface
-    if (isStampDrag && hasStampLikePattern()) {
-      const hit = getIntersection();
-      if (hit) {
-        const normal = getFaceNormalFromHit(hit);
-        const place =
-          stampLikeDragMode === 'punch' ? getVoxelPosition(hit) : getAddPosition(hit);
-        if (place && normal) {
-          lastStampPlace = place;
-          lastStampNormal = normal;
-          updatePreviewMesh(
-            stampLikeDragMode === 'punch'
-              ? getPunchPositionsForFace(place, normal)
-              : getStampPositionsForFace(place, normal)
-          );
-        }
-      }
-      render();
-      return;
-    }
-    // Cuboid depth phase: depth from pointer drag (up/down movement) or slider
-    if (
-      cuboidPhase === 'depth' &&
-      cuboidPlane &&
-      event &&
-      depthAdjustPointerId === event.pointerId
-    ) {
-      const dy = lastDepthPhaseClientY - event.clientY;
-      lastDepthPhaseClientY = event.clientY;
-      depthPhaseAccumulator += dy / 12;
-      const step = Math.trunc(depthPhaseAccumulator);
-      depthPhaseAccumulator -= step;
-      cuboidDepth = Math.max(-256, Math.min(256, cuboidDepth + step));
-      updateCuboidFromDepth();
-      return;
-    }
-    if (isVoxelDrag && dragStartPos) {
-      if (event) refreshShiftPlaneSymmetryState(event.shiftKey);
-      const clayPathMode = get(clayMode);
-      if ($tool === 'clay' && clayPathMode === 'branch') {
-        // Branch: view-plane direction (drag up = grow up on screen, not into scene)
-        const currX = event?.clientX ?? branchPointerDownX;
-        const currY = event?.clientY ?? branchPointerDownY;
-        const dx = currX - branchPointerDownX;
-        const dy = branchPointerDownY - currY; // screen up = positive
-        const length = Math.max(0, Math.round(Math.sqrt(dx * dx + dy * dy) / 6));
-        let dir = { x: 0, y: 0, z: 0 };
-        if (length > 0 && camera) {
-          camera.updateMatrixWorld(true);
-          const viewDir = new THREE.Vector3();
-          camera.getWorldDirection(viewDir);
-          const right = new THREE.Vector3().crossVectors(viewDir, camera.up).normalize();
-          const up = new THREE.Vector3().crossVectors(right, viewDir).normalize();
-          dir = {
-            x: right.x * dx + up.x * dy,
-            y: right.y * dx + up.y * dy,
-            z: right.z * dx + up.z * dy
-          };
-          const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-          if (len > 1e-6) {
-            dir = { x: dir.x / len, y: dir.y / len, z: dir.z / len };
-          } else {
-            dir = { x: up.x, y: up.y, z: up.z };
-          }
-        } else if (length > 0) {
-          dir = { x: 0, y: 1, z: 0 };
-        }
-        pendingStrokePositions = getRayDirectionPath(dragStartPos, dir, length);
-        updatePreviewMesh(
-          thickenPathForStroke(pendingStrokePositions, {
-            strokeMode: get(strokeMode),
-            clayMode: 'branch',
-            clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-            bulkBrushShape: get(bulkBrushShape),
-            branchTaper: get(branchTaper),
-            branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
-            branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-            airbrushRadius: (get(airbrushRadius) as number) * 0.5,
-            airbrushScatter: get(airbrushScatter),
-            airbrushRadiusRange: get(airbrushRadiusRange),
-            airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
-            airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
-            ...airbrushPlaneParamsForStroke(),
-            planeAxis: get(planeAxis),
-            sprayDirection: get(sprayDirection),
-            sprayStreakLength: get(sprayStreakLength),
-            wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
-            wallHeight: get(wallHeight),
-            wallFaceNormal: dragFaceNormal
-              ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
-              : undefined,
-            drawBrushShape: get(drawBrushShape),
-            drawBrushSize: get(drawBrushSize) * 0.5,
-            drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-            drawBrushFaceNormal: dragFaceNormal
-              ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
-              : undefined,
-            seed: currentStrokeSeed
-          })
-        );
-        deltaDisplay =
-          pendingStrokePositions.length > 0
-            ? {
-                dx: pendingStrokePositions[pendingStrokePositions.length - 1][0] - dragStartPos[0],
-                dy: pendingStrokePositions[pendingStrokePositions.length - 1][1] - dragStartPos[1],
-                dz: pendingStrokePositions[pendingStrokePositions.length - 1][2] - dragStartPos[2]
-              }
-            : null;
-      } else {
+      // Stamp / punch drag: re-raycast so preview follows cursor onto any surface
+      if (isStampDrag && hasStampLikePattern()) {
         const hit = getIntersection();
-        let currentPos: [number, number, number] | null = null;
         if (hit) {
-          currentPos =
-            $tool === 'voxel' || $tool === 'clay' ? getAddPosition(hit) : getVoxelPosition(hit);
+          const normal = getFaceNormalFromHit(hit);
+          const place = stampLikeDragMode === 'punch' ? getVoxelPosition(hit) : getAddPosition(hit);
+          if (place && normal) {
+            lastStampPlace = place;
+            lastStampNormal = normal;
+            updatePreviewMesh(
+              stampLikeDragMode === 'punch'
+                ? getPunchPositionsForFace(place, normal)
+                : getStampPositionsForFace(place, normal)
+            );
+          }
         }
-        const strokeModeVal = get(effectiveStrokeMode);
+        render();
+        return;
+      }
+      // Cuboid depth phase: depth from pointer drag (up/down movement) or slider
+      if (
+        cuboidPhase === 'depth' &&
+        cuboidPlane &&
+        event &&
+        depthAdjustPointerId === event.pointerId
+      ) {
+        const dy = lastDepthPhaseClientY - event.clientY;
+        lastDepthPhaseClientY = event.clientY;
+        depthPhaseAccumulator += dy / 12;
+        const step = Math.trunc(depthPhaseAccumulator);
+        depthPhaseAccumulator -= step;
+        cuboidDepth = Math.max(-256, Math.min(256, cuboidDepth + step));
+        updateCuboidFromDepth();
+        return;
+      }
+      if (isVoxelDrag && dragStartPos) {
+        if (event) refreshShiftPlaneSymmetryState(event.shiftKey);
         const clayPathMode = get(clayMode);
-        if (strokeModeVal === 'precise' && dragStartPos && preciseNormal && preciseAnchor) {
-          if (event) updatePointerFromEvent(event);
-          updatePreciseGuidePlane();
-          const planePoint = new THREE.Vector3(
-            preciseAnchor[0] + 0.5,
-            preciseAnchor[1] + 0.5,
-            preciseAnchor[2] + 0.5
-          );
-          const planePos = getIntersectionWithPlane(planePoint, preciseNormal);
-          if (planePos) {
-            updatePreciseGuideLight(planePos);
-            applyPrecisePreviewRenderOrder();
-            rollOverMesh.position.set(planePos[0], planePos[1], planePos[2]);
-            rollOverMesh.visible = true;
-            pendingStrokePositions = getAxisAlignedPlaneFromNormal(
-              dragStartPos,
-              planePos,
-              preciseNormal,
-              false
-            );
-            if (pendingStrokePositions.length === 0) pendingStrokePositions = [dragStartPos];
-            updatePreviewMesh(pendingStrokePositions, {
-              primaryBounds: planeStrokeBounds(dragStartPos, planePos, {
-                x: preciseNormal.x,
-                y: preciseNormal.y,
-                z: preciseNormal.z
-              })
-            });
-            deltaDisplay = {
-              dx: planePos[0] - dragStartPos[0],
-              dy: planePos[1] - dragStartPos[1],
-              dz: planePos[2] - dragStartPos[2]
+        if ($tool === 'clay' && clayPathMode === 'branch') {
+          // Branch: view-plane direction (drag up = grow up on screen, not into scene)
+          const currX = event?.clientX ?? branchPointerDownX;
+          const currY = event?.clientY ?? branchPointerDownY;
+          const dx = currX - branchPointerDownX;
+          const dy = branchPointerDownY - currY; // screen up = positive
+          const length = Math.max(0, Math.round(Math.sqrt(dx * dx + dy * dy) / 6));
+          let dir = { x: 0, y: 0, z: 0 };
+          if (length > 0 && camera) {
+            camera.updateMatrixWorld(true);
+            const viewDir = new THREE.Vector3();
+            camera.getWorldDirection(viewDir);
+            const right = new THREE.Vector3().crossVectors(viewDir, camera.up).normalize();
+            const up = new THREE.Vector3().crossVectors(right, viewDir).normalize();
+            dir = {
+              x: right.x * dx + up.x * dy,
+              y: right.y * dx + up.y * dy,
+              z: right.z * dx + up.z * dy
             };
-          } else {
-            updatePreciseGuideLight(null);
-            rollOverMesh.visible = false;
-            deltaDisplay = null;
-          }
-          render();
-          return;
-        }
-        const isAirbrushPath = strokeModeVal === 'airbrush' && lastBulkPos;
-        const isClayPathFollow =
-          $tool === 'clay' &&
-          (clayPathMode === 'bulk' ||
-            clayPathMode === 'smooth' ||
-            clayPathMode === 'level' ||
-            clayPathMode === 'gouge' ||
-            clayPathMode === 'melt' ||
-            clayPathMode === 'wall' ||
-            clayPathMode === 'inflate') &&
-          lastBulkPos;
-        // Wall + lock start height: when cursor is in empty space, intersect ray with locked plane so path extends into thin air
-        if (
-          currentPos === null &&
-          isClayPathFollow &&
-          clayPathMode === 'wall' &&
-          get(wallLockStartHeight) &&
-          dragStartPos &&
-          camera
-        ) {
-          const axis = getWallDirectionAxis();
-          if (axis !== null && (axis === 0 || axis === 1 || axis === 2)) {
-            currentPos = getIntersectionWithLockedPlane(axis, dragStartPos[axis]);
-          }
-        }
-        const isAxisAlignedLine = strokeModeVal === 'line' && get(lineAxisAlign);
-        // Plane/circle/cuboid and axis-aligned line: prefer drag-plane intersection so shape
-        // extends into empty space. If ray is parallel to the plane, keep voxel-hit fallback.
-        if (
-          (strokeModeVal === 'plane' ||
-            strokeModeVal === 'circle' ||
-            strokeModeVal === 'cuboid' ||
-            isAxisAlignedLine) &&
-          dragStartPos
-        ) {
-          const planeNormal = getEffectivePlaneNormal();
-          if (planeNormal) {
-            const planePoint = new THREE.Vector3(
-              dragStartPos[0] + 0.5,
-              dragStartPos[1] + 0.5,
-              dragStartPos[2] + 0.5
-            );
-            const planePos = getIntersectionWithPlane(planePoint, planeNormal);
-            if (planePos) currentPos = planePos;
-          }
-        }
-        // Airbrush + constrain to plane: prefer plane intersection over voxel hit so cursor stays on the invisible plane
-        if (isAirbrushPath && dragStartPos) {
-          const normal = getAirbrushConstrainPlaneNormalWorld();
-          if (normal) {
-            const planePoint = new THREE.Vector3(
-              dragStartPos[0] + 0.5,
-              dragStartPos[1] + 0.5,
-              dragStartPos[2] + 0.5
-            );
-            const planePos = getIntersectionWithPlane(planePoint, normal);
-            if (planePos) currentPos = planePos;
-          }
-        }
-        if (currentPos) {
-          // Wall + lock start height: keep path on starting plane (for enclosed loops)
-          if (
-            isClayPathFollow &&
-            clayPathMode === 'wall' &&
-            get(wallLockStartHeight) &&
-            dragStartPos
-          ) {
-            const axis = getWallDirectionAxis();
-            if (axis !== null) {
-              currentPos = [currentPos[0], currentPos[1], currentPos[2]];
-              currentPos[axis] = dragStartPos[axis];
-            }
-          }
-          if (isClayPathFollow || isAirbrushPath) {
-            if (
-              isClayPathFollow &&
-              clayPathMode === 'wall' &&
-              get(wallAxisAlign) &&
-              dragStartPos
-            ) {
-              pendingStrokePositions = getAxisAlignedLine(dragStartPos, currentPos);
-              lastBulkPos = currentPos;
+            const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+            if (len > 1e-6) {
+              dir = { x: dir.x / len, y: dir.y / len, z: dir.z / len };
             } else {
-              // Path-following: accumulate with 3D line segments
-              const segment = getBresenham3DLine(lastBulkPos!, currentPos);
-              const seen = new Set(pendingStrokePositions.map((p) => `${p[0]},${p[1]},${p[2]}`));
-              for (const p of segment) {
-                const k = `${p[0]},${p[1]},${p[2]}`;
-                if (!seen.has(k)) {
-                  seen.add(k);
-                  pendingStrokePositions.push(p);
-                }
-              }
-              lastBulkPos = currentPos;
+              dir = { x: up.x, y: up.y, z: up.z };
             }
-          } else {
-            const normal = getEffectivePlaneNormal();
-            if (
-              (strokeModeVal === 'plane' ||
-                strokeModeVal === 'circle' ||
-                strokeModeVal === 'cuboid') &&
-              normal
-            ) {
-              const hollow = get(planeCuboidHollow);
-              const hollowWall =
-                strokeModeVal === 'circle' ? 1 : clampPlaneCuboidHollowWallThickness();
-              pendingStrokePositions =
-                strokeModeVal === 'circle'
-                  ? getAxisAlignedCircleFromNormal(dragStartPos, currentPos, normal, hollow, hollowWall)
-                  : getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, normal, hollow, hollowWall);
-            } else if (strokeModeVal === 'line' && !get(lineAxisAlign) && dragFaceNormal) {
-              const projected = projectPointOntoPlane(currentPos, dragStartPos, {
-                x: dragFaceNormal.x,
-                y: dragFaceNormal.y,
-                z: dragFaceNormal.z
-              });
-              pendingStrokePositions = getBresenham3DLine(dragStartPos, projected);
-            } else {
-              pendingStrokePositions = getAxisAlignedLine(dragStartPos, currentPos);
-            }
+          } else if (length > 0) {
+            dir = { x: 0, y: 1, z: 0 };
           }
-          let strokeBboxHint: StrokePreviewBboxHint | null = null;
-          if (
-            !isClayPathFollow &&
-            !isAirbrushPath &&
-            dragStartPos &&
-            (strokeModeVal === 'plane' ||
-              strokeModeVal === 'cuboid' ||
-              strokeModeVal === 'line')
-          ) {
-            const nPlane = getEffectivePlaneNormal();
-            if (
-              (strokeModeVal === 'plane' || strokeModeVal === 'cuboid') &&
-              nPlane
-            ) {
-              strokeBboxHint = {
-                primaryBounds: planeStrokeBounds(dragStartPos, currentPos, nPlane),
-                drawBrushInflate: drawBrushInflateParams()
-              };
-            } else if (strokeModeVal === 'line') {
-              strokeBboxHint = {
-                primaryBounds: lineStrokeBounds(
-                  dragStartPos,
-                  currentPos,
-                  !get(lineAxisAlign) && !!dragFaceNormal
-                ),
-                drawBrushInflate: drawBrushInflateParams()
-              };
-            }
-          }
-          // Clay path modes: show thickened preview (brush radius); airbrush: sphere preview
+          pendingStrokePositions = getRayDirectionPath(dragStartPos, dir, length);
           updatePreviewMesh(
             thickenPathForStroke(pendingStrokePositions, {
-              strokeMode: (isAirbrushPath && !isClayPathFollow
-                ? 'airbrush'
-                : (strokeModeVal ?? get(strokeMode))) as string,
-              clayMode: isClayPathFollow ? clayPathMode : undefined,
+              strokeMode: get(strokeMode),
+              clayMode: 'branch',
               clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
               bulkBrushShape: get(bulkBrushShape),
               branchTaper: get(branchTaper),
@@ -3777,40 +2779,667 @@
                 ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
                 : undefined,
               seed: currentStrokeSeed
-            }),
-            strokeBboxHint
+            })
           );
-          deltaDisplay = {
-            dx: currentPos[0] - dragStartPos[0],
-            dy: currentPos[1] - dragStartPos[1],
-            dz: currentPos[2] - dragStartPos[2]
-          };
+          deltaDisplay =
+            pendingStrokePositions.length > 0
+              ? {
+                  dx:
+                    pendingStrokePositions[pendingStrokePositions.length - 1][0] - dragStartPos[0],
+                  dy:
+                    pendingStrokePositions[pendingStrokePositions.length - 1][1] - dragStartPos[1],
+                  dz: pendingStrokePositions[pendingStrokePositions.length - 1][2] - dragStartPos[2]
+                }
+              : null;
         } else {
-          deltaDisplay = null;
+          const hit = getIntersection();
+          let currentPos: [number, number, number] | null = null;
+          if (hit) {
+            currentPos =
+              $tool === 'voxel' || $tool === 'clay' ? getAddPosition(hit) : getVoxelPosition(hit);
+          }
+          const strokeModeVal = get(effectiveStrokeMode);
+          const clayPathMode = get(clayMode);
+          if (strokeModeVal === 'precise' && dragStartPos && preciseNormal && preciseAnchor) {
+            if (event) updatePointerFromEvent(event);
+            updatePreciseGuidePlane();
+            const planePoint = new THREE.Vector3(
+              preciseAnchor[0] + 0.5,
+              preciseAnchor[1] + 0.5,
+              preciseAnchor[2] + 0.5
+            );
+            const planePos = getIntersectionWithPlane(planePoint, preciseNormal);
+            if (planePos) {
+              updatePreciseGuideLight(planePos);
+              applyPrecisePreviewRenderOrder();
+              rollOverMesh.position.set(planePos[0], planePos[1], planePos[2]);
+              rollOverMesh.visible = true;
+              pendingStrokePositions = getAxisAlignedPlaneFromNormal(
+                dragStartPos,
+                planePos,
+                preciseNormal,
+                false
+              );
+              if (pendingStrokePositions.length === 0) pendingStrokePositions = [dragStartPos];
+              updatePreviewMesh(pendingStrokePositions, {
+                primaryBounds: planeStrokeBounds(dragStartPos, planePos, {
+                  x: preciseNormal.x,
+                  y: preciseNormal.y,
+                  z: preciseNormal.z
+                })
+              });
+              deltaDisplay = {
+                dx: planePos[0] - dragStartPos[0],
+                dy: planePos[1] - dragStartPos[1],
+                dz: planePos[2] - dragStartPos[2]
+              };
+            } else {
+              updatePreciseGuideLight(null);
+              rollOverMesh.visible = false;
+              deltaDisplay = null;
+            }
+            render();
+            return;
+          }
+          const isAirbrushPath = strokeModeVal === 'airbrush' && lastBulkPos;
+          const isClayPathFollow =
+            $tool === 'clay' &&
+            (clayPathMode === 'bulk' ||
+              clayPathMode === 'smooth' ||
+              clayPathMode === 'level' ||
+              clayPathMode === 'gouge' ||
+              clayPathMode === 'melt' ||
+              clayPathMode === 'wall' ||
+              clayPathMode === 'inflate') &&
+            lastBulkPos;
+          // Wall + lock start height: when cursor is in empty space, intersect ray with locked plane so path extends into thin air
+          if (
+            currentPos === null &&
+            isClayPathFollow &&
+            clayPathMode === 'wall' &&
+            get(wallLockStartHeight) &&
+            dragStartPos &&
+            camera
+          ) {
+            const axis = getWallDirectionAxis();
+            if (axis !== null && (axis === 0 || axis === 1 || axis === 2)) {
+              currentPos = getIntersectionWithLockedPlane(axis, dragStartPos[axis]);
+            }
+          }
+          const isAxisAlignedLine = strokeModeVal === 'line' && get(lineAxisAlign);
+          // Plane/circle/cuboid and axis-aligned line: prefer drag-plane intersection so shape
+          // extends into empty space. If ray is parallel to the plane, keep voxel-hit fallback.
+          if (
+            (strokeModeVal === 'plane' ||
+              strokeModeVal === 'circle' ||
+              strokeModeVal === 'cuboid' ||
+              isAxisAlignedLine) &&
+            dragStartPos
+          ) {
+            const planeNormal = getEffectivePlaneNormal();
+            if (planeNormal) {
+              const planePoint = new THREE.Vector3(
+                dragStartPos[0] + 0.5,
+                dragStartPos[1] + 0.5,
+                dragStartPos[2] + 0.5
+              );
+              const planePos = getIntersectionWithPlane(planePoint, planeNormal);
+              if (planePos) currentPos = planePos;
+            }
+          }
+          // Airbrush + constrain to plane: prefer plane intersection over voxel hit so cursor stays on the invisible plane
+          if (isAirbrushPath && dragStartPos) {
+            const normal = getAirbrushConstrainPlaneNormalWorld();
+            if (normal) {
+              const planePoint = new THREE.Vector3(
+                dragStartPos[0] + 0.5,
+                dragStartPos[1] + 0.5,
+                dragStartPos[2] + 0.5
+              );
+              const planePos = getIntersectionWithPlane(planePoint, normal);
+              if (planePos) currentPos = planePos;
+            }
+          }
+          if (currentPos) {
+            // Wall + lock start height: keep path on starting plane (for enclosed loops)
+            if (
+              isClayPathFollow &&
+              clayPathMode === 'wall' &&
+              get(wallLockStartHeight) &&
+              dragStartPos
+            ) {
+              const axis = getWallDirectionAxis();
+              if (axis !== null) {
+                currentPos = [currentPos[0], currentPos[1], currentPos[2]];
+                currentPos[axis] = dragStartPos[axis];
+              }
+            }
+            if (isClayPathFollow || isAirbrushPath) {
+              if (
+                isClayPathFollow &&
+                clayPathMode === 'wall' &&
+                get(wallAxisAlign) &&
+                dragStartPos
+              ) {
+                pendingStrokePositions = getAxisAlignedLine(dragStartPos, currentPos);
+                lastBulkPos = currentPos;
+              } else {
+                // Path-following: accumulate with 3D line segments
+                const segment = getBresenham3DLine(lastBulkPos!, currentPos);
+                const seen = new Set(pendingStrokePositions.map((p) => `${p[0]},${p[1]},${p[2]}`));
+                for (const p of segment) {
+                  const k = `${p[0]},${p[1]},${p[2]}`;
+                  if (!seen.has(k)) {
+                    seen.add(k);
+                    pendingStrokePositions.push(p);
+                  }
+                }
+                lastBulkPos = currentPos;
+              }
+            } else {
+              const normal = getEffectivePlaneNormal();
+              if (
+                (strokeModeVal === 'plane' ||
+                  strokeModeVal === 'circle' ||
+                  strokeModeVal === 'cuboid') &&
+                normal
+              ) {
+                const hollow = get(planeCuboidHollow);
+                const hollowWall =
+                  strokeModeVal === 'circle' ? 1 : clampPlaneCuboidHollowWallThickness();
+                pendingStrokePositions =
+                  strokeModeVal === 'circle'
+                    ? getAxisAlignedCircleFromNormal(
+                        dragStartPos,
+                        currentPos,
+                        normal,
+                        hollow,
+                        hollowWall
+                      )
+                    : getAxisAlignedPlaneFromNormal(
+                        dragStartPos,
+                        currentPos,
+                        normal,
+                        hollow,
+                        hollowWall
+                      );
+              } else if (strokeModeVal === 'line' && !get(lineAxisAlign) && dragFaceNormal) {
+                const projected = projectPointOntoPlane(currentPos, dragStartPos, {
+                  x: dragFaceNormal.x,
+                  y: dragFaceNormal.y,
+                  z: dragFaceNormal.z
+                });
+                pendingStrokePositions = getBresenham3DLine(dragStartPos, projected);
+              } else {
+                pendingStrokePositions = getAxisAlignedLine(dragStartPos, currentPos);
+              }
+            }
+            let strokeBboxHint: StrokePreviewBboxHint | null = null;
+            if (
+              !isClayPathFollow &&
+              !isAirbrushPath &&
+              dragStartPos &&
+              (strokeModeVal === 'plane' || strokeModeVal === 'cuboid' || strokeModeVal === 'line')
+            ) {
+              const nPlane = getEffectivePlaneNormal();
+              if ((strokeModeVal === 'plane' || strokeModeVal === 'cuboid') && nPlane) {
+                strokeBboxHint = {
+                  primaryBounds: planeStrokeBounds(dragStartPos, currentPos, nPlane),
+                  drawBrushInflate: drawBrushInflateParams()
+                };
+              } else if (strokeModeVal === 'line') {
+                strokeBboxHint = {
+                  primaryBounds: lineStrokeBounds(
+                    dragStartPos,
+                    currentPos,
+                    !get(lineAxisAlign) && !!dragFaceNormal
+                  ),
+                  drawBrushInflate: drawBrushInflateParams()
+                };
+              }
+            }
+            // Clay path modes: show thickened preview (brush radius); airbrush: sphere preview
+            updatePreviewMesh(
+              thickenPathForStroke(pendingStrokePositions, {
+                strokeMode: (isAirbrushPath && !isClayPathFollow
+                  ? 'airbrush'
+                  : (strokeModeVal ?? get(strokeMode))) as string,
+                clayMode: isClayPathFollow ? clayPathMode : undefined,
+                clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
+                bulkBrushShape: get(bulkBrushShape),
+                branchTaper: get(branchTaper),
+                branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
+                branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
+                airbrushRadius: (get(airbrushRadius) as number) * 0.5,
+                airbrushScatter: get(airbrushScatter),
+                airbrushRadiusRange: get(airbrushRadiusRange),
+                airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
+                airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
+                ...airbrushPlaneParamsForStroke(),
+                planeAxis: get(planeAxis),
+                sprayDirection: get(sprayDirection),
+                sprayStreakLength: get(sprayStreakLength),
+                wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
+                wallHeight: get(wallHeight),
+                wallFaceNormal: dragFaceNormal
+                  ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+                  : undefined,
+                drawBrushShape: get(drawBrushShape),
+                drawBrushSize: get(drawBrushSize) * 0.5,
+                drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+                drawBrushFaceNormal: dragFaceNormal
+                  ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+                  : undefined,
+                seed: currentStrokeSeed
+              }),
+              strokeBboxHint
+            );
+            deltaDisplay = {
+              dx: currentPos[0] - dragStartPos[0],
+              dy: currentPos[1] - dragStartPos[1],
+              dz: currentPos[2] - dragStartPos[2]
+            };
+          } else {
+            deltaDisplay = null;
+          }
         }
+        render();
+        return;
       }
-      render();
-      return;
-    }
-    deltaDisplay = null;
-    // Cuboid depth phase: preserve preview when idle (not dragging)
-    if (cuboidPhase === 'depth' && cuboidPlane) {
-      render();
-      return;
-    }
-    // Rope tension phase: idle clay path below calls updatePreviewMesh([]) every move — keep catenary preview
-    if (ropePhase === 'tension') {
-      rollOverMesh.visible = false;
-      render();
-      return;
-    }
-    // Polygon / roof: preserve point loop preview, show rollOver for next point
-    if (polygonPhase || roofPhase) {
+      deltaDisplay = null;
+      // Cuboid depth phase: preserve preview when idle (not dragging)
+      if (cuboidPhase === 'depth' && cuboidPlane) {
+        render();
+        return;
+      }
+      // Rope tension phase: idle clay path below calls updatePreviewMesh([]) every move — keep catenary preview
+      if (ropePhase === 'tension') {
+        rollOverMesh.visible = false;
+        render();
+        return;
+      }
+      // Polygon / roof: preserve point loop preview, show rollOver for next point
+      if (polygonPhase || roofPhase) {
+        const hit = getIntersection();
+        if (hit && hit.object !== polygonPointsMesh) {
+          const pos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
+          if (pos) {
+            rollOverMesh.position.set(pos[0], pos[1], pos[2]);
+            rollOverMesh.visible = true;
+          } else {
+            rollOverMesh.visible = false;
+          }
+        } else {
+          rollOverMesh.visible = false;
+        }
+        render();
+        return;
+      }
+      // Stamp / punch hover preview
+      if (($tool === 'stamp' || $tool === 'punch') && hasStampLikePattern() && !isStampDrag) {
+        const hit = getIntersection();
+        if (hit) {
+          const normal = getFaceNormalFromHit(hit);
+          const place = $tool === 'punch' ? getVoxelPosition(hit) : getAddPosition(hit);
+          if (place && normal) {
+            updatePreviewMesh(
+              $tool === 'punch'
+                ? getPunchPositionsForFace(place, normal)
+                : getStampPositionsForFace(place, normal)
+            );
+            rollOverMesh.visible = false;
+          } else {
+            updatePreviewMesh([]);
+            rollOverMesh.visible = false;
+          }
+        } else {
+          updatePreviewMesh([]);
+          rollOverMesh.visible = false;
+        }
+        render();
+        return;
+      }
+      // Rocks hover preview (same seed and cluster logic as placement so preview matches)
+      if ($tool === 'rocks') {
+        const hit = getIntersection();
+        if (hit) {
+          const place = getAddPosition(hit);
+          const normal = getFaceNormalFromHit(hit);
+          if (place && normal) {
+            if (nextRockPlacementSeed === 0) {
+              nextRockPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+            }
+            const size = get(rockSize) as number;
+            const roughness = get(rockRoughness) as number;
+            const count = get(rockCount) as number;
+            const clusterR = get(rockClusterRadius) as number;
+            const sinkDir = get(rockSinkDirection) as 'none' | 'under' | 'over';
+            const sinkAmount = get(rockSinkAmount) as number;
+            const N = sinkDir !== 'none' ? Math.min(5, Math.max(0, sinkAmount)) : 0;
+            const surfaceTarget: [number, number, number] =
+              sinkDir === 'under'
+                ? [
+                    place[0] - (1 + N) * normal[0],
+                    place[1] - (1 + N) * normal[1],
+                    place[2] - (1 + N) * normal[2]
+                  ]
+                : sinkDir === 'over'
+                  ? [
+                      place[0] + (N - 1) * normal[0],
+                      place[1] + (N - 1) * normal[1],
+                      place[2] + (N - 1) * normal[2]
+                    ]
+                  : [place[0] - normal[0], place[1] - normal[1], place[2] - normal[2]];
+            const previewPositions: [number, number, number][] = [];
+            for (let i = 0; i < count; i++) {
+              const rng = nextRockClusterRng(nextRockPlacementSeed + i);
+              const dx = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
+              const dy = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
+              const dz = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
+              const placeI: [number, number, number] = [
+                place[0] + dx,
+                place[1] + dy,
+                place[2] + dz
+              ];
+              const localPositions = getRockPositions(nextRockPlacementSeed + i, size, roughness);
+              const bounds = getBoundsFromPositions(localPositions);
+              if (!bounds) continue;
+              const halfW = (bounds.maxX - bounds.minX) / 2;
+              const halfH = (bounds.maxY - bounds.minY) / 2;
+              const halfD = (bounds.maxZ - bounds.minZ) / 2;
+              const targetForStamp: [number, number, number] = [
+                normal[0] ? surfaceTarget[0] : placeI[0] - halfW,
+                normal[1] ? surfaceTarget[1] : placeI[1] - halfH,
+                normal[2] ? surfaceTarget[2] : placeI[2] - halfD
+              ];
+              const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
+              for (const [lx, ly, lz] of localPositions) {
+                previewPositions.push([lx + ox, ly + oy, lz + oz]);
+              }
+            }
+            updatePreviewMesh(previewPositions);
+            rollOverMesh.visible = false;
+          } else {
+            updatePreviewMesh([]);
+            rollOverMesh.visible = false;
+          }
+        } else {
+          updatePreviewMesh([]);
+          rollOverMesh.visible = false;
+        }
+        render();
+        return;
+      }
+      // Grass hover preview (same seed as placement so preview matches)
+      if ($tool === 'grass') {
+        const hit = getIntersection();
+        if (hit) {
+          const place = getAddPosition(hit);
+          const normal = getFaceNormalFromHit(hit);
+          if (place && normal) {
+            if (nextGrassPlacementSeed === 0) {
+              nextGrassPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+            }
+            const radius = get(grassRadius) as number;
+            const density = get(grassDensity) as number;
+            const height = get(grassHeight) as number;
+            const previewPositions = getGrassPositions(
+              nextGrassPlacementSeed,
+              place,
+              normal,
+              radius,
+              density,
+              height
+            );
+            updatePreviewMesh(previewPositions);
+            rollOverMesh.visible = false;
+          } else {
+            updatePreviewMesh([]);
+            rollOverMesh.visible = false;
+          }
+        } else {
+          updatePreviewMesh([]);
+          rollOverMesh.visible = false;
+        }
+        render();
+        return;
+      }
+      // Piscina: preview + gizmo only after face lock (shape phase)
+      if ($tool === 'piscina') {
+        if (piscinaPhase === 'shape' && piscinaLockedPlace && piscinaLockedNormal) {
+          if (nextPiscinaPlacementSeed === 0) {
+            nextPiscinaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+          }
+          const place = piscinaLockedPlace;
+          const normal = piscinaLockedNormal;
+          const opts = buildPiscinaOptionsFromStores();
+          updatePreviewMesh(getPiscinaPositions(nextPiscinaPlacementSeed, place, normal, opts));
+          rollOverMesh.visible = false;
+        } else if (piscinaPhase === 'pick') {
+          const hit = getIntersection();
+          if (hit) {
+            const place = getAddPosition(hit);
+            const normal = getFaceNormalFromHit(hit);
+            if (place && normal) {
+              if (nextPiscinaPlacementSeed === 0) {
+                nextPiscinaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+              }
+              piscinaHoverPlace = place;
+              piscinaHoverNormal = normal;
+              const opts = buildPiscinaOptionsFromStores();
+              updatePreviewMesh(getPiscinaPositions(nextPiscinaPlacementSeed, place, normal, opts));
+            } else {
+              piscinaHoverPlace = null;
+              piscinaHoverNormal = null;
+              updatePreviewMesh([]);
+            }
+          } else {
+            piscinaHoverPlace = null;
+            piscinaHoverNormal = null;
+            updatePreviewMesh([]);
+          }
+          rollOverMesh.visible = false;
+        } else {
+          updatePreviewMesh([]);
+          rollOverMesh.visible = false;
+        }
+        render();
+        return;
+      }
+      // Flora hover preview (same seed as placement so preview matches)
+      if ($tool === 'flora') {
+        const hit = getIntersection();
+        if (hit) {
+          const place = getAddPosition(hit);
+          const normal = getFaceNormalFromHit(hit);
+          if (place && normal) {
+            if (nextFloraPlacementSeed === 0) {
+              nextFloraPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+            }
+            const floraOpts = buildFloraOptionsFromStores();
+            const previewPositions = getFloraPositions(
+              nextFloraPlacementSeed,
+              place,
+              normal,
+              floraOpts
+            );
+            updatePreviewMesh(previewPositions);
+            rollOverMesh.visible = false;
+          } else {
+            updatePreviewMesh([]);
+            rollOverMesh.visible = false;
+          }
+        } else {
+          updatePreviewMesh([]);
+          rollOverMesh.visible = false;
+        }
+        render();
+        return;
+      }
+      // Ashlar hover preview
+      if ($tool === 'ashlar') {
+        const hit = getIntersection();
+        if (hit) {
+          const place = getAddPosition(hit);
+          const normal = getFaceNormalFromHit(hit);
+          if (place && normal) {
+            if (nextAshlarPlacementSeed === 0) {
+              nextAshlarPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+            }
+            const size = get(ashlarSize) as number;
+            const roughness = get(ashlarRoughness) as number;
+            const thickness = get(ashlarThickness) as number;
+            const thicknessAxis = getAshlarThicknessAxis(normal);
+            const surfaceTarget: [number, number, number] = [
+              place[0] - normal[0],
+              place[1] - normal[1],
+              place[2] - normal[2]
+            ];
+            const localPositions = getAshlarPositions(
+              nextAshlarPlacementSeed,
+              size,
+              roughness,
+              thickness,
+              thicknessAxis
+            );
+            const bounds = getBoundsFromPositions(localPositions);
+            if (bounds) {
+              const halfW = (bounds.maxX - bounds.minX) / 2;
+              const halfH = (bounds.maxY - bounds.minY) / 2;
+              const halfD = (bounds.maxZ - bounds.minZ) / 2;
+              const targetForStamp: [number, number, number] = [
+                normal[0] ? surfaceTarget[0] : place[0] - halfW,
+                normal[1] ? surfaceTarget[1] : place[1] - halfH,
+                normal[2] ? surfaceTarget[2] : place[2] - halfD
+              ];
+              const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
+              const previewPositions = localPositions.map(
+                ([lx, ly, lz]) => [lx + ox, ly + oy, lz + oz] as [number, number, number]
+              );
+              updatePreviewMesh(previewPositions);
+            } else {
+              updatePreviewMesh([]);
+            }
+            rollOverMesh.visible = false;
+          } else {
+            updatePreviewMesh([]);
+            rollOverMesh.visible = false;
+          }
+        } else {
+          updatePreviewMesh([]);
+          rollOverMesh.visible = false;
+        }
+        render();
+        return;
+      }
+      if (
+        get(effectiveStrokeMode) === 'precise' &&
+        precisePhase === 'armed' &&
+        preciseAnchor &&
+        preciseNormal
+      ) {
+        if (event) updatePointerFromEvent(event);
+        updatePreciseGuidePlane();
+        const planePoint = new THREE.Vector3(
+          preciseAnchor[0] + 0.5,
+          preciseAnchor[1] + 0.5,
+          preciseAnchor[2] + 0.5
+        );
+        const planePos = getIntersectionWithPlane(planePoint, preciseNormal);
+        updatePreciseGuideLight(planePos);
+        applyPrecisePreviewRenderOrder();
+        if (planePos) {
+          rollOverMesh.position.set(planePos[0], planePos[1], planePos[2]);
+          rollOverMesh.visible = true;
+        } else {
+          rollOverMesh.visible = false;
+        }
+        // Only highlight anchor while armed; full plane preview starts on drag (placing).
+        pendingStrokePositions = [preciseAnchor];
+        updatePreviewMesh(pendingStrokePositions);
+        render();
+        return;
+      }
+      if ($tool !== 'voxel' && $tool !== 'clay' && $tool !== 'remove' && $tool !== 'paint') {
+        rollOverMesh.visible = false;
+        updatePreviewMesh([]);
+        render();
+        return;
+      }
       const hit = getIntersection();
-      if (hit && hit.object !== polygonPointsMesh) {
-        const pos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
-        if (pos) {
-          rollOverMesh.position.set(pos[0], pos[1], pos[2]);
+      if (!hit || !hit.face) {
+        rollOverMesh.visible = false;
+        if (get(effectiveStrokeMode) === 'airbrush') updatePreviewMesh([]);
+        render();
+        return;
+      }
+      if (get(effectiveStrokeMode) === 'airbrush') {
+        let anchorPos: [number, number, number] | null = null;
+        if ($tool === 'remove' || $tool === 'paint') {
+          const voxelPos = getVoxelPosition(hit);
+          if (voxelPos && $voxels.has(coordKey(voxelPos[0], voxelPos[1], voxelPos[2]))) {
+            anchorPos = voxelPos;
+          }
+        } else {
+          const addPos = getAddPosition(hit);
+          if (addPos && !$voxels.has(coordKey(addPos[0], addPos[1], addPos[2]))) {
+            anchorPos = addPos;
+          }
+        }
+        if (anchorPos) {
+          let hoverPos: [number, number, number] = anchorPos;
+          const hoverPlaneN = getAirbrushHoverConstrainPlaneNormal(hit);
+          if (hoverPlaneN) {
+            const planePoint = new THREE.Vector3(
+              anchorPos[0] + 0.5,
+              anchorPos[1] + 0.5,
+              anchorPos[2] + 0.5
+            );
+            const planePos = getIntersectionWithPlane(planePoint, hoverPlaneN);
+            if (planePos) hoverPos = planePos;
+          }
+          const fn = getFaceNormalFromHit(hit);
+          const faceN = fn ? new THREE.Vector3(fn[0], fn[1], fn[2]) : null;
+          rollOverMesh.visible = false;
+          updatePreviewMesh(
+            thickenPathForStroke([hoverPos], {
+              strokeMode: 'airbrush',
+              clayMode: undefined,
+              clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
+              bulkBrushShape: get(bulkBrushShape),
+              branchTaper: get(branchTaper),
+              branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
+              branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
+              airbrushRadius: (get(airbrushRadius) as number) * 0.5,
+              airbrushScatter: get(airbrushScatter),
+              airbrushRadiusRange: get(airbrushRadiusRange),
+              airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
+              airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
+              ...airbrushPlaneParamsForFaceNormal(faceN),
+              planeAxis: get(planeAxis),
+              sprayDirection: get(sprayDirection),
+              sprayStreakLength: get(sprayStreakLength),
+              wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
+              wallHeight: get(wallHeight),
+              wallFaceNormal: faceN ? { x: faceN.x, y: faceN.y, z: faceN.z } : undefined,
+              drawBrushShape: get(drawBrushShape),
+              drawBrushSize: get(drawBrushSize) * 0.5,
+              drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+              drawBrushFaceNormal: faceN ? { x: faceN.x, y: faceN.y, z: faceN.z } : undefined,
+              seed: 0
+            })
+          );
+        } else {
+          rollOverMesh.visible = false;
+          updatePreviewMesh([]);
+        }
+        render();
+        return;
+      }
+      if ($tool === 'voxel' || $tool === 'clay') {
+        const addPos = getAddPosition(hit);
+        if (addPos && !$voxels.has(coordKey(addPos[0], addPos[1], addPos[2]))) {
+          rollOverMesh.position.set(addPos[0], addPos[1], addPos[2]);
           rollOverMesh.visible = true;
         } else {
           rollOverMesh.visible = false;
@@ -3818,400 +3447,8 @@
       } else {
         rollOverMesh.visible = false;
       }
-      render();
-      return;
-    }
-    // Stamp / punch hover preview
-    if (($tool === 'stamp' || $tool === 'punch') && hasStampLikePattern() && !isStampDrag) {
-      const hit = getIntersection();
-      if (hit) {
-        const normal = getFaceNormalFromHit(hit);
-        const place =
-          $tool === 'punch' ? getVoxelPosition(hit) : getAddPosition(hit);
-        if (place && normal) {
-          updatePreviewMesh(
-            $tool === 'punch'
-              ? getPunchPositionsForFace(place, normal)
-              : getStampPositionsForFace(place, normal)
-          );
-          rollOverMesh.visible = false;
-        } else {
-          updatePreviewMesh([]);
-          rollOverMesh.visible = false;
-        }
-      } else {
-        updatePreviewMesh([]);
-        rollOverMesh.visible = false;
-      }
-      render();
-      return;
-    }
-    // Rocks hover preview (same seed and cluster logic as placement so preview matches)
-    if ($tool === 'rocks') {
-      const hit = getIntersection();
-      if (hit) {
-        const place = getAddPosition(hit);
-        const normal = getFaceNormalFromHit(hit);
-        if (place && normal) {
-          if (nextRockPlacementSeed === 0) {
-            nextRockPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-          }
-          const size = get(rockSize) as number;
-          const roughness = get(rockRoughness) as number;
-          const count = get(rockCount) as number;
-          const clusterR = get(rockClusterRadius) as number;
-          const sinkDir = get(rockSinkDirection) as 'none' | 'under' | 'over';
-          const sinkAmount = get(rockSinkAmount) as number;
-          const N = sinkDir !== 'none' ? Math.min(5, Math.max(0, sinkAmount)) : 0;
-          const surfaceTarget: [number, number, number] =
-            sinkDir === 'under'
-              ? [
-                  place[0] - (1 + N) * normal[0],
-                  place[1] - (1 + N) * normal[1],
-                  place[2] - (1 + N) * normal[2]
-                ]
-              : sinkDir === 'over'
-                ? [
-                    place[0] + (N - 1) * normal[0],
-                    place[1] + (N - 1) * normal[1],
-                    place[2] + (N - 1) * normal[2]
-                  ]
-                : [place[0] - normal[0], place[1] - normal[1], place[2] - normal[2]];
-          const previewPositions: [number, number, number][] = [];
-          for (let i = 0; i < count; i++) {
-            const rng = nextRockClusterRng(nextRockPlacementSeed + i);
-            const dx = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
-            const dy = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
-            const dz = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
-            const placeI: [number, number, number] = [place[0] + dx, place[1] + dy, place[2] + dz];
-            const localPositions = getRockPositions(nextRockPlacementSeed + i, size, roughness);
-            const bounds = getBoundsFromPositions(localPositions);
-            if (!bounds) continue;
-            const halfW = (bounds.maxX - bounds.minX) / 2;
-            const halfH = (bounds.maxY - bounds.minY) / 2;
-            const halfD = (bounds.maxZ - bounds.minZ) / 2;
-            const targetForStamp: [number, number, number] = [
-              normal[0] ? surfaceTarget[0] : placeI[0] - halfW,
-              normal[1] ? surfaceTarget[1] : placeI[1] - halfH,
-              normal[2] ? surfaceTarget[2] : placeI[2] - halfD
-            ];
-            const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
-            for (const [lx, ly, lz] of localPositions) {
-              previewPositions.push([lx + ox, ly + oy, lz + oz]);
-            }
-          }
-          updatePreviewMesh(previewPositions);
-          rollOverMesh.visible = false;
-        } else {
-          updatePreviewMesh([]);
-          rollOverMesh.visible = false;
-        }
-      } else {
-        updatePreviewMesh([]);
-        rollOverMesh.visible = false;
-      }
-      render();
-      return;
-    }
-    // Grass hover preview (same seed as placement so preview matches)
-    if ($tool === 'grass') {
-      const hit = getIntersection();
-      if (hit) {
-        const place = getAddPosition(hit);
-        const normal = getFaceNormalFromHit(hit);
-        if (place && normal) {
-          if (nextGrassPlacementSeed === 0) {
-            nextGrassPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-          }
-          const radius = get(grassRadius) as number;
-          const density = get(grassDensity) as number;
-          const height = get(grassHeight) as number;
-          const previewPositions = getGrassPositions(
-            nextGrassPlacementSeed,
-            place,
-            normal,
-            radius,
-            density,
-            height
-          );
-          updatePreviewMesh(previewPositions);
-          rollOverMesh.visible = false;
-        } else {
-          updatePreviewMesh([]);
-          rollOverMesh.visible = false;
-        }
-      } else {
-        updatePreviewMesh([]);
-        rollOverMesh.visible = false;
-      }
-      render();
-      return;
-    }
-    // Piscina: preview + gizmo only after face lock (shape phase)
-    if ($tool === 'piscina') {
-      if (
-        piscinaPhase === 'shape' &&
-        piscinaLockedPlace &&
-        piscinaLockedNormal
-      ) {
-        if (nextPiscinaPlacementSeed === 0) {
-          nextPiscinaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-        }
-        const place = piscinaLockedPlace;
-        const normal = piscinaLockedNormal;
-        const opts = buildPiscinaOptions();
-        updatePreviewMesh(
-          getPiscinaPositions(nextPiscinaPlacementSeed, place, normal, opts)
-        );
-        rollOverMesh.visible = false;
-      } else if (piscinaPhase === 'pick') {
-        const hit = getIntersection();
-        if (hit) {
-          const place = getAddPosition(hit);
-          const normal = getFaceNormalFromHit(hit);
-          if (place && normal) {
-            if (nextPiscinaPlacementSeed === 0) {
-              nextPiscinaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-            }
-            piscinaHoverPlace = place;
-            piscinaHoverNormal = normal;
-            const opts = buildPiscinaOptions();
-            updatePreviewMesh(
-              getPiscinaPositions(nextPiscinaPlacementSeed, place, normal, opts)
-            );
-          } else {
-            piscinaHoverPlace = null;
-            piscinaHoverNormal = null;
-            updatePreviewMesh([]);
-          }
-        } else {
-          piscinaHoverPlace = null;
-          piscinaHoverNormal = null;
-          updatePreviewMesh([]);
-        }
-        rollOverMesh.visible = false;
-      } else {
-        updatePreviewMesh([]);
-        rollOverMesh.visible = false;
-      }
-      render();
-      return;
-    }
-    // Flora hover preview (same seed as placement so preview matches)
-    if ($tool === 'flora') {
-      const hit = getIntersection();
-      if (hit) {
-        const place = getAddPosition(hit);
-        const normal = getFaceNormalFromHit(hit);
-        if (place && normal) {
-          if (nextFloraPlacementSeed === 0) {
-            nextFloraPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-          }
-          const floraOpts = buildFloraOptions();
-          const previewPositions = getFloraPositions(
-            nextFloraPlacementSeed,
-            place,
-            normal,
-            floraOpts
-          );
-          updatePreviewMesh(previewPositions);
-          rollOverMesh.visible = false;
-        } else {
-          updatePreviewMesh([]);
-          rollOverMesh.visible = false;
-        }
-      } else {
-        updatePreviewMesh([]);
-        rollOverMesh.visible = false;
-      }
-      render();
-      return;
-    }
-    // Ashlar hover preview
-    if ($tool === 'ashlar') {
-      const hit = getIntersection();
-      if (hit) {
-        const place = getAddPosition(hit);
-        const normal = getFaceNormalFromHit(hit);
-        if (place && normal) {
-          if (nextAshlarPlacementSeed === 0) {
-            nextAshlarPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-          }
-          const size = get(ashlarSize) as number;
-          const roughness = get(ashlarRoughness) as number;
-          const thickness = get(ashlarThickness) as number;
-          const thicknessAxis = getAshlarThicknessAxis(normal);
-          const surfaceTarget: [number, number, number] = [
-            place[0] - normal[0],
-            place[1] - normal[1],
-            place[2] - normal[2]
-          ];
-          const localPositions = getAshlarPositions(
-            nextAshlarPlacementSeed,
-            size,
-            roughness,
-            thickness,
-            thicknessAxis
-          );
-          const bounds = getBoundsFromPositions(localPositions);
-          if (bounds) {
-            const halfW = (bounds.maxX - bounds.minX) / 2;
-            const halfH = (bounds.maxY - bounds.minY) / 2;
-            const halfD = (bounds.maxZ - bounds.minZ) / 2;
-            const targetForStamp: [number, number, number] = [
-              normal[0] ? surfaceTarget[0] : place[0] - halfW,
-              normal[1] ? surfaceTarget[1] : place[1] - halfH,
-              normal[2] ? surfaceTarget[2] : place[2] - halfD
-            ];
-            const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
-            const previewPositions = localPositions.map(([lx, ly, lz]) => [
-              lx + ox,
-              ly + oy,
-              lz + oz
-            ] as [number, number, number]);
-            updatePreviewMesh(previewPositions);
-          } else {
-            updatePreviewMesh([]);
-          }
-          rollOverMesh.visible = false;
-        } else {
-          updatePreviewMesh([]);
-          rollOverMesh.visible = false;
-        }
-      } else {
-        updatePreviewMesh([]);
-        rollOverMesh.visible = false;
-      }
-      render();
-      return;
-    }
-    if (
-      get(effectiveStrokeMode) === 'precise' &&
-      precisePhase === 'armed' &&
-      preciseAnchor &&
-      preciseNormal
-    ) {
-      if (event) updatePointerFromEvent(event);
-      updatePreciseGuidePlane();
-      const planePoint = new THREE.Vector3(
-        preciseAnchor[0] + 0.5,
-        preciseAnchor[1] + 0.5,
-        preciseAnchor[2] + 0.5
-      );
-      const planePos = getIntersectionWithPlane(planePoint, preciseNormal);
-      updatePreciseGuideLight(planePos);
-      applyPrecisePreviewRenderOrder();
-      if (planePos) {
-        rollOverMesh.position.set(planePos[0], planePos[1], planePos[2]);
-        rollOverMesh.visible = true;
-      } else {
-        rollOverMesh.visible = false;
-      }
-      // Only highlight anchor while armed; full plane preview starts on drag (placing).
-      pendingStrokePositions = [preciseAnchor];
-      updatePreviewMesh(pendingStrokePositions);
-      render();
-      return;
-    }
-    if (
-      $tool !== 'voxel' &&
-      $tool !== 'clay' &&
-      $tool !== 'remove' &&
-      $tool !== 'paint'
-    ) {
-      rollOverMesh.visible = false;
       updatePreviewMesh([]);
       render();
-      return;
-    }
-    const hit = getIntersection();
-    if (!hit || !hit.face) {
-      rollOverMesh.visible = false;
-      if (get(effectiveStrokeMode) === 'airbrush') updatePreviewMesh([]);
-      render();
-      return;
-    }
-    if (get(effectiveStrokeMode) === 'airbrush') {
-      let anchorPos: [number, number, number] | null = null;
-      if ($tool === 'remove' || $tool === 'paint') {
-        const voxelPos = getVoxelPosition(hit);
-        if (
-          voxelPos &&
-          $voxels.has(coordKey(voxelPos[0], voxelPos[1], voxelPos[2]))
-        ) {
-          anchorPos = voxelPos;
-        }
-      } else {
-        const addPos = getAddPosition(hit);
-        if (addPos && !$voxels.has(coordKey(addPos[0], addPos[1], addPos[2]))) {
-          anchorPos = addPos;
-        }
-      }
-      if (anchorPos) {
-        let hoverPos: [number, number, number] = anchorPos;
-        const hoverPlaneN = getAirbrushHoverConstrainPlaneNormal(hit);
-        if (hoverPlaneN) {
-          const planePoint = new THREE.Vector3(
-            anchorPos[0] + 0.5,
-            anchorPos[1] + 0.5,
-            anchorPos[2] + 0.5
-          );
-          const planePos = getIntersectionWithPlane(planePoint, hoverPlaneN);
-          if (planePos) hoverPos = planePos;
-        }
-        const fn = getFaceNormalFromHit(hit);
-        const faceN = fn ? new THREE.Vector3(fn[0], fn[1], fn[2]) : null;
-        rollOverMesh.visible = false;
-        updatePreviewMesh(
-          thickenPathForStroke([hoverPos], {
-            strokeMode: 'airbrush',
-            clayMode: undefined,
-            clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-            bulkBrushShape: get(bulkBrushShape),
-            branchTaper: get(branchTaper),
-            branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
-            branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-            airbrushRadius: (get(airbrushRadius) as number) * 0.5,
-            airbrushScatter: get(airbrushScatter),
-            airbrushRadiusRange: get(airbrushRadiusRange),
-            airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
-            airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
-            ...airbrushPlaneParamsForFaceNormal(faceN),
-            planeAxis: get(planeAxis),
-            sprayDirection: get(sprayDirection),
-            sprayStreakLength: get(sprayStreakLength),
-            wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
-            wallHeight: get(wallHeight),
-            wallFaceNormal: faceN ? { x: faceN.x, y: faceN.y, z: faceN.z } : undefined,
-            drawBrushShape: get(drawBrushShape),
-            drawBrushSize: get(drawBrushSize) * 0.5,
-            drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-            drawBrushFaceNormal: faceN
-              ? { x: faceN.x, y: faceN.y, z: faceN.z }
-              : undefined,
-            seed: 0
-          })
-        );
-      } else {
-        rollOverMesh.visible = false;
-        updatePreviewMesh([]);
-      }
-      render();
-      return;
-    }
-    if ($tool === 'voxel' || $tool === 'clay') {
-      const addPos = getAddPosition(hit);
-      if (addPos && !$voxels.has(coordKey(addPos[0], addPos[1], addPos[2]))) {
-        rollOverMesh.position.set(addPos[0], addPos[1], addPos[2]);
-        rollOverMesh.visible = true;
-      } else {
-        rollOverMesh.visible = false;
-      }
-    } else {
-      rollOverMesh.visible = false;
-    }
-    updatePreviewMesh([]);
-    render();
     } finally {
       selectionGizmo?.syncGizmoHoverCursor();
     }
@@ -4259,10 +3496,7 @@
       } catch (_) {}
       depthAdjustPointerId = null;
     }
-    if (
-      event.button === 2 &&
-      (isVoxelDrag || selectionGizmo?.isGizmoDrag || cuboidPhase)
-    ) {
+    if (event.button === 2 && (isVoxelDrag || selectionGizmo?.isGizmoDrag || cuboidPhase)) {
       cancelDrag();
     }
     const gizmoCommit = selectionGizmo?.tryPrimaryPointerUp(event);
@@ -4284,8 +3518,7 @@
       const hit = getIntersection();
       if (hit && stampLikeDragMode) {
         const n = getFaceNormalFromHit(hit);
-        const p =
-          stampLikeDragMode === 'punch' ? getVoxelPosition(hit) : getAddPosition(hit);
+        const p = stampLikeDragMode === 'punch' ? getVoxelPosition(hit) : getAddPosition(hit);
         if (p && n) {
           place = p;
           normal = n;
@@ -4310,7 +3543,10 @@
         dragPointerId = null;
       }
     }
-    applyGeneratorFaceClickPointerUp(buildGeneratorPrimaryUpDeps(), event);
+    applyGeneratorFaceClickPointerUp(
+      buildVoxelGeneratorPrimaryPointerUpDeps(voxelGeneratorPrimaryPointerUpBridge),
+      event
+    );
     if (event.button === 0 && isVoxelDrag) {
       updatePointerFromEvent(event);
       const mode = get(effectiveStrokeMode);
@@ -4442,8 +3678,7 @@
   }
 
   function onContextMenu(event: Event) {
-    if (isVoxelDrag || selectionGizmo?.isGizmoDrag || $tool === 'fly')
-      event.preventDefault();
+    if (isVoxelDrag || selectionGizmo?.isGizmoDrag || $tool === 'fly') event.preventDefault();
   }
 
   function onEscapeKeyDown(e: KeyboardEvent) {
@@ -4583,11 +3818,7 @@
       let currentPos = getIntersectionWithPlane(planePoint, axisVector(next)) ?? null;
       if (currentPos === null) {
         const hit = getIntersection();
-        currentPos = hit
-          ? $tool === 'voxel'
-            ? getAddPosition(hit)
-            : getVoxelPosition(hit)
-          : null;
+        currentPos = hit ? ($tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit)) : null;
       }
       let altScrollBbox: StrokePreviewBboxHint | null = null;
       if (currentPos) {
@@ -4761,32 +3992,6 @@
     }
   }
 
-  function stashNonGlowMaterialsForBloom(root: THREE.Object3D) {
-    if (!bloomDarkMaterial) return;
-    root.traverse((obj) => {
-      const mesh = obj as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      if (mesh.userData[VOXELLE_GLOW_BLOOM_USERDATA_KEY] === true) return;
-      const id = mesh.uuid;
-      if (bloomMaterialStash[id] !== undefined) return;
-      bloomMaterialStash[id] = mesh.material;
-      mesh.material = bloomDarkMaterial!;
-    });
-  }
-
-  function restoreStashedBloomMaterials(root: THREE.Object3D) {
-    root.traverse((obj) => {
-      const mesh = obj as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      const id = mesh.uuid;
-      const st = bloomMaterialStash[id];
-      if (st !== undefined) {
-        mesh.material = st;
-        delete bloomMaterialStash[id];
-      }
-    });
-  }
-
   function onWindowResize() {
     if (!container || !camera || !renderer) return;
     const w = Math.max(1, container.clientWidth);
@@ -4840,10 +4045,8 @@
             pointerHelper.project(camera);
             const rect = renderer.domElement.getBoundingClientRect();
             const cr = container.getBoundingClientRect();
-            const px =
-              (pointerHelper.x * 0.5 + 0.5) * rect.width + (rect.left - cr.left);
-            const py =
-              (-pointerHelper.y * 0.5 + 0.5) * rect.height + (rect.top - cr.top);
+            const px = (pointerHelper.x * 0.5 + 0.5) * rect.width + (rect.left - cr.left);
+            const py = (-pointerHelper.y * 0.5 + 0.5) * rect.height + (rect.top - cr.top);
             const pad = 10;
             const halfW = 72;
             const halfH = 18;
@@ -4858,85 +4061,22 @@
         }
       }
 
-      const rayBloomEligible = get(renderingMode) === 'ray' && rayRenderer != null;
-      const rayOut = rayRenderer?.output;
-
-      if (webgpuBloomPipeline && camera && isWebGPURenderer(renderer)) {
-        if (rayBloomEligible && rayOut) {
-          scene.background = rayOut.beautyTexture;
-          webgpuBloomPipeline.renderSceneToTarget(
-            renderer as Parameters<WebGPUBloomPipeline['renderSceneToTarget']>[0],
-            scene,
-            camera
-          );
-          const savedWebGpuBloomBg = scene.background;
-          try {
-            scene.background = rayOut.bloomTexture;
-            webgpuBloomPipeline.renderBloomSourceToTarget(
-              renderer as Parameters<WebGPUBloomPipeline['renderBloomSourceToTarget']>[0],
-              scene,
-              camera
-            );
-          } finally {
-            scene.background = savedWebGpuBloomBg;
-          }
-          webgpuBloomPipeline.renderPipeline.render();
-        } else if (get(renderingMode) !== 'ray') {
-          const rw = renderer as Parameters<WebGPUBloomPipeline['renderSceneToTarget']>[0];
-          const hasGlow = sceneHasGlowMesh || hasGlowInVoxelGroup();
-          if (!hasGlow) {
-            rw.setMRT(null);
-            rw.setRenderTarget(null);
-            rw.render(scene, camera);
-          } else {
-            webgpuBloomPipeline.renderSceneToTarget(rw, scene, camera);
-            const savedWebGpuBloomBg = scene.background;
-            stashNonGlowMaterialsForBloom(scene);
-            if (bloomPassBackground) scene.background = bloomPassBackground;
-            try {
-              webgpuBloomPipeline.renderBloomSourceToTarget(
-                renderer as Parameters<WebGPUBloomPipeline['renderBloomSourceToTarget']>[0],
-                scene,
-                camera
-              );
-            } finally {
-              scene.background = savedWebGpuBloomBg;
-              restoreStashedBloomMaterials(scene);
-            }
-            webgpuBloomPipeline.renderPipeline.render();
-          }
-        } else {
-          renderer.render(scene, camera);
-        }
-      } else if (bloomComposer && finalComposer && sharedSceneRenderPass && camera) {
-        sharedSceneRenderPass.camera = camera;
-        if (rayBloomEligible && rayOut) {
-          scene.background = rayOut.bloomTexture;
-          bloomComposer.render();
-          scene.background = rayOut.beautyTexture;
-          finalComposer.render();
-        } else if (get(renderingMode) !== 'ray') {
-          const hasGlow = sceneHasGlowMesh || hasGlowInVoxelGroup();
-          if (!hasGlow) {
-            renderer.render(scene, camera);
-          } else {
-            stashNonGlowMaterialsForBloom(scene);
-            const savedSceneBackground = scene.background;
-            if (bloomPassBackground) scene.background = bloomPassBackground;
-            try {
-              bloomComposer.render();
-            } finally {
-              scene.background = savedSceneBackground;
-              restoreStashedBloomMaterials(scene);
-            }
-            finalComposer.render();
-          }
-        } else {
-          renderer.render(scene, camera);
-        }
-      } else {
-        renderer.render(scene, camera);
-      }
+      renderVoxelCanvasPrimaryScene({
+        renderer,
+        scene,
+        camera,
+        renderingMode: get(renderingMode),
+        rayRenderer,
+        webgpuBloomPipeline,
+        bloomComposer,
+        finalComposer,
+        sharedSceneRenderPass,
+        sceneHasGlowMesh,
+        voxelGroup,
+        bloomPassBackground,
+        bloomDarkMaterial,
+        bloomMaterialStash
+      });
     }
     gizmoRef?.draw();
   }
@@ -4944,117 +4084,69 @@
   function animate(now?: number) {
     animationFrameId = requestAnimationFrame(animate);
     const t = now ?? performance.now();
-    if (get(voxellePreferences).showFpsCounter) {
-      if (!fpsCounterPeriodStartMs) {
-        fpsCounterPeriodStartMs = t;
-        fpsCounterAccumFrames = 0;
-      }
-      fpsCounterAccumFrames++;
-      const fpsElapsed = t - fpsCounterPeriodStartMs;
-      if (fpsElapsed >= 1000) {
-        fpsCounterDisplayed = Math.round((fpsCounterAccumFrames * 1000) / fpsElapsed);
-        fpsCounterAccumFrames = 0;
-        fpsCounterPeriodStartMs = t;
-      }
-    } else {
-      fpsCounterPeriodStartMs = 0;
-    }
-    const delta = lastFrameTime ? (t - lastFrameTime) / 1000 : 0;
-    lastFrameTime = t;
-    let controlsDirty = false;
-    if (flyControls?.enabled && camera) {
-      applyFlyMovement(camera, flyControls, flyMoveState, delta, { moveSpeed: FLY_MOVE_SPEED });
-      controlsDirty = true;
-    } else {
-      controlsDirty = orbitControls?.update() ?? false;
-    }
-
-    if (
-      orbitControls &&
-      pendingOrbitWheelDeltaSum !== 0 &&
-      get(tool) !== 'fly' &&
-      orbitControls.enabled &&
-      orbitControls.enableZoom
-    ) {
-      const dy = pendingOrbitWheelDeltaSum;
-      pendingOrbitWheelDeltaSum = 0;
-      if (orbitControls.zoomToCursor === true) {
-        (
-          orbitControls as unknown as {
-            _updateZoomParameters(x: number, y: number): void;
-          }
-        )._updateZoomParameters(pendingOrbitWheelClientX, pendingOrbitWheelClientY);
-      }
-      const scale = orbitZoomScaleFromWheelDelta(orbitControls, dy);
-      if (dy < 0) {
-        orbitControls.dollyIn(scale);
-      } else if (dy > 0) {
-        orbitControls.dollyOut(scale);
-      }
-      controlsDirty = true;
-    }
-
-    if (camera && renderer && container && get(renderingMode) === 'ray') {
-      camera.updateMatrixWorld(true);
-
-      let camDirty = false;
-      if (prevRayCamInitialized) {
-        const posMoved = prevRayCamPos.distanceToSquared(camera.position) > 1e-8;
-        const rotAlign = Math.abs(prevRayCamQuat.dot(camera.quaternion));
-        const rotMoved = rotAlign < 1 - 1e-6;
-        camDirty = posMoved || rotMoved;
-        if (camDirty) {
-          prevRayCamPos.copy(camera.position);
-          prevRayCamQuat.copy(camera.quaternion);
-        }
-      }
-
-      const contentDirty = rayTraceContentDirty;
-      rayTraceContentDirty = false;
-      const params = buildVoxelRayTraceParams(dirLight, hemisphereLight, {
-        enableSky: get(enableSky),
-        backgroundHex: hexToInt(get(backgroundColor)),
-        ambientIntensity: get(ambientIntensity),
-        sceneEnvironmentIntensity: get(sceneEnvironmentIntensity),
-        enableShadows: get(enableShadows),
-        timeSeconds: performance.now() * 0.001
-      });
-
-      if (rayRenderer) {
-        const texBefore = rayRenderer.output.beautyTexture;
-        rayRenderer.tick(
-          delta,
-          container.clientWidth,
-          container.clientHeight,
-          renderer.getPixelRatio(),
-          get(voxels),
-          params,
-          contentDirty || camDirty,
-          camera,
-          DEFAULT_RAY_TICK_BUDGET_MS
-        );
-        const texAfter = rayRenderer.output.beautyTexture;
-        if (texBefore !== texAfter) {
-          scene.background = texAfter;
-        }
-        rayRefinementProgress = rayRenderer.output.refinementProgress;
-      }
-    } else {
-      rayRefinementProgress = 0;
-    }
-
-    const mode = get(renderingMode);
-    const hasActiveInteraction =
-      isVoxelDrag ||
-      isStampDrag ||
-      !!selectionGizmo?.isGizmoDrag ||
-      cuboidPhase !== null ||
-      polygonPhase !== null ||
-      roofPhase !== null ||
-      ropePhase !== null;
-    if (mode === 'ray' || controlsDirty || hasActiveInteraction || !!flyControls?.enabled) {
-      render();
-    }
+    runVoxelCanvasAnimateStep({
+      nowMs: t,
+      showFpsCounter: get(voxellePreferences).showFpsCounter,
+      setFpsCounterDisplayed: (n) => {
+        fpsCounterDisplayed = n;
+      },
+      getFpsCounterPeriodStartMs: () => fpsCounterPeriodStartMs,
+      setFpsCounterPeriodStartMs: (n) => {
+        fpsCounterPeriodStartMs = n;
+      },
+      getFpsCounterAccumFrames: () => fpsCounterAccumFrames,
+      setFpsCounterAccumFrames: (n) => {
+        fpsCounterAccumFrames = n;
+      },
+      getLastFrameTime: () => lastFrameTime,
+      setLastFrameTime: (n) => {
+        lastFrameTime = n;
+      },
+      flyControls,
+      camera,
+      flyMoveState,
+      orbitControls,
+      getTool: () => get(tool),
+      getPendingOrbitWheelDeltaSum: () => pendingOrbitWheelDeltaSum,
+      setPendingOrbitWheelDeltaSum: (n) => {
+        pendingOrbitWheelDeltaSum = n;
+      },
+      getPendingOrbitWheelClientX: () => pendingOrbitWheelClientX,
+      getPendingOrbitWheelClientY: () => pendingOrbitWheelClientY,
+      orbitZoomScaleFromWheelDelta,
+      getRenderingMode: () => get(renderingMode),
+      rayRenderer,
+      container,
+      renderer,
+      scene,
+      dirLight,
+      hemisphereLight,
+      getVoxels: () => get(voxels),
+      getEnableSky: () => get(enableSky),
+      getBackgroundColor: () => get(backgroundColor),
+      getAmbientIntensity: () => get(ambientIntensity),
+      getSceneEnvironmentIntensity: () => get(sceneEnvironmentIntensity),
+      getEnableShadows: () => get(enableShadows),
+      getRayTraceContentDirty: () => rayTraceContentDirty,
+      setRayTraceContentDirty: (v) => {
+        rayTraceContentDirty = v;
+      },
+      getPrevRayCamInitialized: () => prevRayCamInitialized,
+      prevRayCamPos,
+      prevRayCamQuat,
+      setRayRefinementProgress: (v) => {
+        rayRefinementProgress = v;
+      },
+      isVoxelDrag,
+      isStampDrag,
+      selectionGizmoDragging: !!selectionGizmo?.isGizmoDrag,
+      getCuboidPhase: () => cuboidPhase,
+      getPolygonPhase: () => polygonPhase,
+      getRoofPhase: () => roofPhase,
+      getRopePhase: () => ropePhase,
+      getFlyControlsEnabled: () => !!flyControls?.enabled,
+      render
+    });
   }
 
   $effect(() => {
@@ -5271,15 +4363,11 @@
     void $piscinaFinPectoralSweep;
     void $tool;
     if ($tool !== 'piscina' || nextPiscinaPlacementSeed === 0) return;
-    const place =
-      piscinaPhase === 'shape' ? piscinaLockedPlace : piscinaHoverPlace;
-    const normal =
-      piscinaPhase === 'shape' ? piscinaLockedNormal : piscinaHoverNormal;
+    const place = piscinaPhase === 'shape' ? piscinaLockedPlace : piscinaHoverPlace;
+    const normal = piscinaPhase === 'shape' ? piscinaLockedNormal : piscinaHoverNormal;
     if (!place || !normal) return;
-    const opts = buildPiscinaOptions();
-    updatePreviewMesh(
-      getPiscinaPositions(nextPiscinaPlacementSeed, place, normal, opts)
-    );
+    const opts = buildPiscinaOptionsFromStores();
+    updatePreviewMesh(getPiscinaPositions(nextPiscinaPlacementSeed, place, normal, opts));
     render();
   });
 
@@ -5312,7 +4400,10 @@
         renderer.shadowMap.type = THREE.BasicShadowMap;
       } else if (isWebGPURenderer(renderer)) {
         try {
-          const sm = renderer.shadowMap as { transmitted?: boolean; type?: number } | null | undefined;
+          const sm = renderer.shadowMap as
+            | { transmitted?: boolean; type?: number }
+            | null
+            | undefined;
           if (sm) {
             sm.transmitted = false;
             sm.type = THREE.BasicShadowMap;
@@ -5328,10 +4419,7 @@
       for (const { mesh } of byBucket.values()) {
         mesh.castShadow = shadows;
         const matId = mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY];
-        mesh.receiveShadow =
-          shadows &&
-          $renderingMode !== 'ray' &&
-          matId !== 'glass';
+        mesh.receiveShadow = shadows && $renderingMode !== 'ray' && matId !== 'glass';
       }
     }
     if (shadows) invalidateDirectionalShadowMap();
@@ -5349,40 +4437,12 @@
   onMount(async () => {
     window.addEventListener(VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT, onProjectOpenFitCamera);
 
-    let fromUrl = false;
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const id = params.get('m');
-      if (id) {
-        const isLocalhost = window.location.hostname === 'localhost';
-        if (isLocalhost) {
-          try {
-            const modelBase64 = await getShareFromIndexedDB(id);
-            if (modelBase64) {
-              const binary = atob(modelBase64);
-              const bytes = new Uint8Array(binary.length);
-              for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-              fromUrl = await loadFromBytes(bytes);
-            }
-          } catch {
-            // ignore
-          }
-        }
-        if (!fromUrl) {
-          try {
-            const res = await fetch(`/api/voxelle/model/${id}`);
-            if (res.ok) {
-              const bytes = new Uint8Array(await res.arrayBuffer());
-              fromUrl = await loadFromBytes(bytes);
-            }
-          } catch {
-            // ignore
-          }
-        }
-      }
-    }
-    const loadedFromStorage = !fromUrl && (await loadFromStorageAsync());
-    if (!fromUrl && !loadedFromStorage) initCanvas(get(gridSize));
+    const { fromUrl, loadedFromStorage } = await loadVoxelCanvasBootstrapModel({
+      loadFromBytes,
+      loadFromStorageAsync,
+      initCanvas,
+      getGridSize: () => get(gridSize)
+    });
     const sz = get(gridSize);
 
     const setupRefs = await createSceneSetupAsync(
@@ -5419,32 +4479,13 @@
 
     previewMesh = setupRefs.previewMesh;
     previewMaterial = setupRefs.previewMaterial;
-    preciseGuidePlaneCanvas = document.createElement('canvas');
-    preciseGuidePlaneCanvas.width = PRECISE_GUIDE_TEX_SIZE;
-    preciseGuidePlaneCanvas.height = PRECISE_GUIDE_TEX_SIZE;
-    preciseGuidePlaneCtx = preciseGuidePlaneCanvas.getContext('2d', { alpha: true });
-    preciseGuidePlaneTexture = new THREE.CanvasTexture(preciseGuidePlaneCanvas);
-    preciseGuidePlaneTexture.generateMipmaps = false;
-    preciseGuidePlaneTexture.minFilter = THREE.LinearFilter;
-    preciseGuidePlaneTexture.magFilter = THREE.LinearFilter;
-    preciseGuidePlaneTexture.wrapS = THREE.ClampToEdgeWrapping;
-    preciseGuidePlaneTexture.wrapT = THREE.ClampToEdgeWrapping;
-    preciseGuidePlaneMaterial = new THREE.MeshBasicMaterial({
-      map: preciseGuidePlaneTexture,
-      color: 0xffffff,
-      transparent: true,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      depthTest: false
-    });
+    const preciseGuide = createPreciseGuidePlaneInScene(scene);
+    preciseGuidePlaneCanvas = preciseGuide.canvas;
+    preciseGuidePlaneCtx = preciseGuide.ctx;
+    preciseGuidePlaneTexture = preciseGuide.texture;
+    preciseGuidePlaneMaterial = preciseGuide.material;
+    preciseGuidePlaneMesh = preciseGuide.mesh;
     redrawPreciseGuideTexture();
-    preciseGuidePlaneMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), preciseGuidePlaneMaterial);
-    preciseGuidePlaneMesh.visible = false;
-    preciseGuidePlaneMesh.frustumCulled = false;
-    // Keep the guide underneath voxel preview overlays.
-    preciseGuidePlaneMesh.renderOrder = -2;
-    preciseGuidePlaneMesh.raycast = () => {};
-    scene.add(preciseGuidePlaneMesh);
     addPreviewMesh = setupRefs.addPreviewMesh;
     addPreviewMaterial = setupRefs.addPreviewMaterial;
     addPreviewOccludedMesh = setupRefs.addPreviewOccludedMesh;
@@ -5501,7 +4542,8 @@
     rayRenderer = new VoxelRayTsl();
     if (get(renderingMode) === 'ray') {
       voxelGroup.visible = false;
-      scene.background = rayRenderer?.output.beautyTexture ?? new THREE.Color(hexToInt(get(backgroundColor)));
+      scene.background =
+        rayRenderer?.output.beautyTexture ?? new THREE.Color(hexToInt(get(backgroundColor)));
     }
 
     const moveDragLineMat = new THREE.LineBasicMaterial({
@@ -5594,7 +4636,8 @@
     updateSkyLightingColors();
     if (scene) {
       if ($renderingMode === 'ray') {
-        scene.background = rayRenderer?.output.beautyTexture ?? new THREE.Color(hexToInt($backgroundColor));
+        scene.background =
+          rayRenderer?.output.beautyTexture ?? new THREE.Color(hexToInt($backgroundColor));
       } else {
         scene.background = useSky ? null : new THREE.Color(hexToInt($backgroundColor));
       }
@@ -5696,10 +4739,7 @@
       if (flyHintHideTimeout != null) clearTimeout(flyHintHideTimeout);
       flyHintHideTimeout = null;
     }
-    if (
-      isFly &&
-      (cuboidPhase || polygonPhase || roofPhase || selectionGizmo?.isGizmoDrag)
-    ) {
+    if (isFly && (cuboidPhase || polygonPhase || roofPhase || selectionGizmo?.isGizmoDrag)) {
       flyControls.unlock();
       cancelDrag();
     }
@@ -5775,7 +4815,12 @@
 
   $effect(() => {
     const s = $addPanelStore;
-    if (!addPreviewMesh || !addPreviewMaterial || !addPreviewOccludedMesh || !addPreviewOccludedMaterial)
+    if (
+      !addPreviewMesh ||
+      !addPreviewMaterial ||
+      !addPreviewOccludedMesh ||
+      !addPreviewOccludedMaterial
+    )
       return;
     if (!s.open) {
       addPanelRefinementScheduler.cancel();
@@ -5826,13 +4871,7 @@
     const bounds = getBoundsFromPositions(positions);
     if (stride > 1 && bounds) {
       const min: [number, number, number] = [bounds.minX, bounds.minY, bounds.minZ];
-      const coarseMap = downsamplePositionsToPreviewMap(
-        positions,
-        addVx,
-        stride,
-        min,
-        $voxels
-      );
+      const coarseMap = downsamplePositionsToPreviewMap(positions, addVx, stride, min, $voxels);
       const geoByBucket = buildGreedyMesh(coarseMap, PREVIEW_MESH_OPTIONS);
       const geos = [...geoByBucket.values()];
       const coarseGeo =
@@ -5959,320 +4998,48 @@
   role="application"
   aria-label="Voxel sculpting canvas"
 >
-  {#if $renderingMode === 'ray' && rayRefinementProgress < 1}
-    <div
-      class="ray-refine-progress"
-      role="progressbar"
-      aria-live="polite"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(rayRefinementProgress * 100)}
-      aria-label="Ray trace refinement"
-    >
-      <div class="ray-refine-progress-fill" style="transform: scaleX({rayRefinementProgress})"></div>
-    </div>
-  {/if}
-  {#if showGreedyMeshSpinner}
-    <div class="greedy-mesh-spinner" role="status" aria-live="polite">
-      <div class="spinner" aria-hidden="true"></div>
-      <span>Building mesh…</span>
-    </div>
-  {/if}
-  {#if fillBusy}
-    <div class="fill-progress" role="status" aria-live="polite" data-voxelle-no-passthrough>
-      <div class="fill-progress-title">{fillMessage}</div>
-      <div class="fill-progress-stats">
-        <span>Visited: {fillVisited.toLocaleString()}</span>
-        <span>Matched: {fillMatched.toLocaleString()}</span>
-      </div>
-      <button type="button" class="fill-cancel-btn" onclick={() => cancelActiveFill()}>Cancel</button>
-    </div>
-  {/if}
-  {#if cuboidPhase === 'depth'}
-    <div class="depth-slider-container" data-voxelle-no-passthrough>
-      <div
-        class="depth-slider-track"
-        role="slider"
-        aria-label="Cuboid depth"
-        aria-valuemin={-256}
-        aria-valuemax={256}
-        aria-valuenow={cuboidDepth}
-        tabindex="0"
-        onpointerdown={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          depthSliderPointerId = e.pointerId;
-          depthSliderStartY = e.clientY;
-          depthSliderStartDepth = cuboidDepth;
-          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-        }}
-        onpointermove={(e) => {
-          e.preventDefault();
-          if (depthSliderPointerId !== e.pointerId) return;
-          const dy = depthSliderStartY - e.clientY;
-          cuboidDepth = Math.max(-256, Math.min(256, depthSliderStartDepth + Math.round(dy / 10)));
-          updateCuboidFromDepth();
-        }}
-        onpointerup={(e) => {
-          if (depthSliderPointerId === e.pointerId) depthSliderPointerId = null;
-        }}
-        onpointercancel={(e) => {
-          if (depthSliderPointerId === e.pointerId) depthSliderPointerId = null;
-        }}
-      >
-        <div
-          class="depth-slider-thumb"
-          style="bottom: {Math.min(99, Math.max(1, 50 + (cuboidDepth / 512) * 98))}%"
-        ></div>
-      </div>
-      <div class="depth-slider-controls">
-        <button
-          type="button"
-          class="depth-btn"
-          onpointerdown={(e) => e.stopPropagation()}
-          onclick={() => {
-            cuboidDepth = Math.max(-256, cuboidDepth - 1);
-            updateCuboidFromDepth();
-          }}
-          aria-label="Decrease depth">−</button
-        >
-        <span class="depth-slider-label">Depth: {cuboidDepth}</span>
-        <button
-          type="button"
-          class="depth-btn"
-          onpointerdown={(e) => e.stopPropagation()}
-          onclick={() => {
-            cuboidDepth = Math.min(256, cuboidDepth + 1);
-            updateCuboidFromDepth();
-          }}
-          aria-label="Increase depth">+</button
-        >
-      </div>
-    </div>
-    <button
-      type="button"
-      class="cuboid-done-btn"
-      data-voxelle-no-passthrough
-      onpointerdown={(e) => e.stopPropagation()}
-      onclick={() => commitCuboid()}
-      title="Tap Done to apply"
-      aria-label="Apply cuboid selection"
-    >
-      Done
-    </button>
-  {/if}
-  {#if polygonPhase === 'placing' && polygonPoints.length >= 2}
-    <div class="polygon-actions" data-voxelle-no-passthrough>
-      <button
-        type="button"
-        class="polygon-done-btn"
-        onpointerdown={(e) => e.stopPropagation()}
-        onclick={() => commitPolygon()}
-        title="Fill convex hull"
-        aria-label="Apply polygon"
-      >
-        Done
-      </button>
-      <button
-        type="button"
-        class="polygon-cancel-btn"
-        onpointerdown={(e) => e.stopPropagation()}
-        onclick={() => cancelPolygon()}
-        title="Cancel"
-        aria-label="Cancel polygon"
-      >
-        Cancel
-      </button>
-    </div>
-  {/if}
-  {#if roofPhase === 'placing' && roofPoints.length >= 2}
-    <div class="polygon-actions" data-voxelle-no-passthrough>
-      <button
-        type="button"
-        class="polygon-done-btn"
-        onpointerdown={(e) => e.stopPropagation()}
-        onclick={() => commitRoof()}
-        disabled={roofPoints.length < 4}
-        title={roofPoints.length < 4 ? 'Need at least 4 corners' : 'Build roof'}
-        aria-label="Apply roof"
-      >
-        Done
-      </button>
-      <button
-        type="button"
-        class="polygon-cancel-btn"
-        onpointerdown={(e) => e.stopPropagation()}
-        onclick={() => cancelRoof()}
-        title="Cancel"
-        aria-label="Cancel roof"
-      >
-        Cancel
-      </button>
-    </div>
-  {/if}
-  {#if $tool === 'piscina' && piscinaPhase === 'shape'}
-    <div class="polygon-actions" data-voxelle-no-passthrough>
-      <button
-        type="button"
-        class="polygon-done-btn"
-        onpointerdown={(e) => e.stopPropagation()}
-        onclick={() => commitPiscinaFish()}
-        title="Done"
-        aria-label="Done"
-      >
-        Done
-      </button>
-      <button
-        type="button"
-        class="polygon-cancel-btn"
-        onpointerdown={(e) => e.stopPropagation()}
-        onclick={() => pickAgainPiscina()}
-        title="Cancel"
-        aria-label="Cancel"
-      >
-        Cancel
-      </button>
-    </div>
-  {/if}
-  {#if ropePhase === 'tension'}
-    <div class="rope-tension-slider depth-slider-container" data-voxelle-no-passthrough>
-      <div
-        class="depth-slider-track"
-        role="slider"
-        aria-label="Rope tension"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round($ropeTension * 100)}
-        tabindex="0"
-        onpointerdown={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          ropeTensionSliderPointerId = e.pointerId;
-          ropeTensionSliderStartY = e.clientY;
-          ropeTensionSliderStartVal = get(ropeTension);
-          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-        }}
-        onpointermove={(e) => {
-          e.preventDefault();
-          if (ropeTensionSliderPointerId !== e.pointerId) return;
-          const dy = ropeTensionSliderStartY - e.clientY;
-          const delta = dy / 200;
-          ropeTension.set(Math.max(0, Math.min(1, ropeTensionSliderStartVal + delta)));
-        }}
-        onpointerup={(e) => {
-          if (ropeTensionSliderPointerId === e.pointerId) ropeTensionSliderPointerId = null;
-        }}
-        onpointercancel={(e) => {
-          if (ropeTensionSliderPointerId === e.pointerId) ropeTensionSliderPointerId = null;
-        }}
-      >
-        <div
-          class="depth-slider-thumb"
-          style="bottom: {Math.min(99, Math.max(1, $ropeTension * 98))}%"
-        ></div>
-      </div>
-      <div class="depth-slider-controls">
-        <button
-          type="button"
-          class="depth-btn"
-          onpointerdown={(e) => e.stopPropagation()}
-          onclick={() => ropeTension.set(Math.max(0, $ropeTension - 0.05))}
-          aria-label="Decrease tension">−</button
-        >
-        <span class="depth-slider-label">Tension: {Math.round($ropeTension * 100)}%</span>
-        <button
-          type="button"
-          class="depth-btn"
-          onpointerdown={(e) => e.stopPropagation()}
-          onclick={() => ropeTension.set(Math.min(1, $ropeTension + 0.05))}
-          aria-label="Increase tension">+</button
-        >
-      </div>
-    </div>
-    <div class="polygon-actions" data-voxelle-no-passthrough>
-      <button
-        type="button"
-        class="rope-done-btn polygon-done-btn"
-        onpointerdown={(e) => e.stopPropagation()}
-        onclick={() => commitRope()}
-        title="Apply rope"
-        aria-label="Apply rope"
-      >
-        Done
-      </button>
-      <button
-        type="button"
-        class="rope-cancel-btn polygon-cancel-btn"
-        onpointerdown={(e) => e.stopPropagation()}
-        onclick={() => cancelRope()}
-        title="Cancel"
-        aria-label="Cancel rope"
-      >
-        Cancel
-      </button>
-    </div>
-  {/if}
-  {#if $voxellePreferences.showFpsCounter}
-    <div class="fps-counter" role="status" aria-live="polite">
-      {fpsCounterDisplayed} FPS
-    </div>
-  {/if}
-  {#if deltaDisplay && $voxellePreferences.showMovementDeltaHint}
-    <div
-      class="delta-display"
-      aria-live="polite"
-      style="left: {pointerScreen.x}px; top: {pointerScreen.y}px;"
-    >
-      Δ {formatSignedDelta(deltaDisplay.dx)}, {formatSignedDelta(deltaDisplay.dy)}, {formatSignedDelta(deltaDisplay.dz)}
-    </div>
-  {/if}
-  {#if moveGizmoDragLabel}
-    <div
-      class="move-gizmo-delta-label"
-      role="status"
-      aria-live="polite"
-      style="left: {moveGizmoDragLabel.x}px; top: {moveGizmoDragLabel.y}px;"
-    >
-      {formatSignedDelta(moveGizmoDragLabel.dx)}, {formatSignedDelta(moveGizmoDragLabel.dy)}, {formatSignedDelta(moveGizmoDragLabel.dz)}
-    </div>
-  {/if}
-  <ToolPanel />
-  <SelectionCountPanel />
-  {#if $tool === 'fly' && showFlyHint}
-    <div class="fly-hint" role="status" aria-live="polite">
-      Click to capture · WASD move · E/Q up/down · Shift 1/8 speed · Move mouse to look
-    </div>
-  {:else}
-    {#if camera && orbitControls}
-      <OrbitGizmo bind:this={gizmoRef} {camera} controls={orbitControls} onRender={render} />
-    {/if}
-    <div
-      class="zoom-controls"
-      data-voxelle-no-passthrough
-      role="toolbar"
-      aria-label="Zoom controls"
-      tabindex="0"
-      onpointerdown={(e) => e.stopPropagation()}
-    >
-      <button type="button" onclick={zoomOut} title="Zoom out" aria-label="Zoom out">−</button>
-      <span class="zoom-percent">{zoomPercent}%</span>
-      <button type="button" onclick={zoomIn} title="Zoom in" aria-label="Zoom in">+</button>
-      <button
-        type="button"
-        class="fit-btn"
-        onclick={fitToView}
-        title="Fit to view"
-        aria-label="Fit sculpture to view">Fit</button
-      >
-      <button
-        type="button"
-        class="fit-btn"
-        onclick={resetCamera}
-        title="Reset camera"
-        aria-label="Reset camera to default view">Reset</button
-      >
-    </div>
-  {/if}
+  <VoxelCanvasOverlays
+    bind:gizmoRef
+    {rayRefinementProgress}
+    {showGreedyMeshSpinner}
+    {fillBusy}
+    {fillMessage}
+    {fillVisited}
+    {fillMatched}
+    {cancelActiveFill}
+    {cuboidPhase}
+    bind:cuboidDepth
+    {updateCuboidFromDepth}
+    {commitCuboid}
+    {polygonPhase}
+    polygonPointCount={polygonPoints.length}
+    {commitPolygon}
+    {cancelPolygon}
+    {roofPhase}
+    roofPointCount={roofPoints.length}
+    {commitRoof}
+    {cancelRoof}
+    {piscinaPhase}
+    {commitPiscinaFish}
+    {pickAgainPiscina}
+    {ropePhase}
+    {commitRope}
+    {cancelRope}
+    {fpsCounterDisplayed}
+    {deltaDisplay}
+    {pointerScreen}
+    {moveGizmoDragLabel}
+    {formatSignedDelta}
+    {showFlyHint}
+    {camera}
+    {orbitControls}
+    {render}
+    {zoomPercent}
+    {zoomOut}
+    {zoomIn}
+    {fitToView}
+    {resetCamera}
+  />
 </div>
 
 <style>
@@ -6291,314 +5058,5 @@
     display: block;
     width: 100%;
     height: 100%;
-  }
-
-  .ray-refine-progress {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 5px;
-    background: rgba(255, 200, 160, 0.18);
-    z-index: 2;
-    pointer-events: none;
-    overflow: hidden;
-  }
-
-  .ray-refine-progress-fill {
-    height: 100%;
-    width: 100%;
-    background: linear-gradient(90deg, rgba(255, 140, 40, 0.95), rgba(255, 200, 120, 0.98));
-    transform-origin: left center;
-    will-change: transform;
-  }
-
-  .greedy-mesh-spinner {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    background: rgba(0, 0, 0, 0.5);
-    color: #fff;
-    font-size: 0.9rem;
-    z-index: 10;
-    pointer-events: none;
-  }
-
-  .greedy-mesh-spinner .spinner {
-    width: 2rem;
-    height: 2rem;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: greedy-mesh-spin 0.8s linear infinite;
-  }
-
-  .fill-progress {
-    position: absolute;
-    top: 0.75rem;
-    right: 0.75rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-    padding: 0.7rem 0.8rem;
-    min-width: 13rem;
-    background: rgba(0, 0, 0, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    border-radius: 0.4rem;
-    color: #fff;
-    font-size: 0.82rem;
-    z-index: 12;
-    pointer-events: auto;
-  }
-
-  .fill-progress-title {
-    font-weight: 600;
-  }
-
-  .fill-progress-stats {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.8rem;
-    opacity: 0.9;
-  }
-
-  .fill-cancel-btn {
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
-    border-radius: 0.35rem;
-    padding: 0.3rem 0.55rem;
-    cursor: pointer;
-  }
-
-  .fill-cancel-btn:hover {
-    background: rgba(255, 255, 255, 0.16);
-  }
-
-  @keyframes greedy-mesh-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  .cuboid-done-btn {
-    position: absolute;
-    top: 0.5rem;
-    left: 50%;
-    transform: translateX(-50%);
-    min-width: 2.75rem;
-    min-height: 2.75rem;
-    padding: 0.5rem 1rem;
-    background: rgba(0, 0, 0, 0.75);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 4px;
-    color: #fff;
-    font-size: 0.9rem;
-    cursor: pointer;
-    pointer-events: auto;
-    z-index: 1;
-  }
-
-  .cuboid-done-btn:hover {
-    background: rgba(0, 0, 0, 0.85);
-  }
-
-  .cuboid-done-btn:active {
-    background: rgba(255, 255, 255, 0.2);
-  }
-
-  .polygon-actions {
-    position: absolute;
-    top: 0.5rem;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 0.5rem;
-    z-index: 1;
-  }
-
-  .polygon-done-btn,
-  .polygon-cancel-btn {
-    min-width: 2.75rem;
-    min-height: 2.75rem;
-    padding: 0.5rem 1rem;
-    background: rgba(0, 0, 0, 0.75);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 4px;
-    color: #fff;
-    font-size: 0.9rem;
-    cursor: pointer;
-    pointer-events: auto;
-  }
-
-  .polygon-done-btn:hover,
-  .polygon-cancel-btn:hover {
-    background: rgba(0, 0, 0, 0.85);
-  }
-
-  .depth-slider-container {
-    position: absolute;
-    left: 0.5rem;
-    top: 50%;
-    transform: translateY(-50%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.5rem;
-    background: rgba(0, 0, 0, 0.75);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 4px;
-    pointer-events: auto;
-    z-index: 1;
-    touch-action: none;
-    user-select: none;
-    -webkit-user-select: none;
-  }
-
-  .depth-slider-track {
-    position: relative;
-    width: 1rem;
-    height: 6rem;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-  }
-
-  .depth-slider-thumb {
-    position: absolute;
-    left: -2px;
-    right: -2px;
-    height: 0.75rem;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 2px;
-    pointer-events: none;
-  }
-
-  .depth-slider-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-
-  .depth-btn {
-    min-width: 1.5rem;
-    min-height: 1.5rem;
-    padding: 0;
-    background: rgba(255, 255, 255, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 3px;
-    color: #fff;
-    font-size: 1rem;
-    line-height: 1;
-    cursor: pointer;
-  }
-
-  .depth-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
-  }
-
-  .depth-slider-label {
-    font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.9);
-    min-width: 4rem;
-    text-align: center;
-  }
-
-  .zoom-controls {
-    position: absolute;
-    bottom: 0.5rem;
-    right: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.25rem 0.5rem;
-    background: rgba(0, 0, 0, 0.6);
-    border-radius: 4px;
-    pointer-events: auto;
-    z-index: 1;
-  }
-
-  .zoom-controls button {
-    width: 1.75rem;
-    height: 1.75rem;
-    padding: 0;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 2px;
-    background: rgba(255, 255, 255, 0.15);
-    color: #fff;
-    font-size: 1rem;
-    line-height: 1;
-    cursor: pointer;
-  }
-
-  .zoom-controls button:hover {
-    background: rgba(255, 255, 255, 0.25);
-  }
-
-  .zoom-controls .fit-btn {
-    width: auto;
-    padding: 0 0.5rem;
-  }
-
-  .zoom-percent {
-    min-width: 3ch;
-    font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.9);
-  }
-
-  .fly-hint {
-    position: absolute;
-    bottom: 0.5rem;
-    right: 0.5rem;
-    padding: 0.25rem 0.5rem;
-    background: rgba(0, 0, 0, 0.6);
-    border-radius: 4px;
-    font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.9);
-    pointer-events: none;
-  }
-
-  .fps-counter {
-    position: absolute;
-    top: 0.5rem;
-    left: 0.5rem;
-    padding: 0.25rem 0.5rem;
-    background: rgba(0, 0, 0, 0.6);
-    border-radius: 4px;
-    font-size: 0.85rem;
-    font-family: monospace;
-    color: rgba(255, 255, 255, 0.9);
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  .delta-display {
-    position: absolute;
-    padding: 0.25rem 0.5rem;
-    background: rgba(0, 0, 0, 0.6);
-    border-radius: 4px;
-    font-size: 0.85rem;
-    font-family: monospace;
-    color: rgba(255, 255, 255, 0.9);
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  .move-gizmo-delta-label {
-    position: absolute;
-    padding: 0.25rem 0.5rem;
-    background: rgba(0, 0, 0, 0.65);
-    border-radius: 4px;
-    font-size: 0.85rem;
-    font-family: monospace;
-    color: rgba(159, 216, 255, 0.95);
-    pointer-events: none;
-    z-index: 2;
-    transform: translate(-50%, -50%);
-    white-space: nowrap;
   }
 </style>

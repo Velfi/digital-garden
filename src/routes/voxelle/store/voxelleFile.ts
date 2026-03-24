@@ -152,7 +152,7 @@ function applyModelData(data: VoxelleFileFormat): void {
     const x = row[0] as number;
     const y = row[1] as number;
     const z = row[2] as number;
-    const c = (row[3] as number) >>> 0 & 0xffffff;
+    const c = ((row[3] as number) >>> 0) & 0xffffff;
     const m =
       row.length >= 5 && typeof row[4] === 'string'
         ? parseVoxelMaterial(row[4])
@@ -165,7 +165,7 @@ function applyModelData(data: VoxelleFileFormat): void {
       const x = row[0] as number;
       const y = row[1] as number;
       const z = row[2] as number;
-      const c = (row[3] as number) >>> 0 & 0xffffff;
+      const c = ((row[3] as number) >>> 0) & 0xffffff;
       const m =
         row.length >= 5 && typeof row[4] === 'string'
           ? parseVoxelMaterial(row[4])

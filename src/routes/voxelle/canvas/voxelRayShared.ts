@@ -1,8 +1,5 @@
 import * as THREE from 'three';
-import {
-  DEFAULT_SHADOW_RAY_SAMPLES,
-  DEFAULT_SHADOW_SOFTNESS_RADIANS
-} from './gpuSoftShadow';
+import { DEFAULT_SHADOW_RAY_SAMPLES, DEFAULT_SHADOW_SOFTNESS_RADIANS } from './gpuSoftShadow';
 
 export const MAX_GLASS_DEPTH = 4;
 export const MAX_TEMPORAL_SAMPLES = 64;
@@ -76,9 +73,9 @@ export function buildVoxelRayTraceParams(
   const ambGr = hemisphereLight.groundColor;
   const ambI = hemisphereLight.intensity * opts.ambientIntensity;
   const env = opts.sceneEnvironmentIntensity;
-  const ambientR = ((ambSky.r + ambGr.r) * 0.5) * ambI * env;
-  const ambientG = ((ambSky.g + ambGr.g) * 0.5) * ambI * env;
-  const ambientB = ((ambSky.b + ambGr.b) * 0.5) * ambI * env;
+  const ambientR = (ambSky.r + ambGr.r) * 0.5 * ambI * env;
+  const ambientG = (ambSky.g + ambGr.g) * 0.5 * ambI * env;
+  const ambientB = (ambSky.b + ambGr.b) * 0.5 * ambI * env;
 
   const [br, bg, bb] = hexToLinearRgb(opts.backgroundHex & 0xffffff);
 

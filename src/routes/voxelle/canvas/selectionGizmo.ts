@@ -334,11 +334,7 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
           gizmoDragAxis !== null &&
           gizmoAppliedSteps !== 0;
         if (holdBboxAtSource) {
-          child.position.set(
-            -gizmoOffsetScratch.x,
-            -gizmoOffsetScratch.y,
-            -gizmoOffsetScratch.z
-          );
+          child.position.set(-gizmoOffsetScratch.x, -gizmoOffsetScratch.y, -gizmoOffsetScratch.z);
         } else {
           child.position.set(0, 0, 0);
         }
@@ -359,7 +355,10 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
         if (c) {
           gizmoDragLineFrom.set(c[0], c[1], c[2]);
           gizmoDragLineTo.copy(gizmoDragLineFrom);
-          gizmoDragLineTo.setComponent(gizmoDragAxis, gizmoDragLineTo.getComponent(gizmoDragAxis) + gizmoAppliedSteps);
+          gizmoDragLineTo.setComponent(
+            gizmoDragAxis,
+            gizmoDragLineTo.getComponent(gizmoDragAxis) + gizmoAppliedSteps
+          );
           dragLine.geometry.setFromPoints([gizmoDragLineFrom, gizmoDragLineTo]);
           dragLine.visible = true;
         } else {

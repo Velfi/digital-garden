@@ -14,7 +14,9 @@ export type ToneMappingPreference = (typeof TONE_MAPPING_PREFERENCE_IDS)[number]
 export const DEFAULT_TONE_MAPPING_PREFERENCE: ToneMappingPreference = 'neutral';
 
 export function isToneMappingPreference(value: unknown): value is ToneMappingPreference {
-  return typeof value === 'string' && (TONE_MAPPING_PREFERENCE_IDS as readonly string[]).includes(value);
+  return (
+    typeof value === 'string' && (TONE_MAPPING_PREFERENCE_IDS as readonly string[]).includes(value)
+  );
 }
 
 /** Labels for Preferences UI (short descriptions). */

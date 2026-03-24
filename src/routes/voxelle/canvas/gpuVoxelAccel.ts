@@ -14,9 +14,7 @@ export const DENSE_CELL_BUDGET = 2_500_000;
 /** Max hash slots (power of two); ~64MiB buffer at 4M * 16 bytes. */
 export const MAX_HASH_SLOTS = 4 * 1024 * 1024;
 
-const MAT_INDEX = new Map<string, number>(
-  VOXEL_MATERIAL_IDS.map((m, i) => [m, i] as const)
-);
+const MAT_INDEX = new Map<string, number>(VOXEL_MATERIAL_IDS.map((m, i) => [m, i] as const));
 
 export function materialIndexForGpu(material: Voxel['material']): number {
   return MAT_INDEX.get(material) ?? 0;
@@ -27,7 +25,9 @@ export function packVoxelPayload(color: number, materialIndex: number): number {
   return ((color & 0xffffff) | ((materialIndex + 1) << 24)) >>> 0;
 }
 
-export function unpackVoxelPayload(packed: number): { color: number; materialIndex: number } | null {
+export function unpackVoxelPayload(
+  packed: number
+): { color: number; materialIndex: number } | null {
   const u = packed >>> 0;
   if (u === 0) return null;
   const matEnc = u >>> 24;
@@ -117,7 +117,9 @@ function buildDense(
   return { kind: 'dense', origin: [ox, oy, oz], dims: [dx, dy, dz], data };
 }
 
-export function buildGpuVoxelHashOnlyFromMap(voxels: Map<string, Voxel>): GpuVoxelAccelHash | GpuVoxelAccelEmpty {
+export function buildGpuVoxelHashOnlyFromMap(
+  voxels: Map<string, Voxel>
+): GpuVoxelAccelHash | GpuVoxelAccelEmpty {
   if (voxels.size === 0) return { kind: 'empty' };
   return buildHashTable(voxels);
 }
@@ -218,7 +220,9 @@ export function maxDistanceForGpuAccel(accel: GpuVoxelAccel, voxels: Map<string,
 /**
  * GPU path uses a hash table only; convert dense acceleration to hash by rescanning voxels.
  */
-export function flattenGpuAccelToHash(accel: GpuVoxelAccel): GpuVoxelAccelHash | GpuVoxelAccelEmpty {
+export function flattenGpuAccelToHash(
+  accel: GpuVoxelAccel
+): GpuVoxelAccelHash | GpuVoxelAccelEmpty {
   if (accel.kind === 'empty') return { kind: 'empty' };
   if (accel.kind === 'hash') return accel;
   const [ox, oy, oz] = accel.origin;

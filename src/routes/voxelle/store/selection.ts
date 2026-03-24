@@ -437,53 +437,53 @@ export function invertSelection() {
 export function growSelection() {
   commitUndoAfter(() => {
     const v = get(voxels);
-  const bounds = getEffectiveBoundsForSelection();
-  const sel = get(selection);
-  const next = new Map(sel);
-  for (const key of sel.keys()) {
-    const [x, y, z] = parseCoordKey(key);
-    for (const [dx, dy, dz] of ADJ_6) {
-      const nx = x + dx;
-      const ny = y + dy;
-      const nz = z + dz;
-      if (inBoundsBox(nx, ny, nz, bounds)) {
-        const k = coordKey(nx, ny, nz);
-        const col = v.get(k);
-        if (col !== undefined) next.set(k, col);
+    const bounds = getEffectiveBoundsForSelection();
+    const sel = get(selection);
+    const next = new Map(sel);
+    for (const key of sel.keys()) {
+      const [x, y, z] = parseCoordKey(key);
+      for (const [dx, dy, dz] of ADJ_6) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const nz = z + dz;
+        if (inBoundsBox(nx, ny, nz, bounds)) {
+          const k = coordKey(nx, ny, nz);
+          const col = v.get(k);
+          if (col !== undefined) next.set(k, col);
+        }
       }
     }
-  }
-  selection.set(next);
+    selection.set(next);
   });
 }
 
 export function shrinkSelection() {
   commitUndoAfter(() => {
     const v = get(voxels);
-  const bounds = getEffectiveBoundsForSelection();
-  const sel = get(selection);
-  const next = new Map<string, Voxel>();
-  for (const [key, col] of sel) {
-    const [x, y, z] = parseCoordKey(key);
-    let onBoundary = false;
-    for (const [dx, dy, dz] of ADJ_6) {
-      const nx = x + dx;
-      const ny = y + dy;
-      const nz = z + dz;
-      if (inBoundsBox(nx, ny, nz, bounds)) {
-        const k = coordKey(nx, ny, nz);
-        if (!v.has(k)) {
+    const bounds = getEffectiveBoundsForSelection();
+    const sel = get(selection);
+    const next = new Map<string, Voxel>();
+    for (const [key, col] of sel) {
+      const [x, y, z] = parseCoordKey(key);
+      let onBoundary = false;
+      for (const [dx, dy, dz] of ADJ_6) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const nz = z + dz;
+        if (inBoundsBox(nx, ny, nz, bounds)) {
+          const k = coordKey(nx, ny, nz);
+          if (!v.has(k)) {
+            onBoundary = true;
+            break;
+          }
+        } else {
           onBoundary = true;
           break;
         }
-      } else {
-        onBoundary = true;
-        break;
       }
+      if (!onBoundary) next.set(key, col);
     }
-    if (!onBoundary) next.set(key, col);
-  }
-  selection.set(next);
+    selection.set(next);
   });
 }
 
@@ -491,20 +491,20 @@ export function shrinkSelection() {
 export function deselectInnerVoxels() {
   commitUndoAfter(() => {
     const sel = get(selection);
-  const next = new Map<string, Voxel>();
-  for (const [key, col] of sel) {
-    const [x, y, z] = parseCoordKey(key);
-    let bounded = true;
-    for (const [dx, dy, dz] of ADJ_6) {
-      const nk = coordKey(x + dx, y + dy, z + dz);
-      if (!sel.has(nk)) {
-        bounded = false;
-        break;
+    const next = new Map<string, Voxel>();
+    for (const [key, col] of sel) {
+      const [x, y, z] = parseCoordKey(key);
+      let bounded = true;
+      for (const [dx, dy, dz] of ADJ_6) {
+        const nk = coordKey(x + dx, y + dy, z + dz);
+        if (!sel.has(nk)) {
+          bounded = false;
+          break;
+        }
       }
+      if (!bounded) next.set(key, col);
     }
-    if (!bounded) next.set(key, col);
-  }
-  selection.set(next);
+    selection.set(next);
   });
 }
 
@@ -570,8 +570,7 @@ export function hollowOut(): void {
   const voxelBounds = getVoxelBounds(v);
   if (!voxelBounds) return;
 
-  const scopes =
-    sel.size === 0 ? [voxelBounds] : selectionComponentBboxes(sel);
+  const scopes = sel.size === 0 ? [voxelBounds] : selectionComponentBboxes(sel);
 
   const toRemove = new Set<string>();
   for (const bbox of scopes) {

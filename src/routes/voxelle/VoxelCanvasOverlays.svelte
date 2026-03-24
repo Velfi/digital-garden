@@ -1,0 +1,733 @@
+<script lang="ts">
+  import * as THREE from 'three';
+  import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+  import { get } from 'svelte/store';
+  import OrbitGizmo from './OrbitGizmo.svelte';
+  import ToolPanel from './ToolPanel.svelte';
+  import SelectionCountPanel from './SelectionCountPanel.svelte';
+  import { renderingMode, ropeTension, tool, voxellePreferences } from './store/index';
+
+  interface Props {
+    gizmoRef?: { draw: () => void } | undefined;
+    rayRefinementProgress: number;
+    showGreedyMeshSpinner: boolean;
+    fillBusy: boolean;
+    fillMessage: string;
+    fillVisited: number;
+    fillMatched: number;
+    cancelActiveFill: () => void;
+    cuboidPhase: 'plane' | 'depth' | null;
+    cuboidDepth: number;
+    updateCuboidFromDepth: () => void;
+    commitCuboid: () => void;
+    polygonPhase: 'placing' | null;
+    polygonPointCount: number;
+    commitPolygon: () => void;
+    cancelPolygon: () => void;
+    roofPhase: 'placing' | null;
+    roofPointCount: number;
+    commitRoof: () => void;
+    cancelRoof: () => void;
+    piscinaPhase: 'pick' | 'shape';
+    commitPiscinaFish: () => void;
+    pickAgainPiscina: () => void;
+    ropePhase: 'placing' | 'tension' | null;
+    commitRope: () => void;
+    cancelRope: () => void;
+    fpsCounterDisplayed: number;
+    deltaDisplay: { dx: number; dy: number; dz: number } | null;
+    pointerScreen: { x: number; y: number };
+    moveGizmoDragLabel: { x: number; y: number; dx: number; dy: number; dz: number } | null;
+    formatSignedDelta: (n: number) => string;
+    showFlyHint: boolean;
+    camera: THREE.PerspectiveCamera | THREE.OrthographicCamera | undefined;
+    orbitControls: OrbitControls | null | undefined;
+    render: () => void;
+    zoomPercent: number;
+    zoomOut: () => void;
+    zoomIn: () => void;
+    fitToView: () => void;
+    resetCamera: () => void;
+  }
+
+  let {
+    gizmoRef = $bindable(),
+    rayRefinementProgress,
+    showGreedyMeshSpinner,
+    fillBusy,
+    fillMessage,
+    fillVisited,
+    fillMatched,
+    cancelActiveFill,
+    cuboidPhase,
+    cuboidDepth = $bindable(),
+    updateCuboidFromDepth,
+    commitCuboid,
+    polygonPhase,
+    polygonPointCount,
+    commitPolygon,
+    cancelPolygon,
+    roofPhase,
+    roofPointCount,
+    commitRoof,
+    cancelRoof,
+    piscinaPhase,
+    commitPiscinaFish,
+    pickAgainPiscina,
+    ropePhase,
+    commitRope,
+    cancelRope,
+    fpsCounterDisplayed,
+    deltaDisplay,
+    pointerScreen,
+    moveGizmoDragLabel,
+    formatSignedDelta,
+    showFlyHint,
+    camera,
+    orbitControls,
+    render,
+    zoomPercent,
+    zoomOut,
+    zoomIn,
+    fitToView,
+    resetCamera
+  }: Props = $props();
+
+  let depthSliderPointerId: number | null = $state(null);
+  let depthSliderStartY = $state(0);
+  let depthSliderStartDepth = $state(0);
+
+  let ropeTensionSliderPointerId: number | null = $state(null);
+  let ropeTensionSliderStartY = $state(0);
+  let ropeTensionSliderStartVal = $state(0);
+</script>
+
+{#if $renderingMode === 'ray' && rayRefinementProgress < 1}
+  <div
+    class="ray-refine-progress"
+    role="progressbar"
+    aria-live="polite"
+    aria-valuemin={0}
+    aria-valuemax={100}
+    aria-valuenow={Math.round(rayRefinementProgress * 100)}
+    aria-label="Ray trace refinement"
+  >
+    <div class="ray-refine-progress-fill" style="transform: scaleX({rayRefinementProgress})"></div>
+  </div>
+{/if}
+{#if showGreedyMeshSpinner}
+  <div class="greedy-mesh-spinner" role="status" aria-live="polite">
+    <div class="spinner" aria-hidden="true"></div>
+    <span>Building mesh…</span>
+  </div>
+{/if}
+{#if fillBusy}
+  <div class="fill-progress" role="status" aria-live="polite" data-voxelle-no-passthrough>
+    <div class="fill-progress-title">{fillMessage}</div>
+    <div class="fill-progress-stats">
+      <span>Visited: {fillVisited.toLocaleString()}</span>
+      <span>Matched: {fillMatched.toLocaleString()}</span>
+    </div>
+    <button type="button" class="fill-cancel-btn" onclick={() => cancelActiveFill()}>Cancel</button>
+  </div>
+{/if}
+{#if cuboidPhase === 'depth'}
+  <div class="depth-slider-container" data-voxelle-no-passthrough>
+    <div
+      class="depth-slider-track"
+      role="slider"
+      aria-label="Cuboid depth"
+      aria-valuemin={-256}
+      aria-valuemax={256}
+      aria-valuenow={cuboidDepth}
+      tabindex="0"
+      onpointerdown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        depthSliderPointerId = e.pointerId;
+        depthSliderStartY = e.clientY;
+        depthSliderStartDepth = cuboidDepth;
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }}
+      onpointermove={(e) => {
+        e.preventDefault();
+        if (depthSliderPointerId !== e.pointerId) return;
+        const dy = depthSliderStartY - e.clientY;
+        cuboidDepth = Math.max(-256, Math.min(256, depthSliderStartDepth + Math.round(dy / 10)));
+        updateCuboidFromDepth();
+      }}
+      onpointerup={(e) => {
+        if (depthSliderPointerId === e.pointerId) depthSliderPointerId = null;
+      }}
+      onpointercancel={(e) => {
+        if (depthSliderPointerId === e.pointerId) depthSliderPointerId = null;
+      }}
+    >
+      <div
+        class="depth-slider-thumb"
+        style="bottom: {Math.min(99, Math.max(1, 50 + (cuboidDepth / 512) * 98))}%"
+      ></div>
+    </div>
+    <div class="depth-slider-controls">
+      <button
+        type="button"
+        class="depth-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => {
+          cuboidDepth = Math.max(-256, cuboidDepth - 1);
+          updateCuboidFromDepth();
+        }}
+        aria-label="Decrease depth">−</button
+      >
+      <span class="depth-slider-label">Depth: {cuboidDepth}</span>
+      <button
+        type="button"
+        class="depth-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => {
+          cuboidDepth = Math.min(256, cuboidDepth + 1);
+          updateCuboidFromDepth();
+        }}
+        aria-label="Increase depth">+</button
+      >
+    </div>
+  </div>
+  <button
+    type="button"
+    class="cuboid-done-btn"
+    data-voxelle-no-passthrough
+    onpointerdown={(e) => e.stopPropagation()}
+    onclick={() => commitCuboid()}
+    title="Tap Done to apply"
+    aria-label="Apply cuboid selection"
+  >
+    Done
+  </button>
+{/if}
+{#if polygonPhase === 'placing' && polygonPointCount >= 2}
+  <div class="polygon-actions" data-voxelle-no-passthrough>
+    <button
+      type="button"
+      class="polygon-done-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => commitPolygon()}
+      title="Fill convex hull"
+      aria-label="Apply polygon"
+    >
+      Done
+    </button>
+    <button
+      type="button"
+      class="polygon-cancel-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => cancelPolygon()}
+      title="Cancel"
+      aria-label="Cancel polygon"
+    >
+      Cancel
+    </button>
+  </div>
+{/if}
+{#if roofPhase === 'placing' && roofPointCount >= 2}
+  <div class="polygon-actions" data-voxelle-no-passthrough>
+    <button
+      type="button"
+      class="polygon-done-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => commitRoof()}
+      disabled={roofPointCount < 4}
+      title={roofPointCount < 4 ? 'Need at least 4 corners' : 'Build roof'}
+      aria-label="Apply roof"
+    >
+      Done
+    </button>
+    <button
+      type="button"
+      class="polygon-cancel-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => cancelRoof()}
+      title="Cancel"
+      aria-label="Cancel roof"
+    >
+      Cancel
+    </button>
+  </div>
+{/if}
+{#if $tool === 'piscina' && piscinaPhase === 'shape'}
+  <div class="polygon-actions" data-voxelle-no-passthrough>
+    <button
+      type="button"
+      class="polygon-done-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => commitPiscinaFish()}
+      title="Done"
+      aria-label="Done"
+    >
+      Done
+    </button>
+    <button
+      type="button"
+      class="polygon-cancel-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => pickAgainPiscina()}
+      title="Cancel"
+      aria-label="Cancel"
+    >
+      Cancel
+    </button>
+  </div>
+{/if}
+{#if ropePhase === 'tension'}
+  <div class="rope-tension-slider depth-slider-container" data-voxelle-no-passthrough>
+    <div
+      class="depth-slider-track"
+      role="slider"
+      aria-label="Rope tension"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round($ropeTension * 100)}
+      tabindex="0"
+      onpointerdown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ropeTensionSliderPointerId = e.pointerId;
+        ropeTensionSliderStartY = e.clientY;
+        ropeTensionSliderStartVal = get(ropeTension);
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }}
+      onpointermove={(e) => {
+        e.preventDefault();
+        if (ropeTensionSliderPointerId !== e.pointerId) return;
+        const dy = ropeTensionSliderStartY - e.clientY;
+        const delta = dy / 200;
+        ropeTension.set(Math.max(0, Math.min(1, ropeTensionSliderStartVal + delta)));
+      }}
+      onpointerup={(e) => {
+        if (ropeTensionSliderPointerId === e.pointerId) ropeTensionSliderPointerId = null;
+      }}
+      onpointercancel={(e) => {
+        if (ropeTensionSliderPointerId === e.pointerId) ropeTensionSliderPointerId = null;
+      }}
+    >
+      <div
+        class="depth-slider-thumb"
+        style="bottom: {Math.min(99, Math.max(1, $ropeTension * 98))}%"
+      ></div>
+    </div>
+    <div class="depth-slider-controls">
+      <button
+        type="button"
+        class="depth-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => ropeTension.set(Math.max(0, $ropeTension - 0.05))}
+        aria-label="Decrease tension">−</button
+      >
+      <span class="depth-slider-label">Tension: {Math.round($ropeTension * 100)}%</span>
+      <button
+        type="button"
+        class="depth-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => ropeTension.set(Math.min(1, $ropeTension + 0.05))}
+        aria-label="Increase tension">+</button
+      >
+    </div>
+  </div>
+  <div class="polygon-actions" data-voxelle-no-passthrough>
+    <button
+      type="button"
+      class="rope-done-btn polygon-done-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => commitRope()}
+      title="Apply rope"
+      aria-label="Apply rope"
+    >
+      Done
+    </button>
+    <button
+      type="button"
+      class="rope-cancel-btn polygon-cancel-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => cancelRope()}
+      title="Cancel"
+      aria-label="Cancel rope"
+    >
+      Cancel
+    </button>
+  </div>
+{/if}
+{#if $voxellePreferences.showFpsCounter}
+  <div class="fps-counter" role="status" aria-live="polite">
+    {fpsCounterDisplayed} FPS
+  </div>
+{/if}
+{#if deltaDisplay && $voxellePreferences.showMovementDeltaHint}
+  <div
+    class="delta-display"
+    aria-live="polite"
+    style="left: {pointerScreen.x}px; top: {pointerScreen.y}px;"
+  >
+    Δ {formatSignedDelta(deltaDisplay.dx)}, {formatSignedDelta(deltaDisplay.dy)}, {formatSignedDelta(
+      deltaDisplay.dz
+    )}
+  </div>
+{/if}
+{#if moveGizmoDragLabel}
+  <div
+    class="move-gizmo-delta-label"
+    role="status"
+    aria-live="polite"
+    style="left: {moveGizmoDragLabel.x}px; top: {moveGizmoDragLabel.y}px;"
+  >
+    {formatSignedDelta(moveGizmoDragLabel.dx)}, {formatSignedDelta(moveGizmoDragLabel.dy)}, {formatSignedDelta(
+      moveGizmoDragLabel.dz
+    )}
+  </div>
+{/if}
+<ToolPanel />
+<SelectionCountPanel />
+{#if $tool === 'fly' && showFlyHint}
+  <div class="fly-hint" role="status" aria-live="polite">
+    Click to capture · WASD move · E/Q up/down · Shift 1/8 speed · Move mouse to look
+  </div>
+{:else}
+  {#if camera && orbitControls}
+    <OrbitGizmo bind:this={gizmoRef} {camera} controls={orbitControls} onRender={render} />
+  {/if}
+  <div
+    class="zoom-controls"
+    data-voxelle-no-passthrough
+    role="toolbar"
+    aria-label="Zoom controls"
+    tabindex="0"
+    onpointerdown={(e) => e.stopPropagation()}
+  >
+    <button type="button" onclick={zoomOut} title="Zoom out" aria-label="Zoom out">−</button>
+    <span class="zoom-percent">{zoomPercent}%</span>
+    <button type="button" onclick={zoomIn} title="Zoom in" aria-label="Zoom in">+</button>
+    <button
+      type="button"
+      class="fit-btn"
+      onclick={fitToView}
+      title="Fit to view"
+      aria-label="Fit sculpture to view">Fit</button
+    >
+    <button
+      type="button"
+      class="fit-btn"
+      onclick={resetCamera}
+      title="Reset camera"
+      aria-label="Reset camera to default view">Reset</button
+    >
+  </div>
+{/if}
+
+<style>
+  .ray-refine-progress {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 5px;
+    background: rgba(255, 200, 160, 0.18);
+    z-index: 2;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .ray-refine-progress-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, rgba(255, 140, 40, 0.95), rgba(255, 200, 120, 0.98));
+    transform-origin: left center;
+    will-change: transform;
+  }
+
+  .greedy-mesh-spinner {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    font-size: 0.9rem;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .greedy-mesh-spinner .spinner {
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: greedy-mesh-spin 0.8s linear infinite;
+  }
+
+  .fill-progress {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.7rem 0.8rem;
+    min-width: 13rem;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 0.4rem;
+    color: #fff;
+    font-size: 0.82rem;
+    z-index: 12;
+    pointer-events: auto;
+  }
+
+  .fill-progress-title {
+    font-weight: 600;
+  }
+
+  .fill-progress-stats {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.8rem;
+    opacity: 0.9;
+  }
+
+  .fill-cancel-btn {
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border-radius: 0.35rem;
+    padding: 0.3rem 0.55rem;
+    cursor: pointer;
+  }
+
+  .fill-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  @keyframes greedy-mesh-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .cuboid-done-btn {
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding: 0.5rem 1rem;
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 4px;
+    color: #fff;
+    font-size: 0.9rem;
+    cursor: pointer;
+    pointer-events: auto;
+    z-index: 1;
+  }
+
+  .cuboid-done-btn:hover {
+    background: rgba(0, 0, 0, 0.85);
+  }
+
+  .cuboid-done-btn:active {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .polygon-actions {
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.5rem;
+    z-index: 1;
+  }
+
+  .polygon-done-btn,
+  .polygon-cancel-btn {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding: 0.5rem 1rem;
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 4px;
+    color: #fff;
+    font-size: 0.9rem;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  .polygon-done-btn:hover,
+  .polygon-cancel-btn:hover {
+    background: rgba(0, 0, 0, 0.85);
+  }
+
+  .depth-slider-container {
+    position: absolute;
+    left: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 4px;
+    pointer-events: auto;
+    z-index: 1;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .depth-slider-track {
+    position: relative;
+    width: 1rem;
+    height: 6rem;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+  }
+
+  .depth-slider-thumb {
+    position: absolute;
+    left: -2px;
+    right: -2px;
+    height: 0.75rem;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 2px;
+    pointer-events: none;
+  }
+
+  .depth-slider-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .depth-btn {
+    min-width: 1.5rem;
+    min-height: 1.5rem;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 3px;
+    color: #fff;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .depth-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .depth-slider-label {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.9);
+    min-width: 4rem;
+    text-align: center;
+  }
+
+  .zoom-controls {
+    position: absolute;
+    bottom: 0.5rem;
+    right: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+    pointer-events: auto;
+    z-index: 1;
+  }
+
+  .zoom-controls button {
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .zoom-controls button:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  .zoom-controls .fit-btn {
+    width: auto;
+    padding: 0 0.5rem;
+  }
+
+  .zoom-percent {
+    min-width: 3ch;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .fly-hint {
+    position: absolute;
+    bottom: 0.5rem;
+    right: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.9);
+    pointer-events: none;
+  }
+
+  .fps-counter {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-family: monospace;
+    color: rgba(255, 255, 255, 0.9);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .delta-display {
+    position: absolute;
+    padding: 0.25rem 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-family: monospace;
+    color: rgba(255, 255, 255, 0.9);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .move-gizmo-delta-label {
+    position: absolute;
+    padding: 0.25rem 0.5rem;
+    background: rgba(0, 0, 0, 0.65);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-family: monospace;
+    color: rgba(159, 216, 255, 0.95);
+    pointer-events: none;
+    z-index: 2;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+  }
+</style>

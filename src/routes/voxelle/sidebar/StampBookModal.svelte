@@ -41,7 +41,7 @@
   let loadGen = 0;
 
   const selectedStamp = $derived(
-    selectedStampId ? stamps.find((s) => s.id === selectedStampId) ?? null : null
+    selectedStampId ? (stamps.find((s) => s.id === selectedStampId) ?? null) : null
   );
 
   const visibleStamps = $derived(stamps.filter((s) => stampMatchesSearch(s, searchQuery)));
@@ -115,12 +115,13 @@
 
   const saveEnabled = $derived(selectionToStampEntries($voxels, $selection) !== null);
 
-  const selectedExportCount = $derived(
-    stamps.filter((s) => exportSelectionById[s.id]).length
-  );
+  const selectedExportCount = $derived(stamps.filter((s) => exportSelectionById[s.id]).length);
 
   function safeFileStem(name: string): string {
-    const t = name.trim().replace(/[^\w\-]+/g, '_').slice(0, 64);
+    const t = name
+      .trim()
+      .replace(/[^\w\-]+/g, '_')
+      .slice(0, 64);
     return t || 'stamp';
   }
 
@@ -175,10 +176,7 @@
   async function commitTags(s: StampBookRecord) {
     const next = normalizeStampTags(tagEditDraft);
     const prev = normalizeStampTags(s.tags);
-    if (
-      next.length === prev.length &&
-      next.every((t, i) => t === prev[i])
-    ) {
+    if (next.length === prev.length && next.every((t, i) => t === prev[i])) {
       return;
     }
     busy = true;
@@ -263,10 +261,7 @@
   }
 
   function exportOne(s: StampBookRecord) {
-    downloadTextFile(
-      `${safeFileStem(s.name)}.voxelle-stamps.json`,
-      stampRecordsToLibraryJson([s])
-    );
+    downloadTextFile(`${safeFileStem(s.name)}.voxelle-stamps.json`, stampRecordsToLibraryJson([s]));
   }
 
   function exportAll() {
@@ -440,11 +435,7 @@
             {#if visibleStamps.length === 0}
               <p class="empty-page">No stamps match this search.</p>
             {:else}
-              <div
-                class="stamp-grid"
-                role="list"
-                aria-label="Stamp thumbnails"
-              >
+              <div class="stamp-grid" role="list" aria-label="Stamp thumbnails">
                 {#each visibleStamps as s (s.id)}
                   <div class="stamp-grid-cell" role="listitem">
                     <button
@@ -493,9 +484,7 @@
                   if (!searchActive) onDropEnd(e);
                 }}
               >
-                {searchActive
-                  ? 'Clear search to reorder stamps'
-                  : 'Drop here to move to end'}
+                {searchActive ? 'Clear search to reorder stamps' : 'Drop here to move to end'}
               </div>
             {/if}
           {/if}
@@ -560,8 +549,9 @@
                     aria-labelledby="tab-share"
                   >
                     <p class="hint">
-                      Import or export stamp libraries as <code>.json</code> (<code>voxelleStampLibrary: 1</code>).
-                      Select stamps to export from the collection page on the left.
+                      Import or export stamp libraries as <code>.json</code> (<code
+                        >voxelleStampLibrary: 1</code
+                      >). Select stamps to export from the collection page on the left.
                     </p>
 
                     <div class="panel-block toolbar-bevel">
@@ -632,7 +622,9 @@
                               class="detail-preview"
                             />
                           {:else}
-                            <div class="detail-preview detail-preview--ph" aria-hidden="true">◫</div>
+                            <div class="detail-preview detail-preview--ph" aria-hidden="true">
+                              ◫
+                            </div>
                           {/if}
                         </div>
                         <label class="field-label">
@@ -708,8 +700,9 @@
                     aria-labelledby="tab-new"
                   >
                     <p class="hint hint--compact">
-                      Save the current voxel selection as a stamp. Add comma-separated <strong>tags</strong> for
-                      search.
+                      Save the current voxel selection as a stamp. Add comma-separated <strong
+                        >tags</strong
+                      > for search.
                     </p>
                     <div class="panel-block panel-block--new-stamp-only">
                       <label class="field-label">
@@ -775,11 +768,7 @@
     padding: 1rem 1.2rem 1.15rem;
     border-radius: 18px;
     background:
-      repeating-linear-gradient(
-        172deg,
-        rgba(255, 255, 255, 0.03) 0 2px,
-        transparent 2px 8px
-      ),
+      repeating-linear-gradient(172deg, rgba(255, 255, 255, 0.03) 0 2px, transparent 2px 8px),
       linear-gradient(
         120deg,
         rgba(38, 20, 9, 0.92) 0%,
@@ -831,18 +820,8 @@
   :global(body.light-mode) .book-folio {
     background:
       repeating-linear-gradient(170deg, rgba(255, 255, 255, 0.2) 0 2px, transparent 2px 8px),
-      linear-gradient(
-        122deg,
-        #96623d 0%,
-        #bd8b58 38%,
-        #d1a772 62%,
-        #8e5c36 100%
-      ),
-      linear-gradient(
-        10deg,
-        rgba(255, 244, 220, 0.2),
-        rgba(68, 34, 14, 0.12)
-      );
+      linear-gradient(122deg, #96623d 0%, #bd8b58 38%, #d1a772 62%, #8e5c36 100%),
+      linear-gradient(10deg, rgba(255, 244, 220, 0.2), rgba(68, 34, 14, 0.12));
     border-color: rgba(72, 40, 20, 0.8);
     box-shadow:
       inset 0 1px 0 rgba(255, 250, 238, 0.5),
@@ -906,8 +885,12 @@
     padding: 0;
     border: 1px solid rgba(90, 54, 22, 0.95);
     border-radius: 999px;
-    background:
-      radial-gradient(circle at 34% 28%, rgba(255, 239, 208, 0.9), rgba(218, 170, 93, 0.78) 44%, rgba(120, 72, 26, 0.92) 100%);
+    background: radial-gradient(
+      circle at 34% 28%,
+      rgba(255, 239, 208, 0.9),
+      rgba(218, 170, 93, 0.78) 44%,
+      rgba(120, 72, 26, 0.92) 100%
+    );
     color: #472a10;
     font-size: 1.35rem;
     font-weight: 700;
@@ -1005,48 +988,26 @@
     background:
       radial-gradient(circle at 12% 9%, rgba(255, 255, 255, 0.32), transparent 20%),
       radial-gradient(circle at 90% 90%, rgba(114, 77, 43, 0.16), transparent 24%),
-      repeating-linear-gradient(
-        0deg,
-        rgba(117, 83, 44, 0.03) 0 1px,
-        transparent 1px 6px
-      );
+      repeating-linear-gradient(0deg, rgba(117, 83, 44, 0.03) 0 1px, transparent 1px 6px);
   }
 
   .book-page--left {
-    background: linear-gradient(
-      140deg,
-      #f2e1c1 0%,
-      #ead6b3 42%,
-      #e1cba5 100%
-    );
+    background: linear-gradient(140deg, #f2e1c1 0%, #ead6b3 42%, #e1cba5 100%);
   }
 
   .book-page--right {
     /* No top padding so Library tabs sit on the top edge of the page */
     padding: 0 0.8rem 0.7rem;
     overflow: visible;
-    background: linear-gradient(
-      220deg,
-      #efdfbf 0%,
-      #e5d1a9 48%,
-      #dbc193 100%
-    );
+    background: linear-gradient(220deg, #efdfbf 0%, #e5d1a9 48%, #dbc193 100%);
   }
 
   :global(body.light-mode) .book-page--left {
-    background: linear-gradient(
-      140deg,
-      #f8e9cb,
-      #edd9b3
-    );
+    background: linear-gradient(140deg, #f8e9cb, #edd9b3);
   }
 
   :global(body.light-mode) .book-page--right {
-    background: linear-gradient(
-      220deg,
-      #f7e7c8,
-      #ebd5ad
-    );
+    background: linear-gradient(220deg, #f7e7c8, #ebd5ad);
   }
 
   .book-spine {
@@ -1118,12 +1079,7 @@
     flex-direction: column;
     border-radius: 12px;
     border: 1px solid rgba(131, 96, 59, 0.45);
-    background: linear-gradient(
-      170deg,
-      #f3e3c4 0%,
-      #ebd8b1 56%,
-      #ddc59b 100%
-    );
+    background: linear-gradient(170deg, #f3e3c4 0%, #ebd8b1 56%, #ddc59b 100%);
     box-shadow:
       inset 0 1px 0 rgba(255, 252, 241, 0.9),
       inset 0 -1px 0 rgba(144, 98, 52, 0.28),
@@ -1155,12 +1111,7 @@
     border-radius: 10px 10px 0 0;
     border: 1px solid rgba(82, 48, 22, 0.88);
     border-bottom: none;
-    background: linear-gradient(
-      180deg,
-      #9a6239 0%,
-      #6f3f20 58%,
-      #4d2a14 100%
-    );
+    background: linear-gradient(180deg, #9a6239 0%, #6f3f20 58%, #4d2a14 100%);
     box-shadow:
       inset 0 1px 0 rgba(255, 226, 176, 0.35),
       inset 0 -2px 4px rgba(33, 15, 6, 0.55),
@@ -1191,12 +1142,7 @@
     opacity: 1;
     padding-bottom: 0.55rem;
     border-color: rgba(126, 91, 54, 0.65);
-    background: linear-gradient(
-      180deg,
-      #f8e8c8 0%,
-      #ebd2aa 22%,
-      #debe8d 100%
-    );
+    background: linear-gradient(180deg, #f8e8c8 0%, #ebd2aa 22%, #debe8d 100%);
     color: #4c2b13;
     box-shadow:
       inset 0 1px 0 rgba(255, 252, 238, 0.88),
@@ -1297,11 +1243,7 @@
     align-content: start;
     border-radius: 8px;
     background:
-      repeating-linear-gradient(
-        90deg,
-        rgba(140, 97, 55, 0.06) 0 1px,
-        transparent 1px 12px
-      ),
+      repeating-linear-gradient(90deg, rgba(140, 97, 55, 0.06) 0 1px, transparent 1px 12px),
       color-mix(in srgb, #e9d3ac 84%, transparent);
     box-shadow: inset 0 1px 4px rgba(115, 76, 34, 0.16);
   }
@@ -1376,12 +1318,22 @@
     inset: 1px;
     pointer-events: none;
     border-radius: 3px;
-    background:
-      radial-gradient(circle, rgba(136, 93, 51, 0.52) 1.05px, transparent 1.1px) 0 0 / 9px 9px;
+    background: radial-gradient(circle, rgba(136, 93, 51, 0.52) 1.05px, transparent 1.1px) 0 0 / 9px
+      9px;
     opacity: 0.38;
     mask:
-      linear-gradient(to bottom, transparent 0 2px, #000 2px calc(100% - 2px), transparent calc(100% - 2px) 100%),
-      linear-gradient(to right, transparent 0 2px, #000 2px calc(100% - 2px), transparent calc(100% - 2px) 100%);
+      linear-gradient(
+        to bottom,
+        transparent 0 2px,
+        #000 2px calc(100% - 2px),
+        transparent calc(100% - 2px) 100%
+      ),
+      linear-gradient(
+        to right,
+        transparent 0 2px,
+        #000 2px calc(100% - 2px),
+        transparent calc(100% - 2px) 100%
+      );
   }
 
   .stamp-matte {
@@ -1398,7 +1350,9 @@
 
   :global(body:not(.light-mode)) .stamp-matte {
     background: linear-gradient(145deg, #f4e5c7, #e2c89f);
-    box-shadow: 0 1px 3px rgba(49, 27, 10, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    box-shadow:
+      0 1px 3px rgba(49, 27, 10, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.4);
   }
 
   .stamp-tile-img {
@@ -1521,12 +1475,7 @@
     border-radius: 7px;
     cursor: pointer;
     border: 1px solid rgba(108, 66, 31, 0.9);
-    background: linear-gradient(
-      180deg,
-      #f6e5c4 0%,
-      #ddbc89 58%,
-      #ba8f56 100%
-    );
+    background: linear-gradient(180deg, #f6e5c4 0%, #ddbc89 58%, #ba8f56 100%);
     color: #4a2c15;
     box-shadow:
       inset 0 1px 0 rgba(255, 245, 220, 0.86),
@@ -1555,11 +1504,7 @@
 
   .btn-bevel--primary {
     border-color: rgba(99, 66, 31, 0.95);
-    background: linear-gradient(
-      180deg,
-      #8fa752 0%,
-      #678038 100%
-    );
+    background: linear-gradient(180deg, #8fa752 0%, #678038 100%);
     color: #f8f4e8;
     text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
   }
@@ -1570,11 +1515,7 @@
 
   .btn-bevel--danger {
     border-color: color-mix(in srgb, var(--border-color) 36%, #6c2316);
-    background: linear-gradient(
-      180deg,
-      #cb6554 0%,
-      #983526 100%
-    );
+    background: linear-gradient(180deg, #cb6554 0%, #983526 100%);
     color: #fff;
     text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
   }
@@ -1592,8 +1533,11 @@
     min-height: 8rem;
     padding: 0.65rem 0.55rem;
     border-radius: 10px;
-    background:
-      linear-gradient(180deg, rgba(252, 240, 214, 0.86) 0%, rgba(234, 212, 170, 0.9) 100%);
+    background: linear-gradient(
+      180deg,
+      rgba(252, 240, 214, 0.86) 0%,
+      rgba(234, 212, 170, 0.9) 100%
+    );
     border: 1px solid rgba(145, 104, 58, 0.4);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 247, 0.75),
@@ -1606,7 +1550,11 @@
   }
 
   :global(body.light-mode) .detail-card {
-    background: linear-gradient(180deg, rgba(255, 247, 231, 0.95) 0%, rgba(241, 224, 192, 0.95) 100%);
+    background: linear-gradient(
+      180deg,
+      rgba(255, 247, 231, 0.95) 0%,
+      rgba(241, 224, 192, 0.95) 100%
+    );
   }
 
   .detail-preview-wrap {
@@ -1621,7 +1569,9 @@
 
   :global(body:not(.light-mode)) .detail-preview-wrap {
     background: linear-gradient(145deg, #f0e0bf, #e1c79f);
-    box-shadow: 0 2px 6px rgba(52, 29, 11, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    box-shadow:
+      0 2px 6px rgba(52, 29, 11, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.45);
   }
 
   .detail-preview {

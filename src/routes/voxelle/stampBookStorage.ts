@@ -36,7 +36,12 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-function closeOnComplete(db: IDBDatabase, tx: IDBTransaction, resolve: () => void, reject: (e: unknown) => void) {
+function closeOnComplete(
+  db: IDBDatabase,
+  tx: IDBTransaction,
+  resolve: () => void,
+  reject: (e: unknown) => void
+) {
   tx.oncomplete = () => {
     db.close();
     resolve();

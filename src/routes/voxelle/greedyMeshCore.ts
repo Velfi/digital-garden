@@ -7,7 +7,12 @@ import type { Voxel } from './voxelMaterial';
 import { voxelBucketKey } from './voxelMaterial';
 import { computeTransmissionBound, isTransmissiveMaterial } from './transmissionPolicy';
 
-function hasOccludingVoxelAt(voxels: Map<string, Voxel>, nx: number, ny: number, nz: number): boolean {
+function hasOccludingVoxelAt(
+  voxels: Map<string, Voxel>,
+  nx: number,
+  ny: number,
+  nz: number
+): boolean {
   const vx = voxels.get(coordKey(nx, ny, nz));
   if (!vx) return false;
   return !isTransmissiveMaterial(vx.material);
@@ -336,7 +341,10 @@ export function computeGreedyMesh(
   const strength: AOStrength = options.aoStrength ?? (options.aoEnabled === false ? 0 : 2);
   const aoEnabled = strength > 0;
   const aoValues = strength > 0 ? AO_PRESETS[strength as 1 | 2] : AO_PRESETS[2];
-  const groups = new Map<string, { positions: Vec3[]; color: number; material: Voxel['material'] }>();
+  const groups = new Map<
+    string,
+    { positions: Vec3[]; color: number; material: Voxel['material'] }
+  >();
   for (const [key, voxel] of voxels) {
     const bk = voxelBucketKey(voxel);
     let g = groups.get(bk);
@@ -352,8 +360,7 @@ export function computeGreedyMesh(
   for (const [bucketKey, { positions, color: col, material }] of groups) {
     // Transmissive buckets should stay clean/transparent: skip AO darkening entirely.
     // Glow: skip AO so large merged emissive faces are not subdivided (avoids seam/bloom ring artifacts).
-    const bucketAoEnabled =
-      aoEnabled && !isTransmissiveMaterial(material) && material !== 'glow';
+    const bucketAoEnabled = aoEnabled && !isTransmissiveMaterial(material) && material !== 'glow';
     const faces: { pos: Vec3; axis: number; sign: number }[] = [];
 
     for (const pos of positions) {

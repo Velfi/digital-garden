@@ -118,9 +118,7 @@ describe('cuboidStrokeBounds', () => {
         Math.floor(Math.random() * 10) - 5
       ];
       const depth = Math.floor(Math.random() * 8) - 3;
-      const brute = boundsFromPositions(
-        getAxisAlignedCuboid(a, b, n, depth, false, 1)
-      );
+      const brute = boundsFromPositions(getAxisAlignedCuboid(a, b, n, depth, false, 1));
       const analytic = cuboidStrokeBounds(a, b, n, depth);
       expect(analytic).toEqual(brute);
     }
@@ -190,7 +188,10 @@ describe('expandStrokePreviewBoundsAroundCenter', () => {
 describe('inflateStrokePreviewBoundsForDrawBrush', () => {
   it('expands by margin for cube brush', () => {
     const b = { minX: 0, maxX: 1, minY: 0, maxY: 0, minZ: 0, maxZ: 0 };
-    const o = inflateStrokePreviewBoundsForDrawBrush(b, { drawBrushShape: 'cube', drawBrushSize: 1.5 });
+    const o = inflateStrokePreviewBoundsForDrawBrush(b, {
+      drawBrushShape: 'cube',
+      drawBrushSize: 1.5
+    });
     expect(o.minX).toBe(-2);
     expect(o.maxX).toBe(3);
   });

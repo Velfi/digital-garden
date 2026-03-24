@@ -1,5 +1,11 @@
 import { get } from 'svelte/store';
-import { coordKey, parseCoordKey, getSelectionBounds, getMirrorCoordKeys, type SymmetryAxes } from '../coordUtils';
+import {
+  coordKey,
+  parseCoordKey,
+  getSelectionBounds,
+  getMirrorCoordKeys,
+  type SymmetryAxes
+} from '../coordUtils';
 import {
   voxels,
   selection,
@@ -196,7 +202,8 @@ export async function pasteFromClipboard(): Promise<boolean> {
     const data = JSON.parse(text) as unknown;
     if (!isVoxelleClipboardPayload(data)) {
       console.debug(DBG, 'paste rejected: not voxelle payload', {
-        parsedType: typeof data === 'object' && data !== null ? (data as { type?: string }).type : null
+        parsedType:
+          typeof data === 'object' && data !== null ? (data as { type?: string }).type : null
       });
       return false;
     }

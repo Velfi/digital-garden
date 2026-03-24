@@ -18,9 +18,20 @@ function createRng(seed: number): () => number {
 /** Two integer tangent vectors perpendicular to normal (axis-aligned). */
 function getTangentVectors(normal: FaceNormal): [FaceNormal, FaceNormal] {
   const [nx, ny] = normal;
-  if (nx !== 0) return [[0, 1, 0], [0, 0, 1]];
-  if (ny !== 0) return [[1, 0, 0], [0, 0, 1]];
-  return [[1, 0, 0], [0, 1, 0]];
+  if (nx !== 0)
+    return [
+      [0, 1, 0],
+      [0, 0, 1]
+    ];
+  if (ny !== 0)
+    return [
+      [1, 0, 0],
+      [0, 0, 1]
+    ];
+  return [
+    [1, 0, 0],
+    [0, 1, 0]
+  ];
 }
 
 /**
@@ -94,11 +105,7 @@ export function getGrassPositions(
       const bz = cz + i * t1[2] + j * t2[2];
       const bladeH = 1 + Math.floor(rng() * maxH);
       for (let k = 0; k < bladeH; k++) {
-        positions.push([
-          bx + k * normal[0],
-          by + k * normal[1],
-          bz + k * normal[2]
-        ]);
+        positions.push([bx + k * normal[0], by + k * normal[1], bz + k * normal[2]]);
       }
     }
   }

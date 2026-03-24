@@ -115,11 +115,7 @@ function getDropUVAxes(n: THREE.Vector3): {
   return { dropAxis, uAxis, vAxis };
 }
 
-function toUV(
-  p: [number, number, number],
-  uAxis: 0 | 1 | 2,
-  vAxis: 0 | 1 | 2
-): [number, number] {
+function toUV(p: [number, number, number], uAxis: 0 | 1 | 2, vAxis: 0 | 1 | 2): [number, number] {
   const c = p;
   return [c[uAxis], c[vAxis]];
 }
@@ -149,17 +145,13 @@ function distPointToSegment2D(
   const apx = px - ax;
   const apy = py - ay;
   const abLenSq = abx * abx + aby * aby;
-  const t =
-    abLenSq < 1e-18 ? 0 : Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
+  const t = abLenSq < 1e-18 ? 0 : Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
   const cx = ax + t * abx;
   const cy = ay + t * aby;
   return Math.hypot(px - cx, py - cy);
 }
 
-function minDistToPolygonBoundary2D(
-  uv: [number, number],
-  poly: [number, number][]
-): number {
+function minDistToPolygonBoundary2D(uv: [number, number], poly: [number, number][]): number {
   let m = Infinity;
   const n = poly.length;
   for (let i = 0; i < n; i++) {
@@ -207,11 +199,7 @@ function placeColumn(
   }
 }
 
-function ridgeAlongUFromOrientation(
-  go: 0 | 1 | 2,
-  wU: number,
-  wV: number
-): boolean {
+function ridgeAlongUFromOrientation(go: 0 | 1 | 2, wU: number, wV: number): boolean {
   return go === 0 ? wU >= wV : go === 1;
 }
 
@@ -499,8 +487,7 @@ export function generateRoofVoxels(
     }
     if (dMax < 1e-9) dMax = 1;
     const br = Math.max(0.2, Math.min(0.8, options.breakRatio ?? 0.5));
-    const knee =
-      options.style === 'gambrel' ? 0.68 : options.style === 'pavilion' ? 0.87 : 0.38;
+    const knee = options.style === 'gambrel' ? 0.68 : options.style === 'pavilion' ? 0.87 : 0.38;
     for (let i = 0; i < footprint.length; i++) {
       const p = footprint[i]!;
       const uv = footprintUV[i]!;

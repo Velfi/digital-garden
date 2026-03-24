@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import type { Voxel } from '../voxelMaterial';
-import { buildGpuVoxelAccelFromMap, maxDistanceForGpuAccel, type GpuVoxelAccel } from './gpuVoxelAccel';
+import {
+  buildGpuVoxelAccelFromMap,
+  maxDistanceForGpuAccel,
+  type GpuVoxelAccel
+} from './gpuVoxelAccel';
 
 export type VoxelRayGpuMode = 0 | 1 | 2;
 

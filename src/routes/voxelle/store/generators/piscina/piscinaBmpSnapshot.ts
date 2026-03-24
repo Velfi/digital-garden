@@ -23,7 +23,7 @@ export function assertBmpFileSnapshot(buffer: Buffer, filename: string): void {
   if (looksLikeVitestJson) {
     throw new Error(
       `${filename} is not a raw BMP (Vitest serialized the Buffer as JSON). Regenerate with: VITEST_BMP_UPDATE=1 npm run test:voxelle:piscina-snapshots`
-      );
+    );
   }
   if (!buffer.equals(expected)) {
     throw new Error(

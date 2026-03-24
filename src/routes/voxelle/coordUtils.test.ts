@@ -51,11 +51,11 @@ describe('centered symmetry helpers', () => {
   });
 
   it('expands Cartesian combinations across enabled axes', () => {
-    const expanded = expandPositionsWithSymmetryAroundCenter(
-      [[3, 4, 5]],
-      [1, 2, 3],
-      { x: true, y: true, z: false }
-    );
+    const expanded = expandPositionsWithSymmetryAroundCenter([[3, 4, 5]], [1, 2, 3], {
+      x: true,
+      y: true,
+      z: false
+    });
     expect(new Set(expanded.map(([x, y, z]) => coordKey(x, y, z)))).toEqual(
       new Set(['3,4,5', '-1,4,5', '3,0,5', '-1,0,5'])
     );
@@ -291,8 +291,8 @@ describe('defaultAddShapePlacementAnchor', () => {
   });
 
   it('uses rounded orbit target when map is empty', () => {
-    expect(
-      defaultAddShapePlacementAnchor(new Map(), { x: 3.2, y: -1.6, z: 0.4 })
-    ).toEqual([3, -2, 0]);
+    expect(defaultAddShapePlacementAnchor(new Map(), { x: 3.2, y: -1.6, z: 0.4 })).toEqual([
+      3, -2, 0
+    ]);
   });
 });

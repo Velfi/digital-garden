@@ -36,7 +36,7 @@
 
   const show = $derived(
     gizmoTabsVisible ||
-    drawBrushVisible ||
+      drawBrushVisible ||
       planeAxisVisible ||
       lineAxisAlignVisible ||
       airbrushVisible ||

@@ -137,9 +137,7 @@ function createGlassShadowDepthMaterial(
   _baseColor24: number,
   options?: GlassShadowDepthMaterialOptions
 ): THREE.MeshDepthMaterial {
-  const glassShadowVertexAOScaleValue = options?.marchingCubes
-    ? 0
-    : GLASS_SHADOW_VERTEX_AO_SCALE;
+  const glassShadowVertexAOScaleValue = options?.marchingCubes ? 0 : GLASS_SHADOW_VERTEX_AO_SCALE;
   const depthMat = new THREE.MeshDepthMaterial({
     /** Same as WebGLShadowMap's internal depth material so glass writes comparable depth to the PCF map. */
     depthPacking: THREE.BasicDepthPacking,
@@ -173,8 +171,7 @@ function createGlassShadowDepthMaterial(
     const absV = GLASS_SHADOW_SLAB_ABSORPTION;
     const minTV = GLASS_SHADOW_SLAB_MIN_TRANSMITTANCE;
     // Bias only in the vertex stage (Metal-safe; no gl_FragDepth). Thicker slab → lower rawAOV → less push → darker shadow.
-    const glassVertexDepthBias =
-      `\n\t{\n\t\tfloat attDistV = max(uGlassAttenuationDistance, 1e-4);\n\t\tfloat dSlab = max(slabThickness, 1.0);\n\t\tfloat rawAOV = (dSlab <= 1.0) ? 1.0 : clamp(max(${minTV}, exp(-${absV} * (dSlab - 1.0))), 0.0, 1.0);\n\t\tfloat thickScaleV = mix(1.5, 0.72, rawAOV);\n\t\tfloat vertexAOFactorV = clamp(pow(rawAOV, glassShadowVertexAOPow) * glassShadowVertexAOScale, 0.0, 1.0);\n\t\tfloat netTV = clamp(uGlassTransmission * exp(-(uGlassThickness * thickScaleV) / attDistV), 0.0, 1.0);\n\t\tfloat glassPushV = glassShadowDepthPushMax * netTV * vertexAOFactorV;\n\t\tfloat dz = 2.0 * glassPushV * gl_Position.w;\n#ifdef USE_REVERSED_DEPTH_BUFFER\n\t\tgl_Position.z -= dz;\n#else\n\t\tgl_Position.z += dz;\n#endif\n\t\tfloat wLim = max(abs(gl_Position.w), 1e-6);\n\t\tgl_Position.z = clamp(gl_Position.z, -wLim + 1e-4, wLim - 1e-4);\n\t}\n`;
+    const glassVertexDepthBias = `\n\t{\n\t\tfloat attDistV = max(uGlassAttenuationDistance, 1e-4);\n\t\tfloat dSlab = max(slabThickness, 1.0);\n\t\tfloat rawAOV = (dSlab <= 1.0) ? 1.0 : clamp(max(${minTV}, exp(-${absV} * (dSlab - 1.0))), 0.0, 1.0);\n\t\tfloat thickScaleV = mix(1.5, 0.72, rawAOV);\n\t\tfloat vertexAOFactorV = clamp(pow(rawAOV, glassShadowVertexAOPow) * glassShadowVertexAOScale, 0.0, 1.0);\n\t\tfloat netTV = clamp(uGlassTransmission * exp(-(uGlassThickness * thickScaleV) / attDistV), 0.0, 1.0);\n\t\tfloat glassPushV = glassShadowDepthPushMax * netTV * vertexAOFactorV;\n\t\tfloat dz = 2.0 * glassPushV * gl_Position.w;\n#ifdef USE_REVERSED_DEPTH_BUFFER\n\t\tgl_Position.z -= dz;\n#else\n\t\tgl_Position.z += dz;\n#endif\n\t\tfloat wLim = max(abs(gl_Position.w), 1e-6);\n\t\tgl_Position.z = clamp(gl_Position.z, -wLim + 1e-4, wLim - 1e-4);\n\t}\n`;
 
     const vertexZwCompactBlock =
       '\t#include <logdepthbuf_vertex>\n\t#include <clipping_planes_vertex>\n\tvHighPrecisionZW = gl_Position.zw;';
@@ -184,11 +181,15 @@ function createGlassShadowDepthMaterial(
       '\tvHighPrecisionZW = gl_Position.zw;';
 
     if (shader.vertexShader.includes(vertexZwCompactBlock)) {
-      shader.vertexShader = shader.vertexShader.replace(vertexZwCompactBlock, vertexZwCompactReplacement);
+      shader.vertexShader = shader.vertexShader.replace(
+        vertexZwCompactBlock,
+        vertexZwCompactReplacement
+      );
     } else {
-      console.warn('voxelle: glass shadow vertex depth patch failed (three.js depth_vert layout changed)');
+      console.warn(
+        'voxelle: glass shadow vertex depth patch failed (three.js depth_vert layout changed)'
+      );
     }
-
   };
   return depthMat;
 }
@@ -512,10 +513,7 @@ export function createMeshManager(
     if (isWebGPU) {
       const geom = new THREE.BufferGeometry();
       geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      const lines = new THREE.LineSegments(
-        geom,
-        gridLineMaterial as THREE.LineBasicMaterial
-      );
+      const lines = new THREE.LineSegments(geom, gridLineMaterial as THREE.LineBasicMaterial);
       lines.raycast = () => {};
       gridGroup.add(lines);
     } else {
@@ -536,11 +534,7 @@ export function createMeshManager(
 
   /** Voxel index k → world cube [k−0.5, k+0.5] (same as greedy mesh). */
   function positionMeshAtSelectionBounds(mesh: THREE.Mesh, b: SelectionBounds) {
-    mesh.position.set(
-      (b.minX + b.maxX) / 2,
-      (b.minY + b.maxY) / 2,
-      (b.minZ + b.maxZ) / 2
-    );
+    mesh.position.set((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2);
   }
 
   /** Translucent single box; same voxel-space convention as selection AABB wireframe. */

@@ -28,7 +28,10 @@ export type WebGPUBloomPipeline = {
   /** HalfFloat beauty pass (transmission + depth). */
   sceneRenderTarget: { setSize: (w: number, h: number, d?: number) => void; dispose: () => void };
   /** HalfFloat glow-only pass (same size; depth test matches beauty pass so sort is not view-dependent). */
-  bloomSourceRenderTarget: { setSize: (w: number, h: number, d?: number) => void; dispose: () => void };
+  bloomSourceRenderTarget: {
+    setSize: (w: number, h: number, d?: number) => void;
+    dispose: () => void;
+  };
   /** Full scene → beauty RT. */
   renderSceneToTarget(renderer: WebGPURendererLike, scene: Scene, camera: Camera): void;
   /** After non-glow materials are blacked out → bloom source RT (cleared each call). */
@@ -107,7 +110,9 @@ export async function createWebGPUBloomPipeline(
     WEBGPU_BLOOM_RADIUS,
     WEBGPU_BLOOM_THRESHOLD
   );
-  const renderPipeline = new RenderPipeline(renderer as ConstructorParameters<typeof RenderPipeline>[0]);
+  const renderPipeline = new RenderPipeline(
+    renderer as ConstructorParameters<typeof RenderPipeline>[0]
+  );
   renderPipeline.outputNode = beautyColor.add(bloomPass);
   renderPipeline.needsUpdate = true;
 

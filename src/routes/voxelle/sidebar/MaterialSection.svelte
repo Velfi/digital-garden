@@ -1,9 +1,5 @@
 <script lang="ts">
-  import {
-    voxelMaterial,
-    VOXEL_MATERIAL_IDS,
-    type VoxelMaterialId
-  } from '../store/index';
+  import { voxelMaterial, VOXEL_MATERIAL_IDS, type VoxelMaterialId } from '../store/index';
 
   const labels: Record<VoxelMaterialId, string> = {
     plastic: 'Plastic',
@@ -16,7 +12,9 @@
 </script>
 
 <h2>Material</h2>
-<p class="hint">Material for new voxels, paint, and clay strokes. Eyedropper picks both color and material.</p>
+<p class="hint">
+  Material for new voxels, paint, and clay strokes. Eyedropper picks both color and material.
+</p>
 <div class="material-grid" role="group" aria-label="Voxel material">
   {#each VOXEL_MATERIAL_IDS as id (id)}
     <button

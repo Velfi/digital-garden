@@ -462,39 +462,39 @@ export function scaleProjectBy2(): void {
   const v = get(voxels);
   if (v.size === 0) return;
   commitUndoAfter(() => {
-  const next = new Map<string, Voxel>();
-  for (const [key, col] of v) {
-    const [x, y, z] = parseCoordKey(key);
-    const bx = 2 * x;
-    const by = 2 * y;
-    const bz = 2 * z;
-    for (let dx = 0; dx < 2; dx++) {
-      for (let dy = 0; dy < 2; dy++) {
-        for (let dz = 0; dz < 2; dz++) {
-          next.set(coordKey(bx + dx, by + dy, bz + dz), col);
+    const next = new Map<string, Voxel>();
+    for (const [key, col] of v) {
+      const [x, y, z] = parseCoordKey(key);
+      const bx = 2 * x;
+      const by = 2 * y;
+      const bz = 2 * z;
+      for (let dx = 0; dx < 2; dx++) {
+        for (let dy = 0; dy < 2; dy++) {
+          for (let dz = 0; dz < 2; dz++) {
+            next.set(coordKey(bx + dx, by + dy, bz + dz), col);
+          }
         }
       }
     }
-  }
-  const sel = get(selection);
-  const nextSel = new Map<string, Voxel>();
-  for (const [key, col] of sel) {
-    const [x, y, z] = parseCoordKey(key);
-    const bx = 2 * x;
-    const by = 2 * y;
-    const bz = 2 * z;
-    for (let dx = 0; dx < 2; dx++) {
-      for (let dy = 0; dy < 2; dy++) {
-        for (let dz = 0; dz < 2; dz++) {
-          nextSel.set(coordKey(bx + dx, by + dy, bz + dz), col);
+    const sel = get(selection);
+    const nextSel = new Map<string, Voxel>();
+    for (const [key, col] of sel) {
+      const [x, y, z] = parseCoordKey(key);
+      const bx = 2 * x;
+      const by = 2 * y;
+      const bz = 2 * z;
+      for (let dx = 0; dx < 2; dx++) {
+        for (let dy = 0; dy < 2; dy++) {
+          for (let dz = 0; dz < 2; dz++) {
+            nextSel.set(coordKey(bx + dx, by + dy, bz + dz), col);
+          }
         }
       }
     }
-  }
-  const positions = [...next.keys()].map((k) => parseCoordKey(k));
-  ensureGridFitsPositions(positions);
-  voxels.set(next);
-  selection.set(nextSel);
+    const positions = [...next.keys()].map((k) => parseCoordKey(k));
+    ensureGridFitsPositions(positions);
+    voxels.set(next);
+    selection.set(nextSel);
   });
 }
 
@@ -508,22 +508,22 @@ export function shiftSelection(dx: number, dy: number, dz: number): void {
   const nz = Math.round(dz);
   if (nx === 0 && ny === 0 && nz === 0) return;
   commitUndoAfter(() => {
-  const nextVoxels = cloneVoxelsImpl(v);
-  const newSel = new Map<string, Voxel>();
-  for (const [key, selCol] of sel) {
-    const [x, y, z] = parseCoordKey(key);
-    const newKey = coordKey(x + nx, y + ny, z + nz);
-    newSel.set(newKey, selCol);
-    const col = v.get(key);
-    if (col !== undefined) {
-      nextVoxels.delete(key);
-      nextVoxels.set(newKey, col);
+    const nextVoxels = cloneVoxelsImpl(v);
+    const newSel = new Map<string, Voxel>();
+    for (const [key, selCol] of sel) {
+      const [x, y, z] = parseCoordKey(key);
+      const newKey = coordKey(x + nx, y + ny, z + nz);
+      newSel.set(newKey, selCol);
+      const col = v.get(key);
+      if (col !== undefined) {
+        nextVoxels.delete(key);
+        nextVoxels.set(newKey, col);
+      }
     }
-  }
-  const positions = [...newSel.keys()].map((k) => parseCoordKey(k));
-  ensureGridFitsPositions(positions);
-  voxels.set(nextVoxels);
-  selection.set(newSel);
+    const positions = [...newSel.keys()].map((k) => parseCoordKey(k));
+    ensureGridFitsPositions(positions);
+    voxels.set(nextVoxels);
+    selection.set(newSel);
   });
 }
 
