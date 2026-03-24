@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { get } from 'svelte/store';
-import { voxels, gridSize, focalLength, orthographic, resetUndo } from './core';
+import { voxels, hiddenVoxels, gridSize, focalLength, orthographic, resetUndo } from './core';
 import {
   serializeToVoxelleFormat,
   VOXELLE_FORMAT_VERSION,
@@ -39,6 +39,7 @@ async function gzipDecompress(bytes: Uint8Array): Promise<Uint8Array> {
 describe('serializeToVoxelleFormat', () => {
   beforeEach(() => {
     voxels.set(new Map());
+    hiddenVoxels.set(new Map());
     gridSize.set(32);
     focalLength.set(29);
     orthographic.set(true);
@@ -64,6 +65,15 @@ describe('serializeToVoxelleFormat', () => {
   it('returns empty voxels array when no voxels', () => {
     const data = serializeToVoxelleFormat();
     expect(data.voxels).toEqual([]);
+    expect(data.hiddenVoxels).toEqual([]);
+  });
+
+  it('serializes hidden voxels separately', () => {
+    voxels.set(new Map([['0,0,0', plasticVoxel(0xff5733)]]));
+    hiddenVoxels.set(new Map([['1,0,0', plasticVoxel(0x00ff00)]]));
+    const data = serializeToVoxelleFormat();
+    expect(data.voxels).toContainEqual([0, 0, 0, 0xff5733, 'plastic']);
+    expect(data.hiddenVoxels).toContainEqual([1, 0, 0, 0x00ff00, 'plastic']);
   });
 });
 
@@ -125,6 +135,7 @@ describe('loadFromBytes / encodeForTransport with injected impls', () => {
       async (data) => serializeFormatToBson(data)
     );
     voxels.set(new Map());
+    hiddenVoxels.set(new Map());
     gridSize.set(32);
     focalLength.set(29);
     orthographic.set(true);
@@ -170,6 +181,20 @@ describe('loadFromBytes / encodeForTransport with injected impls', () => {
     expect(get(voxels).get('1,1,1')).toEqual(plasticVoxel(0x00ff00));
     expect(get(focalLength)).toBe(50);
     expect(get(orthographic)).toBe(false);
+  });
+
+  it('loadFromBytes restores hidden voxels when present', async () => {
+    const data: VoxelleFileFormat = {
+      version: 1,
+      gridSize: 16,
+      voxels: [[0, 0, 0, 0xff5733]],
+      hiddenVoxels: [[1, 0, 0, 0x00ff00]]
+    };
+    const bsonBytes = serializeFormatToBson(data);
+    const result = await loadFromBytes(bsonBytes);
+    expect(result).toBe(true);
+    expect(get(voxels).get('0,0,0')).toEqual(plasticVoxel(0xff5733));
+    expect(get(hiddenVoxels).get('1,0,0')).toEqual(plasticVoxel(0x00ff00));
   });
 
   it('encodeForTransport returns base64 string', async () => {

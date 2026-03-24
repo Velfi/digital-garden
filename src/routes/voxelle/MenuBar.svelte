@@ -4,6 +4,7 @@
   import {
     voxels,
     selection,
+    hasHiddenVoxels,
     selectionMode,
     tool,
     toolPane,
@@ -15,6 +16,8 @@
     shrinkSelection,
     deselectInnerVoxels,
     selectConnected,
+    hideSelectedVoxels,
+    unhideAllVoxels,
     deselectVoxels,
     deselectEmptySpaces,
     modalRequest,
@@ -37,8 +40,10 @@
   let editOpen = $state(false);
   let viewOpen = $state(false);
   let addOpen = $state(false);
+  let voxelsOpen = $state(false);
   let selectionOpen = $state(false);
   let helpOpen = $state(false);
+  let voxelsMenuRef: HTMLDivElement;
   let selectionMenuRef: HTMLDivElement;
   let fileMenuRef: HTMLDivElement;
   let editMenuRef: HTMLDivElement;
@@ -53,6 +58,7 @@
     editOpen = false;
     viewOpen = false;
     addOpen = false;
+    voxelsOpen = false;
     selectionOpen = false;
     helpOpen = false;
   }
@@ -61,6 +67,7 @@
     editOpen = false;
     viewOpen = false;
     addOpen = false;
+    voxelsOpen = false;
     selectionOpen = false;
     helpOpen = false;
     fileOpen = !fileOpen;
@@ -70,6 +77,7 @@
     fileOpen = false;
     viewOpen = false;
     addOpen = false;
+    voxelsOpen = false;
     selectionOpen = false;
     helpOpen = false;
     editOpen = !editOpen;
@@ -79,6 +87,7 @@
     fileOpen = false;
     editOpen = false;
     addOpen = false;
+    voxelsOpen = false;
     selectionOpen = false;
     helpOpen = false;
     viewOpen = !viewOpen;
@@ -88,9 +97,20 @@
     fileOpen = false;
     editOpen = false;
     viewOpen = false;
+    voxelsOpen = false;
     selectionOpen = false;
     helpOpen = false;
     addOpen = !addOpen;
+  }
+
+  function toggleVoxels() {
+    fileOpen = false;
+    editOpen = false;
+    viewOpen = false;
+    addOpen = false;
+    selectionOpen = false;
+    helpOpen = false;
+    voxelsOpen = !voxelsOpen;
   }
 
   function toggleSelection() {
@@ -98,6 +118,7 @@
     editOpen = false;
     viewOpen = false;
     addOpen = false;
+    voxelsOpen = false;
     helpOpen = false;
     selectionOpen = !selectionOpen;
   }
@@ -107,6 +128,7 @@
     editOpen = false;
     viewOpen = false;
     addOpen = false;
+    voxelsOpen = false;
     selectionOpen = false;
     helpOpen = !helpOpen;
   }
@@ -258,6 +280,16 @@
     closeMenus();
   }
 
+  function handleHideSelected() {
+    hideSelectedVoxels();
+    closeMenus();
+  }
+
+  function handleUnhideAll() {
+    unhideAllVoxels();
+    closeMenus();
+  }
+
   function handleSelectByColor() {
     tool.set('selectByColor');
     toolPane.set('draw');
@@ -316,6 +348,8 @@
       !viewMenuRef.contains(target) &&
       addMenuRef &&
       !addMenuRef.contains(target) &&
+      voxelsMenuRef &&
+      !voxelsMenuRef.contains(target) &&
       helpMenuRef &&
       !helpMenuRef.contains(target)
     ) {
@@ -427,23 +461,6 @@
         </button>
         <button type="button" role="menuitem" onclick={handlePaste}> Paste </button>
         <div class="menu-separator" role="separator"></div>
-        <button
-          type="button"
-          role="menuitem"
-          onclick={handleHollowOut}
-          disabled={$voxels.size === 0}
-        >
-          Hollow out
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          onclick={handleScaleProjectBy2}
-          disabled={$voxels.size === 0}
-          title="Each voxel becomes a 2×2×2 block (coordinates double)"
-        >
-          Scale project up by 2×
-        </button>
       </div>
     {/if}
   </div>
@@ -480,6 +497,58 @@
     {#if addOpen}
       <div class="dropdown" role="menu">
         <button type="button" role="menuitem" onclick={handleAddShape}> Add shape… </button>
+      </div>
+    {/if}
+  </div>
+
+  <div class="menu-item" role="none" bind:this={voxelsMenuRef}>
+    <button
+      type="button"
+      class="menu-trigger"
+      class:active={voxelsOpen}
+      onclick={toggleVoxels}
+      aria-haspopup="menu"
+      aria-expanded={voxelsOpen}
+    >
+      Voxels
+    </button>
+    {#if voxelsOpen}
+      <div class="dropdown" role="menu">
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleHideSelected}
+          disabled={$selection.size === 0}
+          title="Hide selected voxels; hidden voxels are excluded from editing until unhidden"
+        >
+          Hide selected
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleUnhideAll}
+          disabled={!$hasHiddenVoxels}
+        >
+          Unhide all
+        </button>
+        <div class="menu-separator" role="separator"></div>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleHollowOut}
+          disabled={$voxels.size === 0}
+        >
+          Hollow out
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleScaleProjectBy2}
+          disabled={$voxels.size === 0}
+          title="Each voxel becomes a 2×2×2 block (coordinates double)"
+        >
+          Scale project up by 2×
+        </button>
       </div>
     {/if}
   </div>

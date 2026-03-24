@@ -18,6 +18,7 @@ export type VoxelleFileFormat = {
   version: number;
   gridSize: number;
   voxels: VoxelleFileVoxelRow[];
+  hiddenVoxels?: VoxelleFileVoxelRow[];
   scene?: {
     focalLength?: number;
     orthographic?: boolean;
@@ -65,7 +66,23 @@ function parseFullFormat(raw: unknown): VoxelleFileFormat | null {
     const mat = parsed.voxel.material as VoxelMaterialId;
     voxelsArr.push([parsed.x, parsed.y, parsed.z, parsed.voxel.color, mat]);
   }
-  return { version: data.version, gridSize: sz, voxels: voxelsArr, scene: data.scene };
+  const hiddenVoxelsArr: VoxelleFileVoxelRow[] = [];
+  if (Array.isArray(data.hiddenVoxels)) {
+    for (const e of data.hiddenVoxels) {
+      if (!Array.isArray(e) || e.length < 4 || e.length > 5) continue;
+      const parsed = rowToVoxel(e as VoxelleFileVoxelRow);
+      if (!parsed) continue;
+      const mat = parsed.voxel.material as VoxelMaterialId;
+      hiddenVoxelsArr.push([parsed.x, parsed.y, parsed.z, parsed.voxel.color, mat]);
+    }
+  }
+  return {
+    version: data.version,
+    gridSize: sz,
+    voxels: voxelsArr,
+    hiddenVoxels: hiddenVoxelsArr,
+    scene: data.scene
+  };
 }
 
 /** Parse BSON payload to VoxelleFileFormat. Used by worker and tests. */

@@ -2,6 +2,7 @@ import { get, writable } from 'svelte/store';
 import { browser } from '$app/environment';
 import {
   voxels,
+  hiddenVoxels,
   gridSize,
   resizeGridToContent,
   focalLength,
@@ -47,6 +48,11 @@ function applyStoragePayload(data: unknown): boolean {
     if (typeof sz !== 'number' || sz < 1 || !Number.isInteger(sz)) return false;
     gridSize.set(sz);
     voxels.set(deserializeVoxels(d.voxelsJson as string));
+    if (typeof d.hiddenVoxelsJson === 'string') {
+      hiddenVoxels.set(deserializeVoxels(d.hiddenVoxelsJson));
+    } else {
+      hiddenVoxels.set(new Map());
+    }
     if (d.undoSnapshot && typeof d.undoSnapshot === 'object') {
       try {
         restoreUndoSnapshot(d.undoSnapshot as UndoSnapshot);
@@ -117,6 +123,7 @@ function buildPayloadString(): string {
   return JSON.stringify({
     gridSize: get(gridSize),
     voxelsJson: serializeVoxels(get(voxels)),
+    hiddenVoxelsJson: serializeVoxels(get(hiddenVoxels)),
     undoSnapshot: getUndoSnapshot(),
     focalLength: get(focalLength),
     orthographic: get(orthographic)

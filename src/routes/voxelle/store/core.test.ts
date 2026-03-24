@@ -3,6 +3,7 @@ import { get } from 'svelte/store';
 import { coordKey } from '../coordUtils';
 import {
   voxels,
+  hiddenVoxels,
   selection,
   gridSize,
   resetUndo,
@@ -26,6 +27,8 @@ import {
   applySelectionTranslationInStroke,
   applySelectionTranslationAlongAxis,
   applySelectionRotationInStroke,
+  hideSelectedVoxels,
+  unhideAllVoxels,
   type FaceNormal
 } from './core';
 import { plasticVoxel, type Voxel } from '../voxelMaterial';
@@ -38,6 +41,7 @@ describe('core', () => {
   beforeEach(() => {
     gridSize.set(32);
     voxels.set(new Map());
+    hiddenVoxels.set(new Map());
     selection.set(new Map());
     voxelMaterial.set('plastic');
     resetUndo();
@@ -411,6 +415,51 @@ describe('core', () => {
       beginStroke();
       applySelectionRotationInStroke(1, 0);
       expect(get(voxels).get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
+    });
+  });
+
+  describe('hide/unhide voxels', () => {
+    it('hides selected occupied voxels and supports incremental hides', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x00ff00)],
+          [coordKey(2, 0, 0), pv(0x0000ff)]
+        ])
+      );
+      selection.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x00ff00)]
+        ])
+      );
+      hideSelectedVoxels();
+      expect(get(voxels).has(coordKey(0, 0, 0))).toBe(false);
+      expect(get(voxels).has(coordKey(1, 0, 0))).toBe(false);
+      expect(get(hiddenVoxels).has(coordKey(0, 0, 0))).toBe(true);
+      expect(get(hiddenVoxels).has(coordKey(1, 0, 0))).toBe(true);
+      expect(get(selection).size).toBe(0);
+
+      selection.set(new Map([[coordKey(2, 0, 0), pv(0x0000ff)]]));
+      hideSelectedVoxels();
+      expect(get(voxels).size).toBe(0);
+      expect(get(hiddenVoxels).size).toBe(3);
+    });
+
+    it('unhide all restores hidden voxels and clears hidden store', () => {
+      voxels.set(new Map([[coordKey(5, 0, 0), pv(0x111111)]]));
+      hiddenVoxels.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x00ff00)]
+        ])
+      );
+      unhideAllVoxels();
+      const v = get(voxels);
+      expect(v.has(coordKey(0, 0, 0))).toBe(true);
+      expect(v.has(coordKey(1, 0, 0))).toBe(true);
+      expect(v.has(coordKey(5, 0, 0))).toBe(true);
+      expect(get(hiddenVoxels).size).toBe(0);
     });
   });
 

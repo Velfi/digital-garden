@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { coordKey, parseCoordKey } from '../coordUtils';
-import { voxels, gridSize, focalLength, orthographic, resetUndo } from './core';
+import { voxels, hiddenVoxels, gridSize, focalLength, orthographic, resetUndo } from './core';
 import type { GridSize } from './core';
 import { VOXELLE_FORMAT_VERSION, type VoxelleFileFormat } from './voxelleFormatCore';
 import { canonicalizeVoxelMap } from './serialization';
@@ -88,12 +88,15 @@ useWorker();
 
 export function serializeToVoxelleFormat(): VoxelleFileFormat {
   const v = canonicalizeVoxelMap(get(voxels));
+  const h = canonicalizeVoxelMap(get(hiddenVoxels));
   let sz = get(gridSize);
-  if (v.size > 0) {
+  if (v.size > 0 || h.size > 0) {
     let maxAbs = 0;
-    for (const key of v.keys()) {
-      const [x, y, z] = parseCoordKey(key);
-      maxAbs = Math.max(maxAbs, Math.abs(x), Math.abs(y), Math.abs(z));
+    for (const source of [v, h]) {
+      for (const key of source.keys()) {
+        const [x, y, z] = parseCoordKey(key);
+        maxAbs = Math.max(maxAbs, Math.abs(x), Math.abs(y), Math.abs(z));
+      }
     }
     sz = Math.max(sz, 2 * (maxAbs + 1));
   }
@@ -101,6 +104,10 @@ export function serializeToVoxelleFormat(): VoxelleFileFormat {
     version: VOXELLE_FORMAT_VERSION,
     gridSize: sz,
     voxels: [...v.entries()].map(([key, vx]) => {
+      const [x, y, z] = parseCoordKey(key);
+      return [x, y, z, vx.color, vx.material] as VoxelleFileFormat['voxels'][number];
+    }),
+    hiddenVoxels: [...h.entries()].map(([key, vx]) => {
       const [x, y, z] = parseCoordKey(key);
       return [x, y, z, vx.color, vx.material] as VoxelleFileFormat['voxels'][number];
     }),
@@ -138,6 +145,7 @@ function isGzipped(bytes: Uint8Array): boolean {
 
 function applyModelData(data: VoxelleFileFormat): void {
   const voxelsMap = new Map<string, Voxel>();
+  const hiddenMap = new Map<string, Voxel>();
   const sz = data.gridSize;
   for (const row of data.voxels) {
     if (!Array.isArray(row) || row.length < 4) continue;
@@ -151,9 +159,24 @@ function applyModelData(data: VoxelleFileFormat): void {
         : parseVoxelMaterial(0);
     voxelsMap.set(coordKey(x, y, z), { color: c, material: m });
   }
+  if (Array.isArray(data.hiddenVoxels)) {
+    for (const row of data.hiddenVoxels) {
+      if (!Array.isArray(row) || row.length < 4) continue;
+      const x = row[0] as number;
+      const y = row[1] as number;
+      const z = row[2] as number;
+      const c = (row[3] as number) >>> 0 & 0xffffff;
+      const m =
+        row.length >= 5 && typeof row[4] === 'string'
+          ? parseVoxelMaterial(row[4])
+          : parseVoxelMaterial(0);
+      hiddenMap.set(coordKey(x, y, z), { color: c, material: m });
+    }
+  }
   resetUndo();
   gridSize.set(sz as GridSize);
   voxels.set(voxelsMap);
+  hiddenVoxels.set(hiddenMap);
   if (data.scene) {
     if (
       typeof data.scene.focalLength === 'number' &&

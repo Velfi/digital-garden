@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { voxels, gridSize, focalLength, orthographic, resetUndo } from './core';
+import { voxels, hiddenVoxels, gridSize, focalLength, orthographic, resetUndo } from './core';
 import {
   loadFromStorage,
   loadFromStorageAsync,
@@ -30,6 +30,7 @@ describe('storage', () => {
   beforeEach(() => {
     Object.keys(mockStorage).forEach((k) => delete mockStorage[k]);
     voxels.set(new Map());
+    hiddenVoxels.set(new Map());
     gridSize.set(32);
     focalLength.set(29);
     orthographic.set(true);
@@ -54,6 +55,18 @@ describe('storage', () => {
       expect(get(gridSize)).toBe(4);
       expect(get(voxels).get('0,0,0')).toEqual(plasticVoxel(0xff0000));
       expect(get(voxels).get('1,1,1')).toEqual(plasticVoxel(0x00ff00));
+    });
+
+    it('round-trips hidden voxels', () => {
+      voxels.set(new Map([[`0,0,0`, plasticVoxel(0xff0000)]]));
+      hiddenVoxels.set(new Map([[`1,0,0`, plasticVoxel(0x00ff00)]]));
+      saveToStorage();
+      voxels.set(new Map());
+      hiddenVoxels.set(new Map());
+      const result = loadFromStorage();
+      expect(result).toBe(true);
+      expect(get(voxels).get('0,0,0')).toEqual(plasticVoxel(0xff0000));
+      expect(get(hiddenVoxels).get('1,0,0')).toEqual(plasticVoxel(0x00ff00));
     });
 
     it('loadFromStorage returns false when empty', () => {

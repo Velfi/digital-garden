@@ -155,6 +155,9 @@ export type ToolPane = 'draw' | 'clay' | 'hand' | 'fly' | 'generators';
 // Stores
 export const gridSize = writable<GridSize>(32);
 export const voxels = writable<Map<string, Voxel>>(new Map());
+/** Hidden voxels are removed from `voxels` until unhidden. */
+export const hiddenVoxels = writable<Map<string, Voxel>>(new Map());
+export const hasHiddenVoxels = derived(hiddenVoxels, (h) => h.size > 0);
 export const tool = writable<Tool>('voxel');
 export const toolPane = writable<ToolPane>('draw');
 /** Last selected draw tool, restored when switching from Clay back to Draw pane. */
@@ -576,13 +579,61 @@ export { serializeVoxels, deserializeVoxels };
 
 export function initCanvas(size: GridSize, shape: StartShape = 'cube') {
   resetUndo();
+  hiddenVoxels.set(new Map());
   voxels.set(initShape(size, shape));
 }
 
 export function resetCanvas(size: GridSize, shape: StartShape = 'cube') {
   commitUndoAfter(() => {
+    hiddenVoxels.set(new Map());
     voxels.set(initShape(size, shape));
   });
+}
+
+/** Merge visible and hidden voxels for persistence/export. Hidden wins on key collisions. */
+export function getAllVoxels(): Map<string, Voxel> {
+  const visible = get(voxels);
+  const hidden = get(hiddenVoxels);
+  const out = cloneVoxelsImpl(visible);
+  for (const [key, vx] of hidden) out.set(key, cloneVoxel(vx));
+  return out;
+}
+
+/** Move currently selected occupied voxels into `hiddenVoxels` and clear them from selection. */
+export function hideSelectedVoxels(): void {
+  const v = get(voxels);
+  const sel = get(selection);
+  if (v.size === 0 || sel.size === 0) return;
+  const nextVoxels = cloneVoxelsImpl(v);
+  const nextHidden = cloneVoxelsImpl(get(hiddenVoxels));
+  const moved = new Set<string>();
+  for (const [key] of sel) {
+    const vx = v.get(key);
+    if (vx === undefined) continue;
+    nextVoxels.delete(key);
+    nextHidden.set(key, cloneVoxel(vx));
+    moved.add(key);
+  }
+  if (moved.size === 0) return;
+  const nextSel = new Map<string, Voxel>();
+  for (const [key, vx] of sel) {
+    if (!moved.has(key)) nextSel.set(key, vx);
+  }
+  voxels.set(nextVoxels);
+  hiddenVoxels.set(nextHidden);
+  selection.set(nextSel);
+}
+
+/** Restore all hidden voxels back into the visible voxel map. */
+export function unhideAllVoxels(): void {
+  const hidden = get(hiddenVoxels);
+  if (hidden.size === 0) return;
+  const nextVoxels = cloneVoxelsImpl(get(voxels));
+  for (const [key, vx] of hidden) {
+    nextVoxels.set(key, cloneVoxel(vx));
+  }
+  voxels.set(nextVoxels);
+  hiddenVoxels.set(new Map());
 }
 
 /** Map-like view that mirrors set/delete across symmetry axes. has/get delegate to underlying. */
