@@ -177,16 +177,17 @@ export type SelectionBounds = {
 };
 
 /**
- * Line segment vertices (pairs) for an axis-aligned box around voxels in [min, max]
- * treating each voxel as the unit cube [i, i+1]³. For THREE.LineSegments.
+ * Line segment vertices (pairs) for an axis-aligned box around voxels with indices in [min, max]
+ * inclusive, matching greedy mesh space: voxel at integer k occupies [k − 0.5, k + 0.5] per axis.
+ * For THREE.LineSegments.
  */
 export function selectionAabbWireframePositions(b: SelectionBounds): Float32Array {
-  const x0 = b.minX;
-  const y0 = b.minY;
-  const z0 = b.minZ;
-  const x1 = b.maxX + 1;
-  const y1 = b.maxY + 1;
-  const z1 = b.maxZ + 1;
+  const x0 = b.minX - 0.5;
+  const y0 = b.minY - 0.5;
+  const z0 = b.minZ - 0.5;
+  const x1 = b.maxX + 0.5;
+  const y1 = b.maxY + 0.5;
+  const z1 = b.maxZ + 0.5;
   return new Float32Array([
     x0,
     y0,
@@ -311,11 +312,11 @@ export function getVoxelBounds(v: Map<string, Voxel>): SelectionBounds | null {
   return { minX, minY, minZ, maxX, maxY, maxZ };
 }
 
-/** Center of voxel bounding box (voxel-space). Null if empty. */
+/** Center of voxel bounding box in world space (greedy mesh: voxel k occupies [k−0.5, k+0.5]). Null if empty. */
 export function getVoxelCenter(v: Map<string, Voxel>): [number, number, number] | null {
   const b = getVoxelBounds(v);
   if (!b) return null;
-  return [(b.minX + b.maxX + 1) / 2, (b.minY + b.maxY + 1) / 2, (b.minZ + b.maxZ + 1) / 2];
+  return [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2];
 }
 
 /**
@@ -359,9 +360,9 @@ export function getBoundsFromPositions(
   return { minX, minY, minZ, maxX, maxY, maxZ };
 }
 
-/** Center of selection bounding box. Null if empty. */
+/** Center of selection bounding box in world space (same convention as `getVoxelCenter`). Null if empty. */
 export function getSelectionCenter(sel: Map<string, Voxel>): [number, number, number] | null {
   const b = getSelectionBounds(sel);
   if (!b) return null;
-  return [(b.minX + b.maxX + 1) / 2, (b.minY + b.maxY + 1) / 2, (b.minZ + b.maxZ + 1) / 2];
+  return [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2];
 }

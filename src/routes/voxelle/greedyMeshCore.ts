@@ -282,7 +282,12 @@ function weldVertices(
     const ny = normals[i + 1];
     const nz = normals[i + 2];
 
-    const key = vertexKey(x, y, z, nx, ny, nz);
+    const qc = (v: number) => Math.round(v / WELD_EPS) * WELD_EPS;
+    const cr = colors[i];
+    const cg = colors[i + 1];
+    const cb = colors[i + 2];
+    const slab = slabThickness[vi] ?? 1;
+    const key = `${vertexKey(x, y, z, nx, ny, nz)},${qc(cr)},${qc(cg)},${qc(cb)},${qc(slab)}`;
     const existing = map.get(key);
     if (existing !== undefined) {
       indices.push(existing);

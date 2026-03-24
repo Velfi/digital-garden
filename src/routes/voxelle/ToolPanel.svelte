@@ -31,6 +31,8 @@
   const grassVisible = $derived($tool === 'grass');
   const ashlarVisible = $derived($tool === 'ashlar');
   const roofVisible = $derived($tool === 'roof');
+  const floraVisible = $derived($tool === 'flora');
+  const piscinaVisible = $derived($tool === 'piscina');
   const gizmoTabsVisible = $derived(
     $tool !== 'fly' && $tool !== 'hand' && ($selection.size > 0 || $addPanelStore.open)
   );
@@ -48,7 +50,9 @@
       rockVisible ||
       grassVisible ||
       ashlarVisible ||
-      roofVisible
+      roofVisible ||
+      floraVisible ||
+      piscinaVisible
   );
 </script>
 

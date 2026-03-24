@@ -2,7 +2,7 @@ import { parseCoordKey } from './coordUtils';
 import { computeGreedyMesh } from './greedyMeshCore';
 import { computeMarchingCubes } from './marchingCubesCore';
 import { voxelsFromInput } from './greedyMeshWorkerLogic';
-import type { Voxel } from './voxelMaterial';
+import { parseBucketKey, voxelBucketKey, type Voxel } from './voxelMaterial';
 
 export type RenderingMode = 'greedy' | 'marchingCubes' | 'ray';
 
@@ -93,6 +93,48 @@ function mergeChunkResults(
   return results;
 }
 
+/** All voxels that belong to one greedy bucket (color|material). */
+function voxelsForBucket(voxels: Map<string, Voxel>, bucketKey: string): Map<string, Voxel> {
+  const out = new Map<string, Voxel>();
+  for (const [k, v] of voxels) {
+    if (voxelBucketKey(v) === bucketKey) out.set(k, v);
+  }
+  return out;
+}
+
+/**
+ * Chunked greedy merges only within each chunk; glass quads/slabs can differ at chunk seams and break
+ * shadow depth (custom depth material uses per-vertex thickness). Re-run full-scene greedy per glass
+ * bucket so merges match an unchunked pass.
+ */
+function replaceGlassBucketsWithFullSceneGreedy(
+  results: VoxelMeshWorkerOutput['results'],
+  fullVoxels: Map<string, Voxel>,
+  options: { aoEnabled?: boolean; aoStrength?: 0 | 1 | 2 }
+): VoxelMeshWorkerOutput['results'] {
+  return results.map((r) => {
+    const parsed = parseBucketKey(r.bucketKey);
+    if (!parsed || parsed.material !== 'glass') return r;
+    const subset = voxelsForBucket(fullVoxels, r.bucketKey);
+    if (subset.size === 0) return r;
+    const core = computeGreedyMesh(subset, {
+      aoEnabled: options.aoEnabled,
+      aoStrength: options.aoStrength,
+      occlusionVoxels: fullVoxels
+    });
+    const data = core.get(r.bucketKey);
+    if (!data) return r;
+    return {
+      bucketKey: r.bucketKey,
+      positions: data.positions,
+      normals: data.normals,
+      colors: data.colors,
+      slabThickness: data.slabThickness,
+      indices: data.indices
+    };
+  });
+}
+
 export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshWorkerOutput {
   const { voxels: voxelInput, mode = 'greedy', options = {}, gen } = input;
   if (mode === 'ray') {
@@ -122,7 +164,8 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
         });
       }
     }
-    const results = mergeChunkResults(allChunkResults);
+    const merged = mergeChunkResults(allChunkResults);
+    const results = replaceGlassBucketsWithFullSceneGreedy(merged, voxels, options);
     return { results, gen };
   }
 

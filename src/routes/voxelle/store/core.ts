@@ -47,7 +47,9 @@ export type Tool =
   | 'rocks'
   | 'grass'
   | 'ashlar'
-  | 'roof';
+  | 'roof'
+  | 'flora'
+  | 'piscina';
 
 export type ClayMode =
   | 'bulk'
@@ -317,6 +319,89 @@ export const grassRadius = writable<number>(4);
 export const grassDensity = writable<number>(0.6);
 /** Grass generator: max blade height in voxels (1–6). */
 export const grassHeight = writable<number>(3);
+
+/** Flora generator: preset bundle id (`custom` = sliders only). */
+export type FloraPresetId =
+  | 'custom'
+  | 'stalk'
+  | 'trunk'
+  | 'contorted'
+  | 'multi_stem'
+  | 'branched'
+  | 'braided'
+  | 'tuft';
+export const floraPreset = writable<FloraPresetId>('stalk');
+/** Flora: segments along +face normal (4–48). */
+export const floraHeight = writable<number>(12);
+/** Flora: cross-section radius in tangent plane (0–4, Chebyshev disk). */
+export const floraGirth = writable<number>(1);
+/** Flora: lateral wander 0–1. */
+export const floraWobble = writable<number>(0.25);
+/** Flora: girth falloff base→tip 0–1. */
+export const floraTaper = writable<number>(0.35);
+/** Flora: stems per click (1–8). */
+export const floraStemCount = writable<number>(1);
+/** Flora: max tangent-plane offset for stem roots when stemCount > 1 (0–4). */
+export const floraClusterRadius = writable<number>(1);
+/** Flora: number of side branches from main stem (0–6). */
+export const floraBranchCount = writable<number>(0);
+/** Flora: branch recursion depth (1–2). */
+export const floraBranchDepth = writable<number>(1);
+/** Flora: forks only from this fraction of height upward (0–0.9). */
+export const floraBranchStart = writable<number>(0.45);
+/** Flora: lateral reach of branches (0–3). */
+export const floraBranchSpread = writable<number>(2);
+/** Flora: braided strands (1 = off, 2–5). */
+export const floraBraidStrands = writable<number>(1);
+/** Flora: braid intertwine 0–1. */
+export const floraBraidTwist = writable<number>(0.45);
+/** Flora: bark color noise 0–1 (per voxel). */
+export const floraBarkJitter = writable<number>(0);
+
+/** Piscina: body length along surface tangent (nose–tail, voxels). */
+export const piscinaLength = writable<number>(42);
+/** Piscina: per-fin scales 1…8 (pectoral = paired fins together). Names match ray-finned fin types. */
+export const piscinaFinDorsal = writable<number>(5);
+export const piscinaFinAnal = writable<number>(5);
+export const piscinaFinCaudal = writable<number>(6);
+export const piscinaFinPectoral = writable<number>(5);
+/** Piscina: half-extent along lateral tangent (pectoral line), voxels (clamped in pipeline 2…32). */
+export const piscinaWidth = writable<number>(12);
+/** Piscina: half-extent along face normal (belly↔back), voxels (clamped in pipeline 1…24). */
+export const piscinaThickness = writable<number>(8);
+/** Piscina: anchor slide along first tangent (integer voxel steps). */
+export const piscinaAnchorOffsetU = writable<number>(0);
+/** Piscina: anchor slide along second tangent (integer voxel steps). */
+export const piscinaAnchorOffsetV = writable<number>(0);
+/** Piscina / fish species outline (dropdown); body params can still be edited independently. */
+export type FishSpeciesId =
+  | 'minnow'
+  | 'trout'
+  | 'sunfish'
+  | 'eel'
+  | 'bass'
+  | 'perch'
+  | 'carp'
+  | 'pike'
+  | 'flatfish'
+  | 'tuna';
+export const piscinaSpecies = writable<FishSpeciesId>('trout');
+/** @deprecated Use FishSpeciesId */
+export type PiscinaPresetId = FishSpeciesId;
+/** @deprecated Use piscinaSpecies */
+export const piscinaPreset = piscinaSpecies;
+/** Piscina: spine lateral bend (-1…1). */
+export const piscinaSpineBend = writable<number>(0);
+/** Piscina: secondary S / vertical wave (-1…1). */
+export const piscinaSpineSCurve = writable<number>(0);
+/** Fin tilt in sagittal plane (deg -45…45). */
+export const piscinaFinDorsalPitch = writable<number>(0);
+export const piscinaFinDorsalSweep = writable<number>(0);
+export const piscinaFinAnalPitch = writable<number>(0);
+/** Caudal fork spread (deg 0…45). */
+export const piscinaFinCaudalSpread = writable<number>(0);
+/** Pectoral rotation in body plane (deg -45…45). */
+export const piscinaFinPectoralCant = writable<number>(0);
 
 /** Roof generator: profile style. */
 export type RoofStyleId =

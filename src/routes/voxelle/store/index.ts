@@ -90,6 +90,40 @@ export {
   grassRadius,
   grassDensity,
   grassHeight,
+  floraPreset,
+  floraHeight,
+  floraGirth,
+  floraWobble,
+  floraTaper,
+  floraStemCount,
+  floraClusterRadius,
+  floraBranchCount,
+  floraBranchDepth,
+  floraBranchStart,
+  floraBranchSpread,
+  floraBraidStrands,
+  floraBraidTwist,
+  floraBarkJitter,
+  piscinaLength,
+  piscinaFinDorsal,
+  piscinaFinAnal,
+  piscinaFinCaudal,
+  piscinaFinPectoral,
+  piscinaWidth,
+  piscinaThickness,
+  piscinaAnchorOffsetU,
+  piscinaAnchorOffsetV,
+  piscinaSpecies,
+  piscinaPreset,
+  piscinaSpineBend,
+  piscinaSpineSCurve,
+  piscinaFinDorsalPitch,
+  piscinaFinDorsalSweep,
+  piscinaFinAnalPitch,
+  piscinaFinCaudalSpread,
+  piscinaFinPectoralCant,
+  type FloraPresetId,
+  type PiscinaPresetId,
   roofStyle,
   roofHeight,
   roofThickness,
@@ -181,7 +215,8 @@ export type {
   StartShape,
   AddShapeParams,
   SelectionGizmoMode,
-  ConstrainToPlaneRef
+  ConstrainToPlaneRef,
+  FishSpeciesId
 } from './core';
 
 // canUndo, canRedo as aliases
@@ -304,5 +339,26 @@ export type { LightPresetId, LightPreset } from './lightPresets';
 // Generators
 export { generateRockVoxels, getRockPositions, generateAshlarVoxels, getAshlarPositions } from './generators/rock';
 export { generateGrassVoxels, getGrassPositions } from './generators/grass';
+export {
+  generateFloraVoxels,
+  getFloraPositions,
+  FLORA_PRESET_NUMERIC,
+  FLORA_VOXEL_CAP
+} from './generators/flora';
+export type { GenerateFloraOptions, FloraNumericFields } from './generators/flora';
+export {
+  generatePiscinaVoxels,
+  getPiscinaPositions,
+  buildPiscinaFrame,
+  widthThicknessFromGirth,
+  computePiscinaVoxelCap,
+  PISCINA_VOXEL_CAP,
+  PISCINA_VOXEL_CAP_MAX,
+  PISCINA_VOXEL_CAP_MIN,
+  FISH_SPECIES_DEFAULT_NUMERIC,
+  PISCINA_PRESET_NUMERIC,
+  SPECIES_OUTLINES
+} from './generators/piscina';
+export type { GeneratePiscinaOptions, PiscinaPresetNumericFields } from './generators/piscina';
 export { generateRoofVoxels } from './generators/roof';
 export type { GenerateRoofOptions } from './generators/roof';

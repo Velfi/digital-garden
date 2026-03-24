@@ -99,4 +99,26 @@ describe('voxelMeshWorkerLogic', () => {
     expect(maxOf(c.slabThickness)).toBe(maxOf(f.slabThickness));
     expect(maxOf(f.slabThickness)).toBe(21);
   });
+
+  it('chunked greedy re-merges glass with full scene so geometry matches unchunked glass', () => {
+    const voxels: [string, { color: number; material: 'glass' }][] = [];
+    for (let x = 0; x < 17; x++) {
+      for (let z = 0; z < 17; z++) {
+        voxels.push([`${x},0,${z}`, { color: 0x88ccff, material: 'glass' }]);
+      }
+    }
+    const full = processVoxelMeshMessage({ mode: 'greedy', voxels });
+    const chunked = processVoxelMeshMessage({
+      mode: 'greedy',
+      voxels,
+      options: { chunkSize: 16 }
+    });
+    expect(full.results).toHaveLength(1);
+    expect(chunked.results).toHaveLength(1);
+    const f = full.results[0]!;
+    const c = chunked.results[0]!;
+    expect(c.indices.length).toBe(f.indices.length);
+    expect(c.positions.length).toBe(f.positions.length);
+    expect(c.slabThickness.length).toBe(f.slabThickness.length);
+  });
 });

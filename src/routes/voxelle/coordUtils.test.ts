@@ -219,14 +219,14 @@ describe('getVoxelCenter', () => {
 
   it('returns center of single voxel', () => {
     const v = new Map([['0,0,0', pv(0xff)]]);
-    expect(getVoxelCenter(v)).toEqual([0.5, 0.5, 0.5]);
+    expect(getVoxelCenter(v)).toEqual([0, 0, 0]);
   });
 
   it('returns center of 2x2x2 cube', () => {
     const v = new Map<string, Voxel>();
     for (let x = 0; x < 2; x++)
       for (let y = 0; y < 2; y++) for (let z = 0; z < 2; z++) v.set(coordKey(x, y, z), pv(0xff));
-    expect(getVoxelCenter(v)).toEqual([1, 1, 1]);
+    expect(getVoxelCenter(v)).toEqual([0.5, 0.5, 0.5]);
   });
 });
 
@@ -262,7 +262,7 @@ describe('getSelectionCenter', () => {
       ['0,0,0', pv(0xff)],
       ['2,2,2', pv(0xff)]
     ]);
-    expect(getSelectionCenter(sel)).toEqual([1.5, 1.5, 1.5]);
+    expect(getSelectionCenter(sel)).toEqual([1, 1, 1]);
   });
 });
 
@@ -277,7 +277,7 @@ describe('selectionAabbWireframePositions', () => {
       maxZ: 0
     });
     expect(p.length).toBe(72);
-    expect(Array.from(p.slice(0, 6))).toEqual([0, 0, 0, 1, 0, 0]);
+    expect(Array.from(p.slice(0, 6))).toEqual([-0.5, -0.5, -0.5, 0.5, -0.5, -0.5]);
   });
 });
 
@@ -287,7 +287,7 @@ describe('defaultAddShapePlacementAnchor', () => {
       ['0,0,0', pv(1)],
       ['1,0,0', pv(1)]
     ]);
-    expect(defaultAddShapePlacementAnchor(v, { x: 99, y: 99, z: 99 })).toEqual([1, 1, 1]);
+    expect(defaultAddShapePlacementAnchor(v, { x: 99, y: 99, z: 99 })).toEqual([1, 0, 0]);
   });
 
   it('uses rounded orbit target when map is empty', () => {

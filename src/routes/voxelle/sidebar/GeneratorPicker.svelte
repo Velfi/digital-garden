@@ -36,6 +36,22 @@
   >
     Roof
   </button>
+  <button
+    type="button"
+    class:active={$tool === 'flora'}
+    onclick={() => tool.set('flora')}
+    title="Place procedural stems, trunks, and branches on a face"
+  >
+    Flora
+  </button>
+  <button
+    type="button"
+    class:active={$tool === 'piscina'}
+    onclick={() => tool.set('piscina')}
+    title="Place procedural fish on a face; drag gizmo handles to shape"
+  >
+    Piscina
+  </button>
 </div>
 
 <style>

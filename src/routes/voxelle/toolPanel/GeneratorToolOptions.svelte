@@ -13,6 +13,41 @@
     grassRadius,
     grassDensity,
     grassHeight,
+    FLORA_PRESET_NUMERIC,
+    floraPreset,
+    floraHeight,
+    floraGirth,
+    floraWobble,
+    floraTaper,
+    floraStemCount,
+    floraClusterRadius,
+    floraBranchCount,
+    floraBranchDepth,
+    floraBranchStart,
+    floraBranchSpread,
+    floraBraidStrands,
+    floraBraidTwist,
+    floraBarkJitter,
+    FISH_SPECIES_DEFAULT_NUMERIC,
+    piscinaSpecies,
+    piscinaLength,
+    piscinaFinDorsal,
+    piscinaFinAnal,
+    piscinaFinCaudal,
+    piscinaFinPectoral,
+    piscinaWidth,
+    piscinaThickness,
+    piscinaAnchorOffsetU,
+    piscinaAnchorOffsetV,
+    piscinaSpineBend,
+    piscinaSpineSCurve,
+    piscinaFinDorsalPitch,
+    piscinaFinDorsalSweep,
+    piscinaFinAnalPitch,
+    piscinaFinCaudalSpread,
+    piscinaFinPectoralCant,
+    type FloraPresetId,
+    type FishSpeciesId,
     roofStyle,
     roofHeight,
     roofThickness,
@@ -31,6 +66,45 @@
   const grassVisible = $derived($tool === 'grass');
   const ashlarVisible = $derived($tool === 'ashlar');
   const roofVisible = $derived($tool === 'roof');
+  const floraVisible = $derived($tool === 'flora');
+  const piscinaVisible = $derived($tool === 'piscina');
+
+  function applyFloraPreset(id: FloraPresetId) {
+    floraPreset.set(id);
+    if (id === 'custom') return;
+    const n = FLORA_PRESET_NUMERIC[id];
+    floraHeight.set(n.height);
+    floraGirth.set(n.girth);
+    floraWobble.set(n.wobble);
+    floraTaper.set(n.taper);
+    floraStemCount.set(n.stemCount);
+    floraClusterRadius.set(n.clusterRadius);
+    floraBranchCount.set(n.branchCount);
+    floraBranchDepth.set(n.branchDepth);
+    floraBranchStart.set(n.branchStart);
+    floraBranchSpread.set(n.branchSpread);
+    floraBraidStrands.set(n.braidStrands);
+    floraBraidTwist.set(n.braidTwist);
+    floraBarkJitter.set(n.barkJitter);
+  }
+
+  function floraMarkCustom() {
+    floraPreset.set('custom');
+  }
+
+  function applyPiscinaPreset(id: FishSpeciesId) {
+    piscinaSpecies.set(id);
+    const n = FISH_SPECIES_DEFAULT_NUMERIC[id];
+    piscinaLength.set(n.length);
+    piscinaFinDorsal.set(n.finDorsal);
+    piscinaFinAnal.set(n.finAnal);
+    piscinaFinCaudal.set(n.finCaudal);
+    piscinaFinPectoral.set(n.finPectoral);
+    piscinaWidth.set(n.width);
+    piscinaThickness.set(n.thickness);
+    piscinaAnchorOffsetU.set(n.anchorOffsetU);
+    piscinaAnchorOffsetV.set(n.anchorOffsetV);
+  }
 
   const ROOF_SHED_EDGE_WRAP = 16;
   const ROOF_GABLE_ORIENT_STATES = 3;
@@ -265,6 +339,532 @@
   </section>
 {/if}
 
+{#if floraVisible}
+  <section class="tool-panel-section" aria-label="Flora">
+    <div class="tool-panel-row tool-panel-row--wide-label">
+      <span class="tool-panel-label">Preset</span>
+      <select
+        class="tool-panel-select"
+        value={$floraPreset}
+        onchange={(e) =>
+          applyFloraPreset((e.target as HTMLSelectElement).value as FloraPresetId)}
+        title="Houseplant-style silhouettes (sliders still apply after Custom)"
+      >
+        <option value="custom">Custom</option>
+        <option value="stalk">Stalk (slender upright)</option>
+        <option value="trunk">Trunk (woody, tapered)</option>
+        <option value="contorted">Contorted stem</option>
+        <option value="multi_stem">Multi-stem clump</option>
+        <option value="branched">Branched (lollipop-ish)</option>
+        <option value="braided">Braided bundle</option>
+        <option value="tuft">Tuft (many short stems)</option>
+      </select>
+    </div>
+    <details class="flora-details" open>
+      <summary>Stem</summary>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Height</span>
+        <input
+          type="range"
+          min="1"
+          max="48"
+          step="1"
+          value={$floraHeight}
+          oninput={(e) => {
+            floraHeight.set(Number((e.target as HTMLInputElement).value));
+            floraMarkCustom();
+          }}
+          title="Segments along face normal (1–48)"
+        />
+        <span class="tool-panel-value">{$floraHeight}</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Girth</span>
+        <input
+          type="range"
+          min="0"
+          max="4"
+          step="1"
+          value={$floraGirth}
+          oninput={(e) => {
+            floraGirth.set(Number((e.target as HTMLInputElement).value));
+            floraMarkCustom();
+          }}
+          title="Cross-section radius in tangent plane (0–4)"
+        />
+        <span class="tool-panel-value">{$floraGirth}</span>
+      </div>
+      <div class="tool-panel-row tool-panel-row--wide-label">
+        <span class="tool-panel-label">Wobble</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value={Math.round($floraWobble * 100)}
+          oninput={(e) => {
+            floraWobble.set(Number((e.target as HTMLInputElement).value) / 100);
+            floraMarkCustom();
+          }}
+          title="Lateral wander (0–100%)"
+        />
+        <span class="tool-panel-value">{Math.round($floraWobble * 100)}%</span>
+      </div>
+      <div class="tool-panel-row tool-panel-row--wide-label">
+        <span class="tool-panel-label">Taper</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value={Math.round($floraTaper * 100)}
+          oninput={(e) => {
+            floraTaper.set(Number((e.target as HTMLInputElement).value) / 100);
+            floraMarkCustom();
+          }}
+          title="Narrow toward tip (0–100%)"
+        />
+        <span class="tool-panel-value">{Math.round($floraTaper * 100)}%</span>
+      </div>
+    </details>
+    <details class="flora-details" open>
+      <summary>Cluster</summary>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Stems</span>
+        <input
+          type="range"
+          min="1"
+          max="8"
+          step="1"
+          value={$floraStemCount}
+          oninput={(e) => {
+            floraStemCount.set(Number((e.target as HTMLInputElement).value));
+            floraMarkCustom();
+          }}
+          title="Stems per click (1–8)"
+        />
+        <span class="tool-panel-value">{$floraStemCount}</span>
+      </div>
+      {#if $floraStemCount > 1}
+        <div class="tool-panel-row">
+          <span class="tool-panel-label">Spread</span>
+          <input
+            type="range"
+            min="0"
+            max="4"
+            step="1"
+            value={$floraClusterRadius}
+            oninput={(e) => {
+              floraClusterRadius.set(Number((e.target as HTMLInputElement).value));
+              floraMarkCustom();
+            }}
+            title="Root offset in tangent plane (0–4)"
+          />
+          <span class="tool-panel-value">{$floraClusterRadius}</span>
+        </div>
+      {/if}
+    </details>
+    <details class="flora-details" open>
+      <summary>Branches</summary>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Count</span>
+        <input
+          type="range"
+          min="0"
+          max="6"
+          step="1"
+          value={$floraBranchCount}
+          oninput={(e) => {
+            floraBranchCount.set(Number((e.target as HTMLInputElement).value));
+            floraMarkCustom();
+          }}
+          title="Side branches (0–6); uses main stem only when braided off"
+        />
+        <span class="tool-panel-value">{$floraBranchCount}</span>
+      </div>
+      {#if $floraBranchCount > 0}
+        <div class="tool-panel-row">
+          <span class="tool-panel-label">Depth</span>
+          <input
+            type="range"
+            min="1"
+            max="2"
+            step="1"
+            value={$floraBranchDepth}
+            oninput={(e) => {
+              floraBranchDepth.set(Number((e.target as HTMLInputElement).value));
+              floraMarkCustom();
+            }}
+            title="Branch recursion depth (1–2)"
+          />
+          <span class="tool-panel-value">{$floraBranchDepth}</span>
+        </div>
+        <div class="tool-panel-row tool-panel-row--wide-label">
+          <span class="tool-panel-label">Start</span>
+          <input
+            type="range"
+            min="0"
+            max="90"
+            step="1"
+            value={Math.round($floraBranchStart * 100)}
+            oninput={(e) => {
+              floraBranchStart.set(Number((e.target as HTMLInputElement).value) / 100);
+              floraMarkCustom();
+            }}
+            title="Forks only above this height fraction (0–90%)"
+          />
+          <span class="tool-panel-value">{Math.round($floraBranchStart * 100)}%</span>
+        </div>
+        <div class="tool-panel-row">
+          <span class="tool-panel-label">Spread</span>
+          <input
+            type="range"
+            min="0"
+            max="3"
+            step="1"
+            value={$floraBranchSpread}
+            oninput={(e) => {
+              floraBranchSpread.set(Number((e.target as HTMLInputElement).value));
+              floraMarkCustom();
+            }}
+            title="Lateral reach (0–3)"
+          />
+          <span class="tool-panel-value">{$floraBranchSpread}</span>
+        </div>
+      {/if}
+    </details>
+    <details class="flora-details" open>
+      <summary>Braid</summary>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Strands</span>
+        <input
+          type="range"
+          min="1"
+          max="5"
+          step="1"
+          value={$floraBraidStrands}
+          oninput={(e) => {
+            floraBraidStrands.set(Number((e.target as HTMLInputElement).value));
+            floraMarkCustom();
+          }}
+          title="1 = single stem; 2–5 intertwined"
+        />
+        <span class="tool-panel-value">{$floraBraidStrands}</span>
+      </div>
+      {#if $floraBraidStrands > 1}
+        <div class="tool-panel-row tool-panel-row--wide-label">
+          <span class="tool-panel-label">Twist</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={Math.round($floraBraidTwist * 100)}
+            oninput={(e) => {
+              floraBraidTwist.set(Number((e.target as HTMLInputElement).value) / 100);
+              floraMarkCustom();
+            }}
+            title="Intertwine strength (0–100%)"
+          />
+          <span class="tool-panel-value">{Math.round($floraBraidTwist * 100)}%</span>
+        </div>
+      {/if}
+    </details>
+    <details class="flora-details">
+      <summary>Surface</summary>
+      <div class="tool-panel-row tool-panel-row--wide-label">
+        <span class="tool-panel-label">Bark</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value={Math.round($floraBarkJitter * 100)}
+          oninput={(e) => {
+            floraBarkJitter.set(Number((e.target as HTMLInputElement).value) / 100);
+            floraMarkCustom();
+          }}
+          title="Per-voxel color noise (0–100%)"
+        />
+        <span class="tool-panel-value">{Math.round($floraBarkJitter * 100)}%</span>
+      </div>
+    </details>
+  </section>
+{/if}
+
+{#if piscinaVisible}
+  <section class="tool-panel-section" aria-label="Piscina">
+    <p class="piscina-steps">
+      1. Click a wall or floor to choose where the fish sits.<br />
+      2. Drag body arrows, fin shapes (size), gold ball (slide), amber cube (spine bend), thin rings (fin angle).<br />
+      3. Tap Place fish on the canvas (or press Enter).
+    </p>
+    <div class="tool-panel-row tool-panel-row--wide-label">
+      <span class="tool-panel-label">Species</span>
+      <select
+        class="tool-panel-select"
+        value={$piscinaSpecies}
+        onchange={(e) =>
+          applyPiscinaPreset((e.target as HTMLSelectElement).value as FishSpeciesId)}
+        title="Body outline; each species uses different proportions"
+      >
+        <option value="minnow">Minnow</option>
+        <option value="trout">Trout</option>
+        <option value="sunfish">Sunfish</option>
+        <option value="eel">Eel</option>
+        <option value="bass">Bass</option>
+        <option value="perch">Perch</option>
+        <option value="carp">Carp</option>
+        <option value="pike">Pike</option>
+        <option value="flatfish">Flatfish</option>
+        <option value="tuna">Tuna</option>
+      </select>
+    </div>
+    <details class="piscina-details">
+      <summary>More numbers</summary>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Length</span>
+        <input
+          type="range"
+          min="4"
+          max="72"
+          step="1"
+          value={$piscinaLength}
+          oninput={(e) => {
+            piscinaLength.set(Number((e.target as HTMLInputElement).value));
+          }}
+          title="Nose–tail (4–72)"
+        />
+        <span class="tool-panel-value">{$piscinaLength}</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Width</span>
+        <input
+          type="range"
+          min="2"
+          max="32"
+          step="1"
+          value={$piscinaWidth}
+          oninput={(e) => {
+            piscinaWidth.set(Number((e.target as HTMLInputElement).value));
+          }}
+          title="Lateral half-width (2–32)"
+        />
+        <span class="tool-panel-value">{$piscinaWidth}</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Thickness</span>
+        <input
+          type="range"
+          min="1"
+          max="24"
+          step="1"
+          value={$piscinaThickness}
+          oninput={(e) => {
+            piscinaThickness.set(Number((e.target as HTMLInputElement).value));
+          }}
+          title="Dorsoventral half-thickness (1–24)"
+        />
+        <span class="tool-panel-value">{$piscinaThickness}</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Dorsal</span>
+        <input
+          type="range"
+          min="1"
+          max="8"
+          step="1"
+          value={$piscinaFinDorsal}
+          oninput={(e) => {
+            piscinaFinDorsal.set(Number((e.target as HTMLInputElement).value));
+          }}
+          title="Dorsal fin (back)"
+        />
+        <span class="tool-panel-value">{$piscinaFinDorsal}</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Anal</span>
+        <input
+          type="range"
+          min="1"
+          max="8"
+          step="1"
+          value={$piscinaFinAnal}
+          oninput={(e) => {
+            piscinaFinAnal.set(Number((e.target as HTMLInputElement).value));
+          }}
+          title="Anal fin (belly)"
+        />
+        <span class="tool-panel-value">{$piscinaFinAnal}</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Tail</span>
+        <input
+          type="range"
+          min="1"
+          max="8"
+          step="1"
+          value={$piscinaFinCaudal}
+          oninput={(e) => {
+            piscinaFinCaudal.set(Number((e.target as HTMLInputElement).value));
+          }}
+          title="Caudal fin (tail)"
+        />
+        <span class="tool-panel-value">{$piscinaFinCaudal}</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Side</span>
+        <input
+          type="range"
+          min="1"
+          max="8"
+          step="1"
+          value={$piscinaFinPectoral}
+          oninput={(e) => {
+            piscinaFinPectoral.set(Number((e.target as HTMLInputElement).value));
+          }}
+          title="Pectoral fins (both sides)"
+        />
+        <span class="tool-panel-value">{$piscinaFinPectoral}</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Slide U</span>
+        <input
+          type="range"
+          min="-24"
+          max="24"
+          step="1"
+          value={$piscinaAnchorOffsetU}
+          oninput={(e) => {
+            piscinaAnchorOffsetU.set(Number((e.target as HTMLInputElement).value));
+          }}
+          title="Along red arrow tangent"
+        />
+        <span class="tool-panel-value">{$piscinaAnchorOffsetU}</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Slide V</span>
+        <input
+          type="range"
+          min="-24"
+          max="24"
+          step="1"
+          value={$piscinaAnchorOffsetV}
+          oninput={(e) => {
+            piscinaAnchorOffsetV.set(Number((e.target as HTMLInputElement).value));
+          }}
+          title="Along green arrow tangent"
+        />
+        <span class="tool-panel-value">{$piscinaAnchorOffsetV}</span>
+      </div>
+    </details>
+    <details class="piscina-details">
+      <summary>Spine & fin angles</summary>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Bend</span>
+        <input
+          type="range"
+          min="-100"
+          max="100"
+          step="1"
+          value={Math.round($piscinaSpineBend * 100)}
+          oninput={(e) =>
+            piscinaSpineBend.set(Number((e.target as HTMLInputElement).value) / 100)}
+          title="Lateral spine curve (-1…1)"
+        />
+        <span class="tool-panel-value">{Math.round($piscinaSpineBend * 100)}</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">S-wave</span>
+        <input
+          type="range"
+          min="-100"
+          max="100"
+          step="1"
+          value={Math.round($piscinaSpineSCurve * 100)}
+          oninput={(e) =>
+            piscinaSpineSCurve.set(Number((e.target as HTMLInputElement).value) / 100)}
+          title="Secondary wave (-1…1)"
+        />
+        <span class="tool-panel-value">{Math.round($piscinaSpineSCurve * 100)}</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">D pitch</span>
+        <input
+          type="range"
+          min="-45"
+          max="45"
+          step="1"
+          value={$piscinaFinDorsalPitch}
+          oninput={(e) =>
+            piscinaFinDorsalPitch.set(Number((e.target as HTMLInputElement).value))}
+          title="Dorsal fin pitch (deg)"
+        />
+        <span class="tool-panel-value">{$piscinaFinDorsalPitch}°</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">D sweep</span>
+        <input
+          type="range"
+          min="-45"
+          max="45"
+          step="1"
+          value={$piscinaFinDorsalSweep}
+          oninput={(e) =>
+            piscinaFinDorsalSweep.set(Number((e.target as HTMLInputElement).value))}
+          title="Dorsal sweep (deg)"
+        />
+        <span class="tool-panel-value">{$piscinaFinDorsalSweep}°</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">A pitch</span>
+        <input
+          type="range"
+          min="-45"
+          max="45"
+          step="1"
+          value={$piscinaFinAnalPitch}
+          oninput={(e) =>
+            piscinaFinAnalPitch.set(Number((e.target as HTMLInputElement).value))}
+          title="Anal fin pitch (deg)"
+        />
+        <span class="tool-panel-value">{$piscinaFinAnalPitch}°</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Tail</span>
+        <input
+          type="range"
+          min="0"
+          max="45"
+          step="1"
+          value={$piscinaFinCaudalSpread}
+          oninput={(e) =>
+            piscinaFinCaudalSpread.set(Number((e.target as HTMLInputElement).value))}
+          title="Caudal spread (deg)"
+        />
+        <span class="tool-panel-value">{$piscinaFinCaudalSpread}°</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Pec cant</span>
+        <input
+          type="range"
+          min="-45"
+          max="45"
+          step="1"
+          value={$piscinaFinPectoralCant}
+          oninput={(e) =>
+            piscinaFinPectoralCant.set(Number((e.target as HTMLInputElement).value))}
+          title="Pectoral cant (deg)"
+        />
+        <span class="tool-panel-value">{$piscinaFinPectoralCant}°</span>
+      </div>
+    </details>
+    <p class="piscina-hint">
+      Right-click reseeds the fish pattern while you shape it. Escape = pick another spot.
+    </p>
+  </section>
+{/if}
+
 {#if roofVisible}
   <section class="tool-panel-section" aria-label="Roof">
     <div class="tool-panel-row tool-panel-row--wide-label">
@@ -477,6 +1077,46 @@
 {/if}
 
 <style>
+  .piscina-hint {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--text-color);
+    opacity: 0.92;
+  }
+
+  .piscina-steps {
+    margin: 0 0 0.5rem;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text-color);
+    opacity: 0.95;
+  }
+
+  .piscina-details {
+    margin-top: 0.35rem;
+  }
+  .piscina-details summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.9;
+    margin-bottom: 0.25rem;
+  }
+
+  .flora-details {
+    margin-top: 0.35rem;
+  }
+  .flora-details summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.9;
+    margin-bottom: 0.25rem;
+  }
+
   :global(.tool-panel-row--roof-edge .roof-shed-lr) {
     flex: 1;
     display: flex;
