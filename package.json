@@ -42,7 +42,9 @@
     "preview": "vite preview",
     "test:unit": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:coverage:voxelle": "vitest run --coverage --coverage.include='src/routes/voxelle/**'"
+    "test:coverage:voxelle": "vitest run --coverage --coverage.include='src/routes/voxelle/**'",
+    "test:voxelle:piscina-snapshots": "vitest run src/routes/voxelle/store/generators/piscina/piscina.snapshot.test.ts",
+    "test:voxelle:piscina-snapshots:update": "VITEST_BMP_UPDATE=1 vitest run src/routes/voxelle/store/generators/piscina/piscina.snapshot.test.ts"
   },
   "type": "module",
   "version": "0.0.1",

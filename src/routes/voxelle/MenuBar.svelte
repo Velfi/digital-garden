@@ -1,4 +1,6 @@
 <script lang="ts">
+  const VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT = 'voxelle:fit-camera-on-project-open';
+
   import {
     voxels,
     selection,
@@ -189,6 +191,8 @@
       const ok = await loadFromFile(file);
       if (!ok) {
         alert('Could not load file. The file may be corrupted or not a valid .voxelle file.');
+      } else if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT));
       }
     } catch (err) {
       alert(`Failed to load file: ${err instanceof Error ? err.message : 'Unknown error'}`);

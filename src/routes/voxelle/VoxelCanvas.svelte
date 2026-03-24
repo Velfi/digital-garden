@@ -102,6 +102,7 @@
     selectionMode,
     type SelectionMode,
     mergeSelection,
+    commitSelectionMergeEdit,
     fillSelectDiagonals,
     fillRespectsColor,
     constrainToPlaneEnabled,
@@ -158,6 +159,14 @@
     piscinaFinAnal,
     piscinaFinCaudal,
     piscinaFinPectoral,
+    piscinaFinPelvic,
+    piscinaFinAdipose,
+    piscinaShowFinDorsal,
+    piscinaShowFinAnal,
+    piscinaShowFinCaudal,
+    piscinaShowFinPectoral,
+    piscinaShowFinPelvic,
+    piscinaShowFinAdipose,
     piscinaAnchorOffsetU,
     piscinaAnchorOffsetV,
     piscinaSpecies,
@@ -166,11 +175,20 @@
     piscinaFinDorsalPitch,
     piscinaFinDorsalSweep,
     piscinaFinAnalPitch,
+    piscinaFinDorsalMode,
+    piscinaFinAnalMode,
+    piscinaFinCaudalMode,
+    piscinaFinPectoralMode,
+    piscinaFinPelvicMode,
+    piscinaFinAdiposeMode,
+    piscinaFinDorsalLength,
+    piscinaFinAnalLength,
+    piscinaFinDorsalPosition,
     piscinaFinCaudalSpread,
     piscinaFinPectoralCant,
+    piscinaFinPectoralSweep,
     generatePiscinaVoxels,
     getPiscinaPositions,
-    buildPiscinaFrame,
     type GenerateFloraOptions,
     type GeneratePiscinaOptions,
     type FishSpeciesId,
@@ -278,8 +296,18 @@
   } from './previewMeshLod';
   import { toneMappingPreferenceToThree } from './toneMappingPreference';
   import { createSelectionGizmoController } from './canvas/selectionGizmo';
-  import { createPiscinaGizmoController, createPiscinaGizmoGroup } from './canvas/piscinaGizmo';
-  import { handlePointerDown as dispatchPointerDown, handlePointerMove as dispatchPointerMove } from './canvas/handlers/pointerHandler';
+  import {
+    handlePointerDown as dispatchPointerDown,
+    handlePointerMove as dispatchPointerMove,
+    handleFlyPointerUp
+  } from './canvas/handlers/pointerHandler';
+  import {
+    applyGeneratorFaceClickPointerUp,
+    type GeneratorPrimaryPointerUpDeps,
+    type GeneratorRmbDeps
+  } from './canvas/handlers/generatorPointer';
+  import { isGeneratorFaceClickTool } from './store/generators/registry';
+  import { shouldEnableOrbitControls } from './store/interactionMode';
   import OrbitGizmo from './OrbitGizmo.svelte';
   import ToolPanel from './ToolPanel.svelte';
   import SelectionCountPanel from './SelectionCountPanel.svelte';
@@ -409,6 +437,7 @@
   }
 
   let container: HTMLDivElement;
+  let containerResizeObserver: ResizeObserver | null = null;
   let gizmoRef = $state<ReturnType<typeof OrbitGizmo>>();
   let camera = $state<THREE.PerspectiveCamera | THREE.OrthographicCamera>();
   let perspectiveCamera: THREE.PerspectiveCamera;
@@ -567,15 +596,12 @@
   let rotateGizmoGroup: THREE.Group | null = null;
   let moveDragLine: THREE.LineSegments | null = null;
   let selectionGizmo: ReturnType<typeof createSelectionGizmoController> | null = null;
-  let piscinaGizmoGroup: THREE.Group | null = null;
-  let piscinaGizmo: ReturnType<typeof createPiscinaGizmoController> | null = null;
-  let piscinaGizmoFrame: import('./canvas/piscinaGizmo').PiscinaGizmoFrame | null = null;
-  /** `pick` = choose face; `shape` = locked anchor, gizmo + preview, Place fish to commit. */
+  /** `pick` = choose face; `shape` = locked anchor, slider-driven preview, Place fish to commit. */
   let piscinaPhase = $state<'pick' | 'shape'>('pick');
   let piscinaLockedPlace = $state<[number, number, number] | null>(null);
   let piscinaLockedNormal = $state<FaceNormal | null>(null);
-  /** While true, orbit stays off so piscina handle drags are not eaten by the camera. */
-  let piscinaGizmoOrbitSuppressed = $state(false);
+  let piscinaHoverPlace = $state<[number, number, number] | null>(null);
+  let piscinaHoverNormal = $state<FaceNormal | null>(null);
 
   let gridGroup: THREE.Group | null = null;
   let gridLineMaterial: InstanceType<typeof LineMaterial> | THREE.LineBasicMaterial | null = null;
@@ -629,6 +655,10 @@
   const fitCameraDir = new THREE.Vector3();
   const fitRelative = new THREE.Vector3();
   const fitCorners: THREE.Vector3[] = Array.from({ length: 8 }, () => new THREE.Vector3());
+  const VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT = 'voxelle:fit-camera-on-project-open';
+  const onProjectOpenFitCamera = () => {
+    fitToView();
+  };
   const flyMoveState = createFlyMoveState();
   const { onKeyDown: onFlyKeyDown, onKeyUp: onFlyKeyUp } = createFlyKeyHandlers(flyMoveState, {
     isEnabled: () => !!flyControls?.enabled
@@ -1867,12 +1897,21 @@
     return {
       species: get(piscinaSpecies) as FishSpeciesId,
       length: get(piscinaLength) as number,
-      width: get(piscinaWidth) as number,
-      thickness: get(piscinaThickness) as number,
+      /** Lateral half is `piscinaThickness`, DV half is `piscinaWidth` (see generatorSettings / tool panel wiring). */
+      width: get(piscinaThickness) as number,
+      thickness: get(piscinaWidth) as number,
       finDorsal: get(piscinaFinDorsal) as number,
       finAnal: get(piscinaFinAnal) as number,
       finCaudal: get(piscinaFinCaudal) as number,
       finPectoral: get(piscinaFinPectoral) as number,
+      finPelvic: get(piscinaFinPelvic) as number,
+      finAdipose: get(piscinaFinAdipose) as number,
+      showFinDorsal: get(piscinaShowFinDorsal) as boolean,
+      showFinAnal: get(piscinaShowFinAnal) as boolean,
+      showFinCaudal: get(piscinaShowFinCaudal) as boolean,
+      showFinPectoral: get(piscinaShowFinPectoral) as boolean,
+      showFinPelvic: get(piscinaShowFinPelvic) as boolean,
+      showFinAdipose: get(piscinaShowFinAdipose) as boolean,
       anchorOffsetU: get(piscinaAnchorOffsetU) as number,
       anchorOffsetV: get(piscinaAnchorOffsetV) as number,
       spineBend: get(piscinaSpineBend) as number,
@@ -1880,8 +1919,18 @@
       finDorsalPitch: get(piscinaFinDorsalPitch) as number,
       finDorsalSweep: get(piscinaFinDorsalSweep) as number,
       finAnalPitch: get(piscinaFinAnalPitch) as number,
+      finDorsalMode: get(piscinaFinDorsalMode),
+      finAnalMode: get(piscinaFinAnalMode),
+      finCaudalMode: get(piscinaFinCaudalMode),
+      finPectoralMode: get(piscinaFinPectoralMode),
+      finPelvicMode: get(piscinaFinPelvicMode),
+      finAdiposeMode: get(piscinaFinAdiposeMode),
+      finDorsalLength: get(piscinaFinDorsalLength) as number,
+      finAnalLength: get(piscinaFinAnalLength) as number,
+      finDorsalPosition: get(piscinaFinDorsalPosition) as number,
       finCaudalSpread: get(piscinaFinCaudalSpread) as number,
-      finPectoralCant: get(piscinaFinPectoralCant) as number
+      finPectoralCant: get(piscinaFinPectoralCant) as number,
+      finPectoralSweep: get(piscinaFinPectoralSweep) as number
     };
   }
 
@@ -1889,7 +1938,8 @@
     piscinaPhase = 'pick';
     piscinaLockedPlace = null;
     piscinaLockedNormal = null;
-    piscinaGizmoFrame = null;
+    piscinaHoverPlace = null;
+    piscinaHoverNormal = null;
     updatePreviewMesh([]);
   }
 
@@ -2328,7 +2378,6 @@
   }
 
   function cancelDrag() {
-    piscinaGizmo?.cancelDrag();
     selectionGizmo?.cancelWithPlacementRestore();
     deltaDisplay = null;
     if (precisePhase !== 'idle') {
@@ -2388,89 +2437,99 @@
     getContainer: () => container
   };
 
+  function buildGeneratorRmbDeps(): GeneratorRmbDeps {
+    return {
+      tool: get(tool),
+      piscinaPhase,
+      render,
+      randomSeed32: () => Math.floor(Math.random() * 0xffffffff),
+      setNextRockSeed: (n) => {
+        nextRockPlacementSeed = n;
+      },
+      setNextGrassSeed: (n) => {
+        nextGrassPlacementSeed = n;
+      },
+      setNextFloraSeed: (n) => {
+        nextFloraPlacementSeed = n;
+      },
+      setNextPiscinaSeed: (n) => {
+        nextPiscinaPlacementSeed = n;
+      },
+      setNextAshlarSeed: (n) => {
+        nextAshlarPlacementSeed = n;
+      },
+      getAshlarPlacementSeed: () => nextAshlarPlacementSeed,
+      getIntersection,
+      getAddPosition,
+      getFaceNormalFromHit,
+      updatePreviewMesh,
+      setRollOverVisible: (v) => {
+        rollOverMesh.visible = v;
+      },
+      shouldCancelActiveGesture: !!(
+        isVoxelDrag ||
+        selectionGizmo?.isGizmoDrag ||
+        cuboidPhase ||
+        polygonPhase ||
+        roofPhase ||
+        ropePhase
+      ),
+      cancelDrag
+    };
+  }
+
+  function buildGeneratorPrimaryUpDeps(): GeneratorPrimaryPointerUpDeps {
+    return {
+      tool: get(tool),
+      addPanelOpen: get(addPanelStore).open,
+      piscinaGizmoUp: false,
+      piscinaPhase,
+      getIntersection,
+      updatePointerFromEvent,
+      getAddPosition,
+      getFaceNormalFromHit,
+      randomSeed32: () => Math.floor(Math.random() * 0xffffffff),
+      getNextRockSeed: () => nextRockPlacementSeed,
+      setNextRockSeed: (n) => {
+        nextRockPlacementSeed = n;
+      },
+      placeRocks,
+      getNextGrassSeed: () => nextGrassPlacementSeed,
+      setNextGrassSeed: (n) => {
+        nextGrassPlacementSeed = n;
+      },
+      placeGrass,
+      getNextFloraSeed: () => nextFloraPlacementSeed,
+      setNextFloraSeed: (n) => {
+        nextFloraPlacementSeed = n;
+      },
+      placeFlora,
+      getNextAshlarSeed: () => nextAshlarPlacementSeed,
+      setNextAshlarSeed: (n) => {
+        nextAshlarPlacementSeed = n;
+      },
+      placeAshlar,
+      getNextPiscinaSeed: () => nextPiscinaPlacementSeed,
+      setNextPiscinaSeed: (n) => {
+        nextPiscinaPlacementSeed = n;
+      },
+      commitPiscinaSurfacePick: (place, normal) => {
+        piscinaLockedPlace = place;
+        piscinaLockedNormal = normal;
+        piscinaHoverPlace = null;
+        piscinaHoverNormal = null;
+        piscinaPhase = 'shape';
+      },
+      scheduleRender: () => requestAnimationFrame(() => render())
+    };
+  }
+
   function handlePointerDown(event: PointerEvent) {
-    if (dispatchPointerDown(pointerHandlerContext, event)) return;
+    if (dispatchPointerDown(pointerHandlerContext, event, buildGeneratorRmbDeps())) return;
     if (event.button === 2) {
-      if ($tool === 'rocks') {
-        nextRockPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-        event.preventDefault();
-        render();
-        return;
-      }
-      if ($tool === 'grass') {
-        nextGrassPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-        event.preventDefault();
-        render();
-        return;
-      }
-      if ($tool === 'flora') {
-        nextFloraPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-        event.preventDefault();
-        render();
-        return;
-      }
-      if ($tool === 'piscina') {
-        if (piscinaPhase === 'shape') {
-          nextPiscinaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-        }
-        event.preventDefault();
-        render();
-        return;
-      }
-      if ($tool === 'ashlar') {
-        nextAshlarPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-        event.preventDefault();
-        const hit = getIntersection();
-        if (hit) {
-          const place = getAddPosition(hit);
-          const normal = getFaceNormalFromHit(hit);
-          if (place && normal) {
-            const size = get(ashlarSize) as number;
-            const roughness = get(ashlarRoughness) as number;
-            const thickness = get(ashlarThickness) as number;
-            const thicknessAxis = getAshlarThicknessAxis(normal);
-            const surfaceTarget: [number, number, number] = [
-              place[0] - normal[0],
-              place[1] - normal[1],
-              place[2] - normal[2]
-            ];
-            const localPositions = getAshlarPositions(
-              nextAshlarPlacementSeed,
-              size,
-              roughness,
-              thickness,
-              thicknessAxis
-            );
-            const bounds = getBoundsFromPositions(localPositions);
-            if (bounds) {
-              const halfW = (bounds.maxX - bounds.minX) / 2;
-              const halfH = (bounds.maxY - bounds.minY) / 2;
-              const halfD = (bounds.maxZ - bounds.minZ) / 2;
-              const targetForStamp: [number, number, number] = [
-                normal[0] ? surfaceTarget[0] : place[0] - halfW,
-                normal[1] ? surfaceTarget[1] : place[1] - halfH,
-                normal[2] ? surfaceTarget[2] : place[2] - halfD
-              ];
-              const [ox, oy, oz] = getStampOffsetForFace(targetForStamp, normal, bounds);
-              const previewPositions = localPositions.map(([lx, ly, lz]) => [
-                lx + ox,
-                ly + oy,
-                lz + oz
-              ] as [number, number, number]);
-              updatePreviewMesh(previewPositions);
-            } else {
-              updatePreviewMesh([]);
-            }
-            rollOverMesh.visible = false;
-          }
-        }
-        render();
-        return;
-      }
       if (
         isVoxelDrag ||
         selectionGizmo?.isGizmoDrag ||
-        piscinaGizmo?.isGizmoDrag ||
         cuboidPhase ||
         polygonPhase ||
         roofPhase ||
@@ -2503,14 +2562,6 @@
 
     // Rope tension phase: pointer down on slider track starts drag (handled in template)
 
-    if (
-      $tool === 'piscina' &&
-      piscinaPhase === 'shape' &&
-      piscinaGizmoGroup &&
-      piscinaGizmo?.tryPointerDown(event, piscinaGizmoGroup)
-    ) {
-      return;
-    }
     if (selectionGizmo?.tryPointerDown(event)) return;
 
     // Do not stopPropagation here — container uses capture:true; blocking would prevent
@@ -2854,14 +2905,7 @@
           fillPlaneContextFromHit(hit)
         ).region;
         if (incoming.size > 0) {
-          commitUndoAfter(() => {
-            const next = mergeSelection(
-              $selection,
-              incoming,
-              event.shiftKey ? 'add' : get(selectionMode)
-            );
-            selection.set(next);
-          });
+          commitSelectionMergeEdit(incoming, get(selectionMode), event.shiftKey);
         }
       }
       requestAnimationFrame(() => render());
@@ -3098,14 +3142,8 @@
       return;
     }
 
-    // Rocks / Grass / Flora / Piscina generator: click places on pointerup; do not start stroke drag
-    if (
-      $tool === 'rocks' ||
-      $tool === 'grass' ||
-      $tool === 'ashlar' ||
-      $tool === 'flora' ||
-      $tool === 'piscina'
-    ) {
+    // Face-click generators: placement runs on pointerup; do not start stroke drag
+    if (isGeneratorFaceClickTool(get(tool))) {
       requestAnimationFrame(() => render());
       return;
     }
@@ -3193,20 +3231,17 @@
 
   function handlePointerMove(event?: PointerEvent) {
     if (dispatchPointerMove(pointerHandlerContext, event)) {
-      piscinaGizmo?.clearHoverCursor();
       selectionGizmo?.clearGizmoHoverCursor();
       return;
     }
     try {
       if ($tool === 'hand') {
         resetPiscinaPlacementFlow();
-        piscinaGizmo?.clearHoverCursor();
         selectionGizmo?.clearGizmoHoverCursor();
         rollOverMesh.visible = false;
         updatePreviewMesh([]);
         return;
       }
-      if (piscinaGizmo?.handlePointerMove(event)) return;
       if (selectionGizmo?.handlePointerMove(event)) return;
       // Add shape panel: only add-preview ghost; hide active-tool rollover + meshManager preview
       if ($addPanelStore.open) {
@@ -3740,19 +3775,37 @@
         const place = piscinaLockedPlace;
         const normal = piscinaLockedNormal;
         const opts = buildPiscinaOptions();
-        const frame = buildPiscinaFrame(place, normal, opts);
-        piscinaGizmoFrame = {
-          center: frame.center,
-          forward: frame.forward,
-          side: frame.side,
-          up: frame.up
-        };
         updatePreviewMesh(
           getPiscinaPositions(nextPiscinaPlacementSeed, place, normal, opts)
         );
         rollOverMesh.visible = false;
+      } else if (piscinaPhase === 'pick') {
+        const hit = getIntersection();
+        if (hit) {
+          const place = getAddPosition(hit);
+          const normal = getFaceNormalFromHit(hit);
+          if (place && normal) {
+            if (nextPiscinaPlacementSeed === 0) {
+              nextPiscinaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+            }
+            piscinaHoverPlace = place;
+            piscinaHoverNormal = normal;
+            const opts = buildPiscinaOptions();
+            updatePreviewMesh(
+              getPiscinaPositions(nextPiscinaPlacementSeed, place, normal, opts)
+            );
+          } else {
+            piscinaHoverPlace = null;
+            piscinaHoverNormal = null;
+            updatePreviewMesh([]);
+          }
+        } else {
+          piscinaHoverPlace = null;
+          piscinaHoverNormal = null;
+          updatePreviewMesh([]);
+        }
+        rollOverMesh.visible = false;
       } else {
-        piscinaGizmoFrame = null;
         updatePreviewMesh([]);
         rollOverMesh.visible = false;
       }
@@ -4000,7 +4053,6 @@
   }
 
   function onContainerPointerLeave() {
-    piscinaGizmo?.clearHoverCursor();
     selectionGizmo?.clearGizmoHoverCursor();
   }
 
@@ -4015,10 +4067,7 @@
   }
 
   function onPointerUp(event: PointerEvent) {
-    if ($tool === 'fly') {
-      event.stopPropagation();
-      return;
-    }
+    if (handleFlyPointerUp(pointerHandlerContext, event)) return;
     if (depthAdjustPointerId === event.pointerId) {
       try {
         container.releasePointerCapture(event.pointerId);
@@ -4027,11 +4076,10 @@
     }
     if (
       event.button === 2 &&
-      (isVoxelDrag || selectionGizmo?.isGizmoDrag || piscinaGizmo?.isGizmoDrag || cuboidPhase)
+      (isVoxelDrag || selectionGizmo?.isGizmoDrag || cuboidPhase)
     ) {
       cancelDrag();
     }
-    const piscinaGizmoUp = piscinaGizmo?.tryPrimaryPointerUp(event) ?? false;
     const gizmoCommit = selectionGizmo?.tryPrimaryPointerUp(event);
     if (gizmoCommit) {
       const gizmoAxis = gizmoCommit.axis;
@@ -4077,85 +4125,7 @@
         dragPointerId = null;
       }
     }
-    if (event.button === 0 && $tool === 'rocks' && !$addPanelStore.open) {
-      const hit = getIntersection();
-      if (hit) {
-        const place = getAddPosition(hit);
-        const normal = getFaceNormalFromHit(hit);
-        if (place && normal) {
-          const seed =
-            nextRockPlacementSeed === 0
-              ? Math.floor(Math.random() * 0xffffffff)
-              : nextRockPlacementSeed;
-          placeRocks(place, normal, seed);
-          nextRockPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-        }
-      }
-    }
-    if (event.button === 0 && $tool === 'grass' && !$addPanelStore.open) {
-      const hit = getIntersection();
-      if (hit) {
-        const place = getAddPosition(hit);
-        const normal = getFaceNormalFromHit(hit);
-        if (place && normal) {
-          const seed =
-            nextGrassPlacementSeed === 0
-              ? Math.floor(Math.random() * 0xffffffff)
-              : nextGrassPlacementSeed;
-          placeGrass(place, normal, seed);
-          nextGrassPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-        }
-      }
-    }
-    if (event.button === 0 && $tool === 'flora' && !$addPanelStore.open) {
-      const hit = getIntersection();
-      if (hit) {
-        const place = getAddPosition(hit);
-        const normal = getFaceNormalFromHit(hit);
-        if (place && normal) {
-          const seed =
-            nextFloraPlacementSeed === 0
-              ? Math.floor(Math.random() * 0xffffffff)
-              : nextFloraPlacementSeed;
-          placeFlora(place, normal, seed);
-          nextFloraPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-        }
-      }
-    }
-    if (event.button === 0 && $tool === 'piscina' && !piscinaGizmoUp && !$addPanelStore.open) {
-      updatePointerFromEvent(event);
-      if (piscinaPhase === 'pick') {
-        const hit = getIntersection();
-        if (hit) {
-          const place = getAddPosition(hit);
-          const normal = getFaceNormalFromHit(hit);
-          if (place && normal) {
-            if (nextPiscinaPlacementSeed === 0) {
-              nextPiscinaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-            }
-            piscinaLockedPlace = place;
-            piscinaLockedNormal = normal;
-            piscinaPhase = 'shape';
-            requestAnimationFrame(() => render());
-          }
-        }
-      }
-    }
-    if (event.button === 0 && $tool === 'ashlar' && !$addPanelStore.open) {
-      const hit = getIntersection();
-      if (hit) {
-        const place = getAddPosition(hit);
-        const normal = getFaceNormalFromHit(hit);
-        if (place && normal) {
-          const seed =
-            nextAshlarPlacementSeed === 0
-              ? Math.floor(Math.random() * 0xffffffff)
-              : nextAshlarPlacementSeed;
-          placeAshlar(place, normal, seed);
-          nextAshlarPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-        }
-      }
-    }
+    applyGeneratorFaceClickPointerUp(buildGeneratorPrimaryUpDeps(), event);
     if (event.button === 0 && isVoxelDrag) {
       updatePointerFromEvent(event);
       const mode = get(effectiveStrokeMode);
@@ -4280,14 +4250,14 @@
     if (depthAdjustPointerId === event.pointerId) {
       depthAdjustPointerId = null;
     }
-    if (isVoxelDrag || selectionGizmo?.isGizmoDrag || piscinaGizmo?.isGizmoDrag || isStampDrag) {
+    if (isVoxelDrag || selectionGizmo?.isGizmoDrag || isStampDrag) {
       cancelDrag();
     }
     handlePointerMove();
   }
 
   function onContextMenu(event: Event) {
-    if (isVoxelDrag || selectionGizmo?.isGizmoDrag || piscinaGizmo?.isGizmoDrag || $tool === 'fly')
+    if (isVoxelDrag || selectionGizmo?.isGizmoDrag || $tool === 'fly')
       event.preventDefault();
   }
 
@@ -4338,6 +4308,8 @@
 
   function onFullscreenChange() {
     onWindowResize();
+    // Browsers can finalize fullscreen exit layout on a later frame.
+    requestAnimationFrame(() => onWindowResize());
   }
 
   // Block pointer events from reaching FlyControls when in fly mode (we handle them ourselves)
@@ -4618,15 +4590,16 @@
 
   function onWindowResize() {
     if (!container || !camera || !renderer) return;
-    const w = container.clientWidth;
-    const h = container.clientHeight;
+    const w = Math.max(1, container.clientWidth);
+    const h = Math.max(1, container.clientHeight);
     if (camera instanceof THREE.OrthographicCamera) {
       updateOrthoFrustum();
     } else {
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     }
-    renderer.setSize(w, h);
+    // Keep canvas CSS-driven (100% of container) to avoid stale inline sizes after fullscreen toggles.
+    renderer.setSize(w, h, false);
     const pr = renderer.getPixelRatio();
     bloomComposer?.setPixelRatio(pr);
     bloomComposer?.setSize(w, h);
@@ -4643,29 +4616,6 @@
     if (renderer && scene && camera) {
       selectionGizmo?.updateGizmoPreviewOffset();
       selectionGizmo?.updateMoveGizmoTransform();
-      if (piscinaGizmo && piscinaGizmoGroup) {
-        piscinaGizmo.updatePiscinaGizmoTransform(piscinaGizmoGroup);
-        if (get(tool) === 'piscina') {
-          if (
-            piscinaGizmo?.isGizmoDrag &&
-            piscinaPhase === 'shape' &&
-            piscinaLockedPlace &&
-            piscinaLockedNormal &&
-            nextPiscinaPlacementSeed !== 0
-          ) {
-            const opts = buildPiscinaOptions();
-            updatePreviewMesh(
-              getPiscinaPositions(
-                nextPiscinaPlacementSeed,
-                piscinaLockedPlace,
-                piscinaLockedNormal,
-                opts
-              )
-            );
-          }
-          piscinaGizmo.syncHoverCursor(piscinaGizmoGroup);
-        }
-      }
       scene.updateMatrixWorld(true);
 
       if (meshManager && get(enableShadows) && !canvasIsWebGPU) {
@@ -5050,6 +5000,14 @@
     void $piscinaFinAnal;
     void $piscinaFinCaudal;
     void $piscinaFinPectoral;
+    void $piscinaFinPelvic;
+    void $piscinaFinAdipose;
+    void $piscinaShowFinDorsal;
+    void $piscinaShowFinAnal;
+    void $piscinaShowFinCaudal;
+    void $piscinaShowFinPectoral;
+    void $piscinaShowFinPelvic;
+    void $piscinaShowFinAdipose;
     void $piscinaAnchorOffsetU;
     void $piscinaAnchorOffsetV;
     void $piscinaSpineBend;
@@ -5057,26 +5015,28 @@
     void $piscinaFinDorsalPitch;
     void $piscinaFinDorsalSweep;
     void $piscinaFinAnalPitch;
+    void $piscinaFinDorsalMode;
+    void $piscinaFinAnalMode;
+    void $piscinaFinCaudalMode;
+    void $piscinaFinPectoralMode;
+    void $piscinaFinPelvicMode;
+    void $piscinaFinAdiposeMode;
+    void $piscinaFinDorsalLength;
+    void $piscinaFinAnalLength;
+    void $piscinaFinDorsalPosition;
     void $piscinaFinCaudalSpread;
     void $piscinaFinPectoralCant;
+    void $piscinaFinPectoralSweep;
     void $tool;
-    if (
-      $tool !== 'piscina' ||
-      piscinaPhase !== 'shape' ||
-      !piscinaLockedPlace ||
-      !piscinaLockedNormal ||
-      nextPiscinaPlacementSeed === 0
-    ) {
-      return;
-    }
+    if ($tool !== 'piscina' || nextPiscinaPlacementSeed === 0) return;
+    const place =
+      piscinaPhase === 'shape' ? piscinaLockedPlace : piscinaHoverPlace;
+    const normal =
+      piscinaPhase === 'shape' ? piscinaLockedNormal : piscinaHoverNormal;
+    if (!place || !normal) return;
     const opts = buildPiscinaOptions();
     updatePreviewMesh(
-      getPiscinaPositions(
-        nextPiscinaPlacementSeed,
-        piscinaLockedPlace,
-        piscinaLockedNormal,
-        opts
-      )
+      getPiscinaPositions(nextPiscinaPlacementSeed, place, normal, opts)
     );
     render();
   });
@@ -5145,6 +5105,8 @@
   });
 
   onMount(async () => {
+    window.addEventListener(VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT, onProjectOpenFitCamera);
+
     let fromUrl = false;
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -5177,7 +5139,8 @@
         }
       }
     }
-    if (!fromUrl && !(await loadFromStorageAsync())) initCanvas(get(gridSize));
+    const loadedFromStorage = !fromUrl && (await loadFromStorageAsync());
+    if (!fromUrl && !loadedFromStorage) initCanvas(get(gridSize));
     const sz = get(gridSize);
 
     const setupRefs = await createSceneSetupAsync(
@@ -5336,22 +5299,7 @@
     });
     moveGizmoGroup = selectionGizmo.createMoveGizmo();
     rotateGizmoGroup = selectionGizmo.createRotateGizmo();
-    piscinaGizmoGroup = createPiscinaGizmoGroup();
-    piscinaGizmo = createPiscinaGizmoController({
-      getTool: () => get(tool),
-      getPointer: () => pointer,
-      getCamera: () => camera ?? null,
-      getRaycaster: () => raycaster,
-      getContainer: () => container,
-      getFrame: () => piscinaGizmoFrame,
-      getGizmosAlwaysOnTop: () => get(voxellePreferences).gizmosAlwaysOnTop,
-      render,
-      onPiscinaGizmoDragChange: (dragging) => {
-        piscinaGizmoOrbitSuppressed = dragging;
-        if (orbitControls) orbitControls.enabled = !dragging && get(tool) !== 'fly';
-      }
-    });
-    scene.add(moveGizmoGroup, rotateGizmoGroup, moveDragLine, piscinaGizmoGroup);
+    scene.add(moveGizmoGroup, rotateGizmoGroup, moveDragLine);
 
     window.addEventListener('keydown', handleFlyKeyDown, true);
     window.addEventListener('keydown', onEscapeKeyDown, true);
@@ -5359,6 +5307,11 @@
     window.addEventListener('fullscreenchange', onFullscreenChange);
     window.addEventListener('keyup', handleFlyKeyUp, true);
     updateZoomPercent();
+
+    containerResizeObserver = new ResizeObserver(() => {
+      onWindowResize();
+    });
+    containerResizeObserver.observe(container);
 
     container.addEventListener('pointermove', onPointerMove);
     container.addEventListener('pointerleave', onContainerPointerLeave);
@@ -5374,6 +5327,7 @@
     meshManager?.requestRebuildVoxelMeshes($voxels);
     invalidateDirectionalShadowMap();
     onWindowResize();
+    if (loadedFromStorage) fitToView();
     animate();
   });
 
@@ -5480,8 +5434,7 @@
     if (prevTool !== null && prevTool !== 'piscina' && t === 'piscina') {
       resetPiscinaPlacementFlow();
     }
-    if (t !== 'piscina') piscinaGizmoOrbitSuppressed = false;
-    orbitControls.enabled = !isFly && !piscinaGizmoOrbitSuppressed;
+    orbitControls.enabled = shouldEnableOrbitControls(t, false);
     flyControls.enabled = isFly;
     document.removeEventListener('mousemove', onFlyPointerMove);
     document.removeEventListener('pointerlockchange', onPointerLockChange);
@@ -5501,14 +5454,13 @@
     }
     if (
       isFly &&
-      (cuboidPhase || polygonPhase || roofPhase || selectionGizmo?.isGizmoDrag || piscinaGizmo?.isGizmoDrag)
+      (cuboidPhase || polygonPhase || roofPhase || selectionGizmo?.isGizmoDrag)
     ) {
       flyControls.unlock();
       cancelDrag();
     }
     if (isHand) {
       resetPiscinaPlacementFlow();
-      piscinaGizmo?.clearHoverCursor();
       selectionGizmo?.clearGizmoHoverCursor();
       rollOverMesh.visible = false;
       updatePreviewMesh([]);
@@ -5517,7 +5469,6 @@
         polygonPhase ||
         roofPhase ||
         selectionGizmo?.isGizmoDrag ||
-        piscinaGizmo?.isGizmoDrag ||
         isVoxelDrag ||
         ropePhase
       ) {
@@ -5689,11 +5640,14 @@
     container?.removeEventListener?.('contextmenu', onContextMenu);
     container?.removeEventListener('wheel', onWheel, true);
     window.removeEventListener('resize', onWindowResize);
+    window.removeEventListener(VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT, onProjectOpenFitCamera);
     window.removeEventListener('keydown', handleFlyKeyDown, true);
     window.removeEventListener('keydown', onEscapeKeyDown, true);
     window.removeEventListener('keydown', onFullscreenKey);
     window.removeEventListener('fullscreenchange', onFullscreenChange);
     window.removeEventListener('keyup', handleFlyKeyUp, true);
+    containerResizeObserver?.disconnect();
+    containerResizeObserver = null;
     document.removeEventListener('mousemove', onFlyPointerMove);
     document.removeEventListener('pointerlockchange', onPointerLockChange);
     if (flyHintHideTimeout != null) clearTimeout(flyHintHideTimeout);

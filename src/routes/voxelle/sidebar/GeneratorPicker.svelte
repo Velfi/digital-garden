@@ -48,7 +48,7 @@
     type="button"
     class:active={$tool === 'piscina'}
     onclick={() => tool.set('piscina')}
-    title="Place procedural fish on a face; drag gizmo handles to shape"
+    title="Place procedural fish on a face; use sliders to shape"
   >
     Piscina
   </button>

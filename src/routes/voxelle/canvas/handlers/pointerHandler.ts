@@ -3,16 +3,27 @@
  * VoxelCanvas calls handlePointerDown / handlePointerMove / handlePointerUp with a context.
  */
 import type { PointerHandlerContext } from './types';
-import { handleFlyPointerDown } from './fly';
+import { handleFlyPointerDown, handleFlyPointerUp } from './fly';
+import {
+  tryHandleGeneratorToolRmb,
+  type GeneratorRmbDeps
+} from './generatorPointer';
 
 export type { PointerHandlerContext } from './types';
+export type { GeneratorRmbDeps } from './generatorPointer';
+export { handleFlyPointerUp } from './fly';
 
 /** Returns true if the event was handled and the caller should return. */
-export function handlePointerDown(ctx: PointerHandlerContext, event: PointerEvent): boolean {
-  // Tool panel and other overlays live inside the canvas container; pointerdown uses
-  // capture on the container, so this must short-circuit before sculpting/orbit logic.
+export function handlePointerDown(
+  ctx: PointerHandlerContext,
+  event: PointerEvent,
+  generatorRmb?: GeneratorRmbDeps | null
+): boolean {
   if ((event.target as Element)?.closest?.('[data-voxelle-no-passthrough]')) return true;
   if (handleFlyPointerDown(ctx, event)) return true;
+  if (event.button === 2 && generatorRmb && tryHandleGeneratorToolRmb(generatorRmb, event)) {
+    return true;
+  }
   return false;
 }
 

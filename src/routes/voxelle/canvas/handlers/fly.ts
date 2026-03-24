@@ -20,3 +20,9 @@ export function handleFlyPointerDown(ctx: PointerHandlerContext, event: PointerE
 export function handleFlyPointerMove(_ctx: PointerHandlerContext, _event?: PointerEvent): boolean {
   return false; // Fly doesn't need move handling in our dispatcher; PointerLockControls handles it
 }
+
+export function handleFlyPointerUp(ctx: PointerHandlerContext, event: PointerEvent): boolean {
+  if (ctx.getTool() !== 'fly') return false;
+  event.stopPropagation();
+  return true;
+}

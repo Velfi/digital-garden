@@ -6,7 +6,8 @@
     selection,
     sidebarOpen,
     addPanelStore,
-    STROKE_TOOLS
+    STROKE_TOOLS,
+    isGeneratorTool
   } from './store/index';
   import DrawToolOptions from './toolPanel/DrawToolOptions.svelte';
   import ClayToolOptions from './toolPanel/ClayToolOptions.svelte';
@@ -27,12 +28,8 @@
   /** Stamp / punch: show tool panel for stamp book link even when selection is empty. */
   const stampVisible = $derived($tool === 'stamp' || $tool === 'punch');
   const clayVisible = $derived($tool === 'clay');
-  const rockVisible = $derived($tool === 'rocks');
-  const grassVisible = $derived($tool === 'grass');
-  const ashlarVisible = $derived($tool === 'ashlar');
-  const roofVisible = $derived($tool === 'roof');
-  const floraVisible = $derived($tool === 'flora');
-  const piscinaVisible = $derived($tool === 'piscina');
+  const generatorOptionsVisible = $derived(isGeneratorTool($tool));
+  const piscinaWide = $derived($tool === 'piscina');
   const gizmoTabsVisible = $derived(
     $tool !== 'fly' && $tool !== 'hand' && ($selection.size > 0 || $addPanelStore.open)
   );
@@ -47,12 +44,7 @@
       polygonVisible ||
       stampVisible ||
       clayVisible ||
-      rockVisible ||
-      grassVisible ||
-      ashlarVisible ||
-      roofVisible ||
-      floraVisible ||
-      piscinaVisible
+      generatorOptionsVisible
   );
 </script>
 
@@ -61,6 +53,7 @@
   <div
     class="tool-panel"
     class:sidebar-open={$sidebarOpen}
+    class:piscina-wide={piscinaWide}
     data-voxelle-no-passthrough
     role="dialog"
     onpointerdown={(e) => e.stopPropagation()}
@@ -101,6 +94,19 @@
   }
 
   .tool-panel.sidebar-open {
+    left: calc(360px + 1rem);
+  }
+
+  .tool-panel.piscina-wide {
+    left: max(1rem, calc(1.5rem + 1rem));
+    right: 1rem;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: min(70vh, 22rem);
+  }
+
+  .tool-panel.sidebar-open.piscina-wide {
     left: calc(360px + 1rem);
   }
 

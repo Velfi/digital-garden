@@ -1,6 +1,6 @@
 /**
- * Context passed to pointer handlers. Extended as more tools are moved into canvas/handlers/.
- * VoxelCanvas creates this and passes it to handlePointerDown / handlePointerMove / handlePointerUp.
+ * Context passed to pointer handlers. Extend this (or pass sidecar deps like `GeneratorRmbDeps`)
+ * as more canvas logic moves out of VoxelCanvas.
  */
 import type { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 

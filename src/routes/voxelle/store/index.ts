@@ -109,6 +109,14 @@ export {
   piscinaFinAnal,
   piscinaFinCaudal,
   piscinaFinPectoral,
+  piscinaFinPelvic,
+  piscinaFinAdipose,
+  piscinaShowFinDorsal,
+  piscinaShowFinAnal,
+  piscinaShowFinCaudal,
+  piscinaShowFinPectoral,
+  piscinaShowFinPelvic,
+  piscinaShowFinAdipose,
   piscinaWidth,
   piscinaThickness,
   piscinaAnchorOffsetU,
@@ -120,8 +128,18 @@ export {
   piscinaFinDorsalPitch,
   piscinaFinDorsalSweep,
   piscinaFinAnalPitch,
+  piscinaFinDorsalMode,
+  piscinaFinAnalMode,
+  piscinaFinCaudalMode,
+  piscinaFinPectoralMode,
+  piscinaFinPelvicMode,
+  piscinaFinAdiposeMode,
+  piscinaFinDorsalLength,
+  piscinaFinAnalLength,
+  piscinaFinDorsalPosition,
   piscinaFinCaudalSpread,
   piscinaFinPectoralCant,
+  piscinaFinPectoralSweep,
   type FloraPresetId,
   type PiscinaPresetId,
   roofStyle,
@@ -192,6 +210,22 @@ export {
   intToHex,
   getPaintColorResolver
 } from './core';
+
+export {
+  GENERATOR_TOOLS,
+  GENERATOR_FACE_CLICK_TOOLS,
+  isGeneratorTool,
+  isGeneratorFaceClickTool,
+  type GeneratorToolId
+} from './generators/registry';
+
+export {
+  canvasInteractionMode,
+  shouldEnableOrbitControls,
+  type VoxelleCanvasInteractionMode
+} from './interactionMode';
+
+export { commitSelectionMergeEdit, commitVoxelMapReplace } from './editCommands';
 
 export type {
   GridSize,
@@ -350,15 +384,26 @@ export {
   generatePiscinaVoxels,
   getPiscinaPositions,
   buildPiscinaFrame,
+  buildPiscinaRadarProfile,
+  getCachedPiscinaRadarProfile,
   widthThicknessFromGirth,
   computePiscinaVoxelCap,
+  PISCINA_DV_HALF_MAX,
+  PISCINA_DV_HALF_MIN,
+  PISCINA_LATERAL_HALF_MAX,
+  PISCINA_LATERAL_HALF_MIN,
   PISCINA_VOXEL_CAP,
   PISCINA_VOXEL_CAP_MAX,
   PISCINA_VOXEL_CAP_MIN,
+  FISH_SPECIES_DEFAULT_FIN_MODES,
   FISH_SPECIES_DEFAULT_NUMERIC,
   PISCINA_PRESET_NUMERIC,
   SPECIES_OUTLINES
 } from './generators/piscina';
-export type { GeneratePiscinaOptions, PiscinaPresetNumericFields } from './generators/piscina';
+export type {
+  GeneratePiscinaOptions,
+  PiscinaPresetNumericFields,
+  PiscinaRadarProfile
+} from './generators/piscina';
 export { generateRoofVoxels } from './generators/roof';
 export type { GenerateRoofOptions } from './generators/roof';

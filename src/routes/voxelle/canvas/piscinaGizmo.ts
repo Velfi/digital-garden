@@ -6,12 +6,25 @@
 import * as THREE from 'three';
 import { get } from 'svelte/store';
 import type { Tool } from '../store/index';
+import type { FishSpeciesId } from '../store/core';
 import {
+  PISCINA_DV_HALF_MAX,
+  PISCINA_DV_HALF_MIN,
+  PISCINA_LATERAL_HALF_MAX,
+  PISCINA_LATERAL_HALF_MIN,
   piscinaLength,
   piscinaFinDorsal,
   piscinaFinAnal,
   piscinaFinCaudal,
   piscinaFinPectoral,
+  piscinaFinPelvic,
+  piscinaFinAdipose,
+  piscinaShowFinDorsal,
+  piscinaShowFinAnal,
+  piscinaShowFinCaudal,
+  piscinaShowFinPectoral,
+  piscinaShowFinPelvic,
+  piscinaShowFinAdipose,
   piscinaWidth,
   piscinaThickness,
   piscinaAnchorOffsetU,
@@ -22,8 +35,10 @@ import {
   piscinaFinDorsalSweep,
   piscinaFinAnalPitch,
   piscinaFinCaudalSpread,
-  piscinaFinPectoralCant
+  piscinaFinPectoralCant,
+  piscinaSpecies
 } from '../store/index';
+import { getPiscinaFinT } from '../store/generators/piscina/species';
 import { previewOccludedTintInto } from './previewMeshUtils';
 
 export type PiscinaGizmoFrame = {
@@ -33,7 +48,13 @@ export type PiscinaGizmoFrame = {
   up: [number, number, number];
 };
 
-export type PiscinaFinGizmoId = 'dorsal' | 'anal' | 'caudal' | 'pectoral';
+export type PiscinaFinGizmoId =
+  | 'dorsal'
+  | 'adipose'
+  | 'anal'
+  | 'caudal'
+  | 'pectoral'
+  | 'pelvic';
 
 const AXIS_DRAG_SENSITIVITY = 0.58;
 const TRANSLATE_DRAG_SENSITIVITY = 0.55;
@@ -154,6 +175,10 @@ function finDragWorldAxis(
       return forward.clone().multiplyScalar(-1);
     case 'pectoral':
       return side.clone();
+    case 'pelvic':
+      return up.clone().multiplyScalar(-1);
+    case 'adipose':
+      return up.clone();
     default:
       return up.clone();
   }
@@ -244,9 +269,11 @@ function addAxisArm(
 
 export type PiscinaGizmoLayout = {
   dorsal: THREE.Group;
+  adipose: THREE.Group;
   anal: THREE.Group;
   caudal: THREE.Group;
   pectoral: THREE.Group;
+  pelvic: THREE.Group;
   spine: THREE.Group;
 };
 
@@ -288,6 +315,19 @@ export function createPiscinaGizmoGroup(): THREE.Group {
     }
   }
   group.add(dorsalG);
+
+  /** Adipose: small ridge dorsally between main dorsal and tail (no angle ring). */
+  const adiposeG = new THREE.Group();
+  adiposeG.name = 'piscinaFinAdipose';
+  {
+    const mat = createGizmoVisibleMaterial(0x66ddaa, 0.9);
+    const lump = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.22, 4), mat);
+    lump.rotation.x = -Math.PI / 2;
+    lump.position.set(0, 0, 0.2);
+    tagFinMesh(lump, 'adipose');
+    adiposeG.add(lump);
+  }
+  group.add(adiposeG);
 
   /** Anal: cone along -Z (local down). */
   const analG = new THREE.Group();
@@ -358,6 +398,22 @@ export function createPiscinaGizmoGroup(): THREE.Group {
   }
   group.add(pectoralG);
 
+  /** Pelvic: paired ventral fins (size only — no angle ring). */
+  const pelvicG = new THREE.Group();
+  pelvicG.name = 'piscinaFinPelvic';
+  {
+    const mat = createGizmoVisibleMaterial(0x8899ee, 0.9);
+    for (const sign of [-1, 1] as const) {
+      const m = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.28, 4), mat);
+      m.rotation.x = Math.PI / 2;
+      m.position.set(0, sign * 0.22, -0.26);
+      m.rotation.z = sign * 0.25;
+      tagFinMesh(m, 'pelvic');
+      pelvicG.add(m);
+    }
+  }
+  group.add(pelvicG);
+
   /** Spine bend handle — slightly smaller cube. */
   const spineG = new THREE.Group();
   spineG.name = 'piscinaSpine';
@@ -371,9 +427,11 @@ export function createPiscinaGizmoGroup(): THREE.Group {
 
   group.userData.piscinaLayout = {
     dorsal: dorsalG,
+    adipose: adiposeG,
     anal: analG,
     caudal: caudalG,
     pectoral: pectoralG,
+    pelvic: pelvicG,
     spine: spineG
   } satisfies PiscinaGizmoLayout;
 
@@ -408,15 +466,6 @@ function spineLocalXAlongBody(tBody: number, lengthVox: number): number {
   return (tBody - 0.5) * 2 * halfLen;
 }
 
-/** t-centroids aligned with `collectFishVoxels` fin bands (pipeline.ts). */
-const PISCINA_FIN_T = {
-  pectoral: 0.23,
-  dorsal: 0.365,
-  anal: 0.58,
-  caudal: 0.92,
-  spine: 0.48
-} as const;
-
 function setupFinRotPlane(
   finId: PiscinaFinGizmoId,
   forward: THREE.Vector3,
@@ -443,19 +492,25 @@ function setupFinRotPlane(
 
 function layoutFinGroups(
   group: THREE.Group,
-  lengthVox: number
+  lengthVox: number,
+  species: FishSpeciesId
 ): void {
   const layout = group.userData.piscinaLayout as PiscinaGizmoLayout | undefined;
   if (!layout) return;
-  const xP = spineLocalXAlongBody(PISCINA_FIN_T.pectoral, lengthVox);
-  const xD = spineLocalXAlongBody(PISCINA_FIN_T.dorsal, lengthVox);
-  const xA = spineLocalXAlongBody(PISCINA_FIN_T.anal, lengthVox);
-  const xC = spineLocalXAlongBody(PISCINA_FIN_T.caudal, lengthVox);
-  const xS = spineLocalXAlongBody(PISCINA_FIN_T.spine, lengthVox);
+  const finT = getPiscinaFinT(species);
+  const xP = spineLocalXAlongBody(finT.pectoral, lengthVox);
+  const xD = spineLocalXAlongBody(finT.dorsal, lengthVox);
+  const xAd = spineLocalXAlongBody(finT.adipose, lengthVox);
+  const xA = spineLocalXAlongBody(finT.anal, lengthVox);
+  const xPv = spineLocalXAlongBody(finT.pelvic, lengthVox);
+  const xC = spineLocalXAlongBody(finT.caudal, lengthVox);
+  const xS = spineLocalXAlongBody(finT.spine, lengthVox);
   /** Spread handles in local Y/Z so body axes, fins, and spine don’t stack on one point. */
   layout.pectoral.position.set(xP, 0.18, -0.22);
   layout.dorsal.position.set(xD, 0.12, 0);
+  layout.adipose.position.set(xAd, 0.06, 0.1);
   layout.anal.position.set(xA, -0.12, 0);
+  layout.pelvic.position.set(xPv, 0.02, -0.2);
   layout.caudal.position.set(xC, 0, 0);
   layout.spine.position.set(xS, 0.1, 0.24);
   for (const ch of group.children) {
@@ -496,6 +551,8 @@ export function createPiscinaGizmoController(deps: PiscinaGizmoDeps) {
   let baseAnal = 0;
   let baseCaudal = 0;
   let basePectoral = 0;
+  let basePelvic = 0;
+  let baseAdipose = 0;
   let baseOffU = 0;
   let baseOffV = 0;
   let appliedGizmosAlwaysOnTop: boolean | undefined;
@@ -587,7 +644,16 @@ export function createPiscinaGizmoController(deps: PiscinaGizmoDeps) {
     const dist = Math.hypot(camera.position.x - cx, camera.position.y - cy, camera.position.z - cz);
     const sc = Math.max(0.44, Math.min(3.49, dist * 0.059));
     group.scale.setScalar(sc);
-    layoutFinGroups(group, get(piscinaLength));
+    layoutFinGroups(group, get(piscinaLength), get(piscinaSpecies));
+    const layout = group.userData.piscinaLayout as PiscinaGizmoLayout | undefined;
+    if (layout) {
+      layout.dorsal.visible = get(piscinaShowFinDorsal);
+      layout.adipose.visible = get(piscinaShowFinAdipose);
+      layout.anal.visible = get(piscinaShowFinAnal);
+      layout.caudal.visible = get(piscinaShowFinCaudal);
+      layout.pectoral.visible = get(piscinaShowFinPectoral);
+      layout.pelvic.visible = get(piscinaShowFinPelvic);
+    }
     group.visible = true;
   }
 
@@ -619,12 +685,14 @@ export function createPiscinaGizmoController(deps: PiscinaGizmoDeps) {
     up.set(...frame.up);
 
     baseLength = get(piscinaLength);
-    baseWidth = get(piscinaWidth);
-    baseThickness = get(piscinaThickness);
+    baseWidth = get(piscinaThickness);
+    baseThickness = get(piscinaWidth);
     baseDorsal = get(piscinaFinDorsal);
     baseAnal = get(piscinaFinAnal);
     baseCaudal = get(piscinaFinCaudal);
     basePectoral = get(piscinaFinPectoral);
+    basePelvic = get(piscinaFinPelvic);
+    baseAdipose = get(piscinaFinAdipose);
     baseOffU = get(piscinaAnchorOffsetU);
     baseOffV = get(piscinaAnchorOffsetV);
     baseSpineBend = get(piscinaSpineBend);
@@ -645,11 +713,15 @@ export function createPiscinaGizmoController(deps: PiscinaGizmoDeps) {
       const finGrp =
         picked.finId === 'dorsal'
           ? layout?.dorsal
-          : picked.finId === 'anal'
-            ? layout?.anal
-            : picked.finId === 'caudal'
-              ? layout?.caudal
-              : layout?.pectoral;
+          : picked.finId === 'adipose'
+            ? layout?.adipose
+            : picked.finId === 'anal'
+              ? layout?.anal
+              : picked.finId === 'caudal'
+                ? layout?.caudal
+                : picked.finId === 'pelvic'
+                  ? layout?.pelvic
+                  : layout?.pectoral;
       if (finGrp) finGrp.getWorldPosition(finRotPivot);
       else finRotPivot.set(cx, cy, cz);
       setupFinRotPlane(picked.finId, forward, side, up, finRotNormal, finRotE1, finRotE2);
@@ -706,21 +778,27 @@ export function createPiscinaGizmoController(deps: PiscinaGizmoDeps) {
       if (dragAxis === 0) {
         piscinaLength.set(Math.max(4, Math.min(72, baseLength + steps)));
       } else if (dragAxis === 1) {
-        piscinaWidth.set(Math.max(2, Math.min(32, baseWidth + steps)));
+        piscinaThickness.set(
+          Math.max(PISCINA_LATERAL_HALF_MIN, Math.min(PISCINA_LATERAL_HALF_MAX, baseWidth + steps))
+        );
       } else {
-        piscinaThickness.set(Math.max(1, Math.min(24, baseThickness + steps)));
+        piscinaWidth.set(
+          Math.max(PISCINA_DV_HALF_MIN, Math.min(PISCINA_DV_HALF_MAX, baseThickness + steps))
+        );
       }
     } else if (dragKind === 'fin' && dragFinId) {
       finAxisScratch.copy(finDragWorldAxis(dragFinId, forward, side, up));
       let along = gizmoDeltaScratch.copy(gizmoHitScratch).sub(gizmoWorldStart).dot(finAxisScratch);
-      if (dragFinId === 'anal') along = -along;
+      if (dragFinId === 'anal' || dragFinId === 'pelvic') along = -along;
       const steps = Math.round(along * AXIS_DRAG_SENSITIVITY);
       const apply = (base: number, setter: (n: number) => void) => {
         setter(Math.max(1, Math.min(8, base + steps)));
       };
       if (dragFinId === 'dorsal') apply(baseDorsal, (n) => piscinaFinDorsal.set(n));
+      else if (dragFinId === 'adipose') apply(baseAdipose, (n) => piscinaFinAdipose.set(n));
       else if (dragFinId === 'anal') apply(baseAnal, (n) => piscinaFinAnal.set(n));
       else if (dragFinId === 'caudal') apply(baseCaudal, (n) => piscinaFinCaudal.set(n));
+      else if (dragFinId === 'pelvic') apply(basePelvic, (n) => piscinaFinPelvic.set(n));
       else apply(basePectoral, (n) => piscinaFinPectoral.set(n));
     } else if (dragKind === 'finRot' && dragFinId) {
       setupFinRotPlane(dragFinId, forward, side, up, finRotNormal, finRotE1, finRotE2);
