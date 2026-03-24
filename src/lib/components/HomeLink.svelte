@@ -1,4 +1,8 @@
-<a title="Go back to the main page" href="/">Z</a>
+<script>
+  import { resolve } from '$app/paths';
+</script>
+
+<a title="Go back to the main page" href={resolve('/')}>Z</a>
 
 <style>
   a {

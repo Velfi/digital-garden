@@ -120,7 +120,7 @@
   function safeFileStem(name: string): string {
     const t = name
       .trim()
-      .replace(/[^\w\-]+/g, '_')
+      .replace(/[^\w-]+/g, '_')
       .slice(0, 64);
     return t || 'stamp';
   }
@@ -386,7 +386,6 @@
 </script>
 
 {#if open}
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class="modal-overlay stamp-book-overlay"
     role="dialog"

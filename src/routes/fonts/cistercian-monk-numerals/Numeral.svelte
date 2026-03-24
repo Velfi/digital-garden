@@ -54,7 +54,7 @@
   <g transform="scale({scale} {scale})">
     {#if paddedValue !== '0000'}
       <line x1="1.5cm" x2="1.5cm" y1="0.5cm" y2="3.5cm" />
-      {#each paddedValue.split('') as n, i}
+      {#each paddedValue.split('') as n, i (i)}
         {#if n === '1' || n === '5' || n === '7' || n === '9'}
           <line
             x1="1.5cm"

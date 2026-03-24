@@ -12,7 +12,6 @@
     ropeBrushRadius,
     ropeGravityDirection,
     sprayDirection,
-    sprayStreakLength,
     wallWidth,
     wallHeight,
     wallLockStartHeight,

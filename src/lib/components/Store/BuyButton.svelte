@@ -4,7 +4,7 @@
   export let purchasePrice: number;
 </script>
 
-<a class="link-button" href={purchaseLink}>
+<a class="link-button" rel="external" href={purchaseLink}>
   {purchaseCta} (${purchasePrice})
 </a>
 

@@ -3,7 +3,7 @@
  * VoxelCanvas calls handlePointerDown / handlePointerMove / handlePointerUp with a context.
  */
 import type { PointerHandlerContext } from './types';
-import { handleFlyPointerDown, handleFlyPointerUp } from './fly';
+import { handleFlyPointerDown } from './fly';
 import { tryHandleGeneratorToolRmb, type GeneratorRmbDeps } from './generatorPointer';
 
 export type { PointerHandlerContext } from './types';
@@ -25,7 +25,8 @@ export function handlePointerDown(
 }
 
 /** Returns true if the event was handled and the caller should return. */
-export function handlePointerMove(_ctx: PointerHandlerContext, _event?: PointerEvent): boolean {
-  if (_ctx.getTool() === 'fly') return true; // PointerLockControls handles move
+export function handlePointerMove(ctx: PointerHandlerContext, event?: PointerEvent): boolean {
+  void event;
+  if (ctx.getTool() === 'fly') return true; // PointerLockControls handles move
   return false;
 }

@@ -78,10 +78,8 @@
     roofSaltSkew,
     roofWindingFlipTick,
     roofHollow,
-    MAX_BRUSH_SIZE,
     isGeneratorTool
   } from '../store/index';
-  const BRUSH_SIZE_MAX = MAX_BRUSH_SIZE - 1;
   const generatorPanelOpen = $derived(isGeneratorTool($tool));
   const rockVisible = $derived($tool === 'rocks');
   const grassVisible = $derived($tool === 'grass');

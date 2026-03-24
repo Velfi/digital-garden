@@ -17,7 +17,9 @@ export function handleFlyPointerDown(ctx: PointerHandlerContext, event: PointerE
   return true;
 }
 
-export function handleFlyPointerMove(_ctx: PointerHandlerContext, _event?: PointerEvent): boolean {
+export function handleFlyPointerMove(ctx: PointerHandlerContext, event?: PointerEvent): boolean {
+  void ctx;
+  void event;
   return false; // Fly doesn't need move handling in our dispatcher; PointerLockControls handles it
 }
 

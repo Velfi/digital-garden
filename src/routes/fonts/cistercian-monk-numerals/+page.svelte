@@ -8,14 +8,16 @@
   let strokeWidth = 10;
   let strokeLinecap: 'round' | 'inherit' | 'butt' | 'square' = 'round';
   // Any value they type in the input field
-  let value = '8148';
-  //  The value of the input field, but only if it's a valid number
-  $: digit = '8148';
+  let value = $state('8148');
+  // The value of the input field, but only if it's a valid number
+  let digit = $state('8148');
 
-  $: if (NUMBER_REGEX.test(value)) {
-    console.log(value);
-    digit = value;
-  }
+  $effect(() => {
+    if (NUMBER_REGEX.test(value)) {
+      console.log(value);
+      digit = value;
+    }
+  });
 
   function onClickRng(): void {
     value = Math.floor(Math.random() * 9999 + 1).toString();
@@ -109,7 +111,7 @@
 <p>Here are all the numerals from 1 to 9,999.</p>
 
 <div class="all-numerals">
-  {#each allDigits as d}
+  {#each allDigits as d (d)}
     <Numeral
       width={String(30)}
       height={String(30 * 1.25)}

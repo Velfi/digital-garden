@@ -477,7 +477,7 @@ function collectFishVoxels(
     Tz[k] = tz;
 
     let [sx, sy, sz] = cross3(u0x, u0y, u0z, tx, ty, tz);
-    let slen = Math.hypot(sx, sy, sz);
+    const slen = Math.hypot(sx, sy, sz);
     if (slen < 1e-6) {
       sx = s0x;
       sy = s0y;
@@ -671,7 +671,7 @@ function collectFishVoxels(
       let finAH = Math.max(1, Math.ceil(envA * 2.85 * mulAd));
       if (o.finAdiposeMode === 'rounded') finAH = Math.max(finAH, Math.ceil(finAH * 1.08));
       if (o.finAdiposeMode === 'ribbon') finAH = Math.ceil(finAH * 1.32);
-      let a0x = ux,
+      const a0x = ux,
         a0y = uy,
         a0z = uz;
       const peakAd = dorsalBaseWing(mulAd);

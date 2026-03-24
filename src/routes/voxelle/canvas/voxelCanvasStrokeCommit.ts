@@ -30,7 +30,6 @@ import {
   PUNCH_DEPTH_MAX,
   punchDepth,
   inflateStrength,
-  bookStampPattern,
   ensureGridFitsPositions,
   generateRockVoxels,
   generateAshlarVoxels,

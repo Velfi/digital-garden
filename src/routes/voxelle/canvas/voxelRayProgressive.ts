@@ -15,13 +15,10 @@ import {
 } from './voxelRayDda';
 import {
   clampShadowSamples,
-  DEFAULT_SHADOW_RAY_SAMPLES,
-  DEFAULT_SHADOW_SOFTNESS_RADIANS,
   shadowConeTanFromRadians,
   softShadowDiskStratified
 } from './gpuSoftShadow';
 import {
-  buildVoxelRayTraceParams,
   GLOW_BLOOM_LINEAR_SCALE,
   GLASS_IOR,
   GLASS_MIN_TRANSMITTANCE,
@@ -99,19 +96,6 @@ function shadeMiss(
     skyTinted[0] * (1 - g) + groundTinted[0] * g,
     skyTinted[1] * (1 - g) + groundTinted[1] * g,
     skyTinted[2] * (1 - g) + groundTinted[2] * g
-  ];
-}
-
-function envReflectApprox(
-  params: VoxelRayTraceParams,
-  screenV: number,
-  bufH: number
-): [number, number, number] {
-  const m = shadeMiss(params, screenV, bufH);
-  return [
-    m[0] * 0.82 + params.ambientR * 0.18,
-    m[1] * 0.82 + params.ambientG * 0.18,
-    m[2] * 0.82 + params.ambientB * 0.18
   ];
 }
 

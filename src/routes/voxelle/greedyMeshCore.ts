@@ -75,9 +75,11 @@ function quadPositionFromSlice(
   depth: number,
   u: number,
   v: number,
-  _w: number,
-  _h: number
+  w: number,
+  h: number
 ): Vec3 {
+  void w;
+  void h;
   const faceOffset = 0.5 * sign;
   if (axis === 0) return [depth + faceOffset, u - 0.5, v - 0.5];
   if (axis === 1) return [u - 0.5, depth + faceOffset, v - 0.5];

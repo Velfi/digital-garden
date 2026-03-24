@@ -154,7 +154,7 @@
     {:else}
       <p>Fill in the blanks to create a silly story.</p>
       <form class="blanks-form" autocomplete="off" on:submit={onSubmit} on:reset={reset}>
-        {#each blanks as blank, i}
+        {#each blanks as blank, i (i)}
           <label class="blanks-label">
             {blank}&nbsp;
             <input

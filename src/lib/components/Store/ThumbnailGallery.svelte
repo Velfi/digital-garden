@@ -1,13 +1,13 @@
 <script lang="ts">
   export let images: string[];
-  $: imageIndex = 0;
-  const maxIndex = images.length - 1;
+  let imageIndex = $state(0);
 
   if (images.length == 0) {
     throw Error('must pass at least one image to Thumbnail Gallery!');
   }
 
   const nextImageIndex = () => {
+    const maxIndex = images.length - 1;
     if (imageIndex < maxIndex) {
       imageIndex = imageIndex + 1;
     } else {
@@ -15,6 +15,7 @@
     }
   };
   const previousImageIndex = () => {
+    const maxIndex = images.length - 1;
     if (imageIndex == 0) {
       imageIndex = maxIndex;
     } else {

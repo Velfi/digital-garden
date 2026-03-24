@@ -1,4 +1,5 @@
 <script>
+  import { resolve } from '$app/paths';
   import FlowerStampPhoto from '$lib/assets/images/wooden-stamps/flower.jpg?w=650&imagetools';
   import PeacockStampPhoto from '$lib/assets/images/wooden-stamps/peacock.jpg?w=650&imagetools';
   import HorseStampPhoto from '$lib/assets/images/wooden-stamps/horse.jpg?w=650&imagetools';
@@ -33,14 +34,14 @@ sat on my curio shelf for the longest time. But then I thought of turning them i
   <div>
     <FlowerStampRefined />
     <p>
-      <a href="/images/wooden-stamps/flower-refined.svg"> download refined version </a>
+      <a href={resolve('/images/wooden-stamps/flower-refined.svg')}> download refined version </a>
     </p>
   </div>
 
   <div>
     <FlowerStampRough />
     <p>
-      <a href="/images/wooden-stamps/flower-rough.svg">download rough version</a>
+      <a href={resolve('/images/wooden-stamps/flower-rough.svg')}>download rough version</a>
     </p>
   </div>
 </div>
@@ -51,7 +52,7 @@ sat on my curio shelf for the longest time. But then I thought of turning them i
 <PeacockStamp />
 
 <p>
-  <a href="/images/wooden-stamps/peacock.svg">download</a>
+  <a href={resolve('/images/wooden-stamps/peacock.svg')}>download</a>
 </p>
 
 <h2>The horse</h2>
@@ -60,7 +61,7 @@ sat on my curio shelf for the longest time. But then I thought of turning them i
 <HorseStamp />
 
 <p>
-  <a href="/images/wooden-stamps/horse.svg">download</a>
+  <a href={resolve('/images/wooden-stamps/horse.svg')}>download</a>
 </p>
 
 <h2>The vines</h2>
@@ -73,7 +74,7 @@ sat on my curio shelf for the longest time. But then I thought of turning them i
 </div>
 
 <p>
-  <a href="/images/wooden-stamps/vines-rough.svg">download rough version</a>
+  <a href={resolve('/images/wooden-stamps/vines-rough.svg')}>download rough version</a>
 </p>
 
 <style lang="scss">

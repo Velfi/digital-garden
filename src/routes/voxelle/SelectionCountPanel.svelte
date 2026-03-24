@@ -3,7 +3,6 @@
 </script>
 
 {#if $selection.size > 0}
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class="selection-panel"
     class:sidebar-open={$sidebarOpen}

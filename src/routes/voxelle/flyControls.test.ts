@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as THREE from 'three';
+import type { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { createFlyMoveState, resetFlyMoveState, applyFlyMovement } from './flyControls';
 
 describe('flyControls', () => {
@@ -47,7 +48,7 @@ describe('flyControls', () => {
       const controls = { enabled: false, moveRight: vi.fn() };
       const state = createFlyMoveState();
       state.forward = 1;
-      applyFlyMovement(camera, controls as any, state, 1);
+      applyFlyMovement(camera, controls as unknown as PointerLockControls, state, 1);
       expect(controls.moveRight).not.toHaveBeenCalled();
     });
 
@@ -57,7 +58,7 @@ describe('flyControls', () => {
       const controls = { enabled: true, moveRight: vi.fn() };
       const state = createFlyMoveState();
       state.forward = 1;
-      applyFlyMovement(camera, controls as any, state, 1);
+      applyFlyMovement(camera, controls as unknown as PointerLockControls, state, 1);
       expect(camera.position.length()).toBeGreaterThan(0);
     });
 
@@ -66,7 +67,7 @@ describe('flyControls', () => {
       const controls = { enabled: true, moveRight: vi.fn() };
       const state = createFlyMoveState();
       state.right = 1;
-      applyFlyMovement(camera, controls as any, state, 0.1);
+      applyFlyMovement(camera, controls as unknown as PointerLockControls, state, 0.1);
       expect(controls.moveRight).toHaveBeenCalledWith(expect.any(Number));
     });
 
@@ -76,7 +77,7 @@ describe('flyControls', () => {
       const controls = { enabled: true, moveRight: vi.fn() };
       const state = createFlyMoveState();
       state.up = 1;
-      applyFlyMovement(camera, controls as any, state, 0.1);
+      applyFlyMovement(camera, controls as unknown as PointerLockControls, state, 0.1);
       expect(camera.position.y).toBeGreaterThan(0);
     });
 
@@ -86,7 +87,9 @@ describe('flyControls', () => {
       const controls = { enabled: true, moveRight: vi.fn() };
       const state = createFlyMoveState();
       state.up = 1;
-      applyFlyMovement(camera, controls as any, state, 1, { moveSpeed: 50 });
+      applyFlyMovement(camera, controls as unknown as PointerLockControls, state, 1, {
+        moveSpeed: 50
+      });
       expect(camera.position.y).toBe(50);
     });
 
@@ -97,7 +100,9 @@ describe('flyControls', () => {
       const state = createFlyMoveState();
       state.up = 1;
       state.shift = 1;
-      applyFlyMovement(camera, controls as any, state, 1, { moveSpeed: 80 });
+      applyFlyMovement(camera, controls as unknown as PointerLockControls, state, 1, {
+        moveSpeed: 80
+      });
       expect(camera.position.y).toBe(10);
     });
   });

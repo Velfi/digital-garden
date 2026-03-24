@@ -154,7 +154,7 @@
   a slug (e.g. greyt-bit, apollo)
 </p>
 <div class="popular-palettes">
-  {#each POPULAR_PALETTES as p}
+  {#each POPULAR_PALETTES as p (p.slug)}
     <a
       href="https://lospec.com/palette-list/{p.slug}"
       class="palette-link"
@@ -193,7 +193,7 @@
     onpointerup={selectedColors ? handlePalettePointerUp : undefined}
     onpointercancel={selectedColors ? handlePalettePointerUp : undefined}
   >
-    {#each $palette as swatch, i}
+    {#each $palette as swatch, i (i)}
       <button
         type="button"
         class="swatch"

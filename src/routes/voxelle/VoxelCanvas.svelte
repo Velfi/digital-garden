@@ -9,6 +9,7 @@
   import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
   import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
   import { onMount, onDestroy } from 'svelte';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
   import {
     voxels,
@@ -66,14 +67,12 @@
     orthographic,
     voxelMaterial,
     sameVoxelColor,
-    updateVoxels,
     updateVoxelsInStroke,
     runVoxelStroke,
     applySelectionTranslationAlongAxis,
     applySelectionRotationInStroke,
     selectionGizmoMode,
     commitUndoAfter,
-    history,
     initCanvas,
     loadFromStorageAsync,
     loadFromBytes,
@@ -83,10 +82,7 @@
     hexToInt,
     intToHex,
     getPaintColorResolver,
-    getSelectionAnchor,
-    getSelectionBounds,
     getStampOffsetForFace,
-    getPunchOffsetForFace,
     ensureGridFitsPositions,
     resizeGridToContent,
     stampRotation,
@@ -135,20 +131,6 @@
     grassDensity,
     grassHeight,
     getFloraPositions,
-    floraPreset,
-    floraHeight,
-    floraGirth,
-    floraWobble,
-    floraTaper,
-    floraStemCount,
-    floraClusterRadius,
-    floraBranchCount,
-    floraBranchDepth,
-    floraBranchStart,
-    floraBranchSpread,
-    floraBraidStrands,
-    floraBraidTwist,
-    floraBarkJitter,
     piscinaLength,
     piscinaWidth,
     piscinaThickness,
@@ -201,17 +183,12 @@
     voxellePreferences,
     type Voxel
   } from './store/index';
-  import {
-    generateRockVoxels,
-    getRockPositions,
-    generateAshlarVoxels,
-    getAshlarPositions
-  } from './store/generators/rock';
+  import { getRockPositions, getAshlarPositions } from './store/generators/rock';
   import {
     VOXELLE_MESH_MATERIAL_USERDATA_KEY,
     voxelMaterialBaseEnvMapIntensity
   } from './voxelMaterial';
-  import { generateGrassVoxels, getGrassPositions } from './store/generators/grass';
+  import { getGrassPositions } from './store/generators/grass';
   import { generateRoofVoxels } from './store/generators/roof';
   import {
     inBounds,
@@ -304,8 +281,6 @@
   import {
     getRaycastTargetsFrom,
     getIntersectionFrom,
-    snapToGrid,
-    dominantAxisNormal,
     axisVector,
     getDominantAxisOfNormal,
     getFaceNormalFromHit as raycastFaceNormalFromHit,
@@ -323,10 +298,7 @@
     updateShadowCamera as lightingUpdateShadowCamera,
     invalidateDirectionalShadowMap as lightingInvalidateDirectionalShadowMap
   } from './canvas/voxelCanvasLighting';
-  import {
-    hasGlowInVoxelGroup as sceneHasGlowInVoxelGroup,
-    renderVoxelCanvasPrimaryScene
-  } from './canvas/voxelCanvasBloomRender';
+  import { renderVoxelCanvasPrimaryScene } from './canvas/voxelCanvasBloomRender';
   import { runVoxelCanvasAnimateStep } from './canvas/voxelCanvasAnimate';
   import {
     createVoxelCanvasStrokeCommit,
@@ -338,9 +310,7 @@
   } from './canvas/voxelCanvasStrokeCommit';
   import VoxelCanvasOverlays from './VoxelCanvasOverlays.svelte';
 
-  type FillOperationPhase = 'exploring' | 'committing';
   let fillBusy = $state(false);
-  let fillPhase = $state<FillOperationPhase>('exploring');
   let fillVisited = $state(0);
   let fillMatched = $state(0);
   let fillMessage = $state<string>('Exploring fill region…');
@@ -509,9 +479,6 @@
   let sceneHasGlowMesh = false;
   const bloomMaterialStash: Record<string, THREE.Material | THREE.Material[]> = {};
 
-  function hasGlowInVoxelGroup(): boolean {
-    return sceneHasGlowInVoxelGroup(voxelGroup);
-  }
   let orbitControls = $state<OrbitControls>();
   let flyControls: InstanceType<typeof PointerLockControls> | null = null;
   let lastFrameTime = 0;
@@ -577,8 +544,6 @@
   let branchPointerDownX = 0;
   let branchPointerDownY = 0;
 
-  /** Shown while worker is computing (main voxel mesh rebuild) */
-  let greedyMeshLoading = $state(false);
   /** Only show spinner after build has taken >2s */
   let showGreedyMeshSpinner = $state(false);
 
@@ -626,7 +591,6 @@
   let preciseGuidePlaneMesh: THREE.Mesh | null = null;
   let preciseGuidePlaneMaterial: THREE.MeshBasicMaterial | null = null;
   let preciseGuidePlaneTexture: THREE.CanvasTexture | null = null;
-  let preciseGuidePlaneCanvas: HTMLCanvasElement | null = null;
   let preciseGuidePlaneCtx: CanvasRenderingContext2D | null = null;
   let preciseGuidePlaneSize = 192;
   let addPreviewMesh: THREE.Mesh | null = null;
@@ -1707,7 +1671,9 @@
       if (depthAdjustPointerId !== null) {
         try {
           container.releasePointerCapture(depthAdjustPointerId);
-        } catch (_) {}
+        } catch {
+          /* ignore */
+        }
         depthAdjustPointerId = null;
       }
       cuboidPhase = null;
@@ -1726,7 +1692,9 @@
       if (dragPointerId !== null) {
         try {
           container.releasePointerCapture(dragPointerId);
-        } catch (_) {}
+        } catch {
+          /* ignore */
+        }
         dragPointerId = null;
       }
       isVoxelDrag = false;
@@ -1963,7 +1931,9 @@
         dragPointerId = null;
         try {
           container.releasePointerCapture(event.pointerId);
-        } catch (_) {}
+        } catch {
+          /* ignore */
+        }
         requestAnimationFrame(() => render());
         return;
       }
@@ -2222,7 +2192,6 @@
       const pos = getVoxelPosition(hit);
       if (pos) {
         fillBusy = true;
-        fillPhase = 'exploring';
         fillMessage = 'Exploring fill region…';
         fillVisited = 0;
         fillMatched = 0;
@@ -2245,7 +2214,6 @@
             }
           );
           if (!incoming.cancelled && incoming.region.size > 0) {
-            fillPhase = 'committing';
             fillMessage = 'Applying fill…';
             commitSelectionMergeEdit(incoming.region, get(selectionMode), event.shiftKey);
           }
@@ -2271,7 +2239,6 @@
       const pos = getVoxelPosition(hit);
       if (pos) {
         fillBusy = true;
-        fillPhase = 'exploring';
         fillMessage = 'Exploring fill region…';
         fillVisited = 0;
         fillMatched = 0;
@@ -2294,7 +2261,6 @@
             }
           );
           if (!fillRegion.cancelled && fillRegion.region.size > 0) {
-            fillPhase = 'committing';
             fillMessage = 'Applying fill…';
             const getCol = getPaintColorResolver();
             const positions = [...fillRegion.region.keys()].map((k) => parseCoordKey(k));
@@ -2329,7 +2295,6 @@
       const pos = getAddPosition(hit);
       if (pos && !$voxels.has(coordKey(pos[0], pos[1], pos[2]))) {
         fillBusy = true;
-        fillPhase = 'exploring';
         fillMessage = 'Exploring fill region…';
         fillVisited = 0;
         fillMatched = 0;
@@ -2345,7 +2310,6 @@
             controller.signal
           );
           if (emptyRegion && emptyRegion.size > 0) {
-            fillPhase = 'committing';
             fillMessage = 'Applying fill…';
             const getCol = getPaintColorResolver();
             const positions = [...emptyRegion].map((k) => parseCoordKey(k));
@@ -2380,7 +2344,6 @@
       const pos = getVoxelPosition(hit);
       if (pos) {
         fillBusy = true;
-        fillPhase = 'exploring';
         fillMessage = 'Exploring fill region…';
         fillVisited = 0;
         fillMatched = 0;
@@ -2403,7 +2366,6 @@
             }
           );
           if (!fillRegion.cancelled && fillRegion.region.size > 0) {
-            fillPhase = 'committing';
             fillMessage = 'Applying fill…';
             runVoxelStroke(() => {
               updateVoxelsInStroke((v) => {
@@ -2477,7 +2439,6 @@
               return;
             }
             fillBusy = true;
-            fillPhase = 'exploring';
             fillMessage = 'Exploring fill region…';
             fillVisited = 0;
             fillMatched = 0;
@@ -2509,7 +2470,7 @@
               fillBusy = false;
             }
           } else {
-            incoming = new Map<string, Voxel>();
+            incoming = new SvelteMap<string, Voxel>();
             for (const [key, col] of $voxels) {
               if (sameVoxelColor(col, targetVoxel)) incoming.set(key, col);
             }
@@ -2567,7 +2528,9 @@
         dragPointerId = null;
         try {
           container.releasePointerCapture(event.pointerId);
-        } catch (_) {}
+        } catch {
+          /* ignore */
+        }
       }
       requestAnimationFrame(() => render());
       return;
@@ -2926,7 +2889,9 @@
               } else {
                 // Path-following: accumulate with 3D line segments
                 const segment = getBresenham3DLine(lastBulkPos!, currentPos);
-                const seen = new Set(pendingStrokePositions.map((p) => `${p[0]},${p[1]},${p[2]}`));
+                const seen = new SvelteSet(
+                  pendingStrokePositions.map((p) => `${p[0]},${p[1]},${p[2]}`)
+                );
                 for (const p of segment) {
                   const k = `${p[0]},${p[1]},${p[2]}`;
                   if (!seen.has(k)) {
@@ -3493,7 +3458,9 @@
     if (depthAdjustPointerId === event.pointerId) {
       try {
         container.releasePointerCapture(event.pointerId);
-      } catch (_) {}
+      } catch {
+        /* ignore */
+      }
       depthAdjustPointerId = null;
     }
     if (event.button === 2 && (isVoxelDrag || selectionGizmo?.isGizmoDrag || cuboidPhase)) {
@@ -3539,7 +3506,9 @@
       if (dragPointerId !== null) {
         try {
           container.releasePointerCapture(event.pointerId);
-        } catch (_) {}
+        } catch {
+          /* ignore */
+        }
         dragPointerId = null;
       }
     }
@@ -4257,29 +4226,29 @@
 
   $effect(() => {
     const v = $voxels;
-    const sz = $gridSize;
-    const _ao = $aoStrength;
-    const _renderingMode = $renderingMode;
+    void $gridSize;
+    void $aoStrength;
+    void $renderingMode;
     sceneHasGlowMesh = Array.from(v.values()).some((voxel) => voxel.material === 'glow');
     meshManager?.requestRebuildVoxelMeshes(v);
     render();
   });
 
   $effect(() => {
-    $renderingMode;
-    $voxels;
-    $lightAngle;
-    $lightElevation;
-    $lightColor;
-    $ambientIntensity;
-    $sunlightIntensity;
-    $enableShadows;
-    $enableSky;
-    $backgroundColor;
-    $sceneEnvironmentIntensity;
-    $gridSize;
-    $focalLength;
-    $orthographic;
+    void $renderingMode;
+    void $voxels;
+    void $lightAngle;
+    void $lightElevation;
+    void $lightColor;
+    void $ambientIntensity;
+    void $sunlightIntensity;
+    void $enableShadows;
+    void $enableSky;
+    void $backgroundColor;
+    void $sceneEnvironmentIntensity;
+    void $gridSize;
+    void $focalLength;
+    void $orthographic;
     // Camera movement is already tracked via `camDirty` in animate(); avoid re-resetting every frame.
     if ($renderingMode === 'ray') rayTraceContentDirty = true;
   });
@@ -4379,7 +4348,7 @@
   });
 
   $effect(() => {
-    $selectionGizmoMode;
+    void $selectionGizmoMode;
     render();
     selectionGizmo?.syncGizmoHoverCursor();
   });
@@ -4427,9 +4396,9 @@
   });
 
   $effect(() => {
-    $enableSky;
-    $backgroundColor;
-    $sceneEnvironmentIntensity;
+    void $enableSky;
+    void $backgroundColor;
+    void $sceneEnvironmentIntensity;
     syncVoxelMaterialEnvMaps();
     render();
   });
@@ -4437,7 +4406,7 @@
   onMount(async () => {
     window.addEventListener(VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT, onProjectOpenFitCamera);
 
-    const { fromUrl, loadedFromStorage } = await loadVoxelCanvasBootstrapModel({
+    const { loadedFromStorage } = await loadVoxelCanvasBootstrapModel({
       loadFromBytes,
       loadFromStorageAsync,
       initCanvas,
@@ -4480,7 +4449,6 @@
     previewMesh = setupRefs.previewMesh;
     previewMaterial = setupRefs.previewMaterial;
     const preciseGuide = createPreciseGuidePlaneInScene(scene);
-    preciseGuidePlaneCanvas = preciseGuide.canvas;
     preciseGuidePlaneCtx = preciseGuide.ctx;
     preciseGuidePlaneTexture = preciseGuide.texture;
     preciseGuidePlaneMaterial = preciseGuide.material;
@@ -4525,7 +4493,7 @@
         sceneEnvironmentIntensity: $sceneEnvironmentIntensity
       }),
       {
-        onLoadingChange: (v) => (greedyMeshLoading = v),
+        onLoadingChange: () => {},
         onSpinnerChange: (v) => (showGreedyMeshSpinner = v),
         onVoxelMeshesRebuilt: ({ hasGlowMesh }) => {
           sceneHasGlowMesh = hasGlowMesh;
@@ -4625,7 +4593,7 @@
   $effect(() => {
     const sz = $gridSize;
     const useSky = $enableSky;
-    $renderingMode;
+    void $renderingMode;
     updateDirLightPosition($lightAngle, $lightElevation, sz);
     updateShadowCamera(sz);
     if (dirLight) {
@@ -4950,7 +4918,6 @@
     preciseGuidePlaneMesh = null;
     preciseGuidePlaneMaterial = null;
     preciseGuidePlaneTexture = null;
-    preciseGuidePlaneCanvas = null;
     preciseGuidePlaneCtx = null;
     addPreviewMesh?.geometry?.dispose();
     addPreviewMaterial?.dispose();
@@ -4974,7 +4941,7 @@
       (moveDragLine.material as THREE.Material).dispose();
       moveDragLine = null;
     }
-    const gizmoGeos = new Set<THREE.BufferGeometry>();
+    const gizmoGeos = new SvelteSet<THREE.BufferGeometry>();
     for (const gg of [moveGizmoGroup, rotateGizmoGroup]) {
       gg?.traverse((obj) => {
         const m = obj as THREE.Mesh;

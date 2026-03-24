@@ -178,7 +178,7 @@
   ></canvas>
 
   <div class="color-list">
-    {#each getHarmonyColors($baseHue, $harmonyType) as hue}
+    {#each getHarmonyColors($baseHue, $harmonyType) as hue (hue)}
       <div class="color-item">
         <div class="color-swatch" style="background: {getPerceptualColor(hue)}"></div>
         <div class="color-value">{getPerceptualColor(hue)}</div>

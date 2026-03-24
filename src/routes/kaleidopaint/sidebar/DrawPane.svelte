@@ -93,16 +93,16 @@
   }
 
   $effect(() => {
-    $brushSize;
-    $brushShape;
-    $brushAngle;
-    $brushRatio;
-    $color;
-    $brushRotationMode;
-    $brushRotationAngle;
-    $brushMirrorH;
-    $brushMirrorV;
-    $tool;
+    void $brushSize;
+    void $brushShape;
+    void $brushAngle;
+    void $brushRatio;
+    void $color;
+    void $brushRotationMode;
+    void $brushRotationAngle;
+    void $brushMirrorH;
+    void $brushMirrorV;
+    void $tool;
     if ($tool !== 'paint') return;
     drawBrushPreviewToCanvas();
   });
@@ -208,7 +208,7 @@
   <label class="brush-param">
     <span>Shape</span>
     <select bind:value={$brushShape}>
-      {#each BRUSH_SHAPES as s}
+      {#each BRUSH_SHAPES as s (s.value)}
         <option value={s.value}>{s.label}</option>
       {/each}
     </select>

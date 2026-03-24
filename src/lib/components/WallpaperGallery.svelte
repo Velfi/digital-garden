@@ -1,16 +1,24 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
+
   type Src = string;
   type Href = string;
   type Subtitle = string;
 
   export let images: [Src, Href, Subtitle][];
+
+  function galleryHref(path: string): string {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(path)) return path;
+    return resolve(path.startsWith('/') ? path : `/${path}`);
+  }
 </script>
 
 <p><em>Click on an image to open the full-size version in a new tab.</em></p>
 <div>
-  {#each images as [src, href, subtitle], i}
+  {#each images as [src, href, subtitle], i (href)}
     <p>
-      <a {href}>
+      <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- href may be a protocol URL or an app path resolved via galleryHref -->
+      <a href={galleryHref(href)}>
         <img loading={i < 2 ? 'eager' : 'lazy'} {src} alt="A decorative desktop wallpaper" />
         {subtitle}
       </a>

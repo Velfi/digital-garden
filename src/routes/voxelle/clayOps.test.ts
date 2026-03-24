@@ -48,11 +48,7 @@ describe('applyLevel', () => {
       [2, 1, 2]
     ];
     const levelY = 0;
-    let colorCalls = 0;
-    const getVoxel = () => {
-      colorCalls++;
-      return plasticVoxel(0xff0000);
-    };
+    const getVoxel = () => plasticVoxel(0xff0000);
     const { toAdd, toRemove } = applyLevel(v, brush, levelY, getVoxel, 8);
     expect(toAdd.has(coordKey(0, 0, 0))).toBe(true);
     expect(toAdd.has(coordKey(1, 0, 1))).toBe(true);

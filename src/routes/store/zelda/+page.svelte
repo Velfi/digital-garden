@@ -50,10 +50,11 @@
 </p>
 
 <div>
-  {#each PRODUCTS as { name, purchaseLink, purchaseCta, purchaseContents, images, description }}
+  {#each PRODUCTS as { name, purchaseLink, purchaseCta, purchaseContents, images, description } (name)}
     <Product {name} {purchaseLink} {purchaseCta} purchasePrice={STICKER_PACK_PRICE}>
       <ThumbnailGallery {images} />
       <p class="purchase-contents">Includes {purchaseContents}</p>
+      <!-- eslint-disable-next-line svelte/no-at-html-tags -- product copy from static data -->
       {@html description}
     </Product>
   {/each}

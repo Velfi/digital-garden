@@ -32,7 +32,6 @@ import {
   piscinaSpineBend,
   piscinaSpineSCurve,
   piscinaFinDorsalPitch,
-  piscinaFinDorsalSweep,
   piscinaFinAnalPitch,
   piscinaFinCaudalSpread,
   piscinaFinPectoralCant,
@@ -739,7 +738,8 @@ export function createPiscinaGizmoController(deps: PiscinaGizmoDeps) {
     return true;
   }
 
-  function handlePointerMove(_event: PointerEvent | undefined): boolean {
+  function handlePointerMove(event: PointerEvent | undefined): boolean {
+    void event;
     if (!isDrag || !dragKind) return false;
     const camera = deps.getCamera();
     const raycaster = deps.getRaycaster();
@@ -823,7 +823,9 @@ export function createPiscinaGizmoController(deps: PiscinaGizmoDeps) {
     if (container) {
       try {
         container.releasePointerCapture(event.pointerId);
-      } catch (_) {}
+      } catch {
+        /* ignore */
+      }
     }
     pointerId = null;
     isDrag = false;
@@ -840,7 +842,9 @@ export function createPiscinaGizmoController(deps: PiscinaGizmoDeps) {
     if (pointerId !== null && container) {
       try {
         container.releasePointerCapture(pointerId);
-      } catch (_) {}
+      } catch {
+        /* ignore */
+      }
     }
     pointerId = null;
     isDrag = false;

@@ -31,7 +31,7 @@
 
   {#if $symmetryEnabled && $symmetryMode === 'linear'}
     <div class="folds">
-      {#each linearFolds as n}
+      {#each linearFolds as n (n)}
         <button
           type="button"
           class="fold"
@@ -45,7 +45,7 @@
   {/if}
   {#if $symmetryEnabled && $symmetryMode === 'polar'}
     <div class="folds">
-      {#each polarFolds as n}
+      {#each polarFolds as n (n)}
         <button
           type="button"
           class="fold"
@@ -61,7 +61,7 @@
     <label class="brush-param">
       <span class="label">Pattern</span>
       <select bind:value={$mosaicType}>
-        {#each MOSAIC_TYPES as { value, label }}
+        {#each MOSAIC_TYPES as { value, label } (value)}
           <option {value}>{label}</option>
         {/each}
       </select>

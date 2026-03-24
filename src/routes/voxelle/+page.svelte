@@ -1,6 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { onMount, onDestroy, untrack } from 'svelte';
+  import { SvelteMap } from 'svelte/reactivity';
   import { get } from 'svelte/store';
   import Sidebar from './Sidebar.svelte';
   import VoxelCanvas from './VoxelCanvas.svelte';
@@ -45,7 +46,7 @@
       }
     });
     selection.update((s) => {
-      const next = new Map(s);
+      const next = new SvelteMap(s);
       for (const key of next.keys()) next.set(key, vx);
       return next;
     });
@@ -149,10 +150,10 @@
   // Debounced save 2.5s after last change to persisted state
   $effect(() => {
     if (!browser) return;
-    $voxels;
-    $gridSize;
-    $focalLength;
-    $orthographic;
+    void $voxels;
+    void $gridSize;
+    void $focalLength;
+    void $orthographic;
     const t = setTimeout(saveToStorage, 2500);
     return () => clearTimeout(t);
   });

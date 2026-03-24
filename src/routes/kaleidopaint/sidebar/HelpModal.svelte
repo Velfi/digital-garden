@@ -46,7 +46,6 @@
 </script>
 
 {#if open}
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class="modal-overlay"
     role="dialog"
@@ -62,6 +61,7 @@
         <p>Loading...</p>
       {:else}
         <div class="help-content" data-markdown-output>
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -- markdown from marked() -->
           {@html content}
         </div>
       {/if}

@@ -216,7 +216,7 @@ export function thickenPath(
 /** Layer plane is perpendicular to this world axis (voxels share constant x, y, or z along the stroke). */
 function faceNormalToLayerAxis(normal: { x: number; y: number; z: number } | undefined): 0 | 1 | 2 {
   if (!normal) return 1;
-  const [nx, ny, nz] = snapNormalToAxis(normal);
+  const [nx, ny] = snapNormalToAxis(normal);
   if (nx !== 0) return 0;
   if (ny !== 0) return 1;
   return 2;

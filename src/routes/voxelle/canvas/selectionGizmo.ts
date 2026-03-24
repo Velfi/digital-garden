@@ -509,7 +509,9 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
     if (gizmoPointerId !== null && container) {
       try {
         container.releasePointerCapture(gizmoPointerId);
-      } catch (_) {}
+      } catch {
+        /* ignore */
+      }
     }
     restoreGizmoRotateSelectionPreview();
     isGizmoDrag = false;
@@ -615,7 +617,8 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
     return true;
   }
 
-  function handlePointerMove(_event: PointerEvent | undefined): boolean {
+  function handlePointerMove(event: PointerEvent | undefined): boolean {
+    void event;
     if (!isGizmoDrag || gizmoDragAxis === null) return false;
     const camera = deps.getCamera();
     const raycaster = deps.getRaycaster();

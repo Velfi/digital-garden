@@ -17,7 +17,7 @@
 
 <label for="harmony-type">Harmony Type</label>
 <select id="harmony-type" bind:value={$harmonyType} title={$harmonyType}>
-  {#each harmonyTypes as type}
+  {#each harmonyTypes as type (type)}
     <option value={type}>{type.replace('-', ' ')}</option>
   {/each}
 </select>

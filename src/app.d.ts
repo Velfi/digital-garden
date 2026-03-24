@@ -10,6 +10,7 @@ declare global {
 }
 
 declare module 'svelte/elements' {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- mirrors Svelte's generic HTMLAttributes
   export interface HTMLAttributes<T> {
     anchor?: string;
   }

@@ -47,7 +47,6 @@ export function drawMosaicPreview(
   const size = Math.min(w, h);
   const T = Math.max(size / 5, 40);
   const sqrt3 = Math.sqrt(3);
-  const PHI = (1 + Math.sqrt(5)) / 2;
   const rotRad = (rotationDeg * Math.PI) / 180;
 
   // Size shapes so they meet: radius = half the nearest-neighbor distance
@@ -248,7 +247,7 @@ function getSectionIndexForPoint(
 
   if (mode === 'polar' || mode === 'linear') {
     const angle = Math.atan2(py - centerY, px - centerX);
-    let u = (angle - rotRad + 2 * Math.PI * 2) % (2 * Math.PI);
+    const u = (angle - rotRad + 2 * Math.PI * 2) % (2 * Math.PI);
     const n = folds;
     const wedgeAngle = (2 * Math.PI) / n;
     const sectionIndex = Math.floor(u / wedgeAngle) % n;
@@ -274,7 +273,7 @@ function getSectionIndexForPoint(
       const dx = px - cell.x;
       const dy = py - cell.y;
       const angle = Math.atan2(dy, dx);
-      let u = (angle - rotRad + 2 * Math.PI * 2) % (2 * Math.PI);
+      const u = (angle - rotRad + 2 * Math.PI * 2) % (2 * Math.PI);
       const wedgeAngle = (2 * Math.PI) / cell.folds;
       const localFold = Math.floor(u / wedgeAngle) % cell.folds;
       return {

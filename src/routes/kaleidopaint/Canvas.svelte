@@ -1,6 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { tick } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
   import { onMount, onDestroy } from 'svelte';
   import {
@@ -197,25 +198,6 @@
     return $symmetryEnabled ? $symmetryMode : 'none';
   }
 
-  function drawAtPoints(x: number, y: number, draw: (px: number, py: number) => void) {
-    const [cx, cy] = getCenter();
-    const points = getSymmetricPoints(
-      x,
-      y,
-      cx,
-      cy,
-      effectiveMode(),
-      $symmetryFolds,
-      $symmetryRotation,
-      canvas?.width,
-      canvas?.height,
-      $mosaicType
-    );
-    for (const [px, py] of points) {
-      draw(px, py);
-    }
-  }
-
   function handleWheel(e: WheelEvent) {
     e.preventDefault();
     if (!viewport) return;
@@ -295,7 +277,9 @@
       const py = Math.floor(y);
       if (px >= 0 && px < canvas.width && py >= 0 && py < canvas.height) {
         const imgData = ctx.getImageData(px, py, 1, 1);
-        const [r, g, b, a] = imgData.data;
+        const r = imgData.data[0];
+        const g = imgData.data[1];
+        const b = imgData.data[2];
         const hex = rgbToHex(r, g, b);
         color.set(hex);
       }
@@ -883,8 +867,8 @@
 
       // Scanline flood fill - O(width) stack instead of O(area), avoids overflow
       const stack: [number, number][] = [[ix, iy]];
-      const visited = new Set<string>();
-      const queued = new Set<string>([`${ix},${iy}`]);
+      const visited = new SvelteSet<string>();
+      const queued = new SvelteSet<string>([`${ix},${iy}`]);
 
       while (stack.length > 0) {
         const [px, py] = stack.pop()!;
@@ -984,26 +968,28 @@
     tick().then(fitToView);
   }
 
-  $: ($symmetryMode,
-    $symmetryFolds,
-    $symmetryRotation,
-    $symmetryOriginX,
-    $symmetryOriginY,
-    $symmetryEnabled,
-    $showSymmetryPreview,
-    $brushRotateWithSymmetry,
-    $brushRotationMode,
-    $tool,
-    $brushShape,
-    $brushSize,
-    $brushAngle,
-    $brushRatio,
-    $mosaicType,
-    $loadedImage,
-    $imageStampSize,
-    $imageRotateWithSymmetry,
-    $imageConstrainToSection,
-    tick().then(drawPreview));
+  $: {
+    void $symmetryMode;
+    void $symmetryFolds;
+    void $symmetryRotation;
+    void $symmetryOriginX;
+    void $symmetryOriginY;
+    void $symmetryEnabled;
+    void $showSymmetryPreview;
+    void $brushRotateWithSymmetry;
+    void $brushRotationMode;
+    void $tool;
+    void $brushShape;
+    void $brushSize;
+    void $brushAngle;
+    void $brushRatio;
+    void $mosaicType;
+    void $loadedImage;
+    void $imageStampSize;
+    void $imageRotateWithSymmetry;
+    void $imageConstrainToSection;
+    tick().then(drawPreview);
+  }
 
   function saveCanvas() {
     if (canvas && ctx) {
@@ -1083,9 +1069,9 @@
 
   // Debounced save 2.5s after the last persisted change, matching Voxelle's autosave cadence.
   $: if (browser && canvas && ctx) {
-    w;
-    h;
-    autosaveVersion;
+    void w;
+    void h;
+    void autosaveVersion;
     if (autosaveDebounce) clearTimeout(autosaveDebounce);
     autosaveDebounce = setTimeout(saveCanvas, 2500);
   }
@@ -1118,7 +1104,6 @@
   on:keyup={(e) => e.code === 'Space' && (spaceHeld = false) && (isPanning = false)}
 />
 
-<!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
 <div
   class="viewport"
   bind:this={viewport}

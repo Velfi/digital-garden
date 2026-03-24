@@ -43,7 +43,6 @@
 </script>
 
 {#if $addPanelStore.open}
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class="add-panel"
     class:sidebar-open={$sidebarOpen}

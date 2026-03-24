@@ -41,7 +41,7 @@
 <p><em>Does this pattern have a name?</em></p>
 
 <div>
-  {#each examples as _example}
+  {#each examples as word (word)}
     <PerspectiveGrid />
   {/each}
 </div>

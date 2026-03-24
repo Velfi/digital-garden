@@ -49,7 +49,7 @@
 {#if showBrushSection}
   <section class="tool-panel-section" aria-label="Draw brush">
     <div class="stroke-buttons" role="group" aria-label="Brush shape">
-      {#each DRAW_BRUSH_SHAPES as s}
+      {#each DRAW_BRUSH_SHAPES as s (s.id)}
         <button
           type="button"
           class:active={$drawBrushShape === s.id}
