@@ -117,8 +117,11 @@ function placeholderMeshGeometry(): THREE.BufferGeometry {
 async function createVoxelleRenderer(
   container: HTMLDivElement,
   enableShadows: boolean,
-  backendPref: RendererBackendPreference
+  backendPref: RendererBackendPreference,
+  maxPixelRatio = 0
 ): Promise<{ renderer: VoxelleRenderer; isWebGPU: boolean }> {
+  const targetPixelRatio =
+    maxPixelRatio > 0 ? Math.min(window.devicePixelRatio, maxPixelRatio) : window.devicePixelRatio;
   const tryWebGPU = backendPref === 'auto' || backendPref === 'webgpu';
   const forceWebGL = backendPref === 'webgl';
 
@@ -140,7 +143,7 @@ async function createVoxelleRenderer(
       renderer.toneMapping = THREE.NeutralToneMapping;
       renderer.toneMappingExposure = 1;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setPixelRatio(targetPixelRatio);
       container.appendChild(renderer.domElement);
       return { renderer, isWebGPU: true };
     } catch (e) {
@@ -151,7 +154,7 @@ async function createVoxelleRenderer(
   }
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setPixelRatio(targetPixelRatio);
   renderer.transmissionResolutionScale = 1;
   renderer.shadowMap.enabled = enableShadows;
   renderer.shadowMap.autoUpdate = false;
@@ -172,7 +175,8 @@ async function createVoxelleRenderer(
 export async function createSceneSetupAsync(
   container: HTMLDivElement,
   options: SceneSetupOptions,
-  rendererBackend: RendererBackendPreference
+  rendererBackend: RendererBackendPreference,
+  maxPixelRatio = 0
 ): Promise<SceneSetupRefs> {
   const {
     gridSize: sz,
@@ -190,7 +194,8 @@ export async function createSceneSetupAsync(
   const { renderer, isWebGPU } = await createVoxelleRenderer(
     container,
     enableShadows,
-    rendererBackend
+    rendererBackend,
+    maxPixelRatio
   );
 
   const scene = new THREE.Scene();

@@ -487,7 +487,19 @@
   let bloomDarkMaterial: THREE.MeshBasicMaterial | null = null;
   /** Solid scene.background is not a mesh, so bloom pass must clear it to black or the whole RT blooms. */
   let bloomPassBackground: THREE.Color | null = null;
+  /** Track glow buckets so selective bloom passes can be skipped when empty. */
+  let sceneHasGlowMesh = false;
   const bloomMaterialStash: Record<string, THREE.Material | THREE.Material[]> = {};
+
+  function hasGlowInVoxelGroup(): boolean {
+    if (!voxelGroup) return false;
+    for (const child of voxelGroup.children) {
+      const mesh = child as THREE.Mesh;
+      if (!mesh?.isMesh) continue;
+      if (mesh.userData?.[VOXELLE_GLOW_BLOOM_USERDATA_KEY] === true) return true;
+    }
+    return false;
+  }
   let orbitControls = $state<OrbitControls>();
   let flyControls: InstanceType<typeof PointerLockControls> | null = null;
   let lastFrameTime = 0;
@@ -4739,6 +4751,9 @@
     if (!container || !camera || !renderer) return;
     const w = Math.max(1, container.clientWidth);
     const h = Math.max(1, container.clientHeight);
+    const maxPr = Math.max(0, get(voxellePreferences).maxPixelRatio);
+    const targetPr = maxPr > 0 ? Math.min(window.devicePixelRatio, maxPr) : window.devicePixelRatio;
+    renderer.setPixelRatio(targetPr);
     if (camera instanceof THREE.OrthographicCamera) {
       updateOrthoFrustum();
     } else {
@@ -4828,13 +4843,8 @@
           webgpuBloomPipeline.renderPipeline.render();
         } else if (get(renderingMode) !== 'ray') {
           const rw = renderer as Parameters<WebGPUBloomPipeline['renderSceneToTarget']>[0];
-          /**
-           * WebGPU + TSL bloom: beauty pass goes to a HalfFloat RT. Directional shadows then do not
-           * darken receivers (ground) even though castShadow / shadow maps are configured (verified via
-           * session logs). Rendering straight to the swapchain restores shadowed lighting.
-           * Trade-off: glow-only bloom is skipped while shadows are enabled on WebGPU.
-           */
-          if (get(enableShadows)) {
+          const hasGlow = sceneHasGlowMesh || hasGlowInVoxelGroup();
+          if (!hasGlow) {
             rw.setMRT(null);
             rw.setRenderTarget(null);
             rw.render(scene, camera);
@@ -4866,16 +4876,21 @@
           scene.background = rayOut.beautyTexture;
           finalComposer.render();
         } else if (get(renderingMode) !== 'ray') {
-          stashNonGlowMaterialsForBloom(scene);
-          const savedSceneBackground = scene.background;
-          if (bloomPassBackground) scene.background = bloomPassBackground;
-          try {
-            bloomComposer.render();
-          } finally {
-            scene.background = savedSceneBackground;
-            restoreStashedBloomMaterials(scene);
+          const hasGlow = sceneHasGlowMesh || hasGlowInVoxelGroup();
+          if (!hasGlow) {
+            renderer.render(scene, camera);
+          } else {
+            stashNonGlowMaterialsForBloom(scene);
+            const savedSceneBackground = scene.background;
+            if (bloomPassBackground) scene.background = bloomPassBackground;
+            try {
+              bloomComposer.render();
+            } finally {
+              scene.background = savedSceneBackground;
+              restoreStashedBloomMaterials(scene);
+            }
+            finalComposer.render();
           }
-          finalComposer.render();
         } else {
           renderer.render(scene, camera);
         }
@@ -4906,10 +4921,12 @@
     }
     const delta = lastFrameTime ? (t - lastFrameTime) / 1000 : 0;
     lastFrameTime = t;
+    let controlsDirty = false;
     if (flyControls?.enabled && camera) {
       applyFlyMovement(camera, flyControls, flyMoveState, delta, { moveSpeed: FLY_MOVE_SPEED });
+      controlsDirty = true;
     } else {
-      orbitControls?.update();
+      controlsDirty = orbitControls?.update() ?? false;
     }
 
     if (camera && renderer && container && get(renderingMode) === 'ray') {
@@ -4961,7 +4978,18 @@
       rayRefinementProgress = 0;
     }
 
-    render();
+    const mode = get(renderingMode);
+    const hasActiveInteraction =
+      isVoxelDrag ||
+      isStampDrag ||
+      !!selectionGizmo?.isGizmoDrag ||
+      cuboidPhase !== null ||
+      polygonPhase !== null ||
+      roofPhase !== null ||
+      ropePhase !== null;
+    if (mode === 'ray' || controlsDirty || hasActiveInteraction || !!flyControls?.enabled) {
+      render();
+    }
   }
 
   $effect(() => {
@@ -5075,6 +5103,7 @@
     const sz = $gridSize;
     const _ao = $aoStrength;
     const _renderingMode = $renderingMode;
+    sceneHasGlowMesh = Array.from(v.values()).some((voxel) => voxel.material === 'glow');
     meshManager?.requestRebuildVoxelMeshes(v);
     render();
   });
@@ -5305,7 +5334,8 @@
         directionalLightIntensity: get(sunlightIntensity),
         aspect: container ? container.clientWidth / container.clientHeight : 1
       },
-      get(voxellePreferences).rendererBackend
+      get(voxellePreferences).rendererBackend,
+      get(voxellePreferences).maxPixelRatio
     );
     canvasIsWebGPU = setupRefs.isWebGPU;
     activeRendererIsWebGPU.set(canvasIsWebGPU);
@@ -5385,13 +5415,14 @@
       () => ({
         enableShadows: $enableShadows,
         renderingMode: $renderingMode,
-        aoStrength: $aoStrength,
+        aoStrength: isVoxelDrag ? 0 : $aoStrength,
         sceneEnvironmentIntensity: $sceneEnvironmentIntensity
       }),
       {
         onLoadingChange: (v) => (greedyMeshLoading = v),
         onSpinnerChange: (v) => (showGreedyMeshSpinner = v),
-        onVoxelMeshesRebuilt: () => {
+        onVoxelMeshesRebuilt: ({ hasGlowMesh }) => {
+          sceneHasGlowMesh = hasGlowMesh;
           invalidateDirectionalShadowMap();
           syncVoxelMaterialEnvMaps();
         },

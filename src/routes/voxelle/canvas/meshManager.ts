@@ -25,6 +25,7 @@ import {
   VOXELLE_GLOW_BLOOM_USERDATA_KEY,
   VOXELLE_MESH_MATERIAL_USERDATA_KEY
 } from '../voxelMaterial';
+import { packVoxelsForWorker, transferablesFromPackedVoxelInput } from '../meshWorkerTransfer';
 import {
   GLASS_SHADOW_SLAB_ABSORPTION,
   GLASS_SHADOW_SLAB_MIN_TRANSMITTANCE,
@@ -44,7 +45,7 @@ export interface MeshManagerCallbacks {
   onSpinnerChange: (show: boolean) => void;
   render: () => void;
   /** Called after greedy mesh buckets are rebuilt (worker finished). */
-  onVoxelMeshesRebuilt?: () => void;
+  onVoxelMeshesRebuilt?: (meta: { hasGlowMesh: boolean }) => void;
 }
 
 const CHUNK_THRESHOLD = 50000;
@@ -252,6 +253,7 @@ export function createMeshManager(
     const opts = getOptions();
     const envMap = scene?.environment ?? null;
 
+    let hasGlowMesh = false;
     for (const { bucketKey, positions, normals, colors, slabThickness, indices } of results) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -272,6 +274,7 @@ export function createMeshManager(
 
       const parsed = parseBucketKey(bucketKey);
       const materialId: VoxelMaterialId = parsed?.material ?? 'plastic';
+      if (materialId === 'glow') hasGlowMesh = true;
       const mat = createVoxelSurfaceMaterial(
         materialId,
         envMap,
@@ -284,7 +287,7 @@ export function createMeshManager(
       // Transmissive stack: draw glass before water so transmission compositing sees inner volume.
       if (materialId === 'glass') mesh.renderOrder = 1;
       else if (materialId === 'water') mesh.renderOrder = 2;
-      mesh.castShadow = opts.enableShadows;
+      mesh.castShadow = opts.enableShadows && materialId !== 'glow';
       mesh.receiveShadow =
         opts.enableShadows &&
         opts.renderingMode !== 'ray' &&
@@ -302,6 +305,7 @@ export function createMeshManager(
       voxelGroup.add(mesh);
       meshesByBucket.set(bucketKey, { mesh, positions: null });
     }
+    callbacks.onVoxelMeshesRebuilt?.({ hasGlowMesh });
   }
 
   function setupWorker() {
@@ -318,7 +322,6 @@ export function createMeshManager(
         spinnerTimeoutId = null;
       }
       applyVoxelMeshResults(e.data.results as Parameters<typeof applyVoxelMeshResults>[0]);
-      callbacks.onVoxelMeshesRebuilt?.();
       callbacks.render();
     };
   }
@@ -335,7 +338,7 @@ export function createMeshManager(
       callbacks.onLoadingChange(false);
       callbacks.onSpinnerChange(false);
       disposeAllVoxelMeshes();
-      callbacks.onVoxelMeshesRebuilt?.();
+      callbacks.onVoxelMeshesRebuilt?.({ hasGlowMesh: false });
       callbacks.render();
       return;
     }
@@ -348,14 +351,17 @@ export function createMeshManager(
     }, SPINNER_DELAY_MS);
     const postToWorker = () => {
       if (!meshWorker || gen !== meshRebuildGen) return;
-      const voxelsArr: [string, Voxel][] = [...v];
+      const packedVoxels = packVoxelsForWorker(v);
       const chunkSize = v.size >= CHUNK_THRESHOLD ? 32 : 0;
-      meshWorker.postMessage({
-        voxels: voxelsArr,
-        mode: opts.renderingMode,
-        options: { aoStrength: opts.aoStrength, chunkSize },
-        gen
-      });
+      meshWorker.postMessage(
+        {
+          voxels: packedVoxels,
+          mode: opts.renderingMode,
+          options: { aoStrength: opts.aoStrength, chunkSize },
+          gen
+        },
+        { transfer: transferablesFromPackedVoxelInput(packedVoxels) }
+      );
     };
     if (v.size >= LARGE_REBUILD_DEFER_THRESHOLD && typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(() => postToWorker());

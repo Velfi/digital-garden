@@ -33,6 +33,8 @@ export type VoxellePreferences = {
   rendererBackend: RendererBackendPreference;
   /** Viewport frames-per-second overlay (top-left). */
   showFpsCounter: boolean;
+  /** Optional cap for internal render pixel ratio. 0 uses full device pixel ratio. */
+  maxPixelRatio: number;
 };
 
 const DEFAULTS: VoxellePreferences = {
@@ -41,7 +43,8 @@ const DEFAULTS: VoxellePreferences = {
   gizmosAlwaysOnTop: false,
   toneMapping: DEFAULT_TONE_MAPPING_PREFERENCE,
   rendererBackend: DEFAULT_RENDERER_BACKEND,
-  showFpsCounter: false
+  showFpsCounter: false,
+  maxPixelRatio: 0
 };
 
 export function loadPreferences(): VoxellePreferences {
@@ -70,7 +73,11 @@ export function loadPreferences(): VoxellePreferences {
         ? o.rendererBackend
         : DEFAULTS.rendererBackend,
       showFpsCounter:
-        typeof o.showFpsCounter === 'boolean' ? o.showFpsCounter : DEFAULTS.showFpsCounter
+        typeof o.showFpsCounter === 'boolean' ? o.showFpsCounter : DEFAULTS.showFpsCounter,
+      maxPixelRatio:
+        typeof o.maxPixelRatio === 'number' && Number.isFinite(o.maxPixelRatio) && o.maxPixelRatio >= 0
+          ? o.maxPixelRatio
+          : DEFAULTS.maxPixelRatio
     };
   } catch {
     return { ...DEFAULTS };

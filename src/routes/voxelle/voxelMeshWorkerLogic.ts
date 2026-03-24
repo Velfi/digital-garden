@@ -7,6 +7,7 @@ import { parseBucketKey, voxelBucketKey, type Voxel } from './voxelMaterial';
 export type RenderingMode = 'greedy' | 'marchingCubes' | 'ray';
 
 const CHUNK_SIZE_DEFAULT = 0;
+const GLASS_FULL_SCENE_REBUILD_THRESHOLD = 256;
 
 export interface VoxelMeshWorkerInput {
   voxels:
@@ -135,6 +136,14 @@ function replaceGlassBucketsWithFullSceneGreedy(
   });
 }
 
+function countTransmissiveVoxels(voxels: Map<string, Voxel>): number {
+  let count = 0;
+  for (const voxel of voxels.values()) {
+    if (voxel.material === 'glass' || voxel.material === 'water') count++;
+  }
+  return count;
+}
+
 export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshWorkerOutput {
   const { voxels: voxelInput, mode = 'greedy', options = {}, gen } = input;
   if (mode === 'ray') {
@@ -165,7 +174,11 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
       }
     }
     const merged = mergeChunkResults(allChunkResults);
-    const results = replaceGlassBucketsWithFullSceneGreedy(merged, voxels, options);
+    const transmissiveCount = countTransmissiveVoxels(voxels);
+    const needsGlassRepair = transmissiveCount >= GLASS_FULL_SCENE_REBUILD_THRESHOLD;
+    const results = needsGlassRepair
+      ? replaceGlassBucketsWithFullSceneGreedy(merged, voxels, options)
+      : merged;
     return { results, gen };
   }
 

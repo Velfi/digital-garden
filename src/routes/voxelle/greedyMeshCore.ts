@@ -351,7 +351,9 @@ export function computeGreedyMesh(
 
   for (const [bucketKey, { positions, color: col, material }] of groups) {
     // Transmissive buckets should stay clean/transparent: skip AO darkening entirely.
-    const bucketAoEnabled = aoEnabled && !isTransmissiveMaterial(material);
+    // Glow: skip AO so large merged emissive faces are not subdivided (avoids seam/bloom ring artifacts).
+    const bucketAoEnabled =
+      aoEnabled && !isTransmissiveMaterial(material) && material !== 'glow';
     const faces: { pos: Vec3; axis: number; sign: number }[] = [];
 
     for (const pos of positions) {
