@@ -259,7 +259,15 @@ export function createMeshManager(
       geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
       geo.setAttribute('slabThickness', new THREE.BufferAttribute(slabThickness, 1));
       geo.setIndex(new THREE.BufferAttribute(indices, 1));
-      geo.computeVertexNormals();
+      const parsedForNormals = parseBucketKey(bucketKey);
+      const transmissiveGreedy =
+        parsedForNormals?.material === 'water' || parsedForNormals?.material === 'glass';
+      // Greedy quads are axis-aligned; MeshPhysicalMaterial + transmission need stable face
+      // normals. computeVertexNormals() averages edges and breaks underside / Fresnel views,
+      // especially next to other transmissive meshes.
+      if (!transmissiveGreedy) {
+        geo.computeVertexNormals();
+      }
       geo.computeBoundingSphere();
 
       const parsed = parseBucketKey(bucketKey);
@@ -273,6 +281,9 @@ export function createMeshManager(
       const mesh = new THREE.Mesh(geo, mat);
       mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY] = materialId;
       mesh.userData[VOXELLE_GLOW_BLOOM_USERDATA_KEY] = materialId === 'glow';
+      // Transmissive stack: draw glass before water so transmission compositing sees inner volume.
+      if (materialId === 'glass') mesh.renderOrder = 1;
+      else if (materialId === 'water') mesh.renderOrder = 2;
       mesh.castShadow = opts.enableShadows;
       mesh.receiveShadow =
         opts.enableShadows &&

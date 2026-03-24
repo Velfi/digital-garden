@@ -179,7 +179,7 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
         positions: data.positions,
         normals: data.normals,
         colors: data.colors,
-        slabThickness: new Float32Array(n).fill(1),
+        slabThickness: data.slabThickness ?? new Float32Array(n).fill(1),
         indices: data.indices
       });
     }

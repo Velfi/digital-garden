@@ -114,10 +114,10 @@ export const VOXEL_GLASS_PHYSICAL = {
 } as const;
 
 export const VOXEL_WATER_PHYSICAL = {
-  transmission: 0.995,
+  transmission: 0.998,
   thickness: 0.9,
   ior: 1.333,
-  attenuationDistance: 20,
+  attenuationDistance: 32,
   roughness: 0.03,
   clearcoat: 0.08,
   clearcoatRoughness: 0.02
@@ -212,13 +212,21 @@ varying float voxelleSlabThickness;`
 
   if (materialId === 'water') {
     const w = VOXEL_WATER_PHYSICAL;
-    const tint = new THREE.Color(0xffffff).lerp(new THREE.Color(color24 & 0xffffff), 0.2);
+    const tint = new THREE.Color(0xffffff).lerp(new THREE.Color(color24 & 0xffffff), 0.12);
     const m = new THREE.MeshPhysicalMaterial({
       ...base,
       metalness: 0,
       roughness: w.roughness,
       transparent: true,
       opacity: 1,
+      /**
+       * DoubleSide caused coplanar water/glass faces to rasterize twice → z-fighting and extra darkness.
+       * Underside visibility is handled by greedy flat normals + renderOrder; polygonOffset reduces
+       * residual coplanar sparkle at boundaries.
+       */
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
       depthWrite: false,
       transmission: w.transmission,
       thickness: w.thickness,

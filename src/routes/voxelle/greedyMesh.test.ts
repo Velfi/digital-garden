@@ -4,6 +4,7 @@ import { buildGreedyMesh, getGreedyMeshFaceArea } from './greedyMesh';
 import { coordKey } from './store/index';
 import { initShape } from './store/index';
 import { plasticVoxel, voxelBucketKey, type Voxel } from './voxelMaterial';
+import { computeTransmissionBound } from './transmissionPolicy';
 
 function bkey(rgb: number): string {
   return voxelBucketKey(plasticVoxel(rgb));
@@ -278,6 +279,21 @@ describe('buildGreedyMesh', () => {
     expect(glassArea).toBe(10);
   });
 
+  it('transmissive boundaries against non-matching material remain visible', () => {
+    const water = new Map<string, Voxel>([[coordKey(0, 0, 0), { color: 0x2288ff, material: 'water' }]]);
+    const waterWithGlassNeighbor = new Map<string, Voxel>([
+      [coordKey(0, 0, 0), { color: 0x2288ff, material: 'water' }],
+      [coordKey(1, 0, 0), { color: 0xaad7ff, material: 'glass' }]
+    ]);
+    const isolatedArea = [...getGreedyMeshFaceArea(water).values()].reduce((a, b) => a + b, 0);
+    const withNeighborArea = [...getGreedyMeshFaceArea(waterWithGlassNeighbor).values()].reduce(
+      (a, b) => a + b,
+      0
+    );
+    // Combined visible area should include both bucket boundaries (not collapse to top-only surfaces).
+    expect(withNeighborArea).toBeGreaterThan(isolatedArea);
+  });
+
   it('glass darkens as contiguous thickness increases', () => {
     const thin = new Map<string, Voxel>([[coordKey(0, 0, 0), glassVoxel(0x88ccff)]]);
     const thick = new Map<string, Voxel>([
@@ -299,7 +315,7 @@ describe('buildGreedyMesh', () => {
       return min;
     };
 
-    expect(minChannel(thinColors)).toBeCloseTo((0x88 / 255), 6);
+    expect(minChannel(thinColors)).toBeCloseTo((0x88 / 255) * computeTransmissionBound(0x88ccff, 'glass', 1), 6);
     expect(minChannel(thickColors)).toBeLessThan(minChannel(thinColors));
   });
 

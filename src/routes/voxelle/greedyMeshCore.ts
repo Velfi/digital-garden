@@ -5,14 +5,7 @@
 import { coordKey, parseCoordKey } from './coordUtils';
 import type { Voxel } from './voxelMaterial';
 import { voxelBucketKey } from './voxelMaterial';
-
-/**
- * AO occlusion rule: transmissive voxels do not darken neighboring faces.
- * Keep this independent from face-culling rules.
- */
-function isTransmissiveMaterial(material: Voxel['material']): boolean {
-  return material === 'glass' || material === 'water';
-}
+import { computeTransmissionBound, isTransmissiveMaterial } from './transmissionPolicy';
 
 function hasOccludingVoxelAt(voxels: Map<string, Voxel>, nx: number, ny: number, nz: number): boolean {
   const vx = voxels.get(coordKey(nx, ny, nz));
@@ -23,21 +16,11 @@ function hasOccludingVoxelAt(voxels: Map<string, Voxel>, nx: number, ny: number,
 /**
  * Face culling rule:
  * - Non-transmissive keeps drawing against transmissive so boundaries remain visible.
- * - Transmissive culls against any neighbor so we do not stack interior transparent faces.
+ * - Transmissive culls only against the same material so boundaries against other materials remain visible.
  */
 function isFaceOccludedByNeighbor(source: Voxel, neighbor: Voxel): boolean {
-  if (isTransmissiveMaterial(source.material)) return true;
+  if (isTransmissiveMaterial(source.material)) return source.material === neighbor.material;
   return !isTransmissiveMaterial(neighbor.material);
-}
-
-/** Beer-Lambert absorption per voxel depth for glass buckets. */
-const GLASS_ABSORPTION_PER_VOXEL = 0.16;
-const GLASS_MIN_TRANSMITTANCE = 0.35;
-
-function glassDepthToTransmittance(depth: number): number {
-  if (depth <= 1) return 1;
-  const t = Math.exp(-GLASS_ABSORPTION_PER_VOXEL * (depth - 1));
-  return Math.max(GLASS_MIN_TRANSMITTANCE, t);
 }
 
 type Vec3 = [number, number, number];
@@ -515,8 +498,10 @@ export function computeGreedyMesh(
           verts.push(t[i][0], t[i][1], t[i][2]);
           normals.push(nx, ny, nz);
           const aoMul = bucketAoEnabled ? aoStateToMultiplier(tao[i], aoValues) : 1;
-          const glassMul = isTransmissiveMaterial(material) ? glassDepthToTransmittance(q.t) : 1;
-          const m = aoMul * glassMul;
+          const transmissionMul = isTransmissiveMaterial(material)
+            ? computeTransmissionBound(col, material, q.t)
+            : 1;
+          const m = aoMul * transmissionMul;
           colors.push(r * m, g * m, b * m);
           slabT.push(slabPerVert);
         }

@@ -37,6 +37,23 @@ describe('voxelMeshWorkerLogic', () => {
     expect(buckets.has(`${0x88ccff}|glass`)).toBe(true);
   });
 
+  it('marching cubes applies adaptive transmission bound for transmissive buckets', () => {
+    const output = processVoxelMeshMessage({
+      mode: 'marchingCubes',
+      voxels: [
+        ['0,0,0', { color: 0x1b4e92, material: 'water' }],
+        ['1,0,0', { color: 0x1b4e92, material: 'water' }],
+        ['2,0,0', { color: 0x1b4e92, material: 'water' }]
+      ]
+    });
+    expect(output.results).toHaveLength(1);
+    const colors = output.results[0].colors;
+    let maxR = 0;
+    for (let i = 0; i < colors.length; i += 3) maxR = Math.max(maxR, colors[i]!);
+    const rawR = ((0x1b4e92 >> 16) & 0xff) / 255;
+    expect(maxR).toBeLessThan(rawR);
+  });
+
   it('returns no meshes for ray mode', () => {
     const output = processVoxelMeshMessage({
       mode: 'ray',

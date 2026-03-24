@@ -6,6 +6,7 @@ import { edgeTable, triTable } from 'three/addons/objects/MarchingCubes.js';
 import { coordKey, parseCoordKey } from './coordUtils';
 import type { Voxel } from './voxelMaterial';
 import { voxelBucketKey } from './voxelMaterial';
+import { computeTransmissionBound, isTransmissiveMaterial } from './transmissionPolicy';
 
 type Vec3 = [number, number, number];
 
@@ -13,6 +14,7 @@ export interface MarchingCubesCoreResult {
   positions: Float32Array;
   normals: Float32Array;
   colors: Float32Array;
+  slabThickness: Float32Array;
   indices: Uint32Array;
 }
 
@@ -70,6 +72,9 @@ function lerp(a: number, b: number, t: number): number {
 
 function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCoreResult | null {
   if (voxels.size === 0) return null;
+  const firstVoxel = voxels.values().next().value as Voxel;
+  const bucketMaterial = firstVoxel.material;
+  const bucketColor = firstVoxel.color & 0xffffff;
 
   let minX = Infinity;
   let minY = Infinity;
@@ -175,10 +180,12 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
   const rawPos: number[] = [];
   const rawNorm: number[] = [];
   const rawCol: number[] = [];
+  const rawSlab: number[] = [];
 
   const edgePos = new Float32Array(12 * 3);
   const edgeNorm = new Float32Array(12 * 3);
   const edgeColor = new Float32Array(12 * 3);
+  const edgeSlab = new Float32Array(12);
 
   for (let z = 0; z < nz - 1; z++) {
     for (let y = 0; y < ny - 1; y++) {
@@ -252,6 +259,7 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
           edgeColor[base] = useA ? cornerR[a] : cornerR[b];
           edgeColor[base + 1] = useA ? cornerG[a] : cornerG[b];
           edgeColor[base + 2] = useA ? cornerB[a] : cornerB[b];
+          edgeSlab[e] = Math.max(1, lerp(va, vb, t));
         }
 
         const triOffset = cubeIndex * 16;
@@ -298,6 +306,7 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
             edgeColor[b2 + 1],
             edgeColor[b2 + 2]
           );
+          rawSlab.push(edgeSlab[e0], edgeSlab[e1], edgeSlab[e2]);
         }
       }
     }
@@ -312,6 +321,7 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
   const outColR: number[] = [];
   const outColG: number[] = [];
   const outColB: number[] = [];
+  const outSlab: number[] = [];
   const outCounts: number[] = [];
   const indices: number[] = [];
   const vertexMap = new Map<string, number>();
@@ -332,6 +342,7 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
       outColR.push(0);
       outColG.push(0);
       outColB.push(0);
+      outSlab.push(0);
       outCounts.push(0);
     }
 
@@ -341,12 +352,15 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
     outColR[vi] += rawCol[i];
     outColG[vi] += rawCol[i + 1];
     outColB[vi] += rawCol[i + 2];
+    outSlab[vi] += rawSlab[i / 3] ?? 1;
     outCounts[vi] += 1;
     indices.push(vi);
   }
 
   const outNormals = new Float32Array(outPos.length);
   const outColors = new Float32Array(outPos.length);
+  const outSlabThickness = new Float32Array(outPos.length / 3);
+  const transmissive = isTransmissiveMaterial(bucketMaterial);
   for (let i = 0; i < outPos.length / 3; i++) {
     const nxv = outNormX[i];
     const nyv = outNormY[i];
@@ -363,15 +377,24 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
     }
 
     const c = Math.max(1, outCounts[i]);
-    outColors[i * 3] = Math.max(0, Math.min(1, outColR[i] / c));
-    outColors[i * 3 + 1] = Math.max(0, Math.min(1, outColG[i] / c));
-    outColors[i * 3 + 2] = Math.max(0, Math.min(1, outColB[i] / c));
+    const rr = Math.max(0, Math.min(1, outColR[i] / c));
+    const gg = Math.max(0, Math.min(1, outColG[i] / c));
+    const bb = Math.max(0, Math.min(1, outColB[i] / c));
+    const slabDepth = Math.max(1, outSlab[i] / c);
+    const transmissionMul = transmissive
+      ? computeTransmissionBound(bucketColor, bucketMaterial, slabDepth)
+      : 1;
+    outColors[i * 3] = rr * transmissionMul;
+    outColors[i * 3 + 1] = gg * transmissionMul;
+    outColors[i * 3 + 2] = bb * transmissionMul;
+    outSlabThickness[i] = slabDepth;
   }
 
   return {
     positions: new Float32Array(outPos),
     normals: outNormals,
     colors: outColors,
+    slabThickness: outSlabThickness,
     indices: new Uint32Array(indices)
   };
 }
