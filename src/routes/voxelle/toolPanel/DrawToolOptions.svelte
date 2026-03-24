@@ -44,9 +44,7 @@
   const lineAxisAlignVisible = $derived(lineAxisAlignVisibleFn($strokeMode, $tool));
   const airbrushVisible = $derived(airbrushVisibleFn($strokeMode, $tool));
   const fillVisible = $derived(fillVisibleFn($strokeMode, $tool));
-  const constrainPlaneSectionVisible = $derived(
-    constrainPlaneSectionVisibleFn($strokeMode, $tool)
-  );
+  const constrainPlaneSectionVisible = $derived(constrainPlaneSectionVisibleFn($strokeMode, $tool));
   const polygonVisible = $derived(polygonVisibleFn($strokeMode, $tool));
   const showBrushSection = $derived(showBrushSectionFn($toolPane, $strokeMode, $tool));
 </script>

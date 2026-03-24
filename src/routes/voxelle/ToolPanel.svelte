@@ -1,12 +1,5 @@
 <script lang="ts">
-  import {
-    tool,
-    toolPane,
-    strokeMode,
-    selection,
-    sidebarOpen,
-    addPanelStore
-  } from './store/index';
+  import { tool, toolPane, strokeMode, selection, sidebarOpen, addPanelStore } from './store/index';
   import DrawToolOptions from './toolPanel/DrawToolOptions.svelte';
   import ClayToolOptions from './toolPanel/ClayToolOptions.svelte';
   import StampToolOptions from './toolPanel/StampToolOptions.svelte';

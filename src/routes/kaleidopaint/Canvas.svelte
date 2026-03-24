@@ -1104,7 +1104,6 @@
   on:keyup={(e) => e.code === 'Space' && (spaceHeld = false) && (isPanning = false)}
 />
 
-<!-- svelte-ignore a11y_no_noninteractive_tabindex — viewport must be focusable for keyboard shortcuts -->
 <div
   class="viewport"
   bind:this={viewport}

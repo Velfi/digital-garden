@@ -178,7 +178,12 @@ function mediumIorAtRayOrigin(
   voxels: Map<string, Voxel>
 ): number {
   const eps = 1e-9;
-  const v = lookupVoxel(voxels, Math.floor(ox + eps * rdx), Math.floor(oy + eps * rdy), Math.floor(oz + eps * rdz));
+  const v = lookupVoxel(
+    voxels,
+    Math.floor(ox + eps * rdx),
+    Math.floor(oy + eps * rdy),
+    Math.floor(oz + eps * rdz)
+  );
   if (!v || !isTransmissiveMaterial(v.material)) return 1;
   return materialIor(v.material);
 }

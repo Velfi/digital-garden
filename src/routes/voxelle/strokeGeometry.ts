@@ -576,8 +576,7 @@ export function thickenPathForStroke(
   params: PathThickenParams
 ): [number, number, number][] {
   if (positions.length === 0) return [];
-  const isClayPath =
-    params.clayMode !== undefined && CLAY_PATH_THICKEN_MODES.has(params.clayMode);
+  const isClayPath = params.clayMode !== undefined && CLAY_PATH_THICKEN_MODES.has(params.clayMode);
   const rng = params.seed != null ? createSeededRng(params.seed) : undefined;
 
   // Clay modes take precedence; stroke mode (e.g. airbrush) only applies to Draw tools

@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  fresnelSchlickReflectance,
-  GLASS_IOR,
-  WATER_IOR
-} from './voxelRayShared';
+import { fresnelSchlickReflectance, GLASS_IOR, WATER_IOR } from './voxelRayShared';
 
 describe('fresnelSchlickReflectance', () => {
   it('matches normal-incidence R0 for air–glass', () => {

@@ -16,7 +16,8 @@ export function drawBrushVisible(toolPane: ToolPane, tool: string): boolean {
 
 export function planeAxisVisible(strokeMode: StrokeMode, tool: string): boolean {
   return (
-    (strokeMode === 'plane' || strokeMode === 'circle' || strokeMode === 'cuboid') && isStrokeTool(tool)
+    (strokeMode === 'plane' || strokeMode === 'circle' || strokeMode === 'cuboid') &&
+    isStrokeTool(tool)
   );
 }
 

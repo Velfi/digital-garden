@@ -1986,8 +1986,7 @@
         getIntersectionWithPlane(
           setPreciseWorkPlanePoint(preciseAnchor, preciseNormal, preciseWorkPlanePointScratch),
           preciseNormal
-        ) ??
-        (hit ? getStrokeStartFromHit(hit) : null);
+        ) ?? (hit ? getStrokeStartFromHit(hit) : null);
       if (!startPos) {
         isVoxelDrag = false;
         precisePhase = 'armed';

@@ -16,10 +16,5 @@ export function isSegmentedStrokeGestureActive(opts: {
   roofPhase: RoofStrokePhase;
   ropePhase: RopeStrokePhase;
 }): boolean {
-  return !!(
-    opts.cuboidPhase ||
-    opts.polygonPhase ||
-    opts.roofPhase ||
-    opts.ropePhase
-  );
+  return !!(opts.cuboidPhase || opts.polygonPhase || opts.roofPhase || opts.ropePhase);
 }
