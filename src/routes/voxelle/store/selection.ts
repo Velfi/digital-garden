@@ -43,8 +43,41 @@ export type FillEmptyResult = {
   truncated: boolean;
 };
 
+export type FillProgress = {
+  visited: number;
+  matched: number;
+};
+
+export type FillAsyncOptions = {
+  maxRegionSize?: number;
+  planeCtx?: FillPlaneSampleContext;
+  signal?: AbortSignal;
+  onProgress?: (progress: FillProgress) => void;
+  yieldEvery?: number;
+};
+
+export type FillSelectionAsyncResult = FillSelectionResult & {
+  cancelled: boolean;
+};
+
+export type FillEmptyAsyncResult = FillEmptyResult & {
+  cancelled: boolean;
+};
+
 function getEffectiveBoundsForSelection(): ReturnType<typeof getEffectiveBounds> {
   return getEffectiveBounds(get(voxels), SELECTION_BOUNDS_MARGIN);
+}
+
+const DEFAULT_FILL_YIELD_EVERY = 8192;
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => resolve());
+      return;
+    }
+    setTimeout(resolve, 0);
+  });
 }
 
 /** Per-click context for fill plane (face from hit, camera forward for view plane). */
@@ -166,6 +199,64 @@ export function getFillSelectionAt(
   return { region: next, truncated: false };
 }
 
+export async function getFillSelectionAtAsync(
+  x: number,
+  y: number,
+  z: number,
+  diagonals: boolean,
+  respectsColor: boolean = true,
+  options: FillAsyncOptions = {}
+): Promise<FillSelectionAsyncResult> {
+  const v = get(voxels);
+  const bounds = getEffectiveBoundsForSelection();
+  const k0 = coordKey(x, y, z);
+  const targetVoxel = v.get(k0);
+  if (targetVoxel === undefined) return { region: new Map(), truncated: false, cancelled: false };
+  const adj = diagonals ? ADJ_26 : ADJ_6;
+  const visited = new Set<string>();
+  const stack: [number, number, number][] = [[x, y, z]];
+  const next = new Map<string, Voxel>();
+  const ctx = options.planeCtx ?? { faceNormal: null, cameraForward: null };
+  const ref = get(constrainToPlaneRef);
+  const usePlane = shouldConstrainFillPlane(ctx);
+  const maxRegionSize = options.maxRegionSize;
+  const yieldEvery = Math.max(1, options.yieldEvery ?? DEFAULT_FILL_YIELD_EVERY);
+  let ticks = 0;
+  while (stack.length > 0) {
+    if (options.signal?.aborted) {
+      return { region: next, truncated: false, cancelled: true };
+    }
+    const [cx, cy, cz] = stack.pop()!;
+    const ck = coordKey(cx, cy, cz);
+    if (visited.has(ck)) continue;
+    visited.add(ck);
+    const col = v.get(ck);
+    if (col === undefined) continue;
+    if (respectsColor && !sameVoxelColor(col, targetVoxel)) continue;
+    next.set(ck, col);
+    if (maxRegionSize !== undefined && next.size > maxRegionSize) {
+      return { region: next, truncated: true, cancelled: false };
+    }
+    for (const [dx, dy, dz] of adj) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      const nz = cz + dz;
+      if (inBoundsBox(nx, ny, nz, bounds)) {
+        if (usePlane && !voxelInConstrainPlane(nx, ny, nz, x, y, z, ref, ctx)) continue;
+        const nk = coordKey(nx, ny, nz);
+        if (!visited.has(nk)) stack.push([nx, ny, nz]);
+      }
+    }
+    ticks++;
+    if (ticks % yieldEvery === 0) {
+      options.onProgress?.({ visited: visited.size, matched: next.size });
+      await nextFrame();
+    }
+  }
+  options.onProgress?.({ visited: visited.size, matched: next.size });
+  return { region: next, truncated: false, cancelled: false };
+}
+
 export function getFillEmptyAt(
   x: number,
   y: number,
@@ -207,6 +298,60 @@ export function getFillEmptyAt(
     }
   }
   return { region: next, truncated: false };
+}
+
+export async function getFillEmptyAtAsync(
+  x: number,
+  y: number,
+  z: number,
+  diagonals: boolean,
+  options: FillAsyncOptions = {}
+): Promise<FillEmptyAsyncResult> {
+  const v = get(voxels);
+  const bounds = getEffectiveBoundsForSelection();
+  const k0 = coordKey(x, y, z);
+  if (v.has(k0)) return { region: new Set(), truncated: false, cancelled: false };
+  const adj = diagonals ? ADJ_26 : ADJ_6;
+  const visited = new Set<string>();
+  const stack: [number, number, number][] = [[x, y, z]];
+  const next = new Set<string>();
+  const ctx = options.planeCtx ?? { faceNormal: null, cameraForward: null };
+  const ref = get(constrainToPlaneRef);
+  const usePlane = shouldConstrainFillPlane(ctx);
+  const maxRegionSize = options.maxRegionSize;
+  const yieldEvery = Math.max(1, options.yieldEvery ?? DEFAULT_FILL_YIELD_EVERY);
+  let ticks = 0;
+  while (stack.length > 0) {
+    if (options.signal?.aborted) {
+      return { region: next, truncated: false, cancelled: true };
+    }
+    const [cx, cy, cz] = stack.pop()!;
+    const ck = coordKey(cx, cy, cz);
+    if (visited.has(ck)) continue;
+    visited.add(ck);
+    if (v.has(ck)) continue;
+    next.add(ck);
+    if (maxRegionSize !== undefined && next.size > maxRegionSize) {
+      return { region: next, truncated: true, cancelled: false };
+    }
+    for (const [dx, dy, dz] of adj) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      const nz = cz + dz;
+      if (inBoundsBox(nx, ny, nz, bounds)) {
+        if (usePlane && !voxelInConstrainPlane(nx, ny, nz, x, y, z, ref, ctx)) continue;
+        const nk = coordKey(nx, ny, nz);
+        if (!visited.has(nk)) stack.push([nx, ny, nz]);
+      }
+    }
+    ticks++;
+    if (ticks % yieldEvery === 0) {
+      options.onProgress?.({ visited: visited.size, matched: next.size });
+      await nextFrame();
+    }
+  }
+  options.onProgress?.({ visited: visited.size, matched: next.size });
+  return { region: next, truncated: false, cancelled: false };
 }
 
 export function mergeSelection(

@@ -48,6 +48,7 @@ export interface MeshManagerCallbacks {
 }
 
 const CHUNK_THRESHOLD = 50000;
+const LARGE_REBUILD_DEFER_THRESHOLD = 150000;
 const SPINNER_DELAY_MS = 2000;
 const SELECTION_OVERLAY_HEX = 0x3399ff;
 const GRID_SURFACE_LIFT = 0.01;
@@ -332,14 +333,22 @@ export function createMeshManager(
       spinnerTimeoutId = null;
       callbacks.onSpinnerChange(true);
     }, SPINNER_DELAY_MS);
-    const voxelsArr: [string, Voxel][] = [...v];
-    const chunkSize = v.size >= CHUNK_THRESHOLD ? 32 : 0;
-    meshWorker.postMessage({
-      voxels: voxelsArr,
-      mode: opts.renderingMode,
-      options: { aoStrength: opts.aoStrength, chunkSize },
-      gen
-    });
+    const postToWorker = () => {
+      if (!meshWorker || gen !== meshRebuildGen) return;
+      const voxelsArr: [string, Voxel][] = [...v];
+      const chunkSize = v.size >= CHUNK_THRESHOLD ? 32 : 0;
+      meshWorker.postMessage({
+        voxels: voxelsArr,
+        mode: opts.renderingMode,
+        options: { aoStrength: opts.aoStrength, chunkSize },
+        gen
+      });
+    };
+    if (v.size >= LARGE_REBUILD_DEFER_THRESHOLD && typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => postToWorker());
+      return;
+    }
+    postToWorker();
   }
 
   function rebuildSelectionOverlay(sel: Map<string, Voxel>) {

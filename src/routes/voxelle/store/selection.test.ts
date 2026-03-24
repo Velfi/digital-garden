@@ -4,7 +4,9 @@ import { voxels, selection, gridSize, resetUndo } from './core';
 import {
   mergeSelection,
   getFillSelectionAt,
+  getFillSelectionAtAsync,
   getFillEmptyAt,
+  getFillEmptyAtAsync,
   selectAll,
   deselectAll,
   growSelection,
@@ -211,6 +213,45 @@ describe('getFillSelectionAt', () => {
   });
 });
 
+describe('getFillSelectionAtAsync', () => {
+  beforeEach(() => {
+    gridSize.set(32);
+    voxels.set(new Map());
+    selection.set(new Map());
+    resetUndo();
+  });
+
+  it('matches sync fill region for small sample', async () => {
+    voxels.set(
+      makeVoxels([
+        [0, 0, 0, 0xff0000],
+        [1, 0, 0, 0xff0000],
+        [1, 1, 0, 0xff0000]
+      ])
+    );
+    const sync = getFillSelectionAt(0, 0, 0, true, true);
+    const asyncRes = await getFillSelectionAtAsync(0, 0, 0, true, true, { yieldEvery: 1 });
+    expect(asyncRes.cancelled).toBe(false);
+    expect(asyncRes.truncated).toBe(sync.truncated);
+    expect([...asyncRes.region.keys()].sort()).toEqual([...sync.region.keys()].sort());
+  });
+
+  it('supports abort and returns partial region', async () => {
+    const cells: [number, number, number, number][] = [];
+    for (let i = 0; i < 800; i++) cells.push([i, 0, 0, 0xff0000]);
+    voxels.set(makeVoxels(cells));
+    const controller = new AbortController();
+    const asyncRes = await getFillSelectionAtAsync(0, 0, 0, false, true, {
+      yieldEvery: 10,
+      onProgress: () => controller.abort(),
+      signal: controller.signal
+    });
+    expect(asyncRes.cancelled).toBe(true);
+    expect(asyncRes.region.size).toBeGreaterThan(0);
+    expect(asyncRes.region.size).toBeLessThan(800);
+  });
+});
+
 describe('getFillEmptyAt', () => {
   const m = SELECTION_BOUNDS_MARGIN;
 
@@ -313,6 +354,50 @@ describe('getFillEmptyAt', () => {
     const capped = getFillEmptyAt(0, 0, 0, false, 256);
     expect(capped.truncated).toBe(true);
     expect(capped.region.size).toBe(257);
+  });
+});
+
+describe('getFillEmptyAtAsync', () => {
+  beforeEach(() => {
+    gridSize.set(32);
+    voxels.set(new Map());
+    selection.set(new Map());
+    resetUndo();
+  });
+
+  it('matches sync empty-fill region for small sample', async () => {
+    voxels.set(
+      makeVoxels([
+        [-1, 0, 0, 0xff0000],
+        [1, 0, 0, 0xff0000],
+        [0, -1, 0, 0xff0000],
+        [0, 1, 0, 0xff0000],
+        [0, 0, -1, 0xff0000],
+        [0, 0, 1, 0xff0000]
+      ])
+    );
+    const sync = getFillEmptyAt(0, 0, 0, false);
+    const asyncRes = await getFillEmptyAtAsync(0, 0, 0, false, { yieldEvery: 1 });
+    expect(asyncRes.cancelled).toBe(false);
+    expect(asyncRes.truncated).toBe(sync.truncated);
+    expect(asyncRes.region.size).toBe(sync.region.size);
+  });
+
+  it('supports abort and returns partial region', async () => {
+    voxels.set(
+      makeVoxels([
+        [-1, 0, 0, 0xff0000],
+        [1200, 0, 0, 0xff0000]
+      ])
+    );
+    const controller = new AbortController();
+    const asyncRes = await getFillEmptyAtAsync(0, 0, 0, false, {
+      yieldEvery: 64,
+      onProgress: () => controller.abort(),
+      signal: controller.signal
+    });
+    expect(asyncRes.cancelled).toBe(true);
+    expect(asyncRes.region.size).toBeGreaterThan(0);
   });
 });
 

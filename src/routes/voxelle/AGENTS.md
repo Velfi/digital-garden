@@ -23,7 +23,7 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 - `store/generators/registry.ts` – `GENERATOR_TOOLS`, `GENERATOR_FACE_CLICK_TOOLS`, `isGeneratorTool`, `isGeneratorFaceClickTool` (single source for tool panel + canvas “generator” wiring).
 - `store/interactionMode.ts` – `canvasInteractionMode` derived store (`fly` \| `hand` \| `add_panel` \| `sculpt`); `shouldEnableOrbitControls(tool, gizmoSuppressed)` used by VoxelCanvas for OrbitControls.
 - `store/editCommands.ts` – `commitSelectionMergeEdit`, `commitVoxelMapReplace` (thin undo-boundary helpers; prefer at feature edges).
-- `store/selection.ts` – growSelection, shrinkSelection, mergeSelection, getFillSelectionAt / getFillEmptyAt (return `{ region, truncated }`; optional max caps BFS for large-fill warnings), etc.
+- `store/selection.ts` – growSelection, shrinkSelection, mergeSelection, getFillSelectionAt / getFillEmptyAt plus async cancellable variants with progress (`getFillSelectionAtAsync` / `getFillEmptyAtAsync`), etc.
 - `store/shapes.ts` – initShape, getShapePositionsAt
 - `store/undo.ts` – pushUndo, history
 - `store/url.ts` – encodeModelForUrl (delegate to voxelleFile encodeForTransport)

@@ -260,14 +260,20 @@ export { canUndoStore as canUndo, canRedoStore as canRedo } from './core';
 export type {
   FillSelectionResult,
   FillEmptyResult,
-  FillPlaneSampleContext
+  FillPlaneSampleContext,
+  FillProgress,
+  FillAsyncOptions,
+  FillSelectionAsyncResult,
+  FillEmptyAsyncResult
 } from './selection';
 
 export {
   SELECTION_BOUNDS_MARGIN,
   FILL_UNCONSTRAINED_LARGE_THRESHOLD,
   getFillSelectionAt,
+  getFillSelectionAtAsync,
   getFillEmptyAt,
+  getFillEmptyAtAsync,
   getCoplanarFacesSelectionAt,
   getCoplanarEmptySelectionAt,
   mergeSelection,

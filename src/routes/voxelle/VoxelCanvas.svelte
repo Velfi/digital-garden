@@ -109,8 +109,9 @@
     constrainToPlaneRef,
     polygonOffsetFromNormal,
     FILL_UNCONSTRAINED_LARGE_THRESHOLD,
-    getFillSelectionAt,
+    getFillSelectionAtAsync,
     getFillEmptyAt,
+    getFillEmptyAtAsync,
     type FillPlaneSampleContext,
     getCoplanarFacesSelectionAt,
     getCoplanarEmptySelectionAt,
@@ -312,7 +313,17 @@
   import ToolPanel from './ToolPanel.svelte';
   import SelectionCountPanel from './SelectionCountPanel.svelte';
 
-  const LARGE_UNCONSTRAINED_FILL_MSG = `This fill will affect a large number of blocks and will take some time to complete. Continue?`;
+  type FillOperationPhase = 'exploring' | 'committing';
+  let fillBusy = $state(false);
+  let fillPhase = $state<FillOperationPhase>('exploring');
+  let fillVisited = $state(0);
+  let fillMatched = $state(0);
+  let fillMessage = $state<string>('Exploring fill region…');
+  let fillAbortController: AbortController | null = null;
+
+  function cancelActiveFill(): void {
+    fillAbortController?.abort();
+  }
 
   function formatSignedDelta(n: number): string {
     return n > 0 ? `+${n}` : String(n);
@@ -323,16 +334,26 @@
     return Math.min(PLANE_CUBOID_HOLLOW_WALL_MAX, Math.max(1, raw));
   }
 
-  /** Voxel tool + fill only: capped BFS when plane unconstrained; full flood after confirm. */
-  function resolveFillEmptyForUnconstrainedPlane(
+  /** Voxel tool + fill only: capped probe when plane unconstrained; full flood is async/cancellable. */
+  async function resolveFillEmptyForUnconstrainedPlaneAsync(
     x: number,
     y: number,
     z: number,
     diagonals: boolean,
-    planeCtx: FillPlaneSampleContext
-  ): Set<string> | null {
+    planeCtx: FillPlaneSampleContext,
+    signal: AbortSignal
+  ): Promise<Set<string> | null> {
     if (get(constrainToPlaneEnabled)) {
-      return getFillEmptyAt(x, y, z, diagonals, undefined, planeCtx).region;
+      const full = await getFillEmptyAtAsync(x, y, z, diagonals, {
+        planeCtx,
+        signal,
+        onProgress: (p) => {
+          fillVisited = p.visited;
+          fillMatched = p.matched;
+        }
+      });
+      if (full.cancelled) return null;
+      return full.region;
     }
     const probe = getFillEmptyAt(
       x,
@@ -343,10 +364,18 @@
       planeCtx
     );
     if (probe.truncated) {
-      if (!confirm(LARGE_UNCONSTRAINED_FILL_MSG)) return null;
-      return getFillEmptyAt(x, y, z, diagonals, undefined, planeCtx).region;
+      fillMessage = `Large fill detected. Exploring full region…`;
     }
-    return probe.region;
+    const full = await getFillEmptyAtAsync(x, y, z, diagonals, {
+      planeCtx,
+      signal,
+      onProgress: (p) => {
+        fillVisited = p.visited;
+        fillMatched = p.matched;
+      }
+    });
+    if (full.cancelled) return null;
+    return full.region;
   }
 
   function fillPlaneContextFromHit(hit: THREE.Intersection | null): FillPlaneSampleContext {
@@ -2524,7 +2553,7 @@
     };
   }
 
-  function handlePointerDown(event: PointerEvent) {
+  async function handlePointerDown(event: PointerEvent) {
     if (dispatchPointerDown(pointerHandlerContext, event, buildGeneratorRmbDeps())) return;
     if (event.button === 2) {
       if (
@@ -2893,19 +2922,43 @@
       get(effectiveStrokeMode) === 'fill' &&
       hit.object !== polygonPointsMesh
     ) {
+      if (fillBusy) {
+        requestAnimationFrame(() => render());
+        return;
+      }
       const pos = getVoxelPosition(hit);
       if (pos) {
-        const incoming = getFillSelectionAt(
-          pos[0],
-          pos[1],
-          pos[2],
-          get(fillSelectDiagonals),
-          get(fillRespectsColor),
-          undefined,
-          fillPlaneContextFromHit(hit)
-        ).region;
-        if (incoming.size > 0) {
-          commitSelectionMergeEdit(incoming, get(selectionMode), event.shiftKey);
+        fillBusy = true;
+        fillPhase = 'exploring';
+        fillMessage = 'Exploring fill region…';
+        fillVisited = 0;
+        fillMatched = 0;
+        const controller = new AbortController();
+        fillAbortController = controller;
+        try {
+          const incoming = await getFillSelectionAtAsync(
+            pos[0],
+            pos[1],
+            pos[2],
+            get(fillSelectDiagonals),
+            get(fillRespectsColor),
+            {
+              planeCtx: fillPlaneContextFromHit(hit),
+              signal: controller.signal,
+              onProgress: (p) => {
+                fillVisited = p.visited;
+                fillMatched = p.matched;
+              }
+            }
+          );
+          if (!incoming.cancelled && incoming.region.size > 0) {
+            fillPhase = 'committing';
+            fillMessage = 'Applying fill…';
+            commitSelectionMergeEdit(incoming.region, get(selectionMode), event.shiftKey);
+          }
+        } finally {
+          fillAbortController = null;
+          fillBusy = false;
         }
       }
       requestAnimationFrame(() => render());
@@ -2918,28 +2971,52 @@
       get(effectiveStrokeMode) === 'fill' &&
       hit.object !== polygonPointsMesh
     ) {
+      if (fillBusy) {
+        requestAnimationFrame(() => render());
+        return;
+      }
       const pos = getVoxelPosition(hit);
       if (pos) {
-        const fillRegion = getFillSelectionAt(
-          pos[0],
-          pos[1],
-          pos[2],
-          get(fillSelectDiagonals),
-          get(fillRespectsColor),
-          undefined,
-          fillPlaneContextFromHit(hit)
-        ).region;
-        if (fillRegion.size > 0) {
-          const getCol = getPaintColorResolver();
-          const positions = [...fillRegion.keys()].map((k) => parseCoordKey(k));
-          ensureGridFitsPositions(positions);
-          runVoxelStroke(() => {
-            updateVoxelsInStroke((v) => {
-              for (const key of fillRegion.keys()) {
-                v.set(key, getCol());
+        fillBusy = true;
+        fillPhase = 'exploring';
+        fillMessage = 'Exploring fill region…';
+        fillVisited = 0;
+        fillMatched = 0;
+        const controller = new AbortController();
+        fillAbortController = controller;
+        try {
+          const fillRegion = await getFillSelectionAtAsync(
+            pos[0],
+            pos[1],
+            pos[2],
+            get(fillSelectDiagonals),
+            get(fillRespectsColor),
+            {
+              planeCtx: fillPlaneContextFromHit(hit),
+              signal: controller.signal,
+              onProgress: (p) => {
+                fillVisited = p.visited;
+                fillMatched = p.matched;
               }
+            }
+          );
+          if (!fillRegion.cancelled && fillRegion.region.size > 0) {
+            fillPhase = 'committing';
+            fillMessage = 'Applying fill…';
+            const getCol = getPaintColorResolver();
+            const positions = [...fillRegion.region.keys()].map((k) => parseCoordKey(k));
+            ensureGridFitsPositions(positions);
+            runVoxelStroke(() => {
+              updateVoxelsInStroke((v) => {
+                for (const key of fillRegion.region.keys()) {
+                  v.set(key, getCol());
+                }
+              });
             });
-          });
+          }
+        } finally {
+          fillAbortController = null;
+          fillBusy = false;
         }
       }
       requestAnimationFrame(() => render());
@@ -2952,30 +3029,45 @@
       get(effectiveStrokeMode) === 'fill' &&
       hit.object !== polygonPointsMesh
     ) {
+      if (fillBusy) {
+        requestAnimationFrame(() => render());
+        return;
+      }
       const pos = getAddPosition(hit);
       if (pos && !$voxels.has(coordKey(pos[0], pos[1], pos[2]))) {
-        const emptyRegion = resolveFillEmptyForUnconstrainedPlane(
-          pos[0],
-          pos[1],
-          pos[2],
-          get(fillSelectDiagonals),
-          fillPlaneContextFromHit(hit)
-        );
-        if (emptyRegion === null) {
-          requestAnimationFrame(() => render());
-          return;
-        }
-        if (emptyRegion.size > 0) {
-          const getCol = getPaintColorResolver();
-          const positions = [...emptyRegion].map((k) => parseCoordKey(k));
-          ensureGridFitsPositions(positions);
-          runVoxelStroke(() => {
-            updateVoxelsInStroke((v) => {
-              for (const key of emptyRegion) {
-                v.set(key, getCol());
-              }
+        fillBusy = true;
+        fillPhase = 'exploring';
+        fillMessage = 'Exploring fill region…';
+        fillVisited = 0;
+        fillMatched = 0;
+        const controller = new AbortController();
+        fillAbortController = controller;
+        try {
+          const emptyRegion = await resolveFillEmptyForUnconstrainedPlaneAsync(
+            pos[0],
+            pos[1],
+            pos[2],
+            get(fillSelectDiagonals),
+            fillPlaneContextFromHit(hit),
+            controller.signal
+          );
+          if (emptyRegion && emptyRegion.size > 0) {
+            fillPhase = 'committing';
+            fillMessage = 'Applying fill…';
+            const getCol = getPaintColorResolver();
+            const positions = [...emptyRegion].map((k) => parseCoordKey(k));
+            ensureGridFitsPositions(positions);
+            runVoxelStroke(() => {
+              updateVoxelsInStroke((v) => {
+                for (const key of emptyRegion) {
+                  v.set(key, getCol());
+                }
+              });
             });
-          });
+          }
+        } finally {
+          fillAbortController = null;
+          fillBusy = false;
         }
       }
       requestAnimationFrame(() => render());
@@ -2988,25 +3080,49 @@
       get(effectiveStrokeMode) === 'fill' &&
       hit.object !== polygonPointsMesh
     ) {
+      if (fillBusy) {
+        requestAnimationFrame(() => render());
+        return;
+      }
       const pos = getVoxelPosition(hit);
       if (pos) {
-        const fillRegion = getFillSelectionAt(
-          pos[0],
-          pos[1],
-          pos[2],
-          get(fillSelectDiagonals),
-          get(fillRespectsColor),
-          undefined,
-          fillPlaneContextFromHit(hit)
-        ).region;
-        if (fillRegion.size > 0) {
-          runVoxelStroke(() => {
-            updateVoxelsInStroke((v) => {
-              for (const key of fillRegion.keys()) {
-                v.delete(key);
+        fillBusy = true;
+        fillPhase = 'exploring';
+        fillMessage = 'Exploring fill region…';
+        fillVisited = 0;
+        fillMatched = 0;
+        const controller = new AbortController();
+        fillAbortController = controller;
+        try {
+          const fillRegion = await getFillSelectionAtAsync(
+            pos[0],
+            pos[1],
+            pos[2],
+            get(fillSelectDiagonals),
+            get(fillRespectsColor),
+            {
+              planeCtx: fillPlaneContextFromHit(hit),
+              signal: controller.signal,
+              onProgress: (p) => {
+                fillVisited = p.visited;
+                fillMatched = p.matched;
               }
+            }
+          );
+          if (!fillRegion.cancelled && fillRegion.region.size > 0) {
+            fillPhase = 'committing';
+            fillMessage = 'Applying fill…';
+            runVoxelStroke(() => {
+              updateVoxelsInStroke((v) => {
+                for (const key of fillRegion.region.keys()) {
+                  v.delete(key);
+                }
+              });
             });
-          });
+          }
+        } finally {
+          fillAbortController = null;
+          fillBusy = false;
         }
       }
       requestAnimationFrame(() => render());
@@ -3067,15 +3183,42 @@
         if (targetVoxel !== undefined) {
           let incoming: Map<string, Voxel>;
           if (get(effectiveStrokeMode) === 'fill') {
-            incoming = getFillSelectionAt(
-              pos[0],
-              pos[1],
-              pos[2],
-              get(fillSelectDiagonals),
-              get(fillRespectsColor),
-              undefined,
-              fillPlaneContextFromHit(hit)
-            ).region;
+            if (fillBusy) {
+              requestAnimationFrame(() => render());
+              return;
+            }
+            fillBusy = true;
+            fillPhase = 'exploring';
+            fillMessage = 'Exploring fill region…';
+            fillVisited = 0;
+            fillMatched = 0;
+            const controller = new AbortController();
+            fillAbortController = controller;
+            try {
+              const fillResult = await getFillSelectionAtAsync(
+                pos[0],
+                pos[1],
+                pos[2],
+                get(fillSelectDiagonals),
+                get(fillRespectsColor),
+                {
+                  planeCtx: fillPlaneContextFromHit(hit),
+                  signal: controller.signal,
+                  onProgress: (p) => {
+                    fillVisited = p.visited;
+                    fillMatched = p.matched;
+                  }
+                }
+              );
+              if (fillResult.cancelled) {
+                requestAnimationFrame(() => render());
+                return;
+              }
+              incoming = fillResult.region;
+            } finally {
+              fillAbortController = null;
+              fillBusy = false;
+            }
           } else {
             incoming = new Map<string, Voxel>();
             for (const [key, col] of $voxels) {
@@ -4066,7 +4209,7 @@
     handlePointerDown(event);
   }
 
-  function onPointerUp(event: PointerEvent) {
+  async function onPointerUp(event: PointerEvent) {
     if (handleFlyPointerUp(pointerHandlerContext, event)) return;
     if (depthAdjustPointerId === event.pointerId) {
       try {
@@ -4262,6 +4405,10 @@
   }
 
   function onEscapeKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && fillBusy) {
+      cancelActiveFill();
+      e.preventDefault();
+    }
     if (e.key === 'Escape' && precisePhase !== 'idle') {
       resetPreciseState(true);
       render();
@@ -5734,6 +5881,16 @@
       <span>Building mesh…</span>
     </div>
   {/if}
+  {#if fillBusy}
+    <div class="fill-progress" role="status" aria-live="polite" data-voxelle-no-passthrough>
+      <div class="fill-progress-title">{fillMessage}</div>
+      <div class="fill-progress-stats">
+        <span>Visited: {fillVisited.toLocaleString()}</span>
+        <span>Matched: {fillMatched.toLocaleString()}</span>
+      </div>
+      <button type="button" class="fill-cancel-btn" onclick={() => cancelActiveFill()}>Cancel</button>
+    </div>
+  {/if}
   {#if cuboidPhase === 'depth'}
     <div class="depth-slider-container" data-voxelle-no-passthrough>
       <div
@@ -6081,6 +6238,48 @@
     border-top-color: #fff;
     border-radius: 50%;
     animation: greedy-mesh-spin 0.8s linear infinite;
+  }
+
+  .fill-progress {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.7rem 0.8rem;
+    min-width: 13rem;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 0.4rem;
+    color: #fff;
+    font-size: 0.82rem;
+    z-index: 12;
+    pointer-events: auto;
+  }
+
+  .fill-progress-title {
+    font-weight: 600;
+  }
+
+  .fill-progress-stats {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.8rem;
+    opacity: 0.9;
+  }
+
+  .fill-cancel-btn {
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border-radius: 0.35rem;
+    padding: 0.3rem 0.55rem;
+    cursor: pointer;
+  }
+
+  .fill-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
   }
 
   @keyframes greedy-mesh-spin {
