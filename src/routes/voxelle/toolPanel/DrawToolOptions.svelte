@@ -12,6 +12,7 @@
     drawBrushShape,
     drawBrushSize,
     drawBrushSnapToSurface,
+    airbrushBrushShape,
     airbrushRadius,
     airbrushScatter,
     airbrushRadiusRange,
@@ -22,28 +23,32 @@
     constrainToPlaneEnabled,
     constrainToPlaneRef,
     polygonOffsetFromNormal,
-    MAX_BRUSH_SIZE,
-    STROKE_TOOLS
+    MAX_BRUSH_SIZE
   } from '../store/index';
   import { DRAW_BRUSH_SHAPES } from './constants';
+  import {
+    airbrushVisible as airbrushVisibleFn,
+    constrainPlaneSectionVisible as constrainPlaneSectionVisibleFn,
+    fillVisible as fillVisibleFn,
+    lineAxisAlignVisible as lineAxisAlignVisibleFn,
+    planeAxisVisible as planeAxisVisibleFn,
+    planeOrCuboidStroke as planeOrCuboidStrokeFn,
+    polygonVisible as polygonVisibleFn,
+    showBrushSection as showBrushSectionFn
+  } from './toolVisibility';
 
   const BRUSH_SIZE_MAX = MAX_BRUSH_SIZE - 1;
-  const isStrokeTool = (t: string) => STROKE_TOOLS.includes(t as (typeof STROKE_TOOLS)[number]);
 
-  const drawBrushVisible = $derived($toolPane === 'draw' && isStrokeTool($tool));
-  const planeAxisVisible = $derived(
-    ($strokeMode === 'plane' || $strokeMode === 'circle' || $strokeMode === 'cuboid') &&
-      isStrokeTool($tool)
+  const planeAxisVisible = $derived(planeAxisVisibleFn($strokeMode, $tool));
+  const planeOrCuboidStroke = $derived(planeOrCuboidStrokeFn($strokeMode));
+  const lineAxisAlignVisible = $derived(lineAxisAlignVisibleFn($strokeMode, $tool));
+  const airbrushVisible = $derived(airbrushVisibleFn($strokeMode, $tool));
+  const fillVisible = $derived(fillVisibleFn($strokeMode, $tool));
+  const constrainPlaneSectionVisible = $derived(
+    constrainPlaneSectionVisibleFn($strokeMode, $tool)
   );
-  const planeOrCuboidStroke = $derived($strokeMode === 'plane' || $strokeMode === 'cuboid');
-  const lineAxisAlignVisible = $derived($strokeMode === 'line' && isStrokeTool($tool));
-  const airbrushVisible = $derived($strokeMode === 'airbrush' && isStrokeTool($tool));
-  const fillVisible = $derived($strokeMode === 'fill' && isStrokeTool($tool));
-  const constrainPlaneSectionVisible = $derived(fillVisible || airbrushVisible);
-  const polygonVisible = $derived($strokeMode === 'polygon' && isStrokeTool($tool));
-  const showBrushSection = $derived(
-    drawBrushVisible && !airbrushVisible && !fillVisible && !polygonVisible
-  );
+  const polygonVisible = $derived(polygonVisibleFn($strokeMode, $tool));
+  const showBrushSection = $derived(showBrushSectionFn($toolPane, $strokeMode, $tool));
 </script>
 
 {#if showBrushSection}
@@ -233,6 +238,27 @@
 
 {#if airbrushVisible}
   <section class="tool-panel-section" aria-label="Airbrush">
+    <div class="tool-panel-row">
+      <span class="tool-panel-label">Droplet</span>
+      <div class="stroke-buttons" role="group" aria-label="Airbrush droplet shape">
+        <button
+          type="button"
+          class:active={$airbrushBrushShape === 'sphere'}
+          onclick={() => airbrushBrushShape.set('sphere')}
+          title="Round spray (Euclidean sphere per droplet)"
+        >
+          Sphere
+        </button>
+        <button
+          type="button"
+          class:active={$airbrushBrushShape === 'cube'}
+          onclick={() => airbrushBrushShape.set('cube')}
+          title="Boxy spray (axis-aligned cube per droplet)"
+        >
+          Cube
+        </button>
+      </div>
+    </div>
     <div class="tool-panel-row">
       <label class="tool-panel-check">
         <input

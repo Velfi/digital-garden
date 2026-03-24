@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { ClayMode, StrokeMode } from './store/core';
 import { ConvexHull } from 'three/addons/math/ConvexHull.js';
 import { parseCoordKey } from './coordUtils';
 
@@ -381,6 +382,50 @@ export function puffPath(
   return result;
 }
 
+/**
+ * Like puffPath but each droplet is an axis-aligned cube (thickenPath) instead of a sphere.
+ * Same scatter and optional radius range semantics as puffPath.
+ */
+function cubePuffPath(
+  positions: [number, number, number][],
+  radius: number,
+  scatter: number = 0,
+  radiusMin?: number,
+  radiusMax?: number,
+  rng?: () => number
+): [number, number, number][] {
+  if (positions.length === 0) return [];
+  const rand = rng ?? Math.random;
+  const useRange = radiusMin !== undefined && radiusMax !== undefined && radiusMax > radiusMin;
+  const rMin = useRange ? Math.max(0, radiusMin!) : Math.max(0, radius);
+  const rMax = useRange ? Math.max(0, radiusMax!) : rMin;
+  const s = Math.max(0, Math.floor(scatter));
+  const seen = new Set<string>();
+  const result: [number, number, number][] = [];
+  for (const [px, py, pz] of positions) {
+    const ox = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
+    const oy = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
+    const oz = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
+    const r = useRange
+      ? (Math.round(rMin * 2) +
+          Math.floor(rand() * (Math.round(rMax * 2) - Math.round(rMin * 2) + 1))) /
+        2
+      : rMin;
+    const xi = Math.round(px + ox);
+    const yi = Math.round(py + oy);
+    const zi = Math.round(pz + oz);
+    const voxels = thickenPath([[xi, yi, zi]], r);
+    for (const [x, y, z] of voxels) {
+      const k = `${x},${y},${z}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        result.push([x, y, z]);
+      }
+    }
+  }
+  return result;
+}
+
 /** World-axis direction for wall/spray. 'auto' = use face normal (wall only). */
 export type SprayDirectionName =
   | 'none'
@@ -467,8 +512,8 @@ function directionalStreakFromPath(
 
 /** Params for path thickening; used by both preview and apply to avoid divergence. */
 export interface PathThickenParams {
-  strokeMode: string;
-  clayMode?: string;
+  strokeMode: StrokeMode;
+  clayMode?: ClayMode;
   clayBrushRadius: number;
   branchTaper: boolean;
   /** When branch+taper: start radius (optional; falls back to clayBrushRadius). */
@@ -480,6 +525,8 @@ export interface PathThickenParams {
   airbrushRadiusRange: boolean;
   airbrushRadiusMin: number;
   airbrushRadiusMax: number;
+  /** Airbrush droplet footprint: sphere (default) or Chebyshev cube. */
+  airbrushBrushShape?: 'sphere' | 'cube';
   /** When true, airbrush voxels are restricted to the plane through the path start. */
   airbrushConstrainToPlane?: boolean;
   /** Axis for plane constraint when airbrushConstrainToPlane: from face normal (airbrushPlaneAxis) or sidebar (planeAxis). Ignored when airbrushPlaneNormal set. */
@@ -508,7 +555,8 @@ export interface PathThickenParams {
   seed?: number;
 }
 
-const CLAY_PATH_MODES = [
+/** Clay modes that use path thickening in thickenPathForStroke (excludes e.g. rope). */
+const CLAY_PATH_THICKEN_MODES = new Set<ClayMode>([
   'bulk',
   'smooth',
   'level',
@@ -517,7 +565,7 @@ const CLAY_PATH_MODES = [
   'melt',
   'wall',
   'inflate'
-] as const;
+]);
 
 /**
  * Thickens a path according to stroke/clay mode. Single source of truth for preview and apply.
@@ -529,8 +577,7 @@ export function thickenPathForStroke(
 ): [number, number, number][] {
   if (positions.length === 0) return [];
   const isClayPath =
-    params.clayMode !== undefined &&
-    CLAY_PATH_MODES.includes(params.clayMode as (typeof CLAY_PATH_MODES)[number]);
+    params.clayMode !== undefined && CLAY_PATH_THICKEN_MODES.has(params.clayMode);
   const rng = params.seed != null ? createSeededRng(params.seed) : undefined;
 
   // Clay modes take precedence; stroke mode (e.g. airbrush) only applies to Draw tools
@@ -587,15 +634,20 @@ export function thickenPathForStroke(
   }
   if (isClayPath) return positions;
   if (params.strokeMode === 'airbrush') {
-    const out = puffPath(
-      positions,
-      params.airbrushRadius,
-      params.airbrushScatter,
-      params.airbrushRadiusRange ? params.airbrushRadiusMin : undefined,
-      params.airbrushRadiusRange ? params.airbrushRadiusMax : undefined,
-      rng
-    );
-    return out;
+    const shape = params.airbrushBrushShape ?? 'sphere';
+    const rMin = params.airbrushRadiusRange ? params.airbrushRadiusMin : undefined;
+    const rMax = params.airbrushRadiusRange ? params.airbrushRadiusMax : undefined;
+    if (shape === 'cube') {
+      return cubePuffPath(
+        positions,
+        params.airbrushRadius,
+        params.airbrushScatter,
+        rMin,
+        rMax,
+        rng
+      );
+    }
+    return puffPath(positions, params.airbrushRadius, params.airbrushScatter, rMin, rMax, rng);
   }
   const dbs = params.drawBrushSize ?? 0;
   if (dbs > 0) {

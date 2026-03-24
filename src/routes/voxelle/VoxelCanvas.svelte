@@ -38,6 +38,7 @@
     ropeBrushShape,
     ropeBrushRadius,
     ropeGravityDirection,
+    airbrushBrushShape,
     airbrushRadius,
     airbrushScatter,
     airbrushRadiusRange,
@@ -259,11 +260,9 @@
   } from './previewMeshLod';
   import { toneMappingPreferenceToThree } from './toneMappingPreference';
   import { createSelectionGizmoController } from './canvas/selectionGizmo';
-  import {
-    handlePointerDown as dispatchPointerDown,
-    handlePointerMove as dispatchPointerMove,
-    handleFlyPointerUp
-  } from './canvas/handlers/pointerHandler';
+  import { handleFlyPointerUp } from './canvas/handlers/pointerHandler';
+  import { runPointerDownPrelude, runPointerMovePrelude } from './canvas/pointerOrchestrator';
+  import { isSegmentedStrokeGestureActive } from './canvas/toolPhaseState';
   import { applyGeneratorFaceClickPointerUp } from './canvas/handlers/generatorPointer';
   import {
     buildVoxelGeneratorPrimaryPointerUpDeps,
@@ -626,6 +625,8 @@
   /** For Add panel open/close transitions (tool preview hide / restore). */
   let wasAddShapePanelOpen = false;
   let deltaDisplay = $state<{ dx: number; dy: number; dz: number } | null>(null);
+  /** Integer voxel under cursor on the precise plane (snapped grid from raycast). */
+  let preciseLocationHint = $state<{ x: number; y: number; z: number } | null>(null);
   /** Move gizmo: Δx,Δy,Δz label at projected original selection centroid (screen px in container). */
   let moveGizmoDragLabel = $state<{
     dx: number;
@@ -683,6 +684,23 @@
   const preciseGuideLightUv = new THREE.Vector2(0.5, 0.5);
   const preciseGuideLocalScratch = new THREE.Vector3();
   const preciseGuideInvQuatScratch = new THREE.Quaternion();
+  /** Plane local +X / +Y in world space — grid lines run parallel to these (see redrawPreciseGuideTexture). */
+  const preciseGuideTanLocalXWorld = new THREE.Vector3();
+  const preciseGuideTanLocalYWorld = new THREE.Vector3();
+  const preciseWorkPlanePointScratch = new THREE.Vector3();
+
+  /** Center of the clicked voxel face (matches greedy mesh [k−0.5,k+0.5] voxels). Not anchor+(½,½,½). */
+  function setPreciseWorkPlanePoint(
+    anchor: [number, number, number],
+    normal: THREE.Vector3,
+    out: THREE.Vector3
+  ): THREE.Vector3 {
+    return out.set(
+      anchor[0] + 0.5 * normal.x,
+      anchor[1] + 0.5 * normal.y,
+      anchor[2] + 0.5 * normal.z
+    );
+  }
   const centroidToCameraScratch = new THREE.Vector3();
   const fitHelperBox = new THREE.Box3();
   const fitHelperCenter = new THREE.Vector3();
@@ -1045,30 +1063,63 @@
     return raycastStrokeStartFromHit($tool, hit, worldQuaternion);
   }
 
+  const PRECISE_GUIDE_GRID_DEFAULT = 'rgba(143, 211, 255, 0.82)';
+  const PRECISE_GUIDE_AXIS_X = 'rgba(255, 88, 88, 0.9)';
+  const PRECISE_GUIDE_AXIS_Y = 'rgba(72, 210, 118, 0.9)';
+  const PRECISE_GUIDE_AXIS_Z = 'rgba(118, 168, 255, 0.9)';
+
+  function preciseGuideColorForWorldAxisTangent(t: THREE.Vector3): string {
+    const ax = Math.abs(t.x);
+    const ay = Math.abs(t.y);
+    const az = Math.abs(t.z);
+    const th = 0.82;
+    if (ax >= th && ax >= ay && ax >= az) return PRECISE_GUIDE_AXIS_X;
+    if (ay >= th && ay >= ax && ay >= az) return PRECISE_GUIDE_AXIS_Y;
+    if (az >= th && az >= ax && az >= ay) return PRECISE_GUIDE_AXIS_Z;
+    return PRECISE_GUIDE_GRID_DEFAULT;
+  }
+
   function redrawPreciseGuideTexture() {
     if (!preciseGuidePlaneCtx || !preciseGuidePlaneTexture) return;
     const ctx = preciseGuidePlaneCtx;
     const size = PRECISE_GUIDE_TEX_SIZE;
-    // ~1 voxel per cell on the guide plane (world width = preciseGuidePlaneSize maps to full UV 0..1).
-    const cellPx = Math.max(2, Math.min(48, Math.round(size / Math.max(8, preciseGuidePlaneSize))));
-    const radiusPx = Math.max(48, Math.min(200, Math.round(size * 0.28)));
+    const S = Math.max(1, preciseGuidePlaneSize);
+    // Local plane lx, ly ∈ [-S/2, S/2] (PlaneGeometry unit quad × S). Voxel face boundaries at lx, ly = k + 0.5.
+    // UV matches updatePreciseGuideLight: u = lx/S + 0.5, v = ly/S + 0.5 → canvas x = u·size, y = (1−v)·size.
+    const kMin = Math.ceil(-S / 2 - 0.5);
+    const kMax = Math.floor(S / 2 - 0.5);
+    // Tight spotlight around cursor.
+    const radiusPx = Math.max(28, Math.min(88, Math.round(size * 0.13)));
     const cx = preciseGuideLightUv.x * size;
     const cy = (1 - preciseGuideLightUv.y) * size;
     ctx.clearRect(0, 0, size, size);
     ctx.save();
-    ctx.strokeStyle = 'rgba(143, 211, 255, 0.9)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x <= size; x += cellPx) {
-      ctx.beginPath();
-      ctx.moveTo(x + 0.5, 0);
-      ctx.lineTo(x + 0.5, size);
-      ctx.stroke();
+    const mesh = preciseGuidePlaneMesh;
+    let colorVert = PRECISE_GUIDE_GRID_DEFAULT;
+    let colorHorz = PRECISE_GUIDE_GRID_DEFAULT;
+    if (mesh) {
+      preciseGuideTanLocalXWorld.set(1, 0, 0).applyQuaternion(mesh.quaternion).normalize();
+      preciseGuideTanLocalYWorld.set(0, 1, 0).applyQuaternion(mesh.quaternion).normalize();
+      // Constant canvas x → varies v → parallel to plane local +Y in world space; constant y → parallel to local +X.
+      colorVert = preciseGuideColorForWorldAxisTangent(preciseGuideTanLocalYWorld);
+      colorHorz = preciseGuideColorForWorldAxisTangent(preciseGuideTanLocalXWorld);
     }
-    for (let y = 0; y <= size; y += cellPx) {
-      ctx.beginPath();
-      ctx.moveTo(0, y + 0.5);
-      ctx.lineTo(size, y + 0.5);
-      ctx.stroke();
+    // 1px fills + NearestFilter; boundary positions use float scale (no rounded cellPx drift).
+    for (let k = kMin; k <= kMax; k++) {
+      const lxB = k + 0.5;
+      const u = lxB / S + 0.5;
+      const xPix = Math.round(u * size);
+      if (xPix < 0 || xPix >= size) continue;
+      ctx.fillStyle = colorVert;
+      ctx.fillRect(xPix, 0, 1, size);
+    }
+    for (let k = kMin; k <= kMax; k++) {
+      const lyB = k + 0.5;
+      const v = lyB / S + 0.5;
+      const yPix = Math.round((1 - v) * size);
+      if (yPix < 0 || yPix >= size) continue;
+      ctx.fillStyle = colorHorz;
+      ctx.fillRect(0, yPix, size, 1);
     }
     ctx.globalCompositeOperation = 'destination-in';
     const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radiusPx);
@@ -1118,7 +1169,9 @@
     const size = Math.max(192, get(gridSize) * 4);
     preciseGuidePlaneSize = size;
     preciseGuidePlaneMesh.scale.set(size, size, 1);
-    preciseGuidePlaneMesh.position.set(anchor[0] + 0.5, anchor[1] + 0.5, anchor[2] + 0.5);
+    preciseGuidePlaneMesh.position.copy(
+      setPreciseWorkPlanePoint(anchor, normal, preciseWorkPlanePointScratch)
+    );
     preciseGuidePlaneMesh.quaternion.setFromUnitVectors(
       precisePlaneNormalBasis,
       precisePlaneNormalTarget.copy(normal).normalize()
@@ -1131,6 +1184,7 @@
     precisePhase = 'idle';
     preciseAnchor = null;
     preciseNormal = null;
+    preciseLocationHint = null;
     resetPrecisePreviewRenderOrder();
     updatePreciseGuidePlane();
     if (clearPreview && !isVoxelDrag) {
@@ -1748,10 +1802,12 @@
       !!(
         isVoxelDrag ||
         selectionGizmo?.isGizmoDrag ||
-        cuboidPhase ||
-        polygonPhase ||
-        roofPhase ||
-        ropePhase
+        isSegmentedStrokeGestureActive({
+          cuboidPhase,
+          polygonPhase,
+          roofPhase,
+          ropePhase
+        })
       ),
     cancelDrag
   };
@@ -1801,21 +1857,23 @@
 
   async function handlePointerDown(event: PointerEvent) {
     if (
-      dispatchPointerDown(
+      runPointerDownPrelude(event, {
         pointerHandlerContext,
-        event,
-        buildVoxelGeneratorRmbDeps(voxelGeneratorRmbBridge)
-      )
+        generatorRmb: buildVoxelGeneratorRmbDeps(voxelGeneratorRmbBridge),
+        updatePointerFromEvent
+      })
     )
       return;
     if (event.button === 2) {
       if (
         isVoxelDrag ||
         selectionGizmo?.isGizmoDrag ||
-        cuboidPhase ||
-        polygonPhase ||
-        roofPhase ||
-        ropePhase
+        isSegmentedStrokeGestureActive({
+          cuboidPhase,
+          polygonPhase,
+          roofPhase,
+          ropePhase
+        })
       ) {
         event.preventDefault();
         cancelDrag();
@@ -1892,12 +1950,20 @@
       const normal = getFaceNormalFromHit(hit);
       if (anchor && normal) {
         preciseAnchor = anchor;
-        preciseNormal = new THREE.Vector3(normal[0], normal[1], normal[2]);
+        const pn = new THREE.Vector3(normal[0], normal[1], normal[2]);
+        preciseNormal = pn;
         precisePhase = 'armed';
         updatePreciseGuidePlane();
         pendingStrokePositions = [anchor];
         applyPrecisePreviewRenderOrder();
         updatePreviewMesh(pendingStrokePositions);
+        const hp = getIntersectionWithPlane(
+          setPreciseWorkPlanePoint(anchor, pn, preciseWorkPlanePointScratch),
+          pn
+        );
+        preciseLocationHint = hp
+          ? { x: hp[0], y: hp[1], z: hp[2] }
+          : { x: anchor[0], y: anchor[1], z: anchor[2] };
       }
       requestAnimationFrame(() => render());
       return;
@@ -1916,13 +1982,11 @@
       isVoxelDrag = true;
       precisePhase = 'placing';
       updatePreciseGuidePlane();
-      const planePoint = new THREE.Vector3(
-        preciseAnchor[0] + 0.5,
-        preciseAnchor[1] + 0.5,
-        preciseAnchor[2] + 0.5
-      );
       const startPos =
-        getIntersectionWithPlane(planePoint, preciseNormal) ??
+        getIntersectionWithPlane(
+          setPreciseWorkPlanePoint(preciseAnchor, preciseNormal, preciseWorkPlanePointScratch),
+          preciseNormal
+        ) ??
         (hit ? getStrokeStartFromHit(hit) : null);
       if (!startPos) {
         isVoxelDrag = false;
@@ -1943,6 +2007,7 @@
       currentStrokeSeed = Math.floor(Math.random() * 0xffffffff);
       updatePreciseGuideLight(startPos);
       rollOverMesh.visible = false;
+      preciseLocationHint = { x: startPos[0], y: startPos[1], z: startPos[2] };
       pendingStrokePositions = [startPos];
       updatePreviewMesh(pendingStrokePositions);
       requestAnimationFrame(() => render());
@@ -2104,6 +2169,7 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
             airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
+            airbrushBrushShape: get(airbrushBrushShape),
             ...airbrushPlaneParamsForStroke(),
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
@@ -2153,6 +2219,7 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
             airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
+            airbrushBrushShape: get(airbrushBrushShape),
             ...airbrushPlaneParamsForStroke(),
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
@@ -2590,7 +2657,7 @@
       lastBulkPos = startPos;
     }
     const strokeParams = {
-      strokeMode: get(strokeMode) as string,
+      strokeMode: get(strokeMode),
       clayMode: isClayPathFollow ? clayModeVal : undefined,
       clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
       bulkBrushShape: get(bulkBrushShape),
@@ -2602,6 +2669,7 @@
       airbrushRadiusRange: get(airbrushRadiusRange),
       airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
       airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
+      airbrushBrushShape: get(airbrushBrushShape),
       ...airbrushPlaneParamsForStroke(),
       planeAxis: get(planeAxis),
       sprayDirection: get(sprayDirection),
@@ -2624,7 +2692,12 @@
   }
 
   function handlePointerMove(event?: PointerEvent) {
-    if (dispatchPointerMove(pointerHandlerContext, event)) {
+    if (
+      runPointerMovePrelude(event, {
+        pointerHandlerContext,
+        updatePointerFromEvent
+      })
+    ) {
       selectionGizmo?.clearGizmoHoverCursor();
       return;
     }
@@ -2726,6 +2799,7 @@
               airbrushRadiusRange: get(airbrushRadiusRange),
               airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
               airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
+              airbrushBrushShape: get(airbrushBrushShape),
               ...airbrushPlaneParamsForStroke(),
               planeAxis: get(planeAxis),
               sprayDirection: get(sprayDirection),
@@ -2766,17 +2840,16 @@
           if (strokeModeVal === 'precise' && dragStartPos && preciseNormal && preciseAnchor) {
             if (event) updatePointerFromEvent(event);
             updatePreciseGuidePlane();
-            const planePoint = new THREE.Vector3(
-              preciseAnchor[0] + 0.5,
-              preciseAnchor[1] + 0.5,
-              preciseAnchor[2] + 0.5
+            const planePos = getIntersectionWithPlane(
+              setPreciseWorkPlanePoint(preciseAnchor, preciseNormal, preciseWorkPlanePointScratch),
+              preciseNormal
             );
-            const planePos = getIntersectionWithPlane(planePoint, preciseNormal);
             if (planePos) {
               updatePreciseGuideLight(planePos);
               applyPrecisePreviewRenderOrder();
               rollOverMesh.position.set(planePos[0], planePos[1], planePos[2]);
               rollOverMesh.visible = true;
+              preciseLocationHint = { x: planePos[0], y: planePos[1], z: planePos[2] };
               pendingStrokePositions = getAxisAlignedPlaneFromNormal(
                 dragStartPos,
                 planePos,
@@ -2799,6 +2872,7 @@
             } else {
               updatePreciseGuideLight(null);
               rollOverMesh.visible = false;
+              preciseLocationHint = null;
               deltaDisplay = null;
             }
             render();
@@ -2963,12 +3037,13 @@
                 };
               }
             }
-            // Clay path modes: show thickened preview (brush radius); airbrush: sphere preview
+            // Clay path modes: show thickened preview (brush radius); airbrush: droplet preview
             updatePreviewMesh(
               thickenPathForStroke(pendingStrokePositions, {
-                strokeMode: (isAirbrushPath && !isClayPathFollow
-                  ? 'airbrush'
-                  : (strokeModeVal ?? get(strokeMode))) as string,
+                strokeMode:
+                  isAirbrushPath && !isClayPathFollow
+                    ? 'airbrush'
+                    : (strokeModeVal ?? get(strokeMode)),
                 clayMode: isClayPathFollow ? clayPathMode : undefined,
                 clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
                 bulkBrushShape: get(bulkBrushShape),
@@ -2980,6 +3055,7 @@
                 airbrushRadiusRange: get(airbrushRadiusRange),
                 airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
                 airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
+                airbrushBrushShape: get(airbrushBrushShape),
                 ...airbrushPlaneParamsForStroke(),
                 planeAxis: get(planeAxis),
                 sprayDirection: get(sprayDirection),
@@ -3305,19 +3381,19 @@
       ) {
         if (event) updatePointerFromEvent(event);
         updatePreciseGuidePlane();
-        const planePoint = new THREE.Vector3(
-          preciseAnchor[0] + 0.5,
-          preciseAnchor[1] + 0.5,
-          preciseAnchor[2] + 0.5
+        const planePos = getIntersectionWithPlane(
+          setPreciseWorkPlanePoint(preciseAnchor, preciseNormal, preciseWorkPlanePointScratch),
+          preciseNormal
         );
-        const planePos = getIntersectionWithPlane(planePoint, preciseNormal);
         updatePreciseGuideLight(planePos);
         applyPrecisePreviewRenderOrder();
         if (planePos) {
           rollOverMesh.position.set(planePos[0], planePos[1], planePos[2]);
           rollOverMesh.visible = true;
+          preciseLocationHint = { x: planePos[0], y: planePos[1], z: planePos[2] };
         } else {
           rollOverMesh.visible = false;
+          preciseLocationHint = null;
         }
         // Only highlight anchor while armed; full plane preview starts on drag (placing).
         pendingStrokePositions = [preciseAnchor];
@@ -3380,6 +3456,7 @@
               airbrushRadiusRange: get(airbrushRadiusRange),
               airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
               airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
+              airbrushBrushShape: get(airbrushBrushShape),
               ...airbrushPlaneParamsForFaceNormal(faceN),
               planeAxis: get(planeAxis),
               sprayDirection: get(sprayDirection),
@@ -3444,13 +3521,11 @@
   }
 
   function onPointerMove(event: PointerEvent) {
-    updatePointerFromEvent(event);
     handlePointerMove(event);
   }
 
   function onPointerDown(event: PointerEvent) {
-    updatePointerFromEvent(event);
-    handlePointerDown(event);
+    void handlePointerDown(event);
   }
 
   async function onPointerUp(event: PointerEvent) {
@@ -3583,7 +3658,7 @@
               clayModeVal === 'wall' ||
               clayModeVal === 'inflate');
           const toApply = thickenPathForStroke(pendingStrokePositions, {
-            strokeMode: mode as string,
+            strokeMode: mode ?? get(strokeMode),
             clayMode: isClayPath ? clayModeVal : undefined,
             clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
             bulkBrushShape: get(bulkBrushShape),
@@ -3595,6 +3670,7 @@
             airbrushRadiusRange: get(airbrushRadiusRange),
             airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
             airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
+            airbrushBrushShape: get(airbrushBrushShape),
             ...airbrushPlaneParamsForStroke(),
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
@@ -4707,7 +4783,11 @@
       if (flyHintHideTimeout != null) clearTimeout(flyHintHideTimeout);
       flyHintHideTimeout = null;
     }
-    if (isFly && (cuboidPhase || polygonPhase || roofPhase || selectionGizmo?.isGizmoDrag)) {
+    if (
+      isFly &&
+      (isSegmentedStrokeGestureActive({ cuboidPhase, polygonPhase, roofPhase, ropePhase }) ||
+        selectionGizmo?.isGizmoDrag)
+    ) {
       flyControls.unlock();
       cancelDrag();
     }
@@ -4717,12 +4797,14 @@
       rollOverMesh.visible = false;
       updatePreviewMesh([]);
       if (
-        cuboidPhase ||
-        polygonPhase ||
-        roofPhase ||
+        isSegmentedStrokeGestureActive({
+          cuboidPhase,
+          polygonPhase,
+          roofPhase,
+          ropePhase
+        }) ||
         selectionGizmo?.isGizmoDrag ||
-        isVoxelDrag ||
-        ropePhase
+        isVoxelDrag
       ) {
         cancelDrag();
       }
@@ -4994,6 +5076,7 @@
     {cancelRope}
     {fpsCounterDisplayed}
     {deltaDisplay}
+    {preciseLocationHint}
     {pointerScreen}
     {moveGizmoDragLabel}
     {formatSignedDelta}

@@ -5,46 +5,31 @@
     strokeMode,
     selection,
     sidebarOpen,
-    addPanelStore,
-    STROKE_TOOLS,
-    isGeneratorTool
+    addPanelStore
   } from './store/index';
   import DrawToolOptions from './toolPanel/DrawToolOptions.svelte';
   import ClayToolOptions from './toolPanel/ClayToolOptions.svelte';
   import StampToolOptions from './toolPanel/StampToolOptions.svelte';
   import GeneratorToolOptions from './toolPanel/GeneratorToolOptions.svelte';
   import SelectionGizmoTabs from './toolPanel/SelectionGizmoTabs.svelte';
+  import {
+    gizmoTabsVisible as gizmoTabsVisibleFn,
+    piscinaWide as piscinaWideFn,
+    toolPanelShellVisible
+  } from './toolPanel/toolVisibility';
 
-  const isStrokeTool = (t: string) => STROKE_TOOLS.includes(t as (typeof STROKE_TOOLS)[number]);
-  const drawBrushVisible = $derived($toolPane === 'draw' && isStrokeTool($tool));
-  const planeAxisVisible = $derived(
-    ($strokeMode === 'plane' || $strokeMode === 'circle' || $strokeMode === 'cuboid') &&
-      isStrokeTool($tool)
-  );
-  const lineAxisAlignVisible = $derived($strokeMode === 'line' && isStrokeTool($tool));
-  const airbrushVisible = $derived($strokeMode === 'airbrush' && isStrokeTool($tool));
-  const fillVisible = $derived($strokeMode === 'fill' && isStrokeTool($tool));
-  const polygonVisible = $derived($strokeMode === 'polygon' && isStrokeTool($tool));
-  /** Stamp / punch: show tool panel for stamp book link even when selection is empty. */
-  const stampVisible = $derived($tool === 'stamp' || $tool === 'punch');
-  const clayVisible = $derived($tool === 'clay');
-  const generatorOptionsVisible = $derived(isGeneratorTool($tool));
-  const piscinaWide = $derived($tool === 'piscina');
   const gizmoTabsVisible = $derived(
-    $tool !== 'fly' && $tool !== 'hand' && ($selection.size > 0 || $addPanelStore.open)
+    gizmoTabsVisibleFn($tool, $selection.size, $addPanelStore.open)
   );
-
+  const piscinaWide = $derived(piscinaWideFn($tool));
   const show = $derived(
-    gizmoTabsVisible ||
-      drawBrushVisible ||
-      planeAxisVisible ||
-      lineAxisAlignVisible ||
-      airbrushVisible ||
-      fillVisible ||
-      polygonVisible ||
-      stampVisible ||
-      clayVisible ||
-      generatorOptionsVisible
+    toolPanelShellVisible({
+      tool: $tool,
+      toolPane: $toolPane,
+      strokeMode: $strokeMode,
+      selectionSize: $selection.size,
+      addPanelOpen: $addPanelStore.open
+    })
   );
 </script>
 

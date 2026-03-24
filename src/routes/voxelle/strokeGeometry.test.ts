@@ -17,9 +17,10 @@ import {
   applyBrushAlongPath,
   getSprayDirectionVector
 } from './strokeGeometry';
+import type { StrokeMode } from './store/core';
 
 const defaultParams = {
-  strokeMode: 'line',
+  strokeMode: 'line' as StrokeMode,
   clayBrushRadius: 1,
   branchTaper: false,
   airbrushRadius: 1,
@@ -56,6 +57,18 @@ describe('thickenPathForStroke', () => {
     });
     // Airbrush uses puffPath (sphere); r=1 gives 7 voxels (center + 6 face neighbors)
     expect(airbrushResult.length).toBe(7);
+  });
+
+  it('airbrush cube mode uses Chebyshev cube per droplet', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const cubeAir = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      strokeMode: 'airbrush',
+      clayBrushRadius: 1,
+      airbrushBrushShape: 'cube',
+      airbrushRadius: 1
+    });
+    expect(cubeAir.length).toBe(27); // same as thickenPath(singlePoint, 1)
   });
 
   it('airbrush constrain to plane does not flatten brush shape (path is constrained in canvas)', () => {

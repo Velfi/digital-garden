@@ -53,6 +53,7 @@ export {
   ropeBrushShape,
   ropeBrushRadius,
   ropeGravityDirection,
+  airbrushBrushShape,
   airbrushRadius,
   airbrushScatter,
   airbrushRadiusRange,
@@ -225,6 +226,14 @@ export {
 } from './generators/registry';
 
 export {
+  getToolDescriptor,
+  listToolDescriptors,
+  listToolsInCategory,
+  type ToolDescriptor,
+  type ToolCategory
+} from './toolRegistry';
+
+export {
   canvasInteractionMode,
   shouldEnableOrbitControls,
   type VoxelleCanvasInteractionMode
@@ -255,7 +264,8 @@ export type {
   AddShapeParams,
   SelectionGizmoMode,
   ConstrainToPlaneRef,
-  FishSpeciesId
+  FishSpeciesId,
+  VoxelUpdaterMap
 } from './core';
 
 // canUndo, canRedo as aliases

@@ -36,6 +36,8 @@
     cancelRope: () => void;
     fpsCounterDisplayed: number;
     deltaDisplay: { dx: number; dy: number; dz: number } | null;
+    /** Precise stroke: snapped voxel coords under cursor on the work plane. */
+    preciseLocationHint: { x: number; y: number; z: number } | null;
     pointerScreen: { x: number; y: number };
     moveGizmoDragLabel: { x: number; y: number; dx: number; dy: number; dz: number } | null;
     formatSignedDelta: (n: number) => string;
@@ -79,6 +81,7 @@
     cancelRope,
     fpsCounterDisplayed,
     deltaDisplay,
+    preciseLocationHint,
     pointerScreen,
     moveGizmoDragLabel,
     formatSignedDelta,
@@ -360,7 +363,27 @@
     {fpsCounterDisplayed} FPS
   </div>
 {/if}
-{#if deltaDisplay && $voxellePreferences.showMovementDeltaHint}
+{#if preciseLocationHint}
+  <div
+    class="precise-stroke-hud"
+    role="status"
+    aria-live="polite"
+    style="left: {pointerScreen.x}px; top: {pointerScreen.y}px;"
+  >
+    <div class="precise-coords-line">
+      {formatSignedDelta(preciseLocationHint.x)}, {formatSignedDelta(preciseLocationHint.y)}, {formatSignedDelta(
+        preciseLocationHint.z
+      )}
+    </div>
+    {#if deltaDisplay && $voxellePreferences.showMovementDeltaHint}
+      <div class="precise-delta-line">
+        Δ {formatSignedDelta(deltaDisplay.dx)}, {formatSignedDelta(deltaDisplay.dy)}, {formatSignedDelta(
+          deltaDisplay.dz
+        )}
+      </div>
+    {/if}
+  </div>
+{:else if deltaDisplay && $voxellePreferences.showMovementDeltaHint}
   <div
     class="delta-display"
     aria-live="polite"
@@ -715,6 +738,30 @@
     color: rgba(255, 255, 255, 0.9);
     pointer-events: none;
     z-index: 1;
+  }
+
+  .precise-stroke-hud {
+    position: absolute;
+    padding: 0.28rem 0.55rem;
+    background: rgba(0, 0, 0, 0.62);
+    border-radius: 4px;
+    font-size: 0.82rem;
+    font-family: monospace;
+    color: rgba(230, 245, 255, 0.95);
+    pointer-events: none;
+    z-index: 1;
+    transform: translate(10px, 10px);
+    line-height: 1.35;
+  }
+
+  .precise-coords-line {
+    letter-spacing: 0.02em;
+  }
+
+  .precise-delta-line {
+    margin-top: 0.12rem;
+    font-size: 0.8rem;
+    color: rgba(180, 220, 255, 0.92);
   }
 
   .move-gizmo-delta-label {

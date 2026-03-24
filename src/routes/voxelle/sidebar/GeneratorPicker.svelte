@@ -1,57 +1,23 @@
 <script lang="ts">
-  import { tool } from '../store/index';
+  import { tool, GENERATOR_TOOLS } from '../store/index';
+  import { getToolDescriptor } from '../store/toolRegistry';
 </script>
 
 <h2>Generators</h2>
 <div class="tool-buttons">
-  <button
-    type="button"
-    class:active={$tool === 'rocks'}
-    onclick={() => tool.set('rocks')}
-    title="Place procedural rocks"
-  >
-    Rocks
-  </button>
-  <button
-    type="button"
-    class:active={$tool === 'grass'}
-    onclick={() => tool.set('grass')}
-    title="Paint grass or fuzz on surface"
-  >
-    Grass
-  </button>
-  <button
-    type="button"
-    class:active={$tool === 'ashlar'}
-    onclick={() => tool.set('ashlar')}
-    title="Place rough stone blocks for walls. Right-click to regenerate block."
-  >
-    Ashlar
-  </button>
-  <button
-    type="button"
-    class:active={$tool === 'roof'}
-    onclick={() => tool.set('roof')}
-    title="Click 4+ coplanar corners, then Done to build a roof"
-  >
-    Roof
-  </button>
-  <button
-    type="button"
-    class:active={$tool === 'flora'}
-    onclick={() => tool.set('flora')}
-    title="Place procedural stems, trunks, and branches on a face"
-  >
-    Flora
-  </button>
-  <button
-    type="button"
-    class:active={$tool === 'piscina'}
-    onclick={() => tool.set('piscina')}
-    title="Place procedural fish on a face; use sliders to shape"
-  >
-    Piscina
-  </button>
+  {#each GENERATOR_TOOLS as id (id)}
+    {@const d = getToolDescriptor(id)}
+    {#if d}
+      <button
+        type="button"
+        class:active={$tool === id}
+        onclick={() => tool.set(id)}
+        title={d.title}
+      >
+        {d.label}
+      </button>
+    {/if}
+  {/each}
 </div>
 
 <style>

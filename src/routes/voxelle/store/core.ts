@@ -216,6 +216,9 @@ export const ropeBrushShape = writable<RopeBrushShape>('sphere');
 export const ropeBrushRadius = writable<number>(2);
 /** Rope mode: gravity direction (rope sags toward this axis). */
 export const ropeGravityDirection = writable<RopeGravityDirection>('down');
+/** Airbrush: each droplet is a sphere or axis-aligned cube (same radius index as sphere). */
+export type AirbrushBrushShape = 'sphere' | 'cube';
+export const airbrushBrushShape = writable<AirbrushBrushShape>('sphere');
 /** Airbrush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxel diameter spheres. */
 export const airbrushRadius = writable<number>(2);
 /** Airbrush: max voxel offset for sphere centers (0=none, 1–4=scatter/spray). */
@@ -636,8 +639,14 @@ export function unhideAllVoxels(): void {
   hiddenVoxels.set(new Map());
 }
 
-/** Map-like view that mirrors set/delete across symmetry axes. has/get delegate to underlying. */
-function createMirrorMap(underlying: Map<string, Voxel>, axes: SymmetryAxes): Map<string, Voxel> {
+/**
+ * Map API passed to `updateVoxels` / `updateVoxelsInStroke` callbacks.
+ * With symmetry on, writes mirror across axes; only these methods are guaranteed.
+ */
+export type VoxelUpdaterMap = Pick<Map<string, Voxel>, 'get' | 'set' | 'delete' | 'has'>;
+
+/** Map-like view that mirrors set/delete across symmetry axes; get/has delegate to underlying. */
+function createMirrorMap(underlying: Map<string, Voxel>, axes: SymmetryAxes): VoxelUpdaterMap {
   return {
     get(key: string) {
       return underlying.get(key);
@@ -659,32 +668,11 @@ function createMirrorMap(underlying: Map<string, Voxel>, axes: SymmetryAxes): Ma
         if (underlying.delete(k)) deleted = true;
       }
       return deleted;
-    },
-    get size() {
-      return underlying.size;
-    },
-    clear() {
-      underlying.clear();
-    },
-    forEach(cb: (value: Voxel, key: string, map: Map<string, Voxel>) => void) {
-      underlying.forEach(cb);
-    },
-    entries() {
-      return underlying.entries();
-    },
-    keys() {
-      return underlying.keys();
-    },
-    values() {
-      return underlying.values();
-    },
-    [Symbol.iterator]() {
-      return underlying[Symbol.iterator]();
     }
-  } as Map<string, Voxel>;
+  };
 }
 
-function applyVoxelUpdater(updater: (v: Map<string, Voxel>) => void): void {
+function applyVoxelUpdater(updater: (v: VoxelUpdaterMap) => void): void {
   voxels.update((v) => {
     const next = cloneVoxelsImpl(v);
     const axes: SymmetryAxes = {
@@ -692,17 +680,17 @@ function applyVoxelUpdater(updater: (v: Map<string, Voxel>) => void): void {
       y: get(symmetryY),
       z: get(symmetryZ)
     };
-    const target = axes.x || axes.y || axes.z ? createMirrorMap(next, axes) : next;
+    const target: VoxelUpdaterMap = axes.x || axes.y || axes.z ? createMirrorMap(next, axes) : next;
     updater(target);
     return next;
   });
 }
 
-export function updateVoxels(updater: (v: Map<string, Voxel>) => void) {
+export function updateVoxels(updater: (v: VoxelUpdaterMap) => void) {
   commitUndoAfter(() => applyVoxelUpdater(updater));
 }
 
-export function updateVoxelsInStroke(updater: (v: Map<string, Voxel>) => void) {
+export function updateVoxelsInStroke(updater: (v: VoxelUpdaterMap) => void) {
   applyVoxelUpdater(updater);
 }
 

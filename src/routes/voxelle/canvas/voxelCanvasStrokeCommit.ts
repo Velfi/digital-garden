@@ -15,6 +15,7 @@ import {
   type GenerateFloraOptions,
   type GeneratePiscinaOptions,
   type FishSpeciesId,
+  type VoxelUpdaterMap,
   commitUndoAfter,
   mergeSelection,
   selection,
@@ -276,7 +277,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     ensureGridFitsPositions(effective);
     const boundSize: number | undefined = undefined;
     const getCol = getPaintColorResolver();
-    const applyToMap = (v: Map<string, Voxel>) => {
+    const applyToMap = (v: VoxelUpdaterMap) => {
       for (const [x, y, z] of effective) {
         if (!inBounds(x, y, z, boundSize)) continue;
         const key = coordKey(x, y, z);

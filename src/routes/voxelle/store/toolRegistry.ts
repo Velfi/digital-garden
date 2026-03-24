@@ -1,0 +1,173 @@
+/**
+ * Central metadata for tools. Extend here when adding a tool so labels/panes stay consistent.
+ * Pointer routing and Svelte components still need explicit wiring in VoxelCanvas / tool panels.
+ */
+import type { Tool, ToolPane } from './core';
+
+export type ToolCategory =
+  | 'draw'
+  | 'selection'
+  | 'stamp'
+  | 'navigation'
+  | 'utility'
+  | 'clay'
+  | 'generator';
+
+export type ToolDescriptor = {
+  id: Tool;
+  category: ToolCategory;
+  label: string;
+  title: string;
+  /** Primary sidebar pane for this tool */
+  defaultPane: ToolPane;
+};
+
+const DESCRIPTORS: ToolDescriptor[] = [
+  {
+    id: 'voxel',
+    category: 'draw',
+    label: 'Voxel',
+    title: 'Place voxels',
+    defaultPane: 'draw'
+  },
+  {
+    id: 'remove',
+    category: 'draw',
+    label: 'Remove',
+    title: 'Remove voxels',
+    defaultPane: 'draw'
+  },
+  {
+    id: 'paint',
+    category: 'draw',
+    label: 'Paint',
+    title: 'Paint voxels',
+    defaultPane: 'draw'
+  },
+  {
+    id: 'select',
+    category: 'selection',
+    label: 'Select',
+    title: 'Select voxels for Stamp and Punch',
+    defaultPane: 'draw'
+  },
+  {
+    id: 'selectByColor',
+    category: 'selection',
+    label: 'By color',
+    title: 'Select voxels matching color',
+    defaultPane: 'draw'
+  },
+  {
+    id: 'selectCoplanar',
+    category: 'selection',
+    label: 'Coplanar',
+    title: 'Select coplanar voxels',
+    defaultPane: 'draw'
+  },
+  {
+    id: 'selectCoplanarEmpty',
+    category: 'selection',
+    label: 'Coplanar empty',
+    title: 'Select coplanar empty cells',
+    defaultPane: 'draw'
+  },
+  {
+    id: 'stamp',
+    category: 'stamp',
+    label: 'Stamp',
+    title: 'Place stamp pattern on click',
+    defaultPane: 'draw'
+  },
+  {
+    id: 'punch',
+    category: 'stamp',
+    label: 'Punch',
+    title: 'Cut stamp shape into surface',
+    defaultPane: 'draw'
+  },
+  {
+    id: 'hand',
+    category: 'navigation',
+    label: 'Hand',
+    title: 'Pan the view',
+    defaultPane: 'hand'
+  },
+  {
+    id: 'fly',
+    category: 'navigation',
+    label: 'Fly',
+    title: 'First-person fly mode',
+    defaultPane: 'fly'
+  },
+  {
+    id: 'eyedropper',
+    category: 'utility',
+    label: 'Eyedropper',
+    title: 'Pick voxel color from model',
+    defaultPane: 'draw'
+  },
+  {
+    id: 'clay',
+    category: 'clay',
+    label: 'Clay',
+    title: 'Sculpt with clay modes',
+    defaultPane: 'clay'
+  },
+  {
+    id: 'rocks',
+    category: 'generator',
+    label: 'Rocks',
+    title: 'Place procedural rocks on a face',
+    defaultPane: 'generators'
+  },
+  {
+    id: 'grass',
+    category: 'generator',
+    label: 'Grass',
+    title: 'Paint grass or fuzz on surface',
+    defaultPane: 'generators'
+  },
+  {
+    id: 'ashlar',
+    category: 'generator',
+    label: 'Ashlar',
+    title: 'Place rough stone blocks for walls. Right-click to regenerate block.',
+    defaultPane: 'generators'
+  },
+  {
+    id: 'roof',
+    category: 'generator',
+    label: 'Roof',
+    title: 'Click 4+ coplanar corners, then Done to build a roof',
+    defaultPane: 'generators'
+  },
+  {
+    id: 'flora',
+    category: 'generator',
+    label: 'Flora',
+    title: 'Place procedural stems, trunks, and branches on a face',
+    defaultPane: 'generators'
+  },
+  {
+    id: 'piscina',
+    category: 'generator',
+    label: 'Piscina',
+    title: 'Place procedural fish on a face; use sliders to shape',
+    defaultPane: 'generators'
+  }
+];
+
+const byId = new Map<Tool, ToolDescriptor>(DESCRIPTORS.map((d) => [d.id, d]));
+
+export function getToolDescriptor(id: Tool): ToolDescriptor | undefined {
+  return byId.get(id);
+}
+
+export function listToolDescriptors(): readonly ToolDescriptor[] {
+  return DESCRIPTORS;
+}
+
+export function listToolsInCategory(category: ToolCategory): ToolDescriptor[] {
+  return DESCRIPTORS.filter((d) => d.category === category);
+}

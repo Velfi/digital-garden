@@ -4,7 +4,8 @@
 import * as THREE from 'three';
 import { getShareFromIndexedDB } from '../shareStorage';
 
-export const PRECISE_GUIDE_TEX_SIZE = 512;
+/** High enough that ~1 voxel/cell leaves several texels between lines (512 was ~2px/cell → stroked lines merged into a solid mesh). */
+export const PRECISE_GUIDE_TEX_SIZE = 2560;
 
 export async function loadVoxelCanvasBootstrapModel(options: {
   loadFromBytes: (bytes: Uint8Array) => Promise<boolean>;
@@ -62,8 +63,9 @@ export function createPreciseGuidePlaneInScene(scene: THREE.Scene): {
   const preciseGuidePlaneCtx = preciseGuidePlaneCanvas.getContext('2d', { alpha: true });
   const preciseGuidePlaneTexture = new THREE.CanvasTexture(preciseGuidePlaneCanvas);
   preciseGuidePlaneTexture.generateMipmaps = false;
-  preciseGuidePlaneTexture.minFilter = THREE.LinearFilter;
-  preciseGuidePlaneTexture.magFilter = THREE.LinearFilter;
+  // Nearest keeps 1px canvas strokes sharp on the scaled plane; linear filtering reads as thick/blurry grid dots.
+  preciseGuidePlaneTexture.minFilter = THREE.NearestFilter;
+  preciseGuidePlaneTexture.magFilter = THREE.NearestFilter;
   preciseGuidePlaneTexture.wrapS = THREE.ClampToEdgeWrapping;
   preciseGuidePlaneTexture.wrapT = THREE.ClampToEdgeWrapping;
   const preciseGuidePlaneMaterial = new THREE.MeshBasicMaterial({
