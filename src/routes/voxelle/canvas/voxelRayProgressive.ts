@@ -25,6 +25,8 @@ import {
   MAX_GLASS_DEPTH,
   MAX_TEMPORAL_SAMPLES,
   SHADOW_SURFACE_EPS,
+  WATER_IOR,
+  fresnelSchlickReflectance,
   type VoxelRayTraceParams,
   hexToLinearRgb
 } from './voxelRayShared';
@@ -39,6 +41,8 @@ export const DEFAULT_RAY_TICK_BUDGET_MS = 12;
 /** Check wall clock every N primary-ray blocks to stay within budget. */
 const BUDGET_CHECK_INTERVAL_BLOCKS = 64;
 const GLASS_CELL_NUDGE = 1e-6;
+/** `traceRayDda` returns t=0 when the ray starts inside a voxel; skip entry Fresnel (bogus face normal). */
+const DDA_SURFACE_HIT_EPS = 1e-5;
 
 function isTransmissiveMaterial(material: Voxel['material']): boolean {
   return material === 'glass' || material === 'water';
@@ -114,12 +118,14 @@ function envReflectDirectional(
   const [lx, ly, lz] = params.toLightWorld;
   const sunAlign = Math.max(0, reflDir[0] * lx + reflDir[1] * ly + reflDir[2] * lz);
   const sunExp = material === 'water' ? 12 : 48;
-  const sunMul = material === 'water' ? 3.5 : 1.2;
+  const sunMul = material === 'water' ? 3.5 : material === 'glass' ? 1.38 : 1.2;
+  const envW = material === 'glass' ? 0.78 : 0.72;
+  const ambW = material === 'glass' ? 0.22 : 0.28;
   const sunLobe = Math.pow(sunAlign, sunExp) * sunMul;
   return [
-    envR * 0.72 + params.ambientR * 0.28 + sunLobe * params.sunDiffuseR,
-    envG * 0.72 + params.ambientG * 0.28 + sunLobe * params.sunDiffuseG,
-    envB * 0.72 + params.ambientB * 0.28 + sunLobe * params.sunDiffuseB
+    envR * envW + params.ambientR * ambW + sunLobe * params.sunDiffuseR,
+    envG * envW + params.ambientG * ambW + sunLobe * params.sunDiffuseG,
+    envB * envW + params.ambientB * ambW + sunLobe * params.sunDiffuseB
   ];
 }
 
@@ -150,13 +156,31 @@ function transmissiveSunSpecular(
     return [s * params.sunDiffuseR, s * params.sunDiffuseG, s * params.sunDiffuseB];
   }
   const shininess = 96;
-  const intensity = 0.28;
+  const intensity = material === 'glass' ? 0.34 : 0.28;
   const s = Math.pow(rv, shininess) * intensity;
   return [s * params.sunDiffuseR, s * params.sunDiffuseG, s * params.sunDiffuseB];
 }
 
 function materialIor(material: Voxel['material']): number {
-  return material === 'water' ? 1.333 : GLASS_IOR;
+  if (material === 'water') return WATER_IOR;
+  if (material === 'glass') return GLASS_IOR;
+  return 1;
+}
+
+/** Incident medium IOR for the DDA cell containing the ray origin (1 = air / vacuum). */
+function mediumIorAtRayOrigin(
+  ox: number,
+  oy: number,
+  oz: number,
+  rdx: number,
+  rdy: number,
+  rdz: number,
+  voxels: Map<string, Voxel>
+): number {
+  const eps = 1e-9;
+  const v = lookupVoxel(voxels, Math.floor(ox + eps * rdx), Math.floor(oy + eps * rdy), Math.floor(oz + eps * rdz));
+  if (!v || !isTransmissiveMaterial(v.material)) return 1;
+  return materialIor(v.material);
 }
 
 function materialAbsorptionPerUnit(material: Voxel['material']): number {
@@ -414,13 +438,31 @@ function shadeOpaqueSurface(
 function shadeTransmissiveFallback(
   voxel: Voxel,
   faceNormal: [number, number, number],
-  _rayDir: [number, number, number],
+  rayDir: [number, number, number],
   params: VoxelRayTraceParams,
   hitPoint: [number, number, number],
   voxels: Map<string, Voxel>,
-  maxShadowDist: number
+  maxShadowDist: number,
+  etaIncident: number
 ): { rgb: [number, number, number]; bloom: [number, number, number] } {
   const [nx, ny, nz] = faceNormal;
+  const [rdx, rdy, rdz] = rayDir;
+  const cosI = Math.max(0, -(nx * rdx + ny * rdy + nz * rdz));
+  const etaT = materialIor(voxel.material);
+  let R = fresnelSchlickReflectance(cosI, etaIncident, etaT);
+  if (voxel.material === 'water') {
+    R = Math.max(0.12, R);
+  }
+  const T = 1 - R;
+  const ndoti = nx * rdx + ny * rdy + nz * rdz;
+  const reflDir: [number, number, number] = [
+    rdx - 2 * ndoti * nx,
+    rdy - 2 * ndoti * ny,
+    rdz - 2 * ndoti * nz
+  ];
+  const refl = envReflectDirectional(params, reflDir, voxel.material);
+  const sunSpec = transmissiveSunSpecular(voxel.material, faceNormal, rayDir, params);
+
   const [lx, ly, lz] = params.toLightWorld;
   const ndotl = Math.max(0, nx * lx + ny * ly + nz * lz);
   const [cr, cg, cb] = hexToLinearRgb(voxel.color & 0xffffff);
@@ -450,9 +492,12 @@ function shadeTransmissiveFallback(
   let dr = cr * params.ambientR + cr * params.sunDiffuseR * ndotl * sr;
   let dg = cg * params.ambientG + cg * params.sunDiffuseG * ndotl * sg;
   let db = cb * params.ambientB + cb * params.sunDiffuseB * ndotl * sb;
-  dr = dr * (1 - bgMix) + params.backgroundR * bgMix;
-  dg = dg * (1 - bgMix) + params.backgroundG * bgMix;
-  db = db * (1 - bgMix) + params.backgroundB * bgMix;
+  const mixedR = dr * (1 - bgMix) + params.backgroundR * bgMix;
+  const mixedG = dg * (1 - bgMix) + params.backgroundG * bgMix;
+  const mixedB = db * (1 - bgMix) + params.backgroundB * bgMix;
+  dr = R * refl[0] + sunSpec[0] + T * mixedR;
+  dg = R * refl[1] + sunSpec[1] + T * mixedG;
+  db = R * refl[2] + sunSpec[2] + T * mixedB;
   return { rgb: [dr, dg, db], bloom: [0, 0, 0] };
 }
 
@@ -482,6 +527,8 @@ function traceAndShade(
   let tr = 1;
   let tg = 1;
   let tb = 1;
+
+  let mediumIor = mediumIorAtRayOrigin(oox, ooy, ooz, rdx, rdy, rdz, voxels);
 
   while (glassDepth < MAX_GLASS_DEPTH) {
     const hit = traceRayDda(oox, ooy, ooz, rdx, rdy, rdz, voxels, rem);
@@ -532,7 +579,8 @@ function traceAndShade(
         params,
         [px, py, pz],
         voxels,
-        maxShadowDist
+        maxShadowDist,
+        mediumIor
       );
       return {
         rgb: [accR + tr * fb.rgb[0], accG + tg * fb.rgb[1], accB + tb * fb.rgb[2]],
@@ -542,36 +590,39 @@ function traceAndShade(
 
     const [nx, ny, nz] = shadingNormal;
     const cosI = Math.max(0, -(nx * rdx + ny * rdy + nz * rdz));
-    const ior = materialIor(hit.voxel.material);
-    const r0 = Math.pow((1 - ior) / (1 + ior), 2);
-    let R = r0 + (1 - r0) * Math.pow(1 - cosI, 5);
-    if (hit.voxel.material === 'water') {
-      R = Math.max(0.12, R);
-    }
-    const T = 1 - R;
-    const ndoti = shadingNormal[0] * rdx + shadingNormal[1] * rdy + shadingNormal[2] * rdz;
-    const reflDir: [number, number, number] = [
-      rdx - 2 * ndoti * shadingNormal[0],
-      rdy - 2 * ndoti * shadingNormal[1],
-      rdz - 2 * ndoti * shadingNormal[2]
-    ];
-    const refl = envReflectDirectional(params, reflDir, hit.voxel.material);
-    const sunSpec = transmissiveSunSpecular(
-      hit.voxel.material,
-      shadingNormal,
-      [rdx, rdy, rdz],
-      params
-    );
-    accR += tr * R * refl[0];
-    accG += tg * R * refl[1];
-    accB += tb * R * refl[2];
-    accR += tr * sunSpec[0];
-    accG += tg * sunSpec[1];
-    accB += tb * sunSpec[2];
+    const etaT = materialIor(hit.voxel.material);
+    const skipEntryFresnel = hit.t < DDA_SURFACE_HIT_EPS;
 
-    tr *= T;
-    tg *= T;
-    tb *= T;
+    if (!skipEntryFresnel) {
+      let R = fresnelSchlickReflectance(cosI, mediumIor, etaT);
+      if (hit.voxel.material === 'water') {
+        R = Math.max(0.12, R);
+      }
+      const T = 1 - R;
+      const ndoti = shadingNormal[0] * rdx + shadingNormal[1] * rdy + shadingNormal[2] * rdz;
+      const reflDir: [number, number, number] = [
+        rdx - 2 * ndoti * shadingNormal[0],
+        rdy - 2 * ndoti * shadingNormal[1],
+        rdz - 2 * ndoti * shadingNormal[2]
+      ];
+      const refl = envReflectDirectional(params, reflDir, hit.voxel.material);
+      const sunSpec = transmissiveSunSpecular(
+        hit.voxel.material,
+        shadingNormal,
+        [rdx, rdy, rdz],
+        params
+      );
+      accR += tr * R * refl[0];
+      accG += tg * R * refl[1];
+      accB += tb * R * refl[2];
+      accR += tr * sunSpec[0];
+      accG += tg * sunSpec[1];
+      accB += tb * sunSpec[2];
+
+      tr *= T;
+      tg *= T;
+      tb *= T;
+    }
 
     let cx = ix;
     let cy = iy;
@@ -581,6 +632,7 @@ function traceAndShade(
     let cpz = pz;
     let curGlass = hit.voxel;
     let step = hit.t;
+    let nextAfter: Voxel | null = null;
     while (true) {
       const tThrough = distToExitUnitCell(cpx, cpy, cpz, rdx, rdy, rdz, cx, cy, cz);
       const [absR, absG, absB] = absorptionRgbPerUnit(curGlass.material);
@@ -603,8 +655,10 @@ function traceAndShade(
       const ncy = Math.floor(npy);
       const ncz = Math.floor(npz);
       const next = lookupVoxel(voxels, ncx, ncy, ncz);
-      if (!next || !isTransmissiveMaterial(next.material) || next.material !== curGlass.material)
+      if (!next || !isTransmissiveMaterial(next.material) || next.material !== curGlass.material) {
+        nextAfter = next;
         break;
+      }
       cx = ncx;
       cy = ncy;
       cz = ncz;
@@ -614,11 +668,23 @@ function traceAndShade(
       curGlass = next;
       step += GLASS_CELL_NUDGE;
     }
+
+    let etaOut = 1;
+    if (nextAfter && isTransmissiveMaterial(nextAfter.material)) {
+      etaOut = materialIor(nextAfter.material);
+    }
+    const Rexit = fresnelSchlickReflectance(cosI, materialIor(curGlass.material), etaOut);
+    const Texit = 1 - Rexit;
+    tr *= Texit;
+    tg *= Texit;
+    tb *= Texit;
+
     step += SHADOW_SURFACE_EPS;
     oox += rdx * step;
     ooy += rdy * step;
     ooz += rdz * step;
     rem -= step;
+    mediumIor = mediumIorAtRayOrigin(oox, ooy, ooz, rdx, rdy, rdz, voxels);
     glassDepth++;
     if (rem < 1e-6) {
       const miss = shadeMiss(params, screenV, bufH);

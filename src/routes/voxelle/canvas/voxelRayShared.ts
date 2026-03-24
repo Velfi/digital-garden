@@ -5,7 +5,19 @@ export const MAX_GLASS_DEPTH = 4;
 export const MAX_TEMPORAL_SAMPLES = 64;
 export const GLASS_MIN_TRANSMITTANCE = 0.35;
 export const GLASS_IOR = 1.5;
+/** Visible-spectrum approximate IOR for liquid water (ray mode glass/water interfaces). */
+export const WATER_IOR = 1.333;
 export const R0_FRESNEL = Math.pow((1 - GLASS_IOR) / (1 + GLASS_IOR), 2);
+
+/**
+ * Schlick unpolarized Fresnel reflectance at a dielectric interface.
+ * `cosI` = clamped dot(-n, ωi) in the incident medium; `etaI`/`etaT` are relative indices (ratio to vacuum).
+ */
+export function fresnelSchlickReflectance(cosI: number, etaI: number, etaT: number): number {
+  const c = Math.max(0, Math.min(1, cosI));
+  const r0 = Math.pow((etaI - etaT) / (etaI + etaT), 2);
+  return r0 + (1 - r0) * Math.pow(1 - c, 5);
+}
 export const SHADOW_SURFACE_EPS = 2e-4;
 /** Bloom source: scale glow emissive so float linear values cross typical bloom thresholds. */
 export const GLOW_BLOOM_LINEAR_SCALE = 2.8;
