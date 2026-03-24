@@ -10,6 +10,28 @@ const EPS = 1e-9;
 /** Matches `greedyMeshCore` glass absorption per world unit through glass. */
 export const GLASS_ABSORPTION_PER_UNIT = 0.16;
 
+function isTransmissiveMaterial(material: Voxel['material']): boolean {
+  return material === 'glass' || material === 'water';
+}
+
+function absorptionPerUnit(material: Voxel['material']): number {
+  return material === 'water' ? GLASS_ABSORPTION_PER_UNIT * 0.09 : GLASS_ABSORPTION_PER_UNIT;
+}
+
+function transmissiveTint(material: Voxel['material'], color24: number): [number, number, number] {
+  if (material === 'water') return [1, 1, 1];
+  return hexToLinearRgb(color24 & 0xffffff);
+}
+
+function absorptionRgbPerUnit(material: Voxel['material']): [number, number, number] {
+  if (material === 'water') {
+    // Approximate visible-spectrum behavior of clear water: red attenuates fastest, blue slowest.
+    return [0.03, 0.012, 0.006];
+  }
+  const a = absorptionPerUnit(material);
+  return [a, a, a];
+}
+
 function hexToLinearRgb(hex: number): [number, number, number] {
   const r = ((hex >> 16) & 255) / 255;
   const g = ((hex >> 8) & 255) / 255;
@@ -38,7 +60,7 @@ function signAxis(v: number): number {
   return 0;
 }
 
-function lookupVoxel(voxels: Map<string, Voxel>, x: number, y: number, z: number): Voxel | null {
+export function lookupVoxel(voxels: Map<string, Voxel>, x: number, y: number, z: number): Voxel | null {
   return voxels.get(coordKey(x, y, z)) ?? null;
 }
 
@@ -166,7 +188,7 @@ export function traceRayDda(
 }
 
 /**
- * Shadow ray toward the light: opaque voxels block; glass attenuates and tints (Beer–Lambert).
+ * Shadow ray toward the light: opaque voxels block; transmissive voxels attenuate and tint (Beer–Lambert).
  * Returns RGB factor in linear space (1,1,1 = fully lit, 0,0,0 = fully occluded).
  * Caller should offset origin slightly along the shaded surface normal (into free space).
  */
@@ -229,12 +251,15 @@ export function traceShadowRayDda(
 
   const applySegment = (v: Voxel | null, segLen: number) => {
     if (!v || segLen <= 0) return;
-    const att = Math.exp(-GLASS_ABSORPTION_PER_UNIT * segLen);
-    if (v.material === 'glass') {
-      const [tr, tg, tb] = hexToLinearRgb(v.color & 0xffffff);
-      fr *= tr * att;
-      fg *= tg * att;
-      fb *= tb * att;
+    const [absR, absG, absB] = absorptionRgbPerUnit(v.material);
+    const attR = Math.exp(-absR * segLen);
+    const attG = Math.exp(-absG * segLen);
+    const attB = Math.exp(-absB * segLen);
+    if (isTransmissiveMaterial(v.material)) {
+      const [tr, tg, tb] = transmissiveTint(v.material, v.color);
+      fr *= tr * attR;
+      fg *= tg * attG;
+      fb *= tb * attB;
     } else {
       fr = 0;
       fg = 0;
@@ -244,7 +269,7 @@ export function traceShadowRayDda(
 
   const hitStart = lookupVoxel(voxels, x, y, z);
   if (hitStart) {
-    if (hitStart.material !== 'glass') {
+    if (!isTransmissiveMaterial(hitStart.material)) {
       return [0, 0, 0];
     }
     const tFirst = Math.min(tMaxX, tMaxY, tMaxZ);
@@ -332,7 +357,7 @@ export function distToExitUnitCell(
 }
 
 /**
- * Ray march skipping up to `maxGlassLayers` glass voxels; returns first hit on plastic/metal/glow.
+ * Ray march skipping up to `maxGlassLayers` transmissive voxels; returns first hit on opaque voxels.
  */
 export function traceRayThroughGlass(
   ox: number,
@@ -360,7 +385,7 @@ export function traceRayThroughGlass(
   while (glassUsed <= maxGlassLayers) {
     const hit = traceRayDda(gx, gy, gz, dx, dy, dz, voxels, remaining);
     if (!hit) return null;
-    if (hit.voxel.material !== 'glass') return hit;
+    if (!isTransmissiveMaterial(hit.voxel.material)) return hit;
     if (glassUsed >= maxGlassLayers) return hit;
 
     const [ix, iy, iz] = hit.cell;
@@ -402,7 +427,10 @@ export function ddaPickVoxel(
   };
 }
 
-export function maxRayDistanceForVoxels(voxels: Map<string, Voxel>): number {
+export function maxRayDistanceForVoxels(
+  voxels: Map<string, Voxel>,
+  rayOrigin?: readonly [number, number, number]
+): number {
   if (voxels.size === 0) return 4000;
   let minX = Infinity;
   let minY = Infinity;
@@ -424,5 +452,20 @@ export function maxRayDistanceForVoxels(voxels: Map<string, Voxel>): number {
   const h = maxY - minY + 1 + pad * 2;
   const d = maxZ - minZ + 1 + pad * 2;
   const diag = Math.sqrt(w * w + h * h + d * d);
-  return Math.min(Math.max(diag * 3, 256), 20000);
+  let budget = diag * 3;
+  if (rayOrigin) {
+    const [ox, oy, oz] = rayOrigin;
+    const x0 = minX - pad;
+    const y0 = minY - pad;
+    const z0 = minZ - pad;
+    const x1 = maxX + 1 + pad;
+    const y1 = maxY + 1 + pad;
+    const z1 = maxZ + 1 + pad;
+    const fx = Math.max(Math.abs(ox - x0), Math.abs(ox - x1));
+    const fy = Math.max(Math.abs(oy - y0), Math.abs(oy - y1));
+    const fz = Math.max(Math.abs(oz - z0), Math.abs(oz - z1));
+    const farToBounds = Math.hypot(fx, fy, fz);
+    budget = Math.max(budget, farToBounds + diag);
+  }
+  return Math.min(Math.max(budget, 256), 2_000_000);
 }

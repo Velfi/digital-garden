@@ -8,7 +8,9 @@
   const labels: Record<VoxelMaterialId, string> = {
     plastic: 'Plastic',
     metal: 'Metal',
+    rubber: 'Rubber',
     glass: 'Glass',
+    water: 'Water',
     glow: 'Glow'
   };
 </script>

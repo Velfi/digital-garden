@@ -917,7 +917,7 @@
     raycaster.setFromCamera(pointer, camera);
     if (get(renderingMode) === 'ray') {
       const r = raycaster.ray;
-      const maxDist = maxRayDistanceForVoxels(get(voxels));
+      const maxDist = maxRayDistanceForVoxels(get(voxels), [r.origin.x, r.origin.y, r.origin.z]);
       const hit = ddaPickVoxel(
         r.origin.x,
         r.origin.y,
@@ -4934,7 +4934,8 @@
         backgroundHex: hexToInt(get(backgroundColor)),
         ambientIntensity: get(ambientIntensity),
         sceneEnvironmentIntensity: get(sceneEnvironmentIntensity),
-        enableShadows: get(enableShadows)
+        enableShadows: get(enableShadows),
+        timeSeconds: performance.now() * 0.001
       });
 
       if (rayRenderer) {

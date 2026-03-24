@@ -104,7 +104,8 @@ export function syncGlassShadowUniformsFromBuckets(
   };
 
   for (const { mesh } of meshesByBucket.values()) {
-    if (mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY] !== 'glass') continue;
+    const materialId = mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY];
+    if (materialId !== 'glass' && materialId !== 'water') continue;
     const u = (mesh as THREE.Mesh).customDepthMaterial?.userData[
       VOXELLE_GLASS_SHADOW_UNIFORM_USERDATA_KEY
     ] as VoxelleGlassShadowUniforms | undefined;
@@ -276,8 +277,9 @@ export function createMeshManager(
       mesh.receiveShadow =
         opts.enableShadows &&
         opts.renderingMode !== 'ray' &&
-        materialId !== 'glass';
-      if (materialId === 'glass') {
+        materialId !== 'glass' &&
+        materialId !== 'water';
+      if (materialId === 'glass' || materialId === 'water') {
         /**
          * Use the depth-material glass shadow path on both backends.
          * WebGPU transmitted shadows can render through opaque occluders.

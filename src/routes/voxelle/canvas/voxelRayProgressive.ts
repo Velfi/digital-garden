@@ -8,6 +8,7 @@ import type { Voxel } from '../voxelMaterial';
 import {
   distToExitUnitCell,
   GLASS_ABSORPTION_PER_UNIT,
+  lookupVoxel,
   maxRayDistanceForVoxels,
   traceRayDda,
   traceShadowRayDda
@@ -25,7 +26,7 @@ import {
   GLASS_IOR,
   GLASS_MIN_TRANSMITTANCE,
   MAX_GLASS_DEPTH,
-  R0_FRESNEL,
+  MAX_TEMPORAL_SAMPLES,
   SHADOW_SURFACE_EPS,
   type VoxelRayTraceParams,
   hexToLinearRgb
@@ -40,6 +41,31 @@ const STRIDES = [8, 4, 2, 1] as const;
 export const DEFAULT_RAY_TICK_BUDGET_MS = 12;
 /** Check wall clock every N primary-ray blocks to stay within budget. */
 const BUDGET_CHECK_INTERVAL_BLOCKS = 64;
+const GLASS_CELL_NUDGE = 1e-6;
+
+function isTransmissiveMaterial(material: Voxel['material']): boolean {
+  return material === 'glass' || material === 'water';
+}
+
+function jitterHash01(x: number, y: number, sampleIdx: number, axis: number): number {
+  let h = Math.imul((x + 1) | 0, 0x9e3779b1);
+  h ^= Math.imul((y + 1) | 0, 0x85ebca6b);
+  h ^= Math.imul((sampleIdx + 1) | 0, 0xc2b2ae35);
+  h ^= Math.imul((axis + 1) | 0, 0x27d4eb2f);
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x7feb352d);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x846ca68b);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+function temporalJitter(x: number, y: number, sampleIdx: number): [number, number] {
+  return [
+    jitterHash01(x, y, sampleIdx, 0) - 0.5,
+    jitterHash01(x, y, sampleIdx, 1) - 0.5
+  ];
+}
 
 function linearToSrgbByte(x: number): number {
   const c = Math.max(0, Math.min(1, x));
@@ -58,11 +84,24 @@ function shadeMiss(
   const t = Math.max(0, Math.min(1, screenV / Math.max(1, bufH - 1)));
   const sky = hexToLinearRgb(0x9ec8f0);
   const ground = hexToLinearRgb(0x4a5568);
+  const lightTint = [params.lightColorR, params.lightColorG, params.lightColorB] as const;
+  const tintSkyAmt = 0.3 * params.lightStrength01;
+  const tintGroundAmt = 0.12 * params.lightStrength01;
+  const skyTinted: [number, number, number] = [
+    sky[0] * (1 - tintSkyAmt) + lightTint[0] * tintSkyAmt,
+    sky[1] * (1 - tintSkyAmt) + lightTint[1] * tintSkyAmt,
+    sky[2] * (1 - tintSkyAmt) + lightTint[2] * tintSkyAmt
+  ];
+  const groundTinted: [number, number, number] = [
+    ground[0] * (1 - tintGroundAmt) + lightTint[0] * tintGroundAmt,
+    ground[1] * (1 - tintGroundAmt) + lightTint[1] * tintGroundAmt,
+    ground[2] * (1 - tintGroundAmt) + lightTint[2] * tintGroundAmt
+  ];
   const g = t;
   return [
-    sky[0] * (1 - g) + ground[0] * g,
-    sky[1] * (1 - g) + ground[1] * g,
-    sky[2] * (1 - g) + ground[2] * g
+    skyTinted[0] * (1 - g) + groundTinted[0] * g,
+    skyTinted[1] * (1 - g) + groundTinted[1] * g,
+    skyTinted[2] * (1 - g) + groundTinted[2] * g
   ];
 }
 
@@ -79,9 +118,134 @@ function envReflectApprox(
   ];
 }
 
-function schlickReflectance(cosI: number): number {
-  const c = Math.max(0, Math.min(1, cosI));
-  return R0_FRESNEL + (1 - R0_FRESNEL) * Math.pow(1 - c, 5);
+function envReflectDirectional(
+  params: VoxelRayTraceParams,
+  reflDir: [number, number, number],
+  material: Voxel['material']
+): [number, number, number] {
+  const [, ry] = reflDir;
+  const t = Math.max(0, Math.min(1, (ry + 1) * 0.5));
+  const sky = hexToLinearRgb(0x9ec8f0);
+  const ground = hexToLinearRgb(0x4a5568);
+  const envR = sky[0] * t + ground[0] * (1 - t);
+  const envG = sky[1] * t + ground[1] * (1 - t);
+  const envB = sky[2] * t + ground[2] * (1 - t);
+  const [lx, ly, lz] = params.toLightWorld;
+  const sunAlign = Math.max(0, reflDir[0] * lx + reflDir[1] * ly + reflDir[2] * lz);
+  const sunExp = material === 'water' ? 12 : 48;
+  const sunMul = material === 'water' ? 3.5 : 1.2;
+  const sunLobe = Math.pow(sunAlign, sunExp) * sunMul;
+  return [
+    envR * 0.72 + params.ambientR * 0.28 + sunLobe * params.sunDiffuseR,
+    envG * 0.72 + params.ambientG * 0.28 + sunLobe * params.sunDiffuseG,
+    envB * 0.72 + params.ambientB * 0.28 + sunLobe * params.sunDiffuseB
+  ];
+}
+
+function transmissiveSunSpecular(
+  material: Voxel['material'],
+  faceNormal: [number, number, number],
+  rayDir: [number, number, number],
+  params: VoxelRayTraceParams
+): [number, number, number] {
+  const [nx, ny, nz] = faceNormal;
+  const [rdx, rdy, rdz] = rayDir;
+  const [lx, ly, lz] = params.toLightWorld;
+  const vx = -rdx;
+  const vy = -rdy;
+  const vz = -rdz;
+  const ndotl = nx * lx + ny * ly + nz * lz;
+  const ndotv = nx * vx + ny * vy + nz * vz;
+  if (ndotl <= 0 || ndotv <= 0) return [0, 0, 0];
+  const rx = 2 * ndotl * nx - lx;
+  const ry = 2 * ndotl * ny - ly;
+  const rz = 2 * ndotl * nz - lz;
+  const rv = Math.max(0, rx * vx + ry * vy + rz * vz);
+  if (material === 'water') {
+    const broad = Math.pow(rv, 6) * 1.1;
+    const tight = Math.pow(rv, 32) * 0.9;
+    const ndotlSoft = 0.3 + 0.7 * Math.max(0, ndotl);
+    const s = (broad + tight) * ndotlSoft;
+    return [s * params.sunDiffuseR, s * params.sunDiffuseG, s * params.sunDiffuseB];
+  }
+  const shininess = 96;
+  const intensity = 0.28;
+  const s = Math.pow(rv, shininess) * intensity;
+  return [s * params.sunDiffuseR, s * params.sunDiffuseG, s * params.sunDiffuseB];
+}
+
+function materialIor(material: Voxel['material']): number {
+  return material === 'water' ? 1.333 : GLASS_IOR;
+}
+
+function materialAbsorptionPerUnit(material: Voxel['material']): number {
+  return material === 'water' ? GLASS_ABSORPTION_PER_UNIT * 0.09 : GLASS_ABSORPTION_PER_UNIT;
+}
+
+function transmissiveTint(material: Voxel['material'], color24: number): [number, number, number] {
+  if (material === 'water') return [1, 1, 1];
+  return hexToLinearRgb(color24 & 0xffffff);
+}
+
+function absorptionRgbPerUnit(material: Voxel['material']): [number, number, number] {
+  if (material === 'water') {
+    // Approximate visible-spectrum behavior of clear water: red attenuates fastest, blue slowest.
+    return [0.03, 0.012, 0.006];
+  }
+  const a = materialAbsorptionPerUnit(material);
+  return [a, a, a];
+}
+
+function isExposedWaterFace(
+  voxels: Map<string, Voxel>,
+  cell: [number, number, number],
+  faceNormal: [number, number, number]
+): boolean {
+  const [ix, iy, iz] = cell;
+  const [nx, ny, nz] = faceNormal;
+  const neighbor = lookupVoxel(voxels, ix + nx, iy + ny, iz + nz);
+  return !neighbor || neighbor.material !== 'water';
+}
+
+function waterWaveNormal(
+  px: number,
+  pz: number,
+  timeSeconds: number,
+  signY: 1 | -1
+): [number, number, number] {
+  const amp1 = 0.18;
+  const amp2 = 0.12;
+  const f1 = 1.1;
+  const f2 = 1.75;
+  const ph1 = f1 * (px * 0.85 + pz * 1.05) + timeSeconds * 1.45;
+  const ph2 = f2 * (px * 1.2 - pz * 0.65) + timeSeconds * 1.05;
+  const dhdx = amp1 * 0.85 * f1 * Math.cos(ph1) + amp2 * 1.2 * f2 * Math.cos(ph2);
+  const dhdz = amp1 * 1.05 * f1 * Math.cos(ph1) - amp2 * 0.65 * f2 * Math.cos(ph2);
+  const sy = signY > 0 ? 1 : -1;
+  let nx = -dhdx * sy;
+  let ny = sy;
+  let nz = -dhdz * sy;
+  const invLen = 1 / Math.max(1e-8, Math.hypot(nx, ny, nz));
+  nx *= invLen;
+  ny *= invLen;
+  nz *= invLen;
+  return [nx, ny, nz];
+}
+
+function transmissiveShadingNormal(
+  voxel: Voxel,
+  faceNormal: [number, number, number],
+  cell: [number, number, number],
+  hitPoint: [number, number, number],
+  params: VoxelRayTraceParams,
+  voxels: Map<string, Voxel>
+): [number, number, number] {
+  if (voxel.material !== 'water') return faceNormal;
+  const [nx, ny, nz] = faceNormal;
+  if (Math.abs(ny) < 0.8 || nx !== 0 || nz !== 0) return faceNormal;
+  if (!isExposedWaterFace(voxels, cell, faceNormal)) return faceNormal;
+  const [px, , pz] = hitPoint;
+  return waterWaveNormal(px, pz, params.timeSeconds, ny > 0 ? 1 : -1);
 }
 
 function configureRayDataTexture(tex: THREE.DataTexture): void {
@@ -243,9 +407,9 @@ function shadeOpaqueSurface(
     const reflN = 2 * ndotl * nz - lz;
     const spec = Math.max(0, hx * reflL + hy * reflM + hz * reflN);
     const sp = Math.pow(spec, 48) * 0.45;
-    dr += sp * (params.sunDiffuseR + 0.2) * sr;
-    dg += sp * (params.sunDiffuseG + 0.2) * sg;
-    db += sp * (params.sunDiffuseB + 0.2) * sb;
+    dr += sp * params.sunDiffuseR * sr;
+    dg += sp * params.sunDiffuseG * sg;
+    db += sp * params.sunDiffuseB * sb;
   } else if (voxel.material === 'glow') {
     const [gr, gg, gb] = hexToLinearRgb(voxel.color & 0xffffff);
     const addR = gr * 0.85;
@@ -262,7 +426,7 @@ function shadeOpaqueSurface(
   return { rgb: [dr, dg, db], bloom: [bloomR, bloomG, bloomB] };
 }
 
-function shadeGlassFallback(
+function shadeTransmissiveFallback(
   voxel: Voxel,
   faceNormal: [number, number, number],
   _rayDir: [number, number, number],
@@ -297,12 +461,13 @@ function shadeGlassFallback(
     );
   }
 
+  const bgMix = voxel.material === 'water' ? 0.48 : 0.35;
   let dr = cr * params.ambientR + cr * params.sunDiffuseR * ndotl * sr;
   let dg = cg * params.ambientG + cg * params.sunDiffuseG * ndotl * sg;
   let db = cb * params.ambientB + cb * params.sunDiffuseB * ndotl * sb;
-  dr = dr * 0.65 + params.backgroundR * 0.35;
-  dg = dg * 0.65 + params.backgroundG * 0.35;
-  db = db * 0.65 + params.backgroundB * 0.35;
+  dr = dr * (1 - bgMix) + params.backgroundR * bgMix;
+  dg = dg * (1 - bgMix) + params.backgroundG * bgMix;
+  db = db * (1 - bgMix) + params.backgroundB * bgMix;
   return { rgb: [dr, dg, db], bloom: [0, 0, 0] };
 }
 
@@ -348,7 +513,7 @@ function traceAndShade(
     const py = ooy + rdy * hit.t;
     const pz = ooz + rdz * hit.t;
 
-    if (hit.voxel.material !== 'glass') {
+    if (!isTransmissiveMaterial(hit.voxel.material)) {
       const surf = shadeOpaqueSurface(
         hit.voxel,
         hit.faceNormal,
@@ -368,11 +533,20 @@ function traceAndShade(
       };
     }
 
-    /** 4th glass interface: no deeper transmission in this stack. */
+    const shadingNormal = transmissiveShadingNormal(
+      hit.voxel,
+      hit.faceNormal,
+      hit.cell,
+      [px, py, pz],
+      params,
+      voxels
+    );
+
+    /** Last transmissive interface: no deeper transmission in this stack. */
     if (glassDepth >= MAX_GLASS_DEPTH - 1) {
-      const fb = shadeGlassFallback(
+      const fb = shadeTransmissiveFallback(
         hit.voxel,
-        hit.faceNormal,
+        shadingNormal,
         [rdx, rdy, rdz],
         params,
         [px, py, pz],
@@ -385,24 +559,75 @@ function traceAndShade(
       };
     }
 
-    const [nx, ny, nz] = hit.faceNormal;
+    const [nx, ny, nz] = shadingNormal;
     const cosI = Math.max(0, -(nx * rdx + ny * rdy + nz * rdz));
-    const R = schlickReflectance(cosI);
+    const ior = materialIor(hit.voxel.material);
+    const r0 = Math.pow((1 - ior) / (1 + ior), 2);
+    let R = r0 + (1 - r0) * Math.pow(1 - cosI, 5);
+    if (hit.voxel.material === 'water') {
+      R = Math.max(0.12, R);
+    }
     const T = 1 - R;
-    const refl = envReflectApprox(params, screenV, bufH);
+    const ndoti = shadingNormal[0] * rdx + shadingNormal[1] * rdy + shadingNormal[2] * rdz;
+    const reflDir: [number, number, number] = [
+      rdx - 2 * ndoti * shadingNormal[0],
+      rdy - 2 * ndoti * shadingNormal[1],
+      rdz - 2 * ndoti * shadingNormal[2]
+    ];
+    const refl = envReflectDirectional(params, reflDir, hit.voxel.material);
+    const sunSpec = transmissiveSunSpecular(hit.voxel.material, shadingNormal, [rdx, rdy, rdz], params);
     accR += tr * R * refl[0];
     accG += tg * R * refl[1];
     accB += tb * R * refl[2];
+    accR += tr * sunSpec[0];
+    accG += tg * sunSpec[1];
+    accB += tb * sunSpec[2];
 
-    const tThrough = distToExitUnitCell(px, py, pz, rdx, rdy, rdz, ix, iy, iz);
-    const att = Math.max(GLASS_MIN_TRANSMITTANCE, Math.exp(-GLASS_ABSORPTION_PER_UNIT * tThrough));
-    const [gcr, gcg, gcb] = hexToLinearRgb(hit.voxel.color & 0xffffff);
+    tr *= T;
+    tg *= T;
+    tb *= T;
 
-    tr *= T * att * gcr;
-    tg *= T * att * gcg;
-    tb *= T * att * gcb;
+    let cx = ix;
+    let cy = iy;
+    let cz = iz;
+    let cpx = px;
+    let cpy = py;
+    let cpz = pz;
+    let curGlass = hit.voxel;
+    let step = hit.t;
+    while (true) {
+      const tThrough = distToExitUnitCell(cpx, cpy, cpz, rdx, rdy, rdz, cx, cy, cz);
+      const [absR, absG, absB] = absorptionRgbPerUnit(curGlass.material);
+      const attR = Math.max(GLASS_MIN_TRANSMITTANCE, Math.exp(-absR * tThrough));
+      const attG = Math.max(GLASS_MIN_TRANSMITTANCE, Math.exp(-absG * tThrough));
+      const attB = Math.max(GLASS_MIN_TRANSMITTANCE, Math.exp(-absB * tThrough));
+      const [gcr, gcg, gcb] = transmissiveTint(curGlass.material, curGlass.color);
+      tr *= attR * gcr;
+      tg *= attG * gcg;
+      tb *= attB * gcb;
+      cpx += rdx * tThrough;
+      cpy += rdy * tThrough;
+      cpz += rdz * tThrough;
+      step += tThrough;
 
-    const step = hit.t + tThrough + SHADOW_SURFACE_EPS;
+      const npx = cpx + rdx * GLASS_CELL_NUDGE;
+      const npy = cpy + rdy * GLASS_CELL_NUDGE;
+      const npz = cpz + rdz * GLASS_CELL_NUDGE;
+      const ncx = Math.floor(npx);
+      const ncy = Math.floor(npy);
+      const ncz = Math.floor(npz);
+      const next = lookupVoxel(voxels, ncx, ncy, ncz);
+      if (!next || !isTransmissiveMaterial(next.material) || next.material !== curGlass.material) break;
+      cx = ncx;
+      cy = ncy;
+      cz = ncz;
+      cpx = npx;
+      cpy = npy;
+      cpz = npz;
+      curGlass = next;
+      step += GLASS_CELL_NUDGE;
+    }
+    step += SHADOW_SURFACE_EPS;
     oox += rdx * step;
     ooy += rdy * step;
     ooz += rdz * step;
@@ -486,7 +711,11 @@ export class VoxelRayProgressive {
   /** Linear float RGB for glow-only bloom source (same resolution as `texture`). */
   bloomTexture: THREE.DataTexture;
   private data: Uint8ClampedArray;
+  private linearData: Float32Array;
   private bloomData: Float32Array;
+  private linearBloomData: Float32Array;
+  private accumData: Float32Array;
+  private accumBloomData: Float32Array;
   private bufW = 1;
   private bufH = 1;
   private strideIdx = 0;
@@ -498,13 +727,21 @@ export class VoxelRayProgressive {
   private completedBlocksThisStride = 0;
   /** Total primary-ray blocks in current stride pass (bufW/s × bufH/s). */
   private totalBlocksThisStride = 1;
+  /** Number of complete temporal full-res samples in the accumulation buffer. */
+  private temporalSampleCount = 0;
+  /** Target sample count while an in-progress temporal pass is being blended. */
+  private temporalBlendTarget = 0;
   private readonly rayOrigin = new THREE.Vector3();
   private readonly rayFar = new THREE.Vector3();
   private readonly rayDir = new THREE.Vector3();
 
   constructor() {
     this.data = new Uint8ClampedArray(4);
+    this.linearData = new Float32Array(4);
     this.bloomData = new Float32Array(4);
+    this.linearBloomData = new Float32Array(4);
+    this.accumData = new Float32Array(4);
+    this.accumBloomData = new Float32Array(4);
     this.texture = new THREE.DataTexture(this.data, 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
     this.texture.colorSpace = THREE.SRGBColorSpace;
     this.texture.flipY = true;
@@ -525,16 +762,35 @@ export class VoxelRayProgressive {
   /** 0..1 coarse-to-fine refinement; 1 when converged (full-res pass done). */
   getRefinementProgress(): number {
     if (this.converged) return 1;
-    const strideFrac =
-      this.totalBlocksThisStride > 0 ? this.completedBlocksThisStride / this.totalBlocksThisStride : 0;
-    return Math.min(1, (this.strideIdx + strideFrac) / STRIDES.length);
+    const strideCount = STRIDES.length;
+    if (this.strideIdx < strideCount) {
+      const strideFrac =
+        this.totalBlocksThisStride > 0 ? this.completedBlocksThisStride / this.totalBlocksThisStride : 0;
+      return Math.min(0.5, ((this.strideIdx + strideFrac) / strideCount) * 0.5);
+    }
+    const inTemporalPass =
+      this.temporalBlendTarget > this.temporalSampleCount && this.totalBlocksThisStride > 0;
+    const temporalBlockFrac = inTemporalPass
+      ? this.completedBlocksThisStride / this.totalBlocksThisStride
+      : 0;
+    const temporalProgress = Math.min(
+      1,
+      (this.temporalSampleCount + temporalBlockFrac) / Math.max(1, MAX_TEMPORAL_SAMPLES)
+    );
+    return 0.5 + temporalProgress * 0.5;
   }
 
-  private setRayFromPixel(camera: THREE.Camera, u: number, v: number): void {
+  private setRayFromPixel(
+    camera: THREE.Camera,
+    u: number,
+    v: number,
+    jitterX = 0,
+    jitterY = 0
+  ): void {
     const bufW = this.bufW;
     const bufH = this.bufH;
-    const nx = ((u + 0.5) / bufW) * 2 - 1;
-    const ny = -(((v + 0.5) / bufH) * 2 - 1);
+    const nx = ((u + 0.5 + jitterX) / bufW) * 2 - 1;
+    const ny = -(((v + 0.5 + jitterY) / bufH) * 2 - 1);
     if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
       const cam = camera as THREE.PerspectiveCamera;
       this.rayOrigin.setFromMatrixPosition(cam.matrixWorld);
@@ -574,7 +830,11 @@ export class VoxelRayProgressive {
       this.bufW = bufW;
       this.bufH = bufH;
       this.data = new Uint8ClampedArray(bufW * bufH * 4);
+      this.linearData = new Float32Array(bufW * bufH * 4);
       this.bloomData = new Float32Array(bufW * bufH * 4);
+      this.linearBloomData = new Float32Array(bufW * bufH * 4);
+      this.accumData = new Float32Array(bufW * bufH * 4);
+      this.accumBloomData = new Float32Array(bufW * bufH * 4);
       this.texture.dispose();
       this.texture = new THREE.DataTexture(this.data, bufW, bufH, THREE.RGBAFormat, THREE.UnsignedByteType);
       this.texture.colorSpace = THREE.SRGBColorSpace;
@@ -592,6 +852,8 @@ export class VoxelRayProgressive {
       this.resumeU = 0;
       this.resumeV = 0;
       this.completedBlocksThisStride = 0;
+      this.temporalSampleCount = 0;
+      this.temporalBlendTarget = 0;
     }
 
     if (fullInvalidated) {
@@ -600,17 +862,27 @@ export class VoxelRayProgressive {
       this.resumeU = 0;
       this.resumeV = 0;
       this.completedBlocksThisStride = 0;
+      this.temporalSampleCount = 0;
+      this.temporalBlendTarget = 0;
     } else if (this.converged) {
       return;
     }
 
-    const stride = STRIDES[Math.min(this.strideIdx, STRIDES.length - 1)]!;
-    const maxDist = maxRayDistanceForVoxels(voxels);
+    const temporalPhase = this.strideIdx >= STRIDES.length;
+    const stride = temporalPhase ? 1 : STRIDES[this.strideIdx]!;
+    const maxDist = maxRayDistanceForVoxels(voxels, [
+      camera.position.x,
+      camera.position.y,
+      camera.position.z
+    ]);
     const maxShadowDist = maxDist;
 
-    const blocksW = Math.ceil(bufW / stride);
-    const blocksH = Math.ceil(bufH / stride);
+    const blocksW = temporalPhase ? bufW : Math.ceil(bufW / stride);
+    const blocksH = temporalPhase ? bufH : Math.ceil(bufH / stride);
     this.totalBlocksThisStride = Math.max(1, blocksW * blocksH);
+    if (temporalPhase && this.temporalBlendTarget <= this.temporalSampleCount) {
+      this.temporalBlendTarget = this.temporalSampleCount + 1;
+    }
 
     const effectiveBudget =
       Number.isFinite(budgetMs) && budgetMs > 0 ? budgetMs : DEFAULT_RAY_TICK_BUDGET_MS;
@@ -620,7 +892,12 @@ export class VoxelRayProgressive {
     for (let v = this.resumeV; v < bufH; v += stride) {
       const uStart = v === this.resumeV ? this.resumeU : 0;
       for (let u = uStart; u < bufW; u += stride) {
-        this.setRayFromPixel(camera, u, v);
+        let jitterX = 0;
+        let jitterY = 0;
+        if (temporalPhase) {
+          [jitterX, jitterY] = temporalJitter(u, v, this.temporalBlendTarget);
+        }
+        this.setRayFromPixel(camera, u, v, jitterX, jitterY);
         const ox = this.rayOrigin.x;
         const oy = this.rayOrigin.y;
         const oz = this.rayOrigin.z;
@@ -643,10 +920,53 @@ export class VoxelRayProgressive {
         );
         const [lr, lg, lb] = rgb;
         const [br, bg, bb] = bloom;
-        const bw = Math.min(stride, bufW - u);
-        const bh = Math.min(stride, bufH - v);
-        setBlock(this.data, bufW, bufH, u, v, bw, bh, lr, lg, lb);
-        setBloomBlock(this.bloomData, bufW, bufH, u, v, bw, bh, br, bg, bb);
+        if (temporalPhase) {
+          const o = (v * bufW + u) * 4;
+          const n = this.temporalBlendTarget;
+          this.accumData[o] += (lr - this.accumData[o]) / n;
+          this.accumData[o + 1] += (lg - this.accumData[o + 1]) / n;
+          this.accumData[o + 2] += (lb - this.accumData[o + 2]) / n;
+          this.accumData[o + 3] = 1;
+          this.accumBloomData[o] += (br - this.accumBloomData[o]) / n;
+          this.accumBloomData[o + 1] += (bg - this.accumBloomData[o + 1]) / n;
+          this.accumBloomData[o + 2] += (bb - this.accumBloomData[o + 2]) / n;
+          this.accumBloomData[o + 3] = 1;
+          this.linearData[o] = this.accumData[o];
+          this.linearData[o + 1] = this.accumData[o + 1];
+          this.linearData[o + 2] = this.accumData[o + 2];
+          this.linearData[o + 3] = 1;
+          this.linearBloomData[o] = this.accumBloomData[o];
+          this.linearBloomData[o + 1] = this.accumBloomData[o + 1];
+          this.linearBloomData[o + 2] = this.accumBloomData[o + 2];
+          this.linearBloomData[o + 3] = 1;
+          this.data[o] = linearToSrgbByte(this.accumData[o]);
+          this.data[o + 1] = linearToSrgbByte(this.accumData[o + 1]);
+          this.data[o + 2] = linearToSrgbByte(this.accumData[o + 2]);
+          this.data[o + 3] = 255;
+          this.bloomData[o] = this.accumBloomData[o];
+          this.bloomData[o + 1] = this.accumBloomData[o + 1];
+          this.bloomData[o + 2] = this.accumBloomData[o + 2];
+          this.bloomData[o + 3] = 1;
+        } else {
+          const bw = Math.min(stride, bufW - u);
+          const bh = Math.min(stride, bufH - v);
+          setBlock(this.data, bufW, bufH, u, v, bw, bh, lr, lg, lb);
+          setBloomBlock(this.bloomData, bufW, bufH, u, v, bw, bh, br, bg, bb);
+          for (let vv = v; vv < Math.min(v + bh, bufH); vv++) {
+            let o = (vv * bufW + u) * 4;
+            for (let uu = u; uu < Math.min(u + bw, bufW); uu++) {
+              this.linearData[o] = lr;
+              this.linearData[o + 1] = lg;
+              this.linearData[o + 2] = lb;
+              this.linearData[o + 3] = 1;
+              this.linearBloomData[o] = br;
+              this.linearBloomData[o + 1] = bg;
+              this.linearBloomData[o + 2] = bb;
+              this.linearBloomData[o + 3] = 1;
+              o += 4;
+            }
+          }
+        }
 
         this.completedBlocksThisStride++;
 
@@ -676,10 +996,19 @@ export class VoxelRayProgressive {
     this.resumeV = 0;
     this.completedBlocksThisStride = 0;
 
-    if (this.strideIdx < STRIDES.length - 1) {
+    if (temporalPhase) {
+      this.temporalSampleCount = this.temporalBlendTarget;
+      this.temporalBlendTarget = 0;
+      this.converged = this.temporalSampleCount >= MAX_TEMPORAL_SAMPLES;
+    } else if (this.strideIdx < STRIDES.length - 1) {
       this.strideIdx++;
     } else {
-      this.converged = true;
+      this.strideIdx = STRIDES.length;
+      this.temporalSampleCount = 1;
+      this.temporalBlendTarget = 0;
+      this.accumData.set(this.linearData);
+      this.accumBloomData.set(this.linearBloomData);
+      this.converged = this.temporalSampleCount >= MAX_TEMPORAL_SAMPLES;
     }
 
     this.texture.needsUpdate = true;

@@ -7,23 +7,27 @@ import type { Voxel } from './voxelMaterial';
 import { voxelBucketKey } from './voxelMaterial';
 
 /**
- * AO occlusion rule: glass does not darken neighboring faces.
+ * AO occlusion rule: transmissive voxels do not darken neighboring faces.
  * Keep this independent from face-culling rules.
  */
+function isTransmissiveMaterial(material: Voxel['material']): boolean {
+  return material === 'glass' || material === 'water';
+}
+
 function hasOccludingVoxelAt(voxels: Map<string, Voxel>, nx: number, ny: number, nz: number): boolean {
   const vx = voxels.get(coordKey(nx, ny, nz));
   if (!vx) return false;
-  return vx.material !== 'glass';
+  return !isTransmissiveMaterial(vx.material);
 }
 
 /**
  * Face culling rule:
- * - Non-glass keeps drawing against glass so opaque↔glass boundaries remain visible.
- * - Glass culls against any neighbor so we do not stack interior transparent faces.
+ * - Non-transmissive keeps drawing against transmissive so boundaries remain visible.
+ * - Transmissive culls against any neighbor so we do not stack interior transparent faces.
  */
 function isFaceOccludedByNeighbor(source: Voxel, neighbor: Voxel): boolean {
-  if (source.material === 'glass') return true;
-  return neighbor.material !== 'glass';
+  if (isTransmissiveMaterial(source.material)) return true;
+  return !isTransmissiveMaterial(neighbor.material);
 }
 
 /** Beer-Lambert absorption per voxel depth for glass buckets. */
@@ -111,17 +115,18 @@ function hasOccludingNeighbor(
   return isFaceOccludedByNeighbor(sourceVoxel, neighbor);
 }
 
-function getGlassThicknessAtFace(
+function getTransmissiveThicknessAtFace(
   pos: Vec3,
   axis: number,
   sign: number,
+  material: Voxel['material'],
   voxels: Map<string, Voxel>
 ): number {
   let [x, y, z] = pos;
   let depth = 0;
   while (true) {
     const v = voxels.get(coordKey(x, y, z));
-    if (!v || v.material !== 'glass') break;
+    if (!v || v.material !== material) break;
     depth++;
     if (axis === 0) x -= sign;
     else if (axis === 1) y -= sign;
@@ -362,8 +367,8 @@ export function computeGreedyMesh(
   const result = new Map<string, GreedyMeshCoreResult>();
 
   for (const [bucketKey, { positions, color: col, material }] of groups) {
-    // Glass should stay clean/transparent: skip AO darkening entirely for this bucket.
-    const bucketAoEnabled = aoEnabled && material !== 'glass';
+    // Transmissive buckets should stay clean/transparent: skip AO darkening entirely.
+    const bucketAoEnabled = aoEnabled && !isTransmissiveMaterial(material);
     const faces: { pos: Vec3; axis: number; sign: number }[] = [];
 
     for (const pos of positions) {
@@ -382,17 +387,17 @@ export function computeGreedyMesh(
       ? precomputeVertexAO(faces, occlusionVoxels)
       : new Map<string, number>();
 
-    const glassThicknessByCell = new Map<string, number>();
-    if (material === 'glass') {
+    const transmissiveThicknessByCell = new Map<string, number>();
+    if (isTransmissiveMaterial(material)) {
       for (const f of faces) {
         const [x, y, z] = f.pos;
         const depth = f.axis === 0 ? x : f.axis === 1 ? y : z;
         const u = f.axis === 0 ? y : f.axis === 1 ? x : x;
         const v = f.axis === 0 ? z : f.axis === 1 ? z : y;
         const cellKey = `${f.axis},${f.sign},${depth},${u},${v}`;
-        glassThicknessByCell.set(
+        transmissiveThicknessByCell.set(
           cellKey,
-          getGlassThicknessAtFace(f.pos, f.axis, f.sign, occlusionVoxels)
+          getTransmissiveThicknessAtFace(f.pos, f.axis, f.sign, material, occlusionVoxels)
         );
       }
     }
@@ -408,7 +413,7 @@ export function computeGreedyMesh(
         const v = axis === 0 ? z : axis === 1 ? z : y;
         const fo = FACE_OFFSETS[axis * 2 + (sign === 1 ? 0 : 1)];
         const cellKey = `${axis},${sign},${depth},${u},${v}`;
-        const t = glassThicknessByCell.get(cellKey) ?? 1;
+        const t = transmissiveThicknessByCell.get(cellKey) ?? 1;
         quads.push({
           n: fo.n,
           u: fo.u,
@@ -440,13 +445,13 @@ export function computeGreedyMesh(
         const merged = greedyMerge(cells);
         for (const { u, v, w, h } of merged) {
           let t = 1;
-          if (material === 'glass') {
+          if (isTransmissiveMaterial(material)) {
             let sum = 0;
             let count = 0;
             for (let du = 0; du < w; du++) {
               for (let dv = 0; dv < h; dv++) {
                 const cellKey = `${axis},${sign},${depth},${u + du},${v + dv}`;
-                sum += glassThicknessByCell.get(cellKey) ?? 1;
+                sum += transmissiveThicknessByCell.get(cellKey) ?? 1;
                 count++;
               }
             }
@@ -504,13 +509,13 @@ export function computeGreedyMesh(
       const signN = nx !== 0 ? nx : ny !== 0 ? ny : nz;
       const ccw = signN > 0 !== (ny !== 0);
 
-      const slabPerVert = material === 'glass' ? q.t : 1;
+      const slabPerVert = isTransmissiveMaterial(material) ? q.t : 1;
       const emitTri = (t: number[][], tao: number[]) => {
         for (let i = 0; i < 3; i++) {
           verts.push(t[i][0], t[i][1], t[i][2]);
           normals.push(nx, ny, nz);
           const aoMul = bucketAoEnabled ? aoStateToMultiplier(tao[i], aoValues) : 1;
-          const glassMul = material === 'glass' ? glassDepthToTransmittance(q.t) : 1;
+          const glassMul = isTransmissiveMaterial(material) ? glassDepthToTransmittance(q.t) : 1;
           const m = aoMul * glassMul;
           colors.push(r * m, g * m, b * m);
           slabT.push(slabPerVert);

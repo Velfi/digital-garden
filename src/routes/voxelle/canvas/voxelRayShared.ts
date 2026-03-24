@@ -5,6 +5,7 @@ import {
 } from './gpuSoftShadow';
 
 export const MAX_GLASS_DEPTH = 4;
+export const MAX_TEMPORAL_SAMPLES = 64;
 export const GLASS_MIN_TRANSMITTANCE = 0.35;
 export const GLASS_IOR = 1.5;
 export const R0_FRESNEL = Math.pow((1 - GLASS_IOR) / (1 + GLASS_IOR), 2);
@@ -15,6 +16,12 @@ export const GLOW_BLOOM_LINEAR_SCALE = 2.8;
 export type VoxelRayTraceParams = {
   /** Unit vector from surface toward the directional light (world). */
   toLightWorld: [number, number, number];
+  /** Directional light color in linear space (no intensity multiplier). */
+  lightColorR: number;
+  lightColorG: number;
+  lightColorB: number;
+  /** Relative directional light strength in [0,1] for sky/reflection tinting. */
+  lightStrength01: number;
   sunDiffuseR: number;
   sunDiffuseG: number;
   sunDiffuseB: number;
@@ -30,6 +37,8 @@ export type VoxelRayTraceParams = {
   shadowRaySamples: number;
   /** Cone half-angle (radians) for jittering shadow rays toward the light. */
   shadowSoftnessRadians: number;
+  /** Monotonic wall-clock time (seconds) for animated ray shading effects. */
+  timeSeconds: number;
 };
 
 export function hexToLinearRgb(hex: number): [number, number, number] {
@@ -49,6 +58,7 @@ export function buildVoxelRayTraceParams(
     ambientIntensity: number;
     sceneEnvironmentIntensity: number;
     enableShadows: boolean;
+    timeSeconds?: number;
   }
 ): VoxelRayTraceParams {
   const lightPos = new THREE.Vector3();
@@ -74,6 +84,10 @@ export function buildVoxelRayTraceParams(
 
   return {
     toLightWorld,
+    lightColorR: sun.r,
+    lightColorG: sun.g,
+    lightColorB: sun.b,
+    lightStrength01: Math.max(0, Math.min(1, sunMul / 2.3)),
     sunDiffuseR: sun.r * sunMul,
     sunDiffuseG: sun.g * sunMul,
     sunDiffuseB: sun.b * sunMul,
@@ -86,6 +100,7 @@ export function buildVoxelRayTraceParams(
     enableSky: opts.enableSky,
     enableShadows: opts.enableShadows,
     shadowRaySamples: DEFAULT_SHADOW_RAY_SAMPLES,
-    shadowSoftnessRadians: DEFAULT_SHADOW_SOFTNESS_RADIANS
+    shadowSoftnessRadians: DEFAULT_SHADOW_SOFTNESS_RADIANS,
+    timeSeconds: opts.timeSeconds ?? 0
   };
 }

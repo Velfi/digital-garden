@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 
 const PLASTIC: VoxelMaterialId = 'plastic';
-export const VOXEL_MATERIAL_IDS = ['plastic', 'metal', 'glass', 'glow'] as const;
+export const VOXEL_MATERIAL_IDS = ['plastic', 'metal', 'rubber', 'glass', 'water', 'glow'] as const;
 export type VoxelMaterialId = (typeof VOXEL_MATERIAL_IDS)[number];
 
 export type Voxel = { color: number; material: VoxelMaterialId };
@@ -113,6 +113,16 @@ export const VOXEL_GLASS_PHYSICAL = {
   clearcoatRoughness: 0.04
 } as const;
 
+export const VOXEL_WATER_PHYSICAL = {
+  transmission: 0.995,
+  thickness: 0.9,
+  ior: 1.333,
+  attenuationDistance: 20,
+  roughness: 0.03,
+  clearcoat: 0.08,
+  clearcoatRoughness: 0.02
+} as const;
+
 /** Base IBL strength per preset (before scene environment multiplier). */
 export function voxelMaterialBaseEnvMapIntensity(materialId: VoxelMaterialId): number {
   const plastic = 0.45;
@@ -123,8 +133,12 @@ export function voxelMaterialBaseEnvMapIntensity(materialId: VoxelMaterialId): n
       return plastic * 1.25;
     case 'metal':
       return 0.52;
+    case 'rubber':
+      return plastic * 0.35;
     case 'glow':
       return plastic * 0.85;
+    case 'water':
+      return plastic * 1.2;
     default:
       return plastic;
   }
@@ -196,6 +210,50 @@ varying float voxelleSlabThickness;`
     return m;
   }
 
+  if (materialId === 'water') {
+    const w = VOXEL_WATER_PHYSICAL;
+    const tint = new THREE.Color(0xffffff).lerp(new THREE.Color(color24 & 0xffffff), 0.2);
+    const m = new THREE.MeshPhysicalMaterial({
+      ...base,
+      metalness: 0,
+      roughness: w.roughness,
+      transparent: true,
+      opacity: 1,
+      depthWrite: false,
+      transmission: w.transmission,
+      thickness: w.thickness,
+      ior: w.ior,
+      specularIntensity: 1,
+      clearcoat: w.clearcoat,
+      clearcoatRoughness: w.clearcoatRoughness,
+      attenuationColor: tint,
+      attenuationDistance: w.attenuationDistance
+    });
+    m.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <common>',
+        `#include <common>
+attribute float slabThickness;
+varying float voxelleSlabThickness;`
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+voxelleSlabThickness = slabThickness;`
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `#include <common>
+varying float voxelleSlabThickness;`
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '\tmaterial.thickness = thickness;',
+        '\tmaterial.thickness = thickness * max( voxelleSlabThickness, 1.0 );'
+      );
+    };
+    return m;
+  }
+
   if (materialId === 'metal') {
     return new THREE.MeshStandardMaterial({
       ...base,
@@ -211,6 +269,14 @@ varying float voxelleSlabThickness;`
       roughness: 0.28,
       emissive: new THREE.Color(color24 & 0xffffff),
       emissiveIntensity: 2.5
+    });
+  }
+
+  if (materialId === 'rubber') {
+    return new THREE.MeshStandardMaterial({
+      ...base,
+      metalness: 0,
+      roughness: 0.9
     });
   }
 

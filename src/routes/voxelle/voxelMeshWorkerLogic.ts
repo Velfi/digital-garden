@@ -114,7 +114,7 @@ function replaceGlassBucketsWithFullSceneGreedy(
 ): VoxelMeshWorkerOutput['results'] {
   return results.map((r) => {
     const parsed = parseBucketKey(r.bucketKey);
-    if (!parsed || parsed.material !== 'glass') return r;
+    if (!parsed || (parsed.material !== 'glass' && parsed.material !== 'water')) return r;
     const subset = voxelsForBucket(fullVoxels, r.bucketKey);
     if (subset.size === 0) return r;
     const core = computeGreedyMesh(subset, {

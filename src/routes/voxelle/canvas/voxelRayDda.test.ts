@@ -88,10 +88,31 @@ describe('traceRayThroughGlass', () => {
     expect(hit!.cell).toEqual([1, 0, 0]);
     expect(hit!.voxel.material).toBe('plastic');
   });
+
+  it('treats contiguous glass cells as pass-through layers to reach opaque target', () => {
+    const voxels = new Map([
+      ['0,0,0', glass(0xffffff)],
+      ['1,0,0', glass(0xffffff)],
+      ['2,0,0', glass(0xffffff)],
+      ['3,0,0', plasticVoxel(0xff0000)]
+    ]);
+    const hit = traceRayThroughGlass(-0.5, 0.5, 0.5, 1, 0, 0, voxels, 50, 4);
+    expect(hit).not.toBeNull();
+    expect(hit!.cell).toEqual([3, 0, 0]);
+    expect(hit!.voxel.material).toBe('plastic');
+  });
 });
 
 describe('maxRayDistanceForVoxels', () => {
   it('returns a sane default for empty map', () => {
     expect(maxRayDistanceForVoxels(new Map())).toBe(4000);
+  });
+
+  it('expands distance budget when ray origin is far away', () => {
+    const voxels = new Map([['0,0,0', plasticVoxel(0xffffff)]]);
+    const near = maxRayDistanceForVoxels(voxels, [0, 0, -5]);
+    const far = maxRayDistanceForVoxels(voxels, [0, 0, -100_000]);
+    expect(far).toBeGreaterThan(near);
+    expect(far).toBeGreaterThan(100_000);
   });
 });
