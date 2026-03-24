@@ -4,6 +4,18 @@ import { imagetools } from 'vite-imagetools';
 
 export default defineConfig({
   plugins: [imagetools(), sveltekit()],
+  build: {
+    chunkSizeWarningLimit: 1600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/svelte')) {
+            return 'vendor-svelte';
+          }
+        }
+      }
+    }
+  },
   server: {
     fs: {
       allow: ['static'],

@@ -11,6 +11,7 @@ const sampleData: VoxelleFileFormat = {
     [0, 0, 0, 0xff5733, 'plastic'],
     [1, 0, 0, 0x00ff00, 'plastic']
   ],
+  hiddenVoxels: [],
   scene: { focalLength: 29, orthographic: true }
 };
 

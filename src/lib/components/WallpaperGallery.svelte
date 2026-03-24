@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
+  import { base } from '$app/paths';
 
   type Src = string;
   type Href = string;
@@ -9,7 +9,8 @@
 
   function galleryHref(path: string): string {
     if (/^[a-z][a-z0-9+.-]*:/i.test(path)) return path;
-    return resolve(path.startsWith('/') ? path : `/${path}`);
+    const normalized = path.startsWith('/') ? path : `/${path}`;
+    return `${base}${normalized}`;
   }
 </script>
 

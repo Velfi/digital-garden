@@ -1,10 +1,12 @@
 <script lang="ts">
-  export let images: string[];
+  let { images }: { images: string[] } = $props();
   let imageIndex = $state(0);
 
-  if (images.length == 0) {
-    throw Error('must pass at least one image to Thumbnail Gallery!');
-  }
+  $effect.pre(() => {
+    if (images.length === 0) {
+      throw new Error('must pass at least one image to Thumbnail Gallery!');
+    }
+  });
 
   const nextImageIndex = () => {
     const maxIndex = images.length - 1;
@@ -26,15 +28,15 @@
 
 <div class="gallery">
   <img alt="a product thumbnail" src={images[imageIndex]} />
-  <button class="index-button left" on:click={previousImageIndex} aria-label="Previous image">
+  <button class="index-button left" onclick={previousImageIndex} aria-label="Previous image">
     &#706;
   </button>
   <button
     class="new-tab-button"
-    on:click={() => window.open(images[imageIndex])}
+    onclick={() => window.open(images[imageIndex])}
     aria-label="Open in new tab"
   ></button>
-  <button class="index-button right" on:click={nextImageIndex} aria-label="Next image">
+  <button class="index-button right" onclick={nextImageIndex} aria-label="Next image">
     &#707;
   </button>
 </div>

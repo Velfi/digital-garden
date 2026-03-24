@@ -410,8 +410,6 @@ export {
   generatePiscinaVoxels,
   getPiscinaPositions,
   buildPiscinaFrame,
-  buildPiscinaRadarProfile,
-  getCachedPiscinaRadarProfile,
   widthThicknessFromGirth,
   computePiscinaVoxelCap,
   PISCINA_DV_HALF_MAX,
@@ -426,10 +424,6 @@ export {
   PISCINA_PRESET_NUMERIC,
   SPECIES_OUTLINES
 } from './generators/piscina';
-export type {
-  GeneratePiscinaOptions,
-  PiscinaPresetNumericFields,
-  PiscinaRadarProfile
-} from './generators/piscina';
+export type { GeneratePiscinaOptions, PiscinaPresetNumericFields } from './generators/piscina';
 export { generateRoofVoxels } from './generators/roof';
 export type { GenerateRoofOptions } from './generators/roof';

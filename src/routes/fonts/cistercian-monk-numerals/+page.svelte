@@ -5,8 +5,8 @@
   const NUMBER_REGEX = /^\d{1,4}$/;
 
   let size = 120;
-  let strokeWidth = 10;
-  let strokeLinecap: 'round' | 'inherit' | 'butt' | 'square' = 'round';
+  let strokeWidth = $state(10);
+  let strokeLinecap = $state<'round' | 'inherit' | 'butt' | 'square'>('round');
   // Any value they type in the input field
   let value = $state('8148');
   // The value of the input field, but only if it's a valid number
@@ -70,7 +70,7 @@
       class="rng"
       type="button"
       title="Generate a random number"
-      on:click={onClickRng}
+      onclick={onClickRng}
       tabIndex={0}
     >
       🎲

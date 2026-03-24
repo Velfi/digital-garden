@@ -20,7 +20,6 @@ export type {
   PiscinaTailMode,
   PiscinaTailParams
 } from './types';
-export type { PiscinaRadarProfile } from './piscinaRadarSilhouette';
 export {
   buildPiscinaFrame,
   computePiscinaVoxelCap,
@@ -35,7 +34,6 @@ export {
   PISCINA_VOXEL_CAP_MAX,
   PISCINA_VOXEL_CAP_MIN
 } from './pipeline';
-export { buildPiscinaRadarProfile, getCachedPiscinaRadarProfile } from './piscinaRadarSilhouette';
 
 /** Upper bound for voxels in one placement (tests / UI hints). */
 export const PISCINA_VOXEL_CAP = PISCINA_VOXEL_CAP_MAX;

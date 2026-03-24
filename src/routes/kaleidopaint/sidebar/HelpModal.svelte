@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { marked } from 'marked';
   import { getSkipStartup, setSkipStartup } from '../store';
 
   const HELP_URL = '/kaleidopaint/HELP.md';
@@ -28,6 +27,7 @@
     fetch(contentUrl)
       .then((r) => (r.ok ? r.text() : 'Help content could not be loaded.'))
       .then(async (text) => {
+        const { marked } = await import('marked');
         content = await marked.parse(text);
         loading = false;
       })
