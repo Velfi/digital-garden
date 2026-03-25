@@ -3,7 +3,7 @@ import { tool, addPanelStore } from './core';
 
 /**
  * High-level canvas interaction mode for camera vs sculpt vs UI overlays.
- * Pointer/gizmo suppression (e.g. piscina handle drag) is applied separately in VoxelCanvas.
+ * Pointer/gizmo suppression for in-canvas handles is applied separately in VoxelCanvas.
  */
 export type VoxelleCanvasInteractionMode = 'fly' | 'hand' | 'add_panel' | 'sculpt';
 

@@ -49,7 +49,8 @@ export type Tool =
   | 'ashlar'
   | 'roof'
   | 'flora'
-  | 'piscina';
+  | 'piscina'
+  | 'insecta';
 
 export type ClayMode =
   | 'bulk'

@@ -256,7 +256,8 @@ export function createSelectionGizmoController(deps: SelectionGizmoDeps) {
       tool !== 'hand' &&
       tool !== 'stamp' &&
       tool !== 'punch' &&
-      tool !== 'piscina'
+      tool !== 'piscina' &&
+      tool !== 'insecta'
     ) {
       const center = getSelectionCenter(sel);
       if (!center) {

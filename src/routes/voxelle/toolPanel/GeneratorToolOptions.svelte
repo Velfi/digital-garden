@@ -6,6 +6,7 @@
   import GrassOptions from './GrassOptions.svelte';
   import FloraOptions from './FloraOptions.svelte';
   import PiscinaOptions from './PiscinaOptions.svelte';
+  import InsectaOptions from './InsectaOptions.svelte';
   import RoofOptions from './RoofOptions.svelte';
 
   const generatorPanelOpen = $derived(isGeneratorTool($tool));
@@ -17,5 +18,6 @@
   <GrassOptions />
   <FloraOptions />
   <PiscinaOptions />
+  <InsectaOptions />
   <RoofOptions />
 {/if}

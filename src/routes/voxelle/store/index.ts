@@ -143,6 +143,43 @@ export {
   piscinaFinCaudalSpread,
   piscinaFinPectoralCant,
   piscinaFinPectoralSweep,
+  insectaSpecies,
+  insectaTotalLength,
+  insectaHeadRatio,
+  insectaThoraxRatio,
+  insectaAbdomenRatio,
+  insectaBodyHalfWidth,
+  insectaBodyHalfHeight,
+  insectaAbdomenTaper,
+  insectaHeadShape,
+  insectaAnchorOffsetU,
+  insectaAnchorOffsetV,
+  insectaBodyYaw,
+  insectaBodyArch,
+  insectaLegFront,
+  insectaLegMid,
+  insectaLegHind,
+  insectaAntennaLength,
+  insectaAntennaSpread,
+  insectaAntennaPitch,
+  insectaAntennaRoot,
+  insectaMandibleLength,
+  insectaMandibleSpread,
+  insectaMandibleForward,
+  insectaWingShape,
+  insectaShowWingFore,
+  insectaWingForeLength,
+  insectaWingForeWidth,
+  insectaWingForeSpread,
+  insectaWingForeForwardCant,
+  insectaWingForePitch,
+  insectaWingForeOffset,
+  insectaShowWingHind,
+  insectaWingHindLength,
+  insectaWingHindWidth,
+  insectaWingHindSpread,
+  insectaWingHindPitch,
+  insectaWingHindOffset,
   type FloraPresetId,
   type PiscinaPresetId,
   roofStyle,
@@ -425,5 +462,19 @@ export {
   SPECIES_OUTLINES
 } from './generators/piscina';
 export type { GeneratePiscinaOptions, PiscinaPresetNumericFields } from './generators/piscina';
+export {
+  generateInsectaVoxels,
+  getInsectaPositions,
+  INSECTA_SPECIES_DEFAULTS,
+  INSECTA_VOXEL_CAP,
+  clampInsectaOptions
+} from './generators/insecta';
+export type {
+  ArticulatedLeg2,
+  GenerateInsectaOptions,
+  InsectaSpeciesId,
+  LegFrameOffset
+} from './generators/insecta';
+export { cloneArticulatedLeg2 } from './generators/articulatedLeg';
 export { generateRoofVoxels } from './generators/roof';
 export type { GenerateRoofOptions } from './generators/roof';

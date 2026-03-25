@@ -155,6 +155,13 @@ const DESCRIPTORS: ToolDescriptor[] = [
     label: 'Piscina',
     title: 'Place procedural fish on a face; use sliders to shape',
     defaultPane: 'generators'
+  },
+  {
+    id: 'insecta',
+    category: 'generator',
+    label: 'Insecta',
+    title: 'Place procedural insects on a face; use sliders to shape',
+    defaultPane: 'generators'
   }
 ];
 

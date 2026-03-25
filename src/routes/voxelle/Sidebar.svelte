@@ -154,7 +154,8 @@
               $lastDrawTool === 'ashlar' ||
               $lastDrawTool === 'roof' ||
               $lastDrawTool === 'flora' ||
-              $lastDrawTool === 'piscina'
+              $lastDrawTool === 'piscina' ||
+              $lastDrawTool === 'insecta'
               ? 'remove'
               : $lastDrawTool
           );

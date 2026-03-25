@@ -644,9 +644,10 @@
     opacity: 0.95;
   }
 
+  /* Body | Placement on one row; Fins span full width below — avoids an empty column. */
   .piscina-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.35rem;
     align-items: start;
   }
@@ -740,17 +741,7 @@
     flex: 1;
   }
 
-  .piscina-panel :global(.tool-panel-row--wide-label .tool-panel-label) {
-    width: 4.5rem;
-  }
-
   @media (max-width: 1200px) {
-    .piscina-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .piscina-card--fins {
-      grid-column: 1 / -1;
-    }
     .piscina-fin-groups {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }

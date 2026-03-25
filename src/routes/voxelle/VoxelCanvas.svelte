@@ -167,7 +167,44 @@
     piscinaFinCaudalSpread,
     piscinaFinPectoralCant,
     piscinaFinPectoralSweep,
+    insectaSpecies,
+    insectaTotalLength,
+    insectaHeadRatio,
+    insectaThoraxRatio,
+    insectaAbdomenRatio,
+    insectaBodyHalfWidth,
+    insectaBodyHalfHeight,
+    insectaAbdomenTaper,
+    insectaHeadShape,
+    insectaAnchorOffsetU,
+    insectaAnchorOffsetV,
+    insectaBodyYaw,
+    insectaBodyArch,
+    insectaLegFront,
+    insectaLegMid,
+    insectaLegHind,
+    insectaAntennaLength,
+    insectaAntennaSpread,
+    insectaAntennaPitch,
+    insectaAntennaRoot,
+    insectaMandibleLength,
+    insectaMandibleSpread,
+    insectaMandibleForward,
+    insectaWingShape,
+    insectaShowWingFore,
+    insectaWingForeLength,
+    insectaWingForeWidth,
+    insectaWingForeSpread,
+    insectaWingForePitch,
+    insectaWingForeOffset,
+    insectaShowWingHind,
+    insectaWingHindLength,
+    insectaWingHindWidth,
+    insectaWingHindSpread,
+    insectaWingHindPitch,
+    insectaWingHindOffset,
     getPiscinaPositions,
+    getInsectaPositions,
     roofStyle,
     roofHeight,
     roofThickness,
@@ -305,7 +342,8 @@
     getAshlarThicknessAxis,
     nextRockClusterRng,
     buildFloraOptionsFromStores,
-    buildPiscinaOptionsFromStores
+    buildPiscinaOptionsFromStores,
+    buildInsectaOptionsFromStores
   } from './canvas/voxelCanvasStrokeCommit';
   import VoxelCanvasOverlays from './VoxelCanvasOverlays.svelte';
 
@@ -535,6 +573,8 @@
   let nextFloraPlacementSeed = $state(0);
   /** Next piscina placement seed (preview and apply match). */
   let nextPiscinaPlacementSeed = $state(0);
+  /** Next insecta placement seed (preview and apply match). */
+  let nextInsectaPlacementSeed = $state(0);
   /** Next ashlar placement seed (preview and apply match). */
   let nextAshlarPlacementSeed = $state(0);
   /** Clay bulk: last sampled position for path accumulation */
@@ -610,6 +650,12 @@
   let piscinaLockedNormal = $state<FaceNormal | null>(null);
   let piscinaHoverPlace = $state<[number, number, number] | null>(null);
   let piscinaHoverNormal = $state<FaceNormal | null>(null);
+  /** Same two-phase flow as piscina: pick face, then shape and commit. */
+  let insectaPhase = $state<'pick' | 'shape'>('pick');
+  let insectaLockedPlace = $state<[number, number, number] | null>(null);
+  let insectaLockedNormal = $state<FaceNormal | null>(null);
+  let insectaHoverPlace = $state<[number, number, number] | null>(null);
+  let insectaHoverNormal = $state<FaceNormal | null>(null);
 
   let gridGroup: THREE.Group | null = null;
   let gridLineMaterial: InstanceType<typeof LineMaterial> | THREE.LineBasicMaterial | null = null;
@@ -1302,6 +1348,7 @@
     placeAshlar,
     placeGrass,
     placePiscina,
+    placeInsecta,
     placeFlora,
     getPunchPositionsForFace,
     getStampPositionsForFace
@@ -1340,6 +1387,32 @@
     placePiscina(piscinaLockedPlace, piscinaLockedNormal, seed);
     nextPiscinaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
     resetPiscinaPlacementFlow();
+    render();
+  }
+
+  function resetInsectaPlacementFlow() {
+    insectaPhase = 'pick';
+    insectaLockedPlace = null;
+    insectaLockedNormal = null;
+    insectaHoverPlace = null;
+    insectaHoverNormal = null;
+    updatePreviewMesh([]);
+  }
+
+  function pickAgainInsecta() {
+    resetInsectaPlacementFlow();
+    render();
+  }
+
+  function commitInsectaPlacement() {
+    if (insectaPhase !== 'shape' || !insectaLockedPlace || !insectaLockedNormal) return;
+    const seed =
+      nextInsectaPlacementSeed === 0
+        ? Math.floor(Math.random() * 0xffffffff)
+        : nextInsectaPlacementSeed;
+    placeInsecta(insectaLockedPlace, insectaLockedNormal, seed);
+    nextInsectaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+    resetInsectaPlacementFlow();
     render();
   }
 
@@ -1773,6 +1846,7 @@
   const voxelGeneratorRmbBridge: VoxelGeneratorRmbBridge = {
     getTool: () => get(tool),
     getPiscinaPhase: () => piscinaPhase,
+    getInsectaPhase: () => insectaPhase,
     render,
     randomSeed32: () => Math.floor(Math.random() * 0xffffffff),
     setNextRockSeed: (n) => {
@@ -1786,6 +1860,9 @@
     },
     setNextPiscinaSeed: (n) => {
       nextPiscinaPlacementSeed = n;
+    },
+    setNextInsectaSeed: (n) => {
+      nextInsectaPlacementSeed = n;
     },
     setNextAshlarSeed: (n) => {
       nextAshlarPlacementSeed = n;
@@ -1816,6 +1893,7 @@
     getTool: () => get(tool),
     getAddPanelOpen: () => get(addPanelStore).open,
     getPiscinaPhase: () => piscinaPhase,
+    getInsectaPhase: () => insectaPhase,
     getIntersection,
     updatePointerFromEvent,
     getAddPosition,
@@ -1851,6 +1929,17 @@
       piscinaHoverPlace = null;
       piscinaHoverNormal = null;
       piscinaPhase = 'shape';
+    },
+    getNextInsectaSeed: () => nextInsectaPlacementSeed,
+    setNextInsectaSeed: (n) => {
+      nextInsectaPlacementSeed = n;
+    },
+    commitInsectaSurfacePick: (place, normal) => {
+      insectaLockedPlace = place;
+      insectaLockedNormal = normal;
+      insectaHoverPlace = null;
+      insectaHoverNormal = null;
+      insectaPhase = 'shape';
     },
     scheduleRender: () => requestAnimationFrame(() => render())
   };
@@ -2703,6 +2792,7 @@
     try {
       if ($tool === 'hand') {
         resetPiscinaPlacementFlow();
+        resetInsectaPlacementFlow();
         selectionGizmo?.clearGizmoHoverCursor();
         rollOverMesh.visible = false;
         updatePreviewMesh([]);
@@ -3244,7 +3334,7 @@
         render();
         return;
       }
-      // Piscina: preview + gizmo only after face lock (shape phase)
+      // Piscina: preview after face lock (shape phase)
       if ($tool === 'piscina') {
         if (piscinaPhase === 'shape' && piscinaLockedPlace && piscinaLockedNormal) {
           if (nextPiscinaPlacementSeed === 0) {
@@ -3276,6 +3366,51 @@
           } else {
             piscinaHoverPlace = null;
             piscinaHoverNormal = null;
+            updatePreviewMesh([]);
+          }
+          rollOverMesh.visible = false;
+        } else {
+          updatePreviewMesh([]);
+          rollOverMesh.visible = false;
+        }
+        render();
+        return;
+      }
+      if ($tool === 'insecta') {
+        if (insectaPhase === 'shape' && insectaLockedPlace && insectaLockedNormal) {
+          if (nextInsectaPlacementSeed === 0) {
+            nextInsectaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+          }
+          const place = insectaLockedPlace;
+          const normal = insectaLockedNormal;
+          const opts = buildInsectaOptionsFromStores();
+          updatePreviewMesh(
+            getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts)
+          );
+          rollOverMesh.visible = false;
+        } else if (insectaPhase === 'pick') {
+          const hit = getIntersection();
+          if (hit) {
+            const place = getAddPosition(hit);
+            const normal = getFaceNormalFromHit(hit);
+            if (place && normal) {
+              if (nextInsectaPlacementSeed === 0) {
+                nextInsectaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+              }
+              insectaHoverPlace = place;
+              insectaHoverNormal = normal;
+              const opts = buildInsectaOptionsFromStores();
+              updatePreviewMesh(
+                getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts)
+              );
+            } else {
+              insectaHoverPlace = null;
+              insectaHoverNormal = null;
+              updatePreviewMesh([]);
+            }
+          } else {
+            insectaHoverPlace = null;
+            insectaHoverNormal = null;
             updatePreviewMesh([]);
           }
           rollOverMesh.visible = false;
@@ -3749,11 +3884,23 @@
       pickAgainPiscina();
       e.preventDefault();
     }
+    if (e.key === 'Escape' && get(tool) === 'insecta' && insectaPhase === 'shape') {
+      pickAgainInsecta();
+      e.preventDefault();
+    }
     if (e.key === 'Enter' && get(tool) === 'piscina' && piscinaPhase === 'shape') {
       const active = document.activeElement;
       const tag = active?.tagName;
       if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
         commitPiscinaFish();
+        e.preventDefault();
+      }
+    }
+    if (e.key === 'Enter' && get(tool) === 'insecta' && insectaPhase === 'shape') {
+      const active = document.activeElement;
+      const tag = active?.tagName;
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+        commitInsectaPlacement();
         e.preventDefault();
       }
     }
@@ -3786,6 +3933,13 @@
   }
 
   function onWheel(event: WheelEvent) {
+    const wheelTarget = event.target;
+    if (
+      wheelTarget instanceof Element &&
+      wheelTarget.closest('[data-voxelle-no-passthrough]')
+    ) {
+      return;
+    }
     if ($addPanelStore.open) {
       const addMax = Math.min(1024, MAX_GRID_SIZE);
       if (event.ctrlKey) {
@@ -4416,6 +4570,53 @@
   });
 
   $effect(() => {
+    void $insectaSpecies;
+    void $insectaTotalLength;
+    void $insectaHeadRatio;
+    void $insectaThoraxRatio;
+    void $insectaAbdomenRatio;
+    void $insectaBodyHalfWidth;
+    void $insectaBodyHalfHeight;
+    void $insectaAbdomenTaper;
+    void $insectaHeadShape;
+    void $insectaAnchorOffsetU;
+    void $insectaAnchorOffsetV;
+    void $insectaBodyYaw;
+    void $insectaBodyArch;
+    void $insectaLegFront;
+    void $insectaLegMid;
+    void $insectaLegHind;
+    void $insectaAntennaLength;
+    void $insectaAntennaSpread;
+    void $insectaAntennaPitch;
+    void $insectaAntennaRoot;
+    void $insectaMandibleLength;
+    void $insectaMandibleSpread;
+    void $insectaMandibleForward;
+    void $insectaWingShape;
+    void $insectaShowWingFore;
+    void $insectaWingForeLength;
+    void $insectaWingForeWidth;
+    void $insectaWingForeSpread;
+    void $insectaWingForePitch;
+    void $insectaWingForeOffset;
+    void $insectaShowWingHind;
+    void $insectaWingHindLength;
+    void $insectaWingHindWidth;
+    void $insectaWingHindSpread;
+    void $insectaWingHindPitch;
+    void $insectaWingHindOffset;
+    void $tool;
+    if ($tool !== 'insecta' || nextInsectaPlacementSeed === 0) return;
+    const place = insectaPhase === 'shape' ? insectaLockedPlace : insectaHoverPlace;
+    const normal = insectaPhase === 'shape' ? insectaLockedNormal : insectaHoverNormal;
+    if (!place || !normal) return;
+    const opts = buildInsectaOptionsFromStores();
+    updatePreviewMesh(getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts));
+    render();
+  });
+
+  $effect(() => {
     const sel = $selection;
     rebuildSelectionOverlay(sel);
     render();
@@ -4611,7 +4812,8 @@
         polygonPhase !== null ||
         roofPhase !== null ||
         ropePhase !== null ||
-        (get(tool) === 'piscina' && piscinaPhase === 'shape'),
+        (get(tool) === 'piscina' && piscinaPhase === 'shape') ||
+        (get(tool) === 'insecta' && insectaPhase === 'shape'),
       getSelection: () => get(selection),
       getPointer: () => pointer,
       getCamera: () => camera ?? null,
@@ -4764,6 +4966,12 @@
     if (prevTool !== null && prevTool !== 'piscina' && t === 'piscina') {
       resetPiscinaPlacementFlow();
     }
+    if (prevTool === 'insecta' && t !== 'insecta') {
+      resetInsectaPlacementFlow();
+    }
+    if (prevTool !== null && prevTool !== 'insecta' && t === 'insecta') {
+      resetInsectaPlacementFlow();
+    }
     orbitControls.enabled = shouldEnableOrbitControls(t, false);
     flyControls.enabled = isFly;
     document.removeEventListener('mousemove', onFlyPointerMove);
@@ -4792,6 +5000,7 @@
     }
     if (isHand) {
       resetPiscinaPlacementFlow();
+      resetInsectaPlacementFlow();
       selectionGizmo?.clearGizmoHoverCursor();
       rollOverMesh.visible = false;
       updatePreviewMesh([]);
@@ -5070,6 +5279,9 @@
     {piscinaPhase}
     {commitPiscinaFish}
     {pickAgainPiscina}
+    insectaPhase={insectaPhase}
+    commitInsectaPlacement={commitInsectaPlacement}
+    pickAgainInsecta={pickAgainInsecta}
     {ropePhase}
     {commitRope}
     {cancelRope}

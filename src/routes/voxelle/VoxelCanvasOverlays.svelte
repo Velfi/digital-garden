@@ -31,6 +31,9 @@
     piscinaPhase: 'pick' | 'shape';
     commitPiscinaFish: () => void;
     pickAgainPiscina: () => void;
+    insectaPhase: 'pick' | 'shape';
+    commitInsectaPlacement: () => void;
+    pickAgainInsecta: () => void;
     ropePhase: 'placing' | 'tension' | null;
     commitRope: () => void;
     cancelRope: () => void;
@@ -76,6 +79,9 @@
     piscinaPhase,
     commitPiscinaFish,
     pickAgainPiscina,
+    insectaPhase,
+    commitInsectaPlacement,
+    pickAgainInsecta,
     ropePhase,
     commitRope,
     cancelRope,
@@ -273,6 +279,30 @@
       class="polygon-cancel-btn"
       onpointerdown={(e) => e.stopPropagation()}
       onclick={() => pickAgainPiscina()}
+      title="Cancel"
+      aria-label="Cancel"
+    >
+      Cancel
+    </button>
+  </div>
+{/if}
+{#if $tool === 'insecta' && insectaPhase === 'shape'}
+  <div class="polygon-actions" data-voxelle-no-passthrough>
+    <button
+      type="button"
+      class="polygon-done-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => commitInsectaPlacement()}
+      title="Place insect"
+      aria-label="Place insect"
+    >
+      Done
+    </button>
+    <button
+      type="button"
+      class="polygon-cancel-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => pickAgainInsecta()}
       title="Cancel"
       aria-label="Cancel"
     >

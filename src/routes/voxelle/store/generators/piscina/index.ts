@@ -45,7 +45,6 @@ export {
 } from './presets';
 export {
   getPiscinaFinBands,
-  getPiscinaFinT,
   getPiscinaPectoralParams,
   SPECIES_OUTLINES,
   SPECIES_TAIL_PARAMS

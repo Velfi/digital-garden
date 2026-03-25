@@ -84,27 +84,3 @@ export function getPiscinaFinBands(species: FishSpeciesId): PiscinaFinBandsAll {
     adipose: o.adipose ?? FIN_BANDS_DEFAULT.adipose
   };
 }
-
-/** t values along nose→tail for gizmo layout (aligned with fin band peaks + tail). */
-export function getPiscinaFinT(species: FishSpeciesId): {
-  pectoral: number;
-  dorsal: number;
-  anal: number;
-  pelvic: number;
-  adipose: number;
-  caudal: number;
-  spine: number;
-} {
-  const b = getPiscinaFinBands(species);
-  const tail = SPECIES_TAIL_PARAMS[species] ?? SPECIES_TAIL_PARAMS.trout;
-  const caudal = Math.min(0.96, 0.52 + tail.tStart * 0.52);
-  return {
-    pectoral: b.pectoral.peak,
-    dorsal: b.dorsal.peak,
-    anal: b.anal.peak,
-    pelvic: b.pelvic.peak,
-    adipose: b.adipose.peak,
-    caudal,
-    spine: 0.48
-  };
-}

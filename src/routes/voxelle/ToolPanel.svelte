@@ -40,12 +40,16 @@
     tabindex="-1"
   >
     {#if gizmoTabsVisible}
-      <SelectionGizmoTabs />
+      <div class="tool-panel-gizmo">
+        <SelectionGizmoTabs />
+      </div>
     {/if}
-    <DrawToolOptions />
-    <StampToolOptions />
-    <GeneratorToolOptions />
-    <ClayToolOptions />
+    <div class="tool-panel-main">
+      <DrawToolOptions />
+      <StampToolOptions />
+      <GeneratorToolOptions />
+      <ClayToolOptions />
+    </div>
   </div>
 {/if}
 
@@ -70,21 +74,94 @@
     overflow-y: auto;
   }
 
+  .tool-panel-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
   .tool-panel.sidebar-open {
     left: calc(360px + 1rem);
   }
 
+  /*
+   * Piscina / Insecta: wide enough for the multi-column layout, but capped so the
+   * viewport stays usable. Internal scroll (below) holds long forms.
+   */
   .tool-panel.piscina-wide {
     left: max(1rem, calc(1.5rem + 1rem));
-    right: 1rem;
+    right: auto;
     width: auto;
+    min-width: min(100%, 18rem);
+    max-width: min(44rem, calc(100vw - 2.5rem));
+    min-height: 0;
+    /* Definite height so the flex child can shrink and scroll (max-height alone stays content-sized). */
+    height: min(46vh, 24rem);
+    max-height: min(46vh, 24rem);
+    overflow: hidden;
+    gap: 0.35rem;
+    padding: 0.55rem 0.75rem;
+  }
+
+  .tool-panel-gizmo {
+    flex-shrink: 0;
+  }
+
+  .tool-panel.piscina-wide .tool-panel-main {
+    flex: 1 1 0;
+    min-height: 0;
     min-width: 0;
-    max-width: none;
-    max-height: min(70vh, 22rem);
+    overflow-y: scroll;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+    padding-right: 0.25rem;
+    margin-right: -0.1rem;
+    gap: 0.35rem;
+    scrollbar-width: thin;
+  }
+
+  .tool-panel.piscina-wide .tool-panel-main::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .tool-panel.piscina-wide .tool-panel-main::-webkit-scrollbar-thumb {
+    border-radius: 4px;
+    background: color-mix(in oklab, var(--border-color) 65%, var(--text-color) 35%);
+  }
+
+  .tool-panel.piscina-wide .tool-panel-main::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--border-color) 45%, var(--text-color) 55%);
+  }
+
+  .tool-panel.piscina-wide :global(.tool-panel-section) {
+    gap: 0.35rem;
+  }
+
+  .tool-panel.piscina-wide :global(.tool-panel-section + .tool-panel-section) {
+    padding-top: 0.35rem;
+  }
+
+  .tool-panel.piscina-wide :global(.tool-panel-row) {
+    gap: 0.35rem;
+  }
+
+  /* Wide generator panels: avoid 2.5rem label column wrapping ("Ant len" → two lines). */
+  .tool-panel.piscina-wide :global(.tool-panel-label) {
+    width: auto;
+    min-width: 4.25rem;
+    white-space: nowrap;
+  }
+
+  .tool-panel.piscina-wide :global(.tool-panel-row--wide-label .tool-panel-label) {
+    min-width: 5.5rem;
   }
 
   .tool-panel.sidebar-open.piscina-wide {
     left: calc(360px + 1rem);
+    max-width: min(44rem, calc(100vw - 360px - 2rem));
   }
 
   .tool-panel :global(.tool-panel-section) {

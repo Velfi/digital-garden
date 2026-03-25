@@ -19,12 +19,14 @@ function ashlarThicknessAxis(normal: FaceNormal): 0 | 1 | 2 {
 export interface GeneratorRmbDeps {
   tool: string;
   piscinaPhase: 'pick' | 'shape';
+  insectaPhase: 'pick' | 'shape';
   render: () => void;
   randomSeed32: () => number;
   setNextRockSeed: (n: number) => void;
   setNextGrassSeed: (n: number) => void;
   setNextFloraSeed: (n: number) => void;
   setNextPiscinaSeed: (n: number) => void;
+  setNextInsectaSeed: (n: number) => void;
   setNextAshlarSeed: (n: number) => void;
   /** Seed used for ashlar RMB preview (matches placement semantics). */
   getAshlarPlacementSeed: () => number;
@@ -62,6 +64,14 @@ export function tryHandleGeneratorToolRmb(ctx: GeneratorRmbDeps, event: PointerE
   if (ctx.tool === 'piscina') {
     if (ctx.piscinaPhase === 'shape') {
       ctx.setNextPiscinaSeed(ctx.randomSeed32());
+    }
+    event.preventDefault();
+    ctx.render();
+    return true;
+  }
+  if (ctx.tool === 'insecta') {
+    if (ctx.insectaPhase === 'shape') {
+      ctx.setNextInsectaSeed(ctx.randomSeed32());
     }
     event.preventDefault();
     ctx.render();
@@ -128,8 +138,8 @@ export function tryHandleGeneratorToolRmb(ctx: GeneratorRmbDeps, event: PointerE
 export interface GeneratorPrimaryPointerUpDeps {
   tool: string;
   addPanelOpen: boolean;
-  piscinaGizmoUp: boolean;
   piscinaPhase: 'pick' | 'shape';
+  insectaPhase: 'pick' | 'shape';
   getIntersection: () => Intersection | null | undefined;
   updatePointerFromEvent: (e: PointerEvent) => void;
   getAddPosition: (hit: Intersection) => [number, number, number] | null;
@@ -150,6 +160,9 @@ export interface GeneratorPrimaryPointerUpDeps {
   getNextPiscinaSeed: () => number;
   setNextPiscinaSeed: (n: number) => void;
   commitPiscinaSurfacePick: (place: [number, number, number], normal: FaceNormal) => void;
+  getNextInsectaSeed: () => number;
+  setNextInsectaSeed: (n: number) => void;
+  commitInsectaSurfacePick: (place: [number, number, number], normal: FaceNormal) => void;
   scheduleRender: () => void;
 }
 
@@ -199,7 +212,7 @@ export function applyGeneratorFaceClickPointerUp(
     }
     return;
   }
-  if (ctx.tool === 'piscina' && !ctx.piscinaGizmoUp) {
+  if (ctx.tool === 'piscina') {
     ctx.updatePointerFromEvent(event);
     if (ctx.piscinaPhase === 'pick') {
       const hit = ctx.getIntersection();
@@ -211,6 +224,24 @@ export function applyGeneratorFaceClickPointerUp(
             ctx.setNextPiscinaSeed(ctx.randomSeed32());
           }
           ctx.commitPiscinaSurfacePick(place, normal);
+          ctx.scheduleRender();
+        }
+      }
+    }
+    return;
+  }
+  if (ctx.tool === 'insecta') {
+    ctx.updatePointerFromEvent(event);
+    if (ctx.insectaPhase === 'pick') {
+      const hit = ctx.getIntersection();
+      if (hit) {
+        const place = ctx.getAddPosition(hit);
+        const normal = ctx.getFaceNormalFromHit(hit);
+        if (place && normal) {
+          if (ctx.getNextInsectaSeed() === 0) {
+            ctx.setNextInsectaSeed(ctx.randomSeed32());
+          }
+          ctx.commitInsectaSurfacePick(place, normal);
           ctx.scheduleRender();
         }
       }

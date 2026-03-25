@@ -1,8 +1,11 @@
 /**
- * Writable stores for procedural generator tools (rocks, grass, ashlar, flora, piscina, roof).
+ * Writable stores for procedural generator tools (rocks, grass, ashlar, flora, piscina, insecta, roof).
  * Re-exported from core.ts for a stable public API.
  */
 import { writable } from 'svelte/store';
+import type { ArticulatedLeg2 } from './generators/articulatedLeg';
+import { cloneArticulatedLeg2 } from './generators/articulatedLeg';
+import { INSECTA_INITIAL_LEGS } from './generators/insecta/insectaInitialLegs';
 import type { PiscinaCaudalTailModeSetting } from './generators/piscina/types';
 
 /** Rocks generator: nominal radius (1–8 voxels). */
@@ -133,6 +136,70 @@ export const piscinaFinCaudalSpread = writable<number>(0);
 export const piscinaFinPectoralCant = writable<number>(0);
 /** Pectoral sweep: yaw around body up, tips fin toward head (−) or tail (+) (deg -45…45). */
 export const piscinaFinPectoralSweep = writable<number>(0);
+
+/** Insecta: preset species (body + appendage defaults). */
+import type { InsectaSpeciesId } from './generators/insecta/types';
+export type { InsectaSpeciesId };
+export const insectaSpecies = writable<InsectaSpeciesId>('bee');
+/** Total body length along head→abdomen axis (voxels). */
+export const insectaTotalLength = writable<number>(30);
+/** Segment length shares (0–100); normalized in generator. */
+export const insectaHeadRatio = writable<number>(17);
+export const insectaThoraxRatio = writable<number>(28);
+export const insectaAbdomenRatio = writable<number>(55);
+/** Half-width along lateral tangent. */
+export const insectaBodyHalfWidth = writable<number>(4);
+/** Half-height along surface normal (dorsal). */
+export const insectaBodyHalfHeight = writable<number>(4);
+/** Abdomen taper 0 = cylinder, 1 = strong tip narrow. */
+export const insectaAbdomenTaper = writable<number>(0.48);
+/** 0 = squarish head, 100 = narrow snout / triangular profile. */
+export const insectaHeadShape = writable<number>(60);
+export const insectaAnchorOffsetU = writable<number>(0);
+export const insectaAnchorOffsetV = writable<number>(0);
+/** Yaw in the placement plane (−45…45°). */
+export const insectaBodyYaw = writable<number>(0);
+/** Lateral S-bend along body (−1…1). */
+export const insectaBodyArch = writable<number>(0.05);
+
+/** Two-segment legs: hip (U,V on body) + knee/foot offsets in body frame (f,s,u). */
+export const insectaLegFront = writable<ArticulatedLeg2>(
+  cloneArticulatedLeg2(INSECTA_INITIAL_LEGS.front)
+);
+export const insectaLegMid = writable<ArticulatedLeg2>(
+  cloneArticulatedLeg2(INSECTA_INITIAL_LEGS.mid)
+);
+export const insectaLegHind = writable<ArticulatedLeg2>(
+  cloneArticulatedLeg2(INSECTA_INITIAL_LEGS.hind)
+);
+
+export const insectaAntennaLength = writable<number>(5);
+export const insectaAntennaSpread = writable<number>(12);
+export const insectaAntennaPitch = writable<number>(18);
+/** Root shift toward head along body axis (voxels). */
+export const insectaAntennaRoot = writable<number>(2);
+
+export const insectaMandibleLength = writable<number>(2);
+export const insectaMandibleSpread = writable<number>(9);
+export const insectaMandibleForward = writable<number>(1);
+/** 0 = box wing outline, 100 = tapered ellipse toward tip (both wing pairs). */
+export const insectaWingShape = writable<number>(85);
+
+export const insectaShowWingFore = writable<boolean>(true);
+export const insectaWingForeLength = writable<number>(15);
+export const insectaWingForeWidth = writable<number>(4);
+export const insectaWingForeSpread = writable<number>(78);
+/** Fore wing span tilt toward the head (−f), 0–35° (dragonfly uses a high value). */
+export const insectaWingForeForwardCant = writable<number>(5);
+export const insectaWingForePitch = writable<number>(5);
+export const insectaWingForeOffset = writable<number>(1);
+
+export const insectaShowWingHind = writable<boolean>(true);
+export const insectaWingHindLength = writable<number>(12);
+export const insectaWingHindWidth = writable<number>(3);
+export const insectaWingHindSpread = writable<number>(72);
+export const insectaWingHindPitch = writable<number>(4);
+export const insectaWingHindOffset = writable<number>(-1);
 
 /** Roof generator: profile style. */
 export type RoofStyleId =

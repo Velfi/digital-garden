@@ -14,6 +14,7 @@ import {
   type Voxel,
   type GenerateFloraOptions,
   type GeneratePiscinaOptions,
+  type GenerateInsectaOptions,
   type FishSpeciesId,
   type VoxelUpdaterMap,
   commitUndoAfter,
@@ -37,6 +38,7 @@ import {
   generateGrassVoxels,
   generateFloraVoxels,
   generatePiscinaVoxels,
+  generateInsectaVoxels,
   rockSize,
   rockRoughness,
   rockCount,
@@ -97,7 +99,45 @@ import {
   piscinaFinDorsalPosition,
   piscinaFinCaudalSpread,
   piscinaFinPectoralCant,
-  piscinaFinPectoralSweep
+  piscinaFinPectoralSweep,
+  insectaSpecies,
+  insectaTotalLength,
+  insectaHeadRatio,
+  insectaThoraxRatio,
+  insectaAbdomenRatio,
+  insectaBodyHalfWidth,
+  insectaBodyHalfHeight,
+  insectaAbdomenTaper,
+  insectaHeadShape,
+  insectaAnchorOffsetU,
+  insectaAnchorOffsetV,
+  insectaBodyYaw,
+  insectaBodyArch,
+  insectaLegFront,
+  insectaLegMid,
+  insectaLegHind,
+  insectaAntennaLength,
+  insectaAntennaSpread,
+  insectaAntennaPitch,
+  insectaAntennaRoot,
+  insectaMandibleLength,
+  insectaMandibleSpread,
+  insectaMandibleForward,
+  insectaWingShape,
+  insectaShowWingFore,
+  insectaWingForeLength,
+  insectaWingForeWidth,
+  insectaWingForeSpread,
+  insectaWingForeForwardCant,
+  insectaWingForePitch,
+  insectaWingForeOffset,
+  insectaShowWingHind,
+  insectaWingHindLength,
+  insectaWingHindWidth,
+  insectaWingHindSpread,
+  insectaWingHindPitch,
+  insectaWingHindOffset,
+  type InsectaSpeciesId
 } from '../store/index';
 import { applySmooth, applyLevel, applyMelt, applyInflate } from '../clayOps';
 
@@ -214,6 +254,48 @@ export function buildFloraOptionsFromStores(): GenerateFloraOptions {
     braidStrands: get(floraBraidStrands) as number,
     braidTwist: get(floraBraidTwist) as number,
     barkJitter: get(floraBarkJitter) as number
+  };
+}
+
+export function buildInsectaOptionsFromStores(): GenerateInsectaOptions {
+  return {
+    species: get(insectaSpecies) as InsectaSpeciesId,
+    totalLength: get(insectaTotalLength) as number,
+    headRatio: get(insectaHeadRatio) as number,
+    thoraxRatio: get(insectaThoraxRatio) as number,
+    abdomenRatio: get(insectaAbdomenRatio) as number,
+    bodyHalfWidth: get(insectaBodyHalfWidth) as number,
+    bodyHalfHeight: get(insectaBodyHalfHeight) as number,
+    abdomenTaper: get(insectaAbdomenTaper) as number,
+    headShape: get(insectaHeadShape) as number,
+    anchorOffsetU: get(insectaAnchorOffsetU) as number,
+    anchorOffsetV: get(insectaAnchorOffsetV) as number,
+    bodyYaw: get(insectaBodyYaw) as number,
+    bodyArch: get(insectaBodyArch) as number,
+    legFront: get(insectaLegFront),
+    legMid: get(insectaLegMid),
+    legHind: get(insectaLegHind),
+    antennaLength: get(insectaAntennaLength) as number,
+    antennaSpread: get(insectaAntennaSpread) as number,
+    antennaPitch: get(insectaAntennaPitch) as number,
+    antennaRoot: get(insectaAntennaRoot) as number,
+    mandibleLength: get(insectaMandibleLength) as number,
+    mandibleSpread: get(insectaMandibleSpread) as number,
+    mandibleForward: get(insectaMandibleForward) as number,
+    wingShape: get(insectaWingShape) as number,
+    showWingFore: get(insectaShowWingFore) as boolean,
+    wingForeLength: get(insectaWingForeLength) as number,
+    wingForeWidth: get(insectaWingForeWidth) as number,
+    wingForeSpread: get(insectaWingForeSpread) as number,
+    wingForeForwardCant: get(insectaWingForeForwardCant) as number,
+    wingForePitch: get(insectaWingForePitch) as number,
+    wingForeOffset: get(insectaWingForeOffset) as number,
+    showWingHind: get(insectaShowWingHind) as boolean,
+    wingHindLength: get(insectaWingHindLength) as number,
+    wingHindWidth: get(insectaWingHindWidth) as number,
+    wingHindSpread: get(insectaWingHindSpread) as number,
+    wingHindPitch: get(insectaWingHindPitch) as number,
+    wingHindOffset: get(insectaWingHindOffset) as number
   };
 }
 
@@ -637,6 +719,34 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     });
   }
 
+  function placeInsecta(
+    place: [number, number, number],
+    normal: FaceNormal,
+    placementSeed: number
+  ) {
+    const getCol = getPaintColorResolver();
+    const options = buildInsectaOptionsFromStores();
+    const map = generateInsectaVoxels(placementSeed, place, normal, options, () => getCol());
+    const allPositions: [number, number, number][] = [];
+    const allVoxelsInsecta: Voxel[] = [];
+    for (const [key, vx] of map) {
+      allPositions.push(parseCoordKey(key) as [number, number, number]);
+      allVoxelsInsecta.push(vx);
+    }
+    if (allPositions.length === 0) return;
+    ctx.playPlaceSound();
+    ensureGridFitsPositions(allPositions);
+    const boundSize: number | undefined = undefined;
+    runVoxelStroke(() => {
+      updateVoxelsInStroke((v) => {
+        allPositions.forEach(([x, y, z], i) => {
+          if (!inBounds(x, y, z, boundSize)) return;
+          v.set(coordKey(x, y, z), allVoxelsInsecta[i]!);
+        });
+      });
+    });
+  }
+
   function placePiscina(
     place: [number, number, number],
     normal: FaceNormal,
@@ -757,6 +867,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     placeAshlar,
     placeGrass,
     placePiscina,
+    placeInsecta,
     placeFlora,
     getPunchPositionsForFace,
     getStampPositionsForFace

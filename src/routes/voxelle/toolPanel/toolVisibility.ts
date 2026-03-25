@@ -70,8 +70,9 @@ export function generatorOptionsVisible(tool: string): boolean {
   return isGeneratorTool(tool);
 }
 
+/** Wide tool panel layout for multi-card generator UIs. */
 export function piscinaWide(tool: Tool): boolean {
-  return tool === 'piscina';
+  return tool === 'piscina' || tool === 'insecta';
 }
 
 export function gizmoTabsVisible(
