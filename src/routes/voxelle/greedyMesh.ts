@@ -13,6 +13,26 @@ export type { AOStrength } from './greedyMeshCore';
 
 const OVERLAP_DARKEN = 0.5;
 
+/** How to shade preview voxels that sit on existing geometry. */
+export type PreviewOverlapShading = 'darken' | 'invert';
+
+function invertRgb24(hex: number): number {
+  const r = (~(hex >> 16)) & 0xff;
+  const g = (~(hex >> 8)) & 0xff;
+  const b = ~hex & 0xff;
+  return (r << 16) | (g << 8) | b;
+}
+
+/** Per-cell overlap tint for stroke / placement previews. */
+export function previewOverlapColor(
+  voxelColor: number,
+  shading: PreviewOverlapShading
+): number {
+  const c = voxelColor & 0xffffff;
+  if (shading === 'darken') return darkenHex(c, OVERLAP_DARKEN);
+  return invertRgb24(c);
+}
+
 export interface GreedyMeshOptions {
   /** @deprecated use aoStrength instead */
   aoEnabled?: boolean;
@@ -37,22 +57,24 @@ function darkenHex(hex: number, factor: number): number {
 
 /**
  * Build a single-color mesh from positions. Returns BufferGeometry or null if empty.
- * When existingVoxels is provided, positions that intersect existing voxels are shaded more darkly.
+ * When existingVoxels is provided, overlapping cells use overlap shading (invert or darken).
  */
 export function buildPreviewGeometry(
   positions: [number, number, number][],
   voxel: Voxel,
-  existingVoxels?: Map<string, Voxel>
+  existingVoxels?: Map<string, Voxel>,
+  overlapShading: PreviewOverlapShading = 'invert'
 ): THREE.BufferGeometry | null {
   if (positions.length === 0) return null;
   let voxelMap: Map<string, Voxel>;
   if (existingVoxels && existingVoxels.size > 0) {
-    const darkColor = darkenHex(voxel.color, OVERLAP_DARKEN);
     voxelMap = new Map();
     for (const [x, y, z] of positions) {
       const key = coordKey(x, y, z);
       voxelMap.set(key, {
-        color: existingVoxels.has(key) ? darkColor : voxel.color,
+        color: existingVoxels.has(key)
+          ? previewOverlapColor(voxel.color, overlapShading)
+          : voxel.color,
         material: voxel.material
       });
     }
@@ -69,11 +91,12 @@ export function buildPreviewGeometry(
 }
 
 /**
- * Multi-voxel preview (e.g. paste placement ghost). Darkens cells that overlap existing voxels.
+ * Multi-voxel preview (e.g. paste placement ghost). Overlap cells use invert or darken.
  */
 export function buildPreviewGeometryFromVoxelMap(
   voxelMap: Map<string, Voxel>,
-  existingVoxels: Map<string, Voxel>
+  existingVoxels: Map<string, Voxel>,
+  overlapShading: PreviewOverlapShading = 'invert'
 ): THREE.BufferGeometry | null {
   if (voxelMap.size === 0) return null;
   let map: Map<string, Voxel>;
@@ -81,7 +104,9 @@ export function buildPreviewGeometryFromVoxelMap(
     map = new Map();
     for (const [key, vx] of voxelMap) {
       map.set(key, {
-        color: existingVoxels.has(key) ? darkenHex(vx.color, OVERLAP_DARKEN) : vx.color,
+        color: existingVoxels.has(key)
+          ? previewOverlapColor(vx.color, overlapShading)
+          : vx.color,
         material: vx.material
       });
     }

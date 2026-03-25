@@ -238,6 +238,7 @@
     inBounds,
     expandPositionsWithSymmetry,
     expandPositionsWithSymmetryAroundCenter,
+    getMirrorCoordKeys,
     type SelectionBounds,
     type SymmetryAxes
   } from './coordUtils';
@@ -279,7 +280,8 @@
     buildGreedyMesh,
     buildPreviewGeometry,
     buildPreviewGeometryFromVoxelMap,
-    PREVIEW_MESH_OPTIONS
+    PREVIEW_MESH_OPTIONS,
+    type PreviewOverlapShading
   } from './greedyMesh';
   import {
     createSceneSetupAsync,
@@ -1409,13 +1411,11 @@
   function applyPrecisePreviewRenderOrder() {
     if (previewMesh) previewMesh.renderOrder = PRECISE_PREVIEW_RENDER_ORDER;
     if (rollOverMesh) rollOverMesh.renderOrder = PRECISE_ROLLOVER_RENDER_ORDER;
-    if (rollOverMaterial) rollOverMaterial.depthTest = false;
   }
 
   function resetPrecisePreviewRenderOrder() {
     if (previewMesh) previewMesh.renderOrder = PREVIEW_DEFAULT_RENDER_ORDER;
     if (rollOverMesh) rollOverMesh.renderOrder = ROLLOVER_DEFAULT_RENDER_ORDER;
-    if (rollOverMaterial) rollOverMaterial.depthTest = true;
   }
 
   /** Axis index (0=X, 1=Y, 2=Z) for wall extension direction; used for lock start height. */
@@ -1614,8 +1614,9 @@
     const sel = $selection;
     const bboxGated = sel.size > 0 && ($tool === 'paint' || $tool === 'remove') ? null : bboxHint;
 
-    /** Match remove-tool hover ghost; full tool colors only during drag/stamp or mid-extrusion phases. */
+    /** Remove-only: red pre-drag ghost; other tools use real colors + invert-on-overlap (see overlap shading). */
     const useRemoveStylePreDragPreview =
+      $tool === 'remove' &&
       !isVoxelDrag &&
       !isStampDrag &&
       cuboidPhase !== 'depth' &&
@@ -1671,10 +1672,13 @@
         ? expanded.filter(([x, y, z]) => sel.has(coordKey(x, y, z)))
         : expanded;
     const previewVoxel = previewVoxelFor(filtered.length);
+    const previewOverlapShading: PreviewOverlapShading =
+      $tool === 'remove' ? 'darken' : 'invert';
     meshManager.updatePreviewMesh(
       filtered,
       previewVoxel,
-      filtered.length > 0 ? $voxels : undefined
+      filtered.length > 0 ? $voxels : undefined,
+      previewOverlapShading
     );
   }
 
@@ -5094,14 +5098,31 @@
 
   $effect(() => {
     void sceneReady;
+    void $color;
+    void $tool;
     if (!sceneReady) return;
-    const hoverHex = 0xff4444;
-    if (rollOverMaterial) rollOverMaterial.color.setHex(hoverHex);
-    if (paintHoverMaterial) paintHoverMaterial.color.setHex(hoverHex);
-    if (paintHoverOccludedMaterial) applyAddShapeOccludedPreviewTint(hoverHex, paintHoverOccludedMaterial);
-    if (polygonPointsMaterial) polygonPointsMaterial.color.setHex(hoverHex);
-    if (polygonLineMaterial) polygonLineMaterial.color.setHex(hoverHex);
-    if (ropePointsMaterial) ropePointsMaterial.color.setHex(hoverHex);
+    const isRemoveHover = $tool === 'remove';
+    if (rollOverMaterial) {
+      if (isRemoveHover) rollOverMaterial.color.setHex(0xff4444);
+      else rollOverMaterial.color.setHex(hexToInt($color));
+    }
+    if (paintHoverMaterial) {
+      let baseHex: number;
+      if ($tool === 'remove') baseHex = 0xff4444;
+      else if ($tool === 'paint' || $tool === 'punch') baseHex = hexToInt($color);
+      else baseHex = 0x33aaff;
+      paintHoverMaterial.color.setHex(baseHex);
+      if (paintHoverOccludedMaterial) applyAddShapeOccludedPreviewTint(baseHex, paintHoverOccludedMaterial);
+    }
+    if (isRemoveHover) {
+      if (polygonPointsMaterial) polygonPointsMaterial.color.setHex(0xff4444);
+      if (polygonLineMaterial) polygonLineMaterial.color.setHex(0xff4444);
+      if (ropePointsMaterial) ropePointsMaterial.color.setHex(0xff4444);
+    } else {
+      if (polygonPointsMaterial) polygonPointsMaterial.color.setHex(0xffff00);
+      if (polygonLineMaterial) polygonLineMaterial.color.setHex(0x3399ff);
+      if (ropePointsMaterial) ropePointsMaterial.color.setHex(0xffff00);
+    }
     markCanvasDirty();
   });
 
@@ -5315,17 +5336,26 @@
       markCanvasDirty();
       return;
     }
-    let positions = getShapePositionsAt({
+    const symAxes: SymmetryAxes = {
+      x: get(symmetryX),
+      y: get(symmetryY),
+      z: get(symmetryZ)
+    };
+    let primaries = getShapePositionsAt({
       position: [s.posX, s.posY, s.posZ],
       rotation: [clampQuarterTurn(s.rotX), clampQuarterTurn(s.rotY), clampQuarterTurn(s.rotZ)],
       shape: s.shape,
       size: Math.max(1, Math.min(1024, Math.floor(s.size)))
     });
-    positions = expandPositionsWithSymmetry(positions, {
-      x: get(symmetryX),
-      y: get(symmetryY),
-      z: get(symmetryZ)
-    });
+    if (s.overwriteIntersecting === false) {
+      primaries = primaries.filter(([x, y, z]) => {
+        for (const k of getMirrorCoordKeys(x, y, z, symAxes)) {
+          if ($voxels.has(k)) return false;
+        }
+        return true;
+      });
+    }
+    let positions = expandPositionsWithSymmetry(primaries, symAxes);
     const sel = $selectedColors;
     const addVx: Voxel = {
       color: hexToInt(sel.length > 0 ? sel[0] : $color) & 0xffffff,

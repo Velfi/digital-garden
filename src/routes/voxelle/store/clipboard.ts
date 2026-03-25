@@ -223,6 +223,7 @@ export async function pasteFromClipboard(): Promise<boolean> {
       shape: 'cube',
       size: 8,
       mode: 'paste',
+      overwriteIntersecting: true,
       pasteEntries: data.entries
     });
     console.debug(DBG, 'paste opened placement panel', { entries: data.entries.length });

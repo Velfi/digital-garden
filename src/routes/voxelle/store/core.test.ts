@@ -351,6 +351,35 @@ describe('core', () => {
       });
       expect(get(voxels).size).toBe(0);
     });
+    it('when overwriteIntersecting is false, leaves occupied cells unchanged', () => {
+      voxels.set(new Map([[coordKey(0, 0, 0), pv(0x00ff00)]]));
+      addShapeAt({
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        shape: 'cube',
+        size: 1,
+        getVoxel: () => pv(0xff0000),
+        overwriteIntersecting: false
+      });
+      const v = get(voxels);
+      expect(v.size).toBe(1);
+      expect(v.get(coordKey(0, 0, 0))).toEqual(pv(0x00ff00));
+    });
+    it('when overwriteIntersecting is false, fills only empty cells in shape', () => {
+      voxels.set(new Map([[coordKey(0, 0, 0), pv(0x00ff00)]]));
+      addShapeAt({
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        shape: 'cube',
+        size: 2,
+        getVoxel: () => pv(0xff0000),
+        overwriteIntersecting: false
+      });
+      const v = get(voxels);
+      expect(v.get(coordKey(0, 0, 0))).toEqual(pv(0x00ff00));
+      expect(v.size).toBe(8);
+      expect(v.get(coordKey(-1, -1, -1))).toEqual(pv(0xff0000));
+    });
   });
 
   describe('applySelectionTranslationInStroke', () => {

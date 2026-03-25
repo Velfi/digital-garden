@@ -72,7 +72,7 @@ describe('downsamplePositionsToPreviewMap', () => {
     expect(map.has(coordKey(1, 1, 1))).toBe(true);
   });
 
-  it('marks coarse cell dark when any fine voxel overlaps existingVoxels', () => {
+  it('marks coarse cell with invert overlap when any fine voxel overlaps existingVoxels', () => {
     const positions: [number, number, number][] = [
       [0, 0, 0],
       [1, 1, 1]
@@ -83,7 +83,7 @@ describe('downsamplePositionsToPreviewMap', () => {
     const map = downsamplePositionsToPreviewMap(positions, voxel, 2, min, existing);
     expect(map.size).toBe(1);
     const v = map.get(coordKey(0, 0, 0))!;
-    expect(v.color).toBeLessThan(voxel.color);
+    expect(v.color).toBe(0x000000);
   });
 });
 

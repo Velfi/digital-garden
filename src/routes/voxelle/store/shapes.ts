@@ -105,6 +105,8 @@ export type AddShapeParams = {
   shape: StartShape;
   size: number;
   getVoxel: () => Voxel;
+  /** When false, only empty cells are filled (per primary + mirror keys). Default true. */
+  overwriteIntersecting?: boolean;
 };
 
 /** Rotate position by quarter-turns (0–3) around origin. Order: X, Y, Z. */

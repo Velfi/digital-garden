@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { coordKey, parseCoordKey } from './coordUtils';
 import type { Voxel } from './voxelMaterial';
+import { previewOverlapColor, type PreviewOverlapShading } from './greedyMesh';
 
 /** Coarse cell count above which we use LOD. */
 const LOD_COARSE_TARGET = 12_000;
@@ -31,17 +32,17 @@ export function computePreviewLodStride(
 /**
  * Downsample positions into a coarse voxel Map for preview meshing.
  * min = [minX, minY, minZ] of the positions AABB.
- * If existingVoxels is set, a coarse cell uses darkened color when any fine voxel in that cell overlaps.
+ * If existingVoxels is set, a coarse cell uses overlap shading when any fine voxel in that cell overlaps.
  */
 export function downsamplePositionsToPreviewMap(
   positions: [number, number, number][],
   voxel: Voxel,
   stride: number,
   min: MinTuple,
-  existingVoxels?: Map<string, Voxel>
+  existingVoxels?: Map<string, Voxel>,
+  overlapShading: PreviewOverlapShading = 'invert'
 ): Map<string, Voxel> {
   const [minX, minY, minZ] = min;
-  const darkColor = existingVoxels ? darkenHex(voxel.color, 0.5) : voxel.color;
   const map = new Map<string, Voxel>();
   const overlapCells = new Set<string>();
   for (const [x, y, z] of positions) {
@@ -56,7 +57,10 @@ export function downsamplePositionsToPreviewMap(
   }
   for (const ck of overlapCells) {
     const v = map.get(ck)!;
-    map.set(ck, { ...v, color: darkColor });
+    map.set(ck, {
+      ...v,
+      color: previewOverlapColor(voxel.color, overlapShading)
+    });
   }
   return map;
 }
@@ -81,13 +85,6 @@ export function downsampleVoxelMapToPreviewMap(
     if (!map.has(ck)) map.set(ck, v);
   }
   return map;
-}
-
-function darkenHex(hex: number, factor: number): number {
-  const r = Math.min(255, Math.floor(((hex >> 16) & 0xff) * factor));
-  const g = Math.min(255, Math.floor(((hex >> 8) & 0xff) * factor));
-  const b = Math.min(255, Math.floor((hex & 0xff) * factor));
-  return (r << 16) | (g << 8) | b;
 }
 
 /** Set mesh scale and position so coarse geometry (unit cubes 0..n) aligns to world [min, min+stride) for cell 0. */

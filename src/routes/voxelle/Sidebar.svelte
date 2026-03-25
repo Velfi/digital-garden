@@ -89,6 +89,7 @@
       shape: 'cube',
       size: 8,
       mode: 'shape',
+      overwriteIntersecting: true,
       pasteEntries: null
     });
   }

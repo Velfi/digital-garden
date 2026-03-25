@@ -27,7 +27,8 @@
         rotation: [rx, ry, rz],
         shape: s.shape,
         size,
-        getVoxel: getPaintColorResolver()
+        getVoxel: getPaintColorResolver(),
+        overwriteIntersecting: s.overwriteIntersecting
       });
     }
     closeAddPanel();
@@ -139,6 +140,17 @@
           oninput={(e) => update('size', Number((e.target as HTMLInputElement).value))}
         />
       </div>
+      <div class="add-panel-row add-panel-row-toggle">
+        <label class="add-panel-toggle-label">
+          <input
+            type="checkbox"
+            checked={$addPanelStore.overwriteIntersecting}
+            onchange={(e) =>
+              update('overwriteIntersecting', (e.target as HTMLInputElement).checked)}
+          />
+          Overwrite existing voxels
+        </label>
+      </div>
     {/if}
     <div class="add-panel-buttons">
       <button type="button" onclick={handleDone}>Done</button>
@@ -164,5 +176,18 @@
 
   .add-panel-row select {
     flex: 1;
+  }
+
+  .add-panel-row-toggle {
+    align-items: center;
+  }
+
+  .add-panel-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    user-select: none;
   }
 </style>

@@ -227,7 +227,9 @@ export async function createSceneSetupAsync(
   const rollOverMaterial = new THREE.MeshBasicMaterial({
     color: colorHex,
     opacity: 0.5,
-    transparent: true
+    transparent: true,
+    depthTest: false,
+    depthWrite: false
   });
   const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
   const rollOverMesh = new THREE.Mesh(boxGeometry, rollOverMaterial);
@@ -239,11 +241,8 @@ export async function createSceneSetupAsync(
     color: 0xffffff,
     opacity: 0.5,
     transparent: true,
-    depthTest: true,
-    depthWrite: true,
-    polygonOffset: true,
-    polygonOffsetFactor: -1,
-    polygonOffsetUnits: -1
+    depthTest: false,
+    depthWrite: false
   });
   const paintHoverMesh = new THREE.Mesh(boxGeometry, paintHoverMaterial);
   paintHoverMesh.visible = false;
@@ -280,8 +279,8 @@ export async function createSceneSetupAsync(
     color: 0xffffff,
     opacity: 0.5,
     transparent: true,
-    depthTest: true,
-    depthWrite: true
+    depthTest: false,
+    depthWrite: false
   });
   const previewMesh = new THREE.Mesh(placeholderMeshGeometry(), previewMaterial);
   previewMesh.visible = false;
@@ -294,8 +293,8 @@ export async function createSceneSetupAsync(
     color: 0xffffff,
     opacity: 0.5,
     transparent: true,
-    depthTest: true,
-    depthWrite: true
+    depthTest: false,
+    depthWrite: false
   });
   const addPreviewSharedGeometry = placeholderMeshGeometry();
   const addPreviewMesh = new THREE.Mesh(addPreviewSharedGeometry, addPreviewMaterial);
@@ -328,7 +327,7 @@ export async function createSceneSetupAsync(
   const polygonLineMaterial = new THREE.LineBasicMaterial({
     color: 0x3399ff,
     linewidth: 2,
-    depthTest: true,
+    depthTest: false,
     depthWrite: false
   });
   const polygonLineSegments = new THREE.LineSegments(

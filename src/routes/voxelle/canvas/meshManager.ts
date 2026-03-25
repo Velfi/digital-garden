@@ -18,7 +18,12 @@ import {
 import { SELECTION_OVERLAY_MESH_THRESHOLD } from '../strokePreviewBounds';
 import { CUBE_EDGES, EDGE_NEIGHBORS } from '../gridLines';
 import { buildGridPositions } from '../gridLines';
-import { buildGreedyMesh, buildPreviewGeometry, PREVIEW_MESH_OPTIONS } from '../greedyMesh';
+import {
+  buildGreedyMesh,
+  buildPreviewGeometry,
+  PREVIEW_MESH_OPTIONS,
+  type PreviewOverlapShading
+} from '../greedyMesh';
 import type { SceneSetupRefs } from './sceneSetup';
 import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
 import { PREVIEW_GRID_RENDER_ORDER } from './renderOrder';
@@ -480,7 +485,7 @@ export function createMeshManager(
       color: PREVIEW_GRID_HEX,
       transparent: true,
       opacity: PREVIEW_GRID_OPACITY,
-      depthTest: true,
+      depthTest: false,
       depthWrite: false
     });
     previewGridLines = new THREE.LineSegments(geom, previewGridMaterial);
@@ -682,7 +687,7 @@ export function createMeshManager(
           vertexColors: true,
           opacity: 0.35,
           transparent: true,
-          depthTest: true,
+          depthTest: false,
           depthWrite: false
         });
         selectionMesh = new THREE.Mesh(geo, selectionMaterial);
@@ -719,7 +724,7 @@ export function createMeshManager(
         vertexColors: false,
         opacity: 0.35,
         transparent: true,
-        depthTest: true,
+        depthTest: false,
         depthWrite: false
       });
       selectionMesh = new THREE.Mesh(boxGeo, selectionMaterial);
@@ -759,7 +764,7 @@ export function createMeshManager(
       color: 0x9fd8ff,
       transparent: true,
       opacity: 0.52,
-      depthTest: true,
+      depthTest: false,
       depthWrite: false
     });
     selectionWireframe = new THREE.LineSegments(wfGeo, selectionWireframeMaterial);
@@ -942,7 +947,8 @@ export function createMeshManager(
   function updatePreviewMesh(
     positions: [number, number, number][],
     voxel: Voxel,
-    existingVoxels?: Map<string, Voxel>
+    existingVoxels?: Map<string, Voxel>,
+    overlapShading: PreviewOverlapShading = 'invert'
   ) {
     if (!previewMesh || !previewMaterial) return;
     if (positions.length === 0) {
@@ -956,7 +962,7 @@ export function createMeshManager(
     previewMesh.position.set(0, 0, 0);
     previewMaterial.vertexColors = true;
     previewMaterial.color.setHex(0xffffff);
-    const geo = buildPreviewGeometry(positions, voxel, existingVoxels);
+    const geo = buildPreviewGeometry(positions, voxel, existingVoxels, overlapShading);
     if (geo) {
       if (previewMesh.geometry) previewMesh.geometry.dispose();
       previewMesh.geometry = geo;

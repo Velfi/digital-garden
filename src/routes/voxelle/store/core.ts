@@ -132,6 +132,8 @@ export type AddPanelState = {
   shape: StartShape;
   size: number;
   mode: AddPanelMode;
+  /** When false, Add shape only fills empty voxels (including mirror targets). Default true. */
+  overwriteIntersecting: boolean;
   /** Clipboard entries relative to bbox min; used when `mode === 'paste'`. */
   pasteEntries: [number, number, number, number, string?][] | null;
 };
@@ -148,6 +150,7 @@ const defaultAddPanel: AddPanelState = {
   shape: 'cube',
   size: 8,
   mode: 'shape',
+  overwriteIntersecting: true,
   pasteEntries: null
 };
 
@@ -1146,11 +1149,27 @@ export function getPaintColorResolver(): () => Voxel {
 
 export function addShapeAt(params: AddShapeParams): void {
   const { position, rotation, shape, size, getVoxel } = params;
+  const overwriteIntersecting = params.overwriteIntersecting !== false;
   if (shape === 'empty' || size < 1) return;
   const positions = getShapePositionsAt({ position, rotation, shape, size });
   ensureGridFitsPositions(positions);
+  const axes: SymmetryAxes = {
+    x: get(symmetryX),
+    y: get(symmetryY),
+    z: get(symmetryZ)
+  };
   updateVoxels((v) => {
     for (const [x, y, z] of positions) {
+      if (!overwriteIntersecting) {
+        let blocked = false;
+        for (const k of getMirrorCoordKeys(x, y, z, axes)) {
+          if (v.has(k)) {
+            blocked = true;
+            break;
+          }
+        }
+        if (blocked) continue;
+      }
       v.set(coordKey(x, y, z), cloneVoxel(getVoxel()));
     }
   });
