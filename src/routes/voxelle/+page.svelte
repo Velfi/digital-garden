@@ -9,6 +9,7 @@
   import AddPanel from './AddPanel.svelte';
   import {
     history,
+    markUndoRedoGestureStart,
     saveToStorage,
     selectAll,
     color,
@@ -208,15 +209,22 @@
       e.preventDefault();
       e.stopPropagation();
       if (e.shiftKey) {
+        markUndoRedoGestureStart('redo');
         history.redo();
       } else {
+        markUndoRedoGestureStart('undo');
         history.undo();
       }
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
       e.preventDefault();
       e.stopPropagation();
+      markUndoRedoGestureStart('redo');
       history.redo();
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
       e.preventDefault();
       e.stopPropagation();
       selectAll();

@@ -1,4 +1,4 @@
-import { parseCoordKey } from './coordUtils';
+import { parseCoordKeyInts } from './coordUtils';
 import type { Voxel } from './voxelMaterial';
 import { VOXEL_MATERIAL_IDS } from './voxelMaterial';
 
@@ -28,7 +28,7 @@ export function packVoxelsForWorker(voxels: Map<string, Voxel>): PackedVoxelInpu
   const materials = new Uint8Array(count);
   let i = 0;
   for (const [key, voxel] of voxels) {
-    const [x, y, z] = parseCoordKey(key);
+    const [x, y, z] = parseCoordKeyInts(key);
     const o = i * 3;
     coords[o] = x;
     coords[o + 1] = y;
@@ -49,6 +49,40 @@ function chunkIdForCoord(x: number, y: number, z: number, chunkSize: number): st
   return `${Math.floor(x / chunkSize)},${Math.floor(y / chunkSize)},${Math.floor(z / chunkSize)}`;
 }
 
+/** Inclusive voxel-space bounds covering all voxels in the given chunk ids. */
+function voxelBoundsForChunkIds(
+  chunkIds: Iterable<string>,
+  chunkSize: number
+): { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number } {
+  let minCx = Infinity;
+  let minCy = Infinity;
+  let minCz = Infinity;
+  let maxCx = -Infinity;
+  let maxCy = -Infinity;
+  let maxCz = -Infinity;
+  for (const id of chunkIds) {
+    const c0 = id.indexOf(',');
+    const c1 = id.indexOf(',', c0 + 1);
+    const cx = +id.slice(0, c0);
+    const cy = +id.slice(c0 + 1, c1);
+    const cz = +id.slice(c1 + 1);
+    minCx = Math.min(minCx, cx);
+    minCy = Math.min(minCy, cy);
+    minCz = Math.min(minCz, cz);
+    maxCx = Math.max(maxCx, cx);
+    maxCy = Math.max(maxCy, cy);
+    maxCz = Math.max(maxCz, cz);
+  }
+  return {
+    minX: minCx * chunkSize,
+    maxX: (maxCx + 1) * chunkSize - 1,
+    minY: minCy * chunkSize,
+    maxY: (maxCy + 1) * chunkSize - 1,
+    minZ: minCz * chunkSize,
+    maxZ: (maxCz + 1) * chunkSize - 1
+  };
+}
+
 function packVoxelEntries(entries: Array<[string, Voxel]>): PackedVoxelInput {
   const count = entries.length;
   const coords = new Int32Array(count * 3);
@@ -56,7 +90,7 @@ function packVoxelEntries(entries: Array<[string, Voxel]>): PackedVoxelInput {
   const materials = new Uint8Array(count);
   let i = 0;
   for (const [key, voxel] of entries) {
-    const [x, y, z] = parseCoordKey(key);
+    const [x, y, z] = parseCoordKeyInts(key);
     const o = i * 3;
     coords[o] = x;
     coords[o + 1] = y;
@@ -81,17 +115,30 @@ export function packSparseChunksForWorker(
   const dirtyByChunk = new Map<string, Array<[string, Voxel]>>();
   const haloByChunk = new Map<string, Array<[string, Voxel]>>();
   let totalTransmissiveCount = 0;
+
+  const relevantChunkIds: string[] = [];
+  for (const id of dirtyChunkIds) relevantChunkIds.push(id);
+  for (const id of haloChunkIds) relevantChunkIds.push(id);
+  if (relevantChunkIds.length === 0) {
+    return { chunkSize, totalTransmissiveCount: 0, dirtyChunks: [], haloChunks: [] };
+  }
+  const bounds = voxelBoundsForChunkIds(relevantChunkIds, chunkSize);
+
   for (const [key, voxel] of voxels) {
-    if (voxel.material === 'glass' || voxel.material === 'water') totalTransmissiveCount++;
-    const [x, y, z] = parseCoordKey(key);
+    const [x, y, z] = parseCoordKeyInts(key);
+    if (x < bounds.minX || x > bounds.maxX || y < bounds.minY || y > bounds.maxY || z < bounds.minZ || z > bounds.maxZ) {
+      continue;
+    }
     const chunkId = chunkIdForCoord(x, y, z, chunkSize);
     if (dirtySet.has(chunkId)) {
+      if (voxel.material === 'glass' || voxel.material === 'water') totalTransmissiveCount++;
       const arr = dirtyByChunk.get(chunkId) ?? [];
       arr.push([key, voxel]);
       dirtyByChunk.set(chunkId, arr);
       continue;
     }
     if (haloSet.has(chunkId)) {
+      if (voxel.material === 'glass' || voxel.material === 'water') totalTransmissiveCount++;
       const arr = haloByChunk.get(chunkId) ?? [];
       arr.push([key, voxel]);
       haloByChunk.set(chunkId, arr);
@@ -103,7 +150,9 @@ export function packSparseChunksForWorker(
   }
   const haloChunks: PackedChunkVoxelInput[] = [];
   for (const chunkId of haloChunkIds) {
-    haloChunks.push({ chunkId, voxels: packVoxelEntries(haloByChunk.get(chunkId) ?? []) });
+    const packed = packVoxelEntries(haloByChunk.get(chunkId) ?? []);
+    if (packed.coords.length === 0) continue;
+    haloChunks.push({ chunkId, voxels: packed });
   }
   return { chunkSize, totalTransmissiveCount, dirtyChunks, haloChunks };
 }

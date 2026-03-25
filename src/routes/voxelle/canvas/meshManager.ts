@@ -45,12 +45,14 @@ import { perfLog, perfNow, voxellePerfEnabled } from './voxellePerf';
 import { consumeDirtyVoxelKeys } from '../store/core';
 import type { VoxelMeshWorkerOutput } from '../voxelMeshWorkerLogic';
 import {
+  clearPendingUndoRedoGesture,
   markEditApplyDuration,
   markEditMeshRequested,
   markEditResultStats,
   markEditRendered,
   markEditTransferStats,
-  markEditWorkerRoundTrip
+  markEditWorkerRoundTrip,
+  markWorkerTimingStats
 } from '../store/projectPerf';
 
 export interface MeshManagerOptions {
@@ -260,7 +262,9 @@ export function createMeshManager(
   ): { dirtyChunkIds: string[]; haloChunkIds: string[] } {
     const dirty = new Set<string>();
     const halo = new Set<string>();
-    const useReducedHalo = options.highScaleScene && keys.size <= 8 && options.aoStrength <= 1;
+    const useReducedHalo =
+      options.aoStrength === 0 ||
+      (options.highScaleScene && keys.size <= 8 && options.aoStrength <= 1);
     for (const key of keys) {
       const [x, y, z] = parseCoordKey(key);
       const cx = Math.floor(x / chunkSize);
@@ -365,6 +369,7 @@ export function createMeshManager(
 
   function applyVoxelMeshResults(
     results: Array<{
+      meshKey?: string;
       bucketKey: string;
       positions: Float32Array;
       normals: Float32Array;
@@ -375,12 +380,12 @@ export function createMeshManager(
     changedBuckets?: readonly string[]
   ) {
     if (!voxelGroup) return;
-    const byBucket = new Map(results.map((r) => [r.bucketKey, r]));
+    const byMesh = new Map(results.map((r) => [r.meshKey ?? r.bucketKey, r]));
     if (!changedBuckets || changedBuckets.length === 0) {
       disposeAllVoxelMeshes();
-      for (const [bucketKey, data] of byBucket) {
+      for (const [meshKey, data] of byMesh) {
         const { mesh } = buildVoxelMeshEntry(
-          bucketKey,
+          data.bucketKey,
           data.positions,
           data.normals,
           data.colors,
@@ -388,21 +393,21 @@ export function createMeshManager(
           data.indices
         );
         voxelGroup.add(mesh);
-        meshesByBucket.set(bucketKey, { mesh, positions: null });
+        meshesByBucket.set(meshKey, { mesh, positions: null });
       }
     } else {
       const dirty = new Set(changedBuckets);
-      for (const bucketKey of dirty) {
-        const prev = meshesByBucket.get(bucketKey);
+      for (const meshKey of dirty) {
+        const prev = meshesByBucket.get(meshKey);
         if (prev) {
           voxelGroup.remove(prev.mesh);
           disposeMeshEntry(prev.mesh);
-          meshesByBucket.delete(bucketKey);
+          meshesByBucket.delete(meshKey);
         }
-        const data = byBucket.get(bucketKey);
+        const data = byMesh.get(meshKey);
         if (!data) continue;
         const { mesh } = buildVoxelMeshEntry(
-          bucketKey,
+          data.bucketKey,
           data.positions,
           data.normals,
           data.colors,
@@ -410,13 +415,13 @@ export function createMeshManager(
           data.indices
         );
         voxelGroup.add(mesh);
-        meshesByBucket.set(bucketKey, { mesh, positions: null });
+        meshesByBucket.set(meshKey, { mesh, positions: null });
       }
     }
     let hasGlowMesh = false;
-    for (const bucketKey of meshesByBucket.keys()) {
-      const parsed = parseBucketKey(bucketKey);
-      if ((parsed?.material ?? 'plastic') === 'glow') {
+    for (const { mesh } of meshesByBucket.values()) {
+      const matId = mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY];
+      if (matId === 'glow') {
         hasGlowMesh = true;
         break;
       }
@@ -436,6 +441,10 @@ export function createMeshManager(
         markEditWorkerRoundTrip(perfNow() - workerRequestAt);
         workerRequestStartByGen.delete(meshRebuildGen);
       }
+      markWorkerTimingStats({
+        parseInputMs: e.data.workerTimings?.parseInputMs ?? null,
+        meshComputeMs: e.data.workerTimings?.meshComputeMs ?? null
+      });
       const t0 = voxellePerfEnabled() ? perfNow() : 0;
       const applyStart = perfNow();
       callbacks.onLoadingChange(false);
@@ -531,7 +540,10 @@ export function createMeshManager(
   }
 
   function requestRebuildVoxelMeshes(v: Map<string, Voxel>) {
-    if (!meshWorker || !voxelGroup) return;
+    if (!meshWorker || !voxelGroup) {
+      clearPendingUndoRedoGesture();
+      return;
+    }
     const gen = ++meshRebuildGen;
     workerRequestStartByGen.clear();
     const opts = getOptions();

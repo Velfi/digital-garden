@@ -2,10 +2,19 @@ import { writable, get } from 'svelte/store';
 import type { Writable } from 'svelte/store';
 import { serializeVoxels, deserializeVoxels } from './serialization';
 import type { UndoDelta } from './serialization';
-import { applyUndoDeltaInverse, applyUndoDeltaForward, isUndoDeltaEmpty } from './serialization';
+import {
+  applyUndoDeltaInverse,
+  applyUndoDeltaForward,
+  isUndoDeltaEmpty,
+  voxelKeysTouchedInUndoDeltaVoxels
+} from './serialization';
 import type { Voxel } from '../voxelMaterial';
 import { recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
-import { measureRedoDuration, measureUndoDuration } from './projectPerf';
+import {
+  clearPendingUndoRedoGesture,
+  measureRedoDuration,
+  measureUndoDuration
+} from './projectPerf';
 
 const MAX_UNDO = 50;
 
@@ -41,9 +50,15 @@ function normalizeLoadedEntry(raw: unknown): UndoStackEntry {
   throw new Error('Invalid undo entry shape');
 }
 
+export type UndoMeshDirtyOptions = {
+  /** Mark these voxel keys dirty so the mesh worker can incrementally rebuild (delta steps only). */
+  noteVoxelKeysDirty?: (keys: ReadonlySet<string>) => void;
+};
+
 export function createUndo(
   voxels: Writable<Map<string, Voxel>>,
-  selection: Writable<Map<string, Voxel>>
+  selection: Writable<Map<string, Voxel>>,
+  meshDirty?: UndoMeshDirtyOptions
 ) {
   const canUndoStore = writable(false);
   const canRedoStore = writable(false);
@@ -65,7 +80,10 @@ export function createUndo(
 
   function doUndo() {
     measureUndoDuration(() => {
-      if (undoStack.length === 0) return;
+      if (undoStack.length === 0) {
+        clearPendingUndoRedoGesture();
+        return;
+      }
       const entry = undoStack.pop()!;
       if (entry.k === 'f') {
         redoStack.push({
@@ -78,6 +96,7 @@ export function createUndo(
         selection.set(deserializeVoxels(entry.s));
       } else {
         redoStack.push(entry);
+        meshDirty?.noteVoxelKeysDirty?.(voxelKeysTouchedInUndoDeltaVoxels(entry.d));
         const curV = get(voxels);
         const curS = get(selection);
         const { v, s } = applyUndoDeltaInverse(curV, curS, entry.d);
@@ -92,7 +111,10 @@ export function createUndo(
 
   function doRedo() {
     measureRedoDuration(() => {
-      if (redoStack.length === 0) return;
+      if (redoStack.length === 0) {
+        clearPendingUndoRedoGesture();
+        return;
+      }
       const entry = redoStack.pop()!;
       if (entry.k === 'f') {
         undoStack.push({
@@ -105,6 +127,7 @@ export function createUndo(
         selection.set(deserializeVoxels(entry.s));
       } else {
         undoStack.push(entry);
+        meshDirty?.noteVoxelKeysDirty?.(voxelKeysTouchedInUndoDeltaVoxels(entry.d));
         const curV = get(voxels);
         const curS = get(selection);
         const { v, s } = applyUndoDeltaForward(curV, curS, entry.d);

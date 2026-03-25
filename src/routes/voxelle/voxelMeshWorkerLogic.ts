@@ -24,7 +24,12 @@ export interface VoxelMeshWorkerInput {
 export interface VoxelMeshWorkerOutput {
   gen?: number;
   changedBuckets?: string[];
+  workerTimings?: {
+    parseInputMs: number;
+    meshComputeMs: number;
+  };
   results: Array<{
+    meshKey?: string;
     bucketKey: string;
     positions: Float32Array;
     normals: Float32Array;
@@ -32,6 +37,10 @@ export interface VoxelMeshWorkerOutput {
     slabThickness: Float32Array;
     indices: Uint32Array;
   }>;
+}
+
+function workerNow(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
 
 type BucketGeometry = VoxelMeshWorkerOutput['results'][number];
@@ -119,17 +128,29 @@ function mergeCachedChunkResults(
   return mergeChunkResults(all);
 }
 
+/** Per-chunk bucket meshes with meshKey; required so incremental updates match main-thread keys. */
+function flattenCachedChunkResults(
+  cache: ReadonlyMap<string, BucketGeometry[]>
+): VoxelMeshWorkerOutput['results'] {
+  const all: BucketGeometry[] = [];
+  for (const results of cache.values()) {
+    for (const r of results) all.push(r);
+  }
+  return all;
+}
+
 function mergeChunkResultsForBucketSet(
   cache: ReadonlyMap<string, BucketGeometry[]>,
   buckets: ReadonlySet<string>
 ): VoxelMeshWorkerOutput['results'] {
-  const all: BucketGeometry[] = [];
+  const all: VoxelMeshWorkerOutput['results'] = [];
   for (const results of cache.values()) {
     for (const r of results) {
-      if (buckets.has(r.bucketKey)) all.push(r);
+      const meshKey = r.meshKey ?? r.bucketKey;
+      if (buckets.has(meshKey)) all.push(r);
     }
   }
-  return mergeChunkResults(all);
+  return all;
 }
 
 /** All voxels that belong to one greedy bucket (color|material). */
@@ -183,6 +204,7 @@ function countTransmissiveVoxels(voxels: Map<string, Voxel>): number {
 }
 
 function computeChunkGeometry(
+  chunkId: string,
   chunkVoxels: Map<string, Voxel>,
   allVoxels: Map<string, Voxel>,
   options: { aoEnabled?: boolean; aoStrength?: 0 | 1 | 2 }
@@ -195,6 +217,7 @@ function computeChunkGeometry(
   });
   for (const [bucketKey, data] of coreResults) {
     results.push({
+      meshKey: `${chunkId}|${bucketKey}`,
       bucketKey,
       positions: data.positions,
       normals: data.normals,
@@ -233,12 +256,15 @@ function buildSparseChunkMaps(input: PackedSparseChunkInput): {
 }
 
 export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshWorkerOutput {
+  const tParse0 = workerNow();
   const { voxels: voxelInput, mode = 'greedy', options = {}, dirtyChunkIds, gen } = input;
   if (mode === 'ray') {
     return { results: [], gen };
   }
   const isSparse = isPackedSparseChunkInput(voxelInput);
   const voxels = isSparse ? null : voxelsFromInput(voxelInput);
+  const parseInputMs = Math.max(0, workerNow() - tParse0);
+  const tMesh0 = workerNow();
   const chunkSize = options.chunkSize ?? CHUNK_SIZE_DEFAULT;
 
   if (chunkSize >= 16 && mode === 'greedy' && (isSparse || (voxels && voxels.size > 0))) {
@@ -255,42 +281,64 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
       cachedChunkResults.size > 0;
     if (canUseIncremental) {
       if (voxelInput.chunkSize !== chunkSize) {
-        return { results: mergeCachedChunkResults(cachedChunkResults), gen, changedBuckets: [] };
+        const results = needsGlassRepair
+          ? mergeCachedChunkResults(cachedChunkResults)
+          : flattenCachedChunkResults(cachedChunkResults);
+        return { results, gen, changedBuckets: [] };
       }
       const dirtySet = new Set(dirtyChunkIds);
       const { dirtyByChunk, occupancy } = buildSparseChunkMaps(voxelInput);
       const changedBuckets = new Set<string>();
       for (const ck of dirtySet) {
         const prev = cachedChunkResults.get(ck);
-        if (prev) for (const bucket of prev) changedBuckets.add(bucket.bucketKey);
+        if (prev) for (const bucket of prev) changedBuckets.add(bucket.meshKey ?? bucket.bucketKey);
         const ch = dirtyByChunk.get(ck);
         if (!ch || ch.size === 0) {
           cachedChunkResults.delete(ck);
           continue;
         }
-        const next = computeChunkGeometry(ch, occupancy, options);
-        for (const bucket of next) changedBuckets.add(bucket.bucketKey);
+        const next = computeChunkGeometry(ck, ch, occupancy, options);
+        for (const bucket of next) changedBuckets.add(bucket.meshKey ?? bucket.bucketKey);
         cachedChunkResults.set(ck, next);
       }
       const changed = [...changedBuckets];
       const deltaResults = mergeChunkResultsForBucketSet(cachedChunkResults, changedBuckets);
-      return { results: deltaResults, gen, changedBuckets: changed };
+      return {
+        results: deltaResults,
+        gen,
+        changedBuckets: changed,
+        workerTimings: { parseInputMs, meshComputeMs: Math.max(0, workerNow() - tMesh0) }
+      };
     }
 
     if (isSparse) {
-      return { results: mergeCachedChunkResults(cachedChunkResults), gen, changedBuckets: [] };
+      const results = needsGlassRepair
+        ? mergeCachedChunkResults(cachedChunkResults)
+        : flattenCachedChunkResults(cachedChunkResults);
+      return {
+        results,
+        gen,
+        changedBuckets: [],
+        workerTimings: { parseInputMs, meshComputeMs: Math.max(0, workerNow() - tMesh0) }
+      };
     }
 
     const chunks = partitionByChunks(voxels!, chunkSize);
     const nextCache = new Map<string, BucketGeometry[]>();
     for (const [ck, ch] of chunks) {
-      nextCache.set(ck, computeChunkGeometry(ch, voxels!, options));
+      nextCache.set(ck, computeChunkGeometry(ck, ch, voxels!, options));
     }
     cachedChunkResults = nextCache;
     cachedChunkSize = chunkSize;
     const merged = mergeCachedChunkResults(cachedChunkResults);
-    const results = needsGlassRepair ? replaceGlassBucketsWithFullSceneGreedy(merged, voxels!, options) : merged;
-    return { results, gen };
+    const results = needsGlassRepair
+      ? replaceGlassBucketsWithFullSceneGreedy(merged, voxels!, options)
+      : flattenCachedChunkResults(cachedChunkResults);
+    return {
+      results,
+      gen,
+      workerTimings: { parseInputMs, meshComputeMs: Math.max(0, workerNow() - tMesh0) }
+    };
   }
 
   cachedChunkResults = new Map();
@@ -310,7 +358,11 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
         indices: data.indices
       });
     }
-    return { results, gen };
+    return {
+      results,
+      gen,
+      workerTimings: { parseInputMs, meshComputeMs: Math.max(0, workerNow() - tMesh0) }
+    };
   }
 
   const coreResults = computeGreedyMesh(voxels!, options);
@@ -325,5 +377,9 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
       indices: data.indices
     });
   }
-  return { results, gen };
+  return {
+    results,
+    gen,
+    workerTimings: { parseInputMs, meshComputeMs: Math.max(0, workerNow() - tMesh0) }
+  };
 }

@@ -16,8 +16,13 @@ export type ProjectPerfMetrics = {
   lastEditChangedBucketCount: number | null;
   lastEditResultVertexCount: number | null;
   lastEditResultIndexCount: number | null;
+  lastWorkerParseInputMs: number | null;
+  lastWorkerMeshComputeMs: number | null;
+  /** Undo: keyboard/menu gesture through mesh applied + rendered (see lastUndoSyncDurationMs for main-thread only). */
   lastUndoDurationMs: number | null;
+  lastUndoSyncDurationMs: number | null;
   lastRedoDurationMs: number | null;
+  lastRedoSyncDurationMs: number | null;
 };
 
 const initialMetrics: ProjectPerfMetrics = {
@@ -31,8 +36,12 @@ const initialMetrics: ProjectPerfMetrics = {
   lastEditChangedBucketCount: null,
   lastEditResultVertexCount: null,
   lastEditResultIndexCount: null,
+  lastWorkerParseInputMs: null,
+  lastWorkerMeshComputeMs: null,
   lastUndoDurationMs: null,
-  lastRedoDurationMs: null
+  lastUndoSyncDurationMs: null,
+  lastRedoDurationMs: null,
+  lastRedoSyncDurationMs: null
 };
 
 export const projectPerfMetrics = writable<ProjectPerfMetrics>({ ...initialMetrics });
@@ -45,6 +54,33 @@ function nowMs(): number {
 
 let editMeasureDepth = 0;
 let pendingEditStartMs: number | null = null;
+
+/** Keyboard (keyup) / menu click start until greedy mesh pipeline finishes. */
+let pendingUndoRedoE2E: { kind: 'undo' | 'redo'; startMs: number } | null = null;
+
+/** Call on keyboard shortcut (Ctrl/Cmd+Z/Y) or immediately before menu undo/redo so duration includes gesture → mesh. */
+export function markUndoRedoGestureStart(kind: 'undo' | 'redo'): void {
+  pendingEditStartMs = null;
+  const t0 = nowMs();
+  pendingUndoRedoE2E = { kind, startMs: t0 };
+  if (kind === 'undo') {
+    projectPerfMetrics.update((m) => ({
+      ...m,
+      lastUndoDurationMs: null,
+      lastUndoSyncDurationMs: null
+    }));
+  } else {
+    projectPerfMetrics.update((m) => ({
+      ...m,
+      lastRedoDurationMs: null,
+      lastRedoSyncDurationMs: null
+    }));
+  }
+}
+
+export function clearPendingUndoRedoGesture(): void {
+  pendingUndoRedoE2E = null;
+}
 
 export function measureEditDuration<T>(fn: () => T): T {
   if (editMeasureDepth > 0) return fn();
@@ -66,10 +102,24 @@ export function measureEditDuration<T>(fn: () => T): T {
       lastEditHaloChunkCount: null,
       lastEditChangedBucketCount: null,
       lastEditResultVertexCount: null,
-      lastEditResultIndexCount: null
+      lastEditResultIndexCount: null,
+      lastWorkerParseInputMs: null,
+      lastWorkerMeshComputeMs: null
     }));
     editMeasureDepth--;
   }
+}
+
+export function markWorkerTimingStats(stats: {
+  parseInputMs: number | null;
+  meshComputeMs: number | null;
+}): void {
+  if (pendingEditStartMs === null) return;
+  projectPerfMetrics.update((m) => ({
+    ...m,
+    lastWorkerParseInputMs: stats.parseInputMs,
+    lastWorkerMeshComputeMs: stats.meshComputeMs
+  }));
 }
 
 export function markEditTransferStats(stats: {
@@ -123,6 +173,18 @@ export function markEditApplyDuration(applyMs: number): void {
 }
 
 export function markEditRendered(renderedAtMs: number): void {
+  if (pendingUndoRedoE2E !== null) {
+    const { kind, startMs } = pendingUndoRedoE2E;
+    pendingUndoRedoE2E = null;
+    pendingEditStartMs = null;
+    const total = Math.max(0, renderedAtMs - startMs);
+    if (kind === 'undo') {
+      projectPerfMetrics.update((m) => ({ ...m, lastUndoDurationMs: total }));
+    } else {
+      projectPerfMetrics.update((m) => ({ ...m, lastRedoDurationMs: total }));
+    }
+    return;
+  }
   if (pendingEditStartMs === null) return;
   const total = Math.max(0, renderedAtMs - pendingEditStartMs);
   pendingEditStartMs = null;
@@ -131,21 +193,31 @@ export function markEditRendered(renderedAtMs: number): void {
 
 export function measureUndoDuration<T>(fn: () => T): T {
   const t0 = nowMs();
+  if (pendingUndoRedoE2E === null) {
+    pendingEditStartMs = null;
+    pendingUndoRedoE2E = { kind: 'undo', startMs: t0 };
+    projectPerfMetrics.update((m) => ({ ...m, lastUndoDurationMs: null, lastUndoSyncDurationMs: null }));
+  }
   try {
     return fn();
   } finally {
     const dt = Math.max(0, nowMs() - t0);
-    projectPerfMetrics.update((m) => ({ ...m, lastUndoDurationMs: dt }));
+    projectPerfMetrics.update((m) => ({ ...m, lastUndoSyncDurationMs: dt }));
   }
 }
 
 export function measureRedoDuration<T>(fn: () => T): T {
   const t0 = nowMs();
+  if (pendingUndoRedoE2E === null) {
+    pendingEditStartMs = null;
+    pendingUndoRedoE2E = { kind: 'redo', startMs: t0 };
+    projectPerfMetrics.update((m) => ({ ...m, lastRedoDurationMs: null, lastRedoSyncDurationMs: null }));
+  }
   try {
     return fn();
   } finally {
     const dt = Math.max(0, nowMs() - t0);
-    projectPerfMetrics.update((m) => ({ ...m, lastRedoDurationMs: dt }));
+    projectPerfMetrics.update((m) => ({ ...m, lastRedoSyncDurationMs: dt }));
   }
 }
 

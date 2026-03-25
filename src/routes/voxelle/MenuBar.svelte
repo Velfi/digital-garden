@@ -21,6 +21,7 @@
     deselectVoxels,
     deselectEmptySpaces,
     modalRequest,
+    markUndoRedoGestureStart,
     history,
     canUndo,
     canRedo,
@@ -140,11 +141,13 @@
   }
 
   function handleUndo() {
+    markUndoRedoGestureStart('undo');
     history.undo();
     closeMenus();
   }
 
   function handleRedo() {
+    markUndoRedoGestureStart('redo');
     history.redo();
     closeMenus();
   }

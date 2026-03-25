@@ -171,6 +171,14 @@ export function computeStrokeVoxelUndoDelta(
   return { voxelAdded, voxelRemoved };
 }
 
+/** Voxel keys touched when applying this delta (same set for forward and inverse). */
+export function voxelKeysTouchedInUndoDeltaVoxels(delta: UndoDelta): Set<string> {
+  const keys = new Set<string>();
+  for (const [k] of delta.voxelAdded) keys.add(k);
+  for (const [k] of delta.voxelRemoved) keys.add(k);
+  return keys;
+}
+
 export function applyUndoDeltaForward(
   v: Map<string, Voxel>,
   s: Map<string, Voxel>,

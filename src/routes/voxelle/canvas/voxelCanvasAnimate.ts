@@ -61,6 +61,8 @@ export type VoxelCanvasAnimateContext = {
   getFlyControlsEnabled: () => boolean;
   /** True when mesh/grid/ray-invalidate batch ran this frame (greedy mode needs a redraw). */
   getPipelineAppliedThisFrame: () => boolean;
+  /** Greedy/marching: presentation (lights, materials, prefs) changed since last draw. */
+  getCanvasPresentationDirty: () => boolean;
   render: () => void;
 };
 
@@ -183,7 +185,8 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
     controlsDirty ||
     hasActiveInteraction ||
     ctx.getFlyControlsEnabled() ||
-    ctx.getPipelineAppliedThisFrame()
+    ctx.getPipelineAppliedThisFrame() ||
+    ctx.getCanvasPresentationDirty()
   ) {
     ctx.render();
   }

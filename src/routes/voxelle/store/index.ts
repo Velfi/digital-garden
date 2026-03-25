@@ -259,7 +259,7 @@ export {
 } from './core';
 
 export { glowVoxelCount, recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
-export { projectPerfMetrics } from './projectPerf';
+export { projectPerfMetrics, markUndoRedoGestureStart } from './projectPerf';
 export {
   projectOpenLoading,
   LARGE_PROJECT_OPEN_VOXEL_THRESHOLD,

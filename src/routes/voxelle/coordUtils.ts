@@ -9,6 +9,16 @@ export function parseCoordKey(key: string): [number, number, number] {
   return [x, y, z];
 }
 
+/** Same as parseCoordKey without allocating a split array (hot paths). */
+export function parseCoordKeyInts(key: string): [number, number, number] {
+  const i0 = key.indexOf(',');
+  const i1 = key.indexOf(',', i0 + 1);
+  const x = +key.slice(0, i0);
+  const y = +key.slice(i0 + 1, i1);
+  const z = +key.slice(i1 + 1);
+  return [x, y, z];
+}
+
 /** Build a voxel Map from a list of positions and a single voxel (color + material). */
 export function positionsToVoxelMap(
   positions: [number, number, number][],

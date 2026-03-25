@@ -84,9 +84,9 @@ describe('voxelMeshWorkerLogic', () => {
       ],
       options: { chunkSize: 16 }
     });
-    expect(output.results).toHaveLength(1);
+    const totalIndices = output.results.reduce((s, r) => s + r.indices.length, 0);
     // Two adjacent voxels should render 10 faces total (60 triangle indices), not 12 (72).
-    expect(output.results[0].indices.length).toBe(60);
+    expect(totalIndices).toBe(60);
   });
 
   it('small glass slab still builds valid chunked greedy output', () => {
@@ -101,9 +101,8 @@ describe('voxelMeshWorkerLogic', () => {
       options: { chunkSize: 16 }
     });
     expect(full.results).toHaveLength(1);
-    expect(chunked.results).toHaveLength(1);
+    expect(chunked.results.length).toBeGreaterThan(0);
     const f = full.results[0]!;
-    const c = chunked.results[0]!;
     const minOf = (a: Float32Array) => {
       let m = Infinity;
       for (let i = 0; i < a.length; i++) m = Math.min(m, a[i]!);
@@ -114,8 +113,8 @@ describe('voxelMeshWorkerLogic', () => {
       for (let i = 0; i < a.length; i++) m = Math.max(m, a[i]!);
       return m;
     };
-    expect(minOf(c.colors)).toBeGreaterThan(0);
-    expect(maxOf(c.slabThickness)).toBeGreaterThan(0);
+    expect(chunked.results.every((part) => minOf(part.colors) > 0)).toBe(true);
+    expect(chunked.results.every((part) => maxOf(part.slabThickness) > 0)).toBe(true);
     expect(maxOf(f.slabThickness)).toBe(21);
   });
 
@@ -192,9 +191,9 @@ describe('voxelMeshWorkerLogic', () => {
       options: { chunkSize: 32 }
     });
     expect((incrementalOut.changedBuckets ?? []).length).toBeGreaterThan(0);
-    const fullByBucket = new Map(fullOut.results.map((r) => [r.bucketKey, r]));
+    const fullByMeshKey = new Map(fullOut.results.map((r) => [r.meshKey ?? r.bucketKey, r]));
     for (const r of incrementalOut.results) {
-      const expected = fullByBucket.get(r.bucketKey);
+      const expected = fullByMeshKey.get(r.meshKey ?? r.bucketKey);
       expect(expected).toBeTruthy();
       expect(r.positions.length).toBe(expected!.positions.length);
       expect(r.indices.length).toBe(expected!.indices.length);
@@ -229,11 +228,11 @@ describe('voxelMeshWorkerLogic', () => {
     });
     expect(incrementalOut.changedBuckets).toBeTruthy();
     expect(incrementalOut.results.length).toBeLessThanOrEqual(fullOut.results.length);
-    const fullByBucket = new Map(fullOut.results.map((r) => [r.bucketKey, r]));
+    const fullByMeshKey = new Map(fullOut.results.map((r) => [r.meshKey ?? r.bucketKey, r]));
     const changed = new Set(incrementalOut.changedBuckets ?? []);
     for (const r of incrementalOut.results) {
-      expect(changed.has(r.bucketKey)).toBe(true);
-      const expected = fullByBucket.get(r.bucketKey);
+      expect(changed.has(r.meshKey ?? r.bucketKey)).toBe(true);
+      const expected = fullByMeshKey.get(r.meshKey ?? r.bucketKey);
       expect(expected).toBeTruthy();
       expect(r.positions.length).toBe(expected!.positions.length);
       expect(r.indices.length).toBe(expected!.indices.length);

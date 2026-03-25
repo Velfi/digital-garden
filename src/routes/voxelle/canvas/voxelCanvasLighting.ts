@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { hexToInt } from '../store/index';
+import { isWebGPURenderer } from './rendererUtils';
 
 export function updateDirLightPosition(
   dirLight: THREE.DirectionalLight,
@@ -122,16 +123,58 @@ export function updateShadowCamera(dirLight: THREE.DirectionalLight, sz: number)
   cam.updateProjectionMatrix();
 }
 
-export function invalidateDirectionalShadowMap(
-  renderer:
-    | THREE.WebGLRenderer
-    | { shadowMap?: { enabled?: boolean; needsUpdate?: boolean } }
-    | null,
+/** WebGPU: avoid needsUpdate before ShadowNode.setup allocates shadow.map.depthTexture (updateBefore runs before updateForRender). */
+let pendingWebGpuDirectionalShadowInvalidate = false;
+
+export type ShadowInvalidateRenderer =
+  | THREE.WebGLRenderer
+  | { shadowMap?: { enabled?: boolean; needsUpdate?: boolean } }
+  | null;
+
+function applyDirectionalShadowMapInvalidate(
+  renderer: ShadowInvalidateRenderer,
+  dirLight: THREE.DirectionalLight
+): void {
+  const sm = renderer!.shadowMap as { needsUpdate?: boolean };
+  if (typeof sm.needsUpdate === 'boolean') sm.needsUpdate = true;
+  dirLight.shadow.needsUpdate = true;
+}
+
+/**
+ * Call once per frame after `render()` so a deferred WebGPU invalidate runs only once the
+ * directional shadow target (and depthTexture) exists.
+ */
+export function flushPendingWebGpuDirectionalShadowInvalidate(
+  renderer: ShadowInvalidateRenderer,
   enableShadows: boolean,
   dirLight: THREE.DirectionalLight | undefined
 ): void {
-  if (!renderer?.shadowMap?.enabled || !enableShadows || !dirLight?.shadow) return;
-  const sm = renderer.shadowMap as { needsUpdate?: boolean };
-  if (typeof sm.needsUpdate === 'boolean') sm.needsUpdate = true;
-  dirLight.shadow.needsUpdate = true;
+  if (!pendingWebGpuDirectionalShadowInvalidate) return;
+  if (!isWebGPURenderer(renderer) || !enableShadows || !dirLight?.shadow || !renderer?.shadowMap?.enabled) {
+    pendingWebGpuDirectionalShadowInvalidate = false;
+    return;
+  }
+  const map = dirLight.shadow.map as THREE.RenderTarget | null | undefined;
+  if (!map?.depthTexture) return;
+  pendingWebGpuDirectionalShadowInvalidate = false;
+  applyDirectionalShadowMapInvalidate(renderer, dirLight);
+}
+
+export function invalidateDirectionalShadowMap(
+  renderer: ShadowInvalidateRenderer,
+  enableShadows: boolean,
+  dirLight: THREE.DirectionalLight | undefined
+): void {
+  if (!renderer?.shadowMap?.enabled || !enableShadows || !dirLight?.shadow) {
+    pendingWebGpuDirectionalShadowInvalidate = false;
+    return;
+  }
+  if (isWebGPURenderer(renderer)) {
+    const map = dirLight.shadow.map as THREE.RenderTarget | null | undefined;
+    if (!map?.depthTexture) {
+      pendingWebGpuDirectionalShadowInvalidate = true;
+      return;
+    }
+  }
+  applyDirectionalShadowMapInvalidate(renderer, dirLight);
 }

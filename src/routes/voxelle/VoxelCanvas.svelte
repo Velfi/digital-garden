@@ -339,7 +339,8 @@
     updateDirLightPosition as lightingUpdateDirLightPosition,
     updateSkyLightingColors as lightingUpdateSkyLightingColors,
     updateShadowCamera as lightingUpdateShadowCamera,
-    invalidateDirectionalShadowMap as lightingInvalidateDirectionalShadowMap
+    invalidateDirectionalShadowMap as lightingInvalidateDirectionalShadowMap,
+    flushPendingWebGpuDirectionalShadowInvalidate as lightingFlushPendingWebGpuShadowInvalidate
   } from './canvas/voxelCanvasLighting';
   import { renderVoxelCanvasPrimaryScene } from './canvas/voxelCanvasBloomRender';
   import { runVoxelCanvasAnimateStep } from './canvas/voxelCanvasAnimate';
@@ -548,6 +549,15 @@
   let pendingPipelineGrid = false;
   let pendingPipelineRay = false;
 
+  /** Set true after `createSceneSetupAsync` + core refs exist; presentation effects no-op until then. */
+  let sceneReady = $state(false);
+  /** Greedy/marching: lights/env/tone/etc. changed; `animate` draws once per frame max (see `markCanvasDirty`). */
+  let canvasPresentationDirty = false;
+
+  function markCanvasDirty(): void {
+    canvasPresentationDirty = true;
+  }
+
   /** Apply batched mesh/grid/ray flags once per animation frame (coalesces burst edits). */
   function applyPendingVoxelPipelineMutations(): boolean {
     let did = false;
@@ -585,10 +595,10 @@
   }
   let rollOverMesh: THREE.Mesh;
   let rollOverMaterial: THREE.MeshBasicMaterial;
-  let paintHoverWireframeMesh: THREE.Mesh | null = null;
-  let paintHoverWireframeMaterial: THREE.MeshBasicMaterial | null = null;
-  let paintHoverWireframeOccludedMesh: THREE.Mesh | null = null;
-  let paintHoverWireframeOccludedMaterial: THREE.MeshBasicMaterial | null = null;
+  let paintHoverMesh: THREE.Mesh | null = null;
+  let paintHoverMaterial: THREE.MeshBasicMaterial | null = null;
+  let paintHoverOccludedMesh: THREE.Mesh | null = null;
+  let paintHoverOccludedMaterial: THREE.MeshBasicMaterial | null = null;
   let dirLight: THREE.DirectionalLight;
   let hemisphereLight: THREE.HemisphereLight;
   let sky: InstanceType<typeof Sky> | THREE.Mesh | null = null;
@@ -1147,11 +1157,101 @@
       dirLight,
       hemisphereLight,
       groundPlane,
-      sunlightIntensity: $sunlightIntensity,
-      ambientIntensity: $ambientIntensity,
-      lightElevation: $lightElevation,
-      backgroundColorHex: $backgroundColor
+      sunlightIntensity: get(sunlightIntensity),
+      ambientIntensity: get(ambientIntensity),
+      lightElevation: get(lightElevation),
+      backgroundColorHex: get(backgroundColor)
     });
+  }
+
+  function applyToneMappingFromPreferences(): void {
+    if (!renderer) return;
+    renderer.toneMapping = toneMappingPreferenceToThree(get(voxellePreferences).toneMapping);
+  }
+
+  /**
+   * Single place: tone mapping, shadow flags, directional/hemisphere/sky/ground/background,
+   * env maps. No `render()` — call `markCanvasDirty()` from the presentation `$effect`.
+   */
+  function applyPresentationFromStores(): void {
+    if (!sceneReady) return;
+
+    applyToneMappingFromPreferences();
+
+    const shadows = get(enableShadows);
+    if (renderer) {
+      renderer.shadowMap.enabled = shadows;
+      if (isWebGLRenderer(renderer)) {
+        renderer.shadowMap.type = THREE.BasicShadowMap;
+      } else if (isWebGPURenderer(renderer)) {
+        try {
+          const sm = renderer.shadowMap as
+            | { transmitted?: boolean; type?: number }
+            | null
+            | undefined;
+          if (sm) {
+            sm.transmitted = false;
+            sm.type = THREE.BasicShadowMap;
+          }
+        } catch {
+          // WebGPU shadow-map internals may not be fully initialized on this frame.
+        }
+      }
+    }
+    if (dirLight) dirLight.castShadow = shadows;
+    const byBucket = meshManager?.getMeshesByBucket();
+    if (byBucket) {
+      const rm = get(renderingMode);
+      for (const { mesh } of byBucket.values()) {
+        mesh.castShadow = shadows;
+        const matId = mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY];
+        mesh.receiveShadow = shadows && rm !== 'ray' && matId !== 'glass';
+      }
+    }
+
+    const sz = get(gridSize);
+    const useSky = get(enableSky);
+    const renderingModeVal = get(renderingMode);
+    updateDirLightPosition(get(lightAngle), get(lightElevation), sz);
+    updateShadowCamera(sz);
+    if (dirLight) {
+      dirLight.color.setHex(hexToInt(get(lightColor)));
+      dirLight.intensity = get(sunlightIntensity);
+    }
+    if (hemisphereLight) hemisphereLight.intensity = get(ambientIntensity);
+    updateSkyLightingColors();
+    if (scene) {
+      if (renderingModeVal === 'ray') {
+        scene.background =
+          rayRenderer?.output.beautyTexture ?? new THREE.Color(hexToInt(get(backgroundColor)));
+      } else {
+        scene.background = useSky ? null : new THREE.Color(hexToInt(get(backgroundColor)));
+      }
+    }
+    if (sky) {
+      sky.visible = useSky && renderingModeVal !== 'ray';
+      if (useSky && dirLight && sky instanceof Sky) {
+        (sky.material as THREE.ShaderMaterial).uniforms['sunPosition'].value.copy(
+          dirLight.position
+        );
+      }
+    }
+    if (groundPlane) {
+      groundPlane.visible = useSky && renderingModeVal !== 'ray';
+      if (useSky) {
+        groundPlane.position.y = -sz * 0.6;
+        groundPlane.scale.set(sz * 3, sz * 3, 1);
+      }
+    }
+
+    syncVoxelMaterialEnvMaps();
+    invalidateDirectionalShadowMap();
+  }
+
+  /** Immediate apply + draw (e.g. `onMount` first paint). */
+  function syncSceneLightingAndBackgroundFromStores(): void {
+    applyPresentationFromStores();
+    render();
   }
 
   function updateShadowCamera(sz: number) {
@@ -1514,8 +1614,20 @@
     const sel = $selection;
     const bboxGated = sel.size > 0 && ($tool === 'paint' || $tool === 'remove') ? null : bboxHint;
 
-    const previewVoxelFor = (count: number): Voxel =>
-      count === 0
+    /** Match remove-tool hover ghost; full tool colors only during drag/stamp or mid-extrusion phases. */
+    const useRemoveStylePreDragPreview =
+      !isVoxelDrag &&
+      !isStampDrag &&
+      cuboidPhase !== 'depth' &&
+      ropePhase !== 'tension';
+
+    const previewVoxelFor = (count: number): Voxel => {
+      if (useRemoveStylePreDragPreview) {
+        return count === 0
+          ? { color: 0, material: 'plastic' }
+          : { color: 0xff4444, material: 'plastic' };
+      }
+      return count === 0
         ? { color: 0, material: 'plastic' }
         : $tool === 'remove' || $tool === 'punch'
           ? { color: 0xff4444, material: 'plastic' }
@@ -1525,6 +1637,7 @@
               $tool === 'selectCoplanarEmpty'
             ? { color: 0x33aaff, material: 'plastic' }
             : getPaintColorResolver()();
+    };
 
     const useBbox =
       bboxGated !== null &&
@@ -2008,7 +2121,7 @@
       insectaHoverNormal = null;
       insectaPhase = 'shape';
     },
-    scheduleRender: () => requestAnimationFrame(() => render())
+    scheduleRender: () => requestAnimationFrame(() => markCanvasDirty())
   };
 
   async function handlePointerDown(event: PointerEvent) {
@@ -2847,8 +2960,8 @@
   }
 
   function handlePointerMove(event?: PointerEvent) {
-    if (paintHoverWireframeMesh) paintHoverWireframeMesh.visible = false;
-    if (paintHoverWireframeOccludedMesh) paintHoverWireframeOccludedMesh.visible = false;
+    if (paintHoverMesh) paintHoverMesh.visible = false;
+    if (paintHoverOccludedMesh) paintHoverOccludedMesh.visible = false;
     if (
       runPointerMovePrelude(event, {
         pointerHandlerContext,
@@ -3705,16 +3818,16 @@
             ? !$voxels.has(coordKey(previewPos[0], previewPos[1], previewPos[2]))
             : $voxels.has(coordKey(previewPos[0], previewPos[1], previewPos[2])));
         if (previewPos && isValidPreview) {
-          if (paintHoverWireframeMesh) {
-            paintHoverWireframeMesh.position.set(previewPos[0], previewPos[1], previewPos[2]);
-            paintHoverWireframeMesh.visible = true;
-            if (paintHoverWireframeOccludedMesh) {
-              paintHoverWireframeOccludedMesh.position.set(
+          if (paintHoverMesh) {
+            paintHoverMesh.position.set(previewPos[0], previewPos[1], previewPos[2]);
+            paintHoverMesh.visible = true;
+            if (paintHoverOccludedMesh) {
+              paintHoverOccludedMesh.position.set(
                 previewPos[0],
                 previewPos[1],
                 previewPos[2]
               );
-              paintHoverWireframeOccludedMesh.visible = true;
+              paintHoverOccludedMesh.visible = true;
             }
             rollOverMesh.visible = false;
           } else {
@@ -3756,9 +3869,9 @@
 
   function onContainerPointerLeave() {
     selectionGizmo?.clearGizmoHoverCursor();
-    if (paintHoverWireframeMesh) {
-      paintHoverWireframeMesh.visible = false;
-      if (paintHoverWireframeOccludedMesh) paintHoverWireframeOccludedMesh.visible = false;
+    if (paintHoverMesh) {
+      paintHoverMesh.visible = false;
+      if (paintHoverOccludedMesh) paintHoverOccludedMesh.visible = false;
       render();
     }
   }
@@ -4384,8 +4497,10 @@
         bloomDarkMaterial,
         bloomMaterialStash
       });
+      lightingFlushPendingWebGpuShadowInvalidate(renderer, get(enableShadows), dirLight);
     }
     gizmoRef?.draw();
+    canvasPresentationDirty = false;
   }
 
   function animate(now?: number) {
@@ -4458,6 +4573,7 @@
       getRopePhase: () => ropePhase,
       getFlyControlsEnabled: () => !!flyControls?.enabled,
       getPipelineAppliedThisFrame: () => pipelineApplied,
+      getCanvasPresentationDirty: () => canvasPresentationDirty,
       render
     });
   }
@@ -4519,7 +4635,7 @@
     roofPoints = [...roofPoints].reverse();
     updatePolygonPreview(roofPoints);
     refreshRoofPreviewMesh();
-    requestAnimationFrame(() => render());
+    requestAnimationFrame(() => markCanvasDirty());
   });
 
   $effect(() => {
@@ -4615,7 +4731,7 @@
     } else if ($renderingMode !== 'ray') {
       prevRayCamInitialized = false;
     }
-    render();
+    markCanvasDirty();
   });
 
   $effect(() => {
@@ -4639,7 +4755,7 @@
         ? getPunchPositionsForFace(place, normal)
         : getStampPositionsForFace(place, normal)
     );
-    render();
+    markCanvasDirty();
   });
 
   $effect(() => {
@@ -4685,7 +4801,7 @@
     if (!place || !normal) return;
     const opts = buildPiscinaOptionsFromStores();
     updatePreviewMesh(getPiscinaPositions(nextPiscinaPlacementSeed, place, normal, opts));
-    render();
+    markCanvasDirty();
   });
 
   $effect(() => {
@@ -4732,70 +4848,39 @@
     if (!place || !normal) return;
     const opts = buildInsectaOptionsFromStores();
     updatePreviewMesh(getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts));
-    render();
+    markCanvasDirty();
   });
 
   $effect(() => {
     const sel = $selection;
     rebuildSelectionOverlay(sel);
-    render();
+    markCanvasDirty();
     selectionGizmo?.syncGizmoHoverCursor();
   });
 
   $effect(() => {
     void $selectionGizmoMode;
-    render();
+    markCanvasDirty();
     selectionGizmo?.syncGizmoHoverCursor();
   });
 
   $effect(() => {
-    const tm = $voxellePreferences.toneMapping;
-    if (renderer) {
-      renderer.toneMapping = toneMappingPreferenceToThree(tm);
-      render();
-    }
-  });
-
-  $effect(() => {
-    const shadows = $enableShadows;
-    if (renderer) {
-      renderer.shadowMap.enabled = shadows;
-      if (isWebGLRenderer(renderer)) {
-        renderer.shadowMap.type = THREE.BasicShadowMap;
-      } else if (isWebGPURenderer(renderer)) {
-        try {
-          const sm = renderer.shadowMap as
-            | { transmitted?: boolean; type?: number }
-            | null
-            | undefined;
-          if (sm) {
-            sm.transmitted = false;
-            sm.type = THREE.BasicShadowMap;
-          }
-        } catch {
-          // WebGPU shadow-map internals may not be fully initialized on this frame.
-        }
-      }
-    }
-    if (dirLight) dirLight.castShadow = shadows;
-    const byBucket = meshManager?.getMeshesByBucket();
-    if (byBucket) {
-      for (const { mesh } of byBucket.values()) {
-        mesh.castShadow = shadows;
-        const matId = mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY];
-        mesh.receiveShadow = shadows && $renderingMode !== 'ray' && matId !== 'glass';
-      }
-    }
-    if (shadows) invalidateDirectionalShadowMap();
-    render();
-  });
-
-  $effect(() => {
+    void sceneReady;
+    if (!sceneReady) return;
+    void $voxellePreferences.toneMapping;
+    void $enableShadows;
     void $enableSky;
     void $backgroundColor;
     void $sceneEnvironmentIntensity;
-    syncVoxelMaterialEnvMaps();
-    render();
+    void $renderingMode;
+    void $gridSize;
+    void $lightAngle;
+    void $lightElevation;
+    void $lightColor;
+    void $sunlightIntensity;
+    void $ambientIntensity;
+    applyPresentationFromStores();
+    markCanvasDirty();
   });
 
   onMount(async () => {
@@ -4840,15 +4925,14 @@
     orthographicCamera = setupRefs.orthographicCamera;
     camera = get(orthographic) ? orthographicCamera : perspectiveCamera;
     renderer = setupRefs.renderer;
-    renderer.toneMapping = toneMappingPreferenceToThree(get(voxellePreferences).toneMapping);
     envMap = setupRefs.envMap;
     voxelGroup = setupRefs.voxelGroup;
     rollOverMesh = setupRefs.rollOverMesh;
     rollOverMaterial = setupRefs.rollOverMaterial;
-    paintHoverWireframeMesh = setupRefs.paintHoverWireframeMesh;
-    paintHoverWireframeMaterial = setupRefs.paintHoverWireframeMaterial;
-    paintHoverWireframeOccludedMesh = setupRefs.paintHoverWireframeOccludedMesh;
-    paintHoverWireframeOccludedMaterial = setupRefs.paintHoverWireframeOccludedMaterial;
+    paintHoverMesh = setupRefs.paintHoverMesh;
+    paintHoverMaterial = setupRefs.paintHoverMaterial;
+    paintHoverOccludedMesh = setupRefs.paintHoverOccludedMesh;
+    paintHoverOccludedMaterial = setupRefs.paintHoverOccludedMaterial;
     boxGeometry = setupRefs.boxGeometry;
     selectionGroup = setupRefs.selectionGroup;
 
@@ -4874,7 +4958,6 @@
     dirLight = setupRefs.dirLight;
     sky = setupRefs.sky;
     groundPlane = setupRefs.groundPlane;
-    updateSkyLightingColors();
     gridGroup = setupRefs.gridGroup;
     gridLineMaterial = setupRefs.gridLineMaterial;
     orbitControls = setupRefs.orbitControls;
@@ -4919,7 +5002,7 @@
             completeProjectOpenLoading();
           }
         },
-        render
+        render: markCanvasDirty
       }
     );
     meshManager.buildGrid(sz, $voxels);
@@ -4969,7 +5052,7 @@
       getShowDragDeltaHint: () => get(voxellePreferences).showDragDeltaHint,
       getGizmosAlwaysOnTop: () => get(voxellePreferences).gizmosAlwaysOnTop,
       getContainer: () => container,
-      render
+      render: markCanvasDirty
     });
     moveGizmoGroup = selectionGizmo.createMoveGizmo();
     rotateGizmoGroup = selectionGizmo.createRotateGizmo();
@@ -5002,70 +5085,24 @@
     if ($projectOpenLoading.active && awaitingFirstProjectOpenMeshBuild) {
       updateProjectOpenLoadingProgress(0.64, 'Building first mesh…');
     }
-    invalidateDirectionalShadowMap();
+    sceneReady = true;
+    syncSceneLightingAndBackgroundFromStores();
     onWindowResize();
     if (loadedFromStorage) fitToView();
     animate();
   });
 
   $effect(() => {
-    if (rollOverMaterial) rollOverMaterial.color.setHex(hexToInt($color));
-    if (paintHoverWireframeMaterial) {
-      if ($tool === 'paint') {
-        paintHoverWireframeMaterial.color.setHex(hexToInt($color));
-      } else {
-        paintHoverWireframeMaterial.color.setHex(0x7b61ff);
-      }
-    }
-    if (paintHoverWireframeOccludedMaterial) {
-      const baseHex = hexToInt($color);
-      const invertedHex = 0xffffff ^ (baseHex & 0xffffff);
-      if ($tool === 'paint') {
-        paintHoverWireframeOccludedMaterial.color.setHex(invertedHex);
-      } else {
-        paintHoverWireframeOccludedMaterial.color.setHex(invertedHex);
-      }
-    }
-    render();
-  });
-
-  $effect(() => {
-    const sz = $gridSize;
-    const useSky = $enableSky;
-    void $renderingMode;
-    updateDirLightPosition($lightAngle, $lightElevation, sz);
-    updateShadowCamera(sz);
-    if (dirLight) {
-      dirLight.color.setHex(hexToInt($lightColor));
-      dirLight.intensity = $sunlightIntensity;
-    }
-    if (hemisphereLight) hemisphereLight.intensity = $ambientIntensity;
-    updateSkyLightingColors();
-    if (scene) {
-      if ($renderingMode === 'ray') {
-        scene.background =
-          rayRenderer?.output.beautyTexture ?? new THREE.Color(hexToInt($backgroundColor));
-      } else {
-        scene.background = useSky ? null : new THREE.Color(hexToInt($backgroundColor));
-      }
-    }
-    if (sky) {
-      sky.visible = useSky && $renderingMode !== 'ray';
-      if (useSky && dirLight && sky instanceof Sky) {
-        (sky.material as THREE.ShaderMaterial).uniforms['sunPosition'].value.copy(
-          dirLight.position
-        );
-      }
-    }
-    if (groundPlane) {
-      groundPlane.visible = useSky && $renderingMode !== 'ray';
-      if (useSky) {
-        groundPlane.position.y = -sz * 0.6;
-        groundPlane.scale.set(sz * 3, sz * 3, 1);
-      }
-    }
-    invalidateDirectionalShadowMap();
-    render();
+    void sceneReady;
+    if (!sceneReady) return;
+    const hoverHex = 0xff4444;
+    if (rollOverMaterial) rollOverMaterial.color.setHex(hoverHex);
+    if (paintHoverMaterial) paintHoverMaterial.color.setHex(hoverHex);
+    if (paintHoverOccludedMaterial) applyAddShapeOccludedPreviewTint(hoverHex, paintHoverOccludedMaterial);
+    if (polygonPointsMaterial) polygonPointsMaterial.color.setHex(hoverHex);
+    if (polygonLineMaterial) polygonLineMaterial.color.setHex(hoverHex);
+    if (ropePointsMaterial) ropePointsMaterial.color.setHex(hoverHex);
+    markCanvasDirty();
   });
 
   $effect(() => {
@@ -5082,7 +5119,7 @@
     void $orthographic;
     if ($orthographic && orthographicCamera) updateOrthoFrustum();
     updateZoomPercent();
-    render();
+    markCanvasDirty();
   });
 
   let prevOrthographic = $state<boolean | null>(null);
@@ -5106,7 +5143,6 @@
     flyControls.object = camera;
     updateZoomPercent();
     onWindowResize();
-    render();
   });
 
   $effect(() => {
@@ -5114,7 +5150,7 @@
     if (perspectiveCamera && !$orthographic) {
       perspectiveCamera.fov = focalLengthToFov(fl);
       perspectiveCamera.updateProjectionMatrix();
-      render();
+      markCanvasDirty();
     }
   });
 
@@ -5170,8 +5206,8 @@
       resetInsectaPlacementFlow();
       selectionGizmo?.clearGizmoHoverCursor();
       rollOverMesh.visible = false;
-      if (paintHoverWireframeMesh) paintHoverWireframeMesh.visible = false;
-      if (paintHoverWireframeOccludedMesh) paintHoverWireframeOccludedMesh.visible = false;
+      if (paintHoverMesh) paintHoverMesh.visible = false;
+      if (paintHoverOccludedMesh) paintHoverOccludedMesh.visible = false;
       updatePreviewMesh([]);
       if (
         isSegmentedStrokeGestureActive({
@@ -5194,14 +5230,14 @@
       orbitControls.target.copy(camera.position).add(dir.multiplyScalar(50));
     }
     prevTool = t;
-    render();
+    markCanvasDirty();
   });
 
   $effect(() => {
     const mode = $effectiveStrokeMode;
     if (mode !== 'precise' && precisePhase !== 'idle') {
       resetPreciseState(true);
-      render();
+      markCanvasDirty();
     }
   });
 
@@ -5210,10 +5246,10 @@
     if (!wasAddShapePanelOpen && open) {
       if (rollOverMesh && meshManager) {
         rollOverMesh.visible = false;
-        if (paintHoverWireframeMesh) paintHoverWireframeMesh.visible = false;
-        if (paintHoverWireframeOccludedMesh) paintHoverWireframeOccludedMesh.visible = false;
+        if (paintHoverMesh) paintHoverMesh.visible = false;
+        if (paintHoverOccludedMesh) paintHoverOccludedMesh.visible = false;
         updatePreviewMesh([]);
-        render();
+        markCanvasDirty();
       }
     } else if (wasAddShapePanelOpen && !open) {
       if (rollOverMesh && meshManager) {
@@ -5239,7 +5275,7 @@
           }
         : p
     );
-    render();
+    markCanvasDirty();
   });
 
   $effect(() => {
@@ -5257,7 +5293,7 @@
       resetPreviewMeshTransform(addPreviewOccludedMesh);
       addPreviewMesh.visible = false;
       addPreviewOccludedMesh.visible = false;
-      render();
+      markCanvasDirty();
       return;
     }
     if (s.mode === 'paste' && s.pasteEntries && s.pasteEntries.length > 0) {
@@ -5276,7 +5312,7 @@
       resetPreviewMeshTransform(addPreviewOccludedMesh);
       const geo = buildPreviewGeometryFromVoxelMap(voxelMap, $voxels);
       assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo);
-      render();
+      markCanvasDirty();
       return;
     }
     let positions = getShapePositionsAt({
@@ -5325,7 +5361,7 @@
           assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, fullGeo);
           resetPreviewMeshTransform(addPreviewMesh);
           resetPreviewMeshTransform(addPreviewOccludedMesh);
-          render();
+          markCanvasDirty();
         });
       }
     } else {
@@ -5334,7 +5370,7 @@
       const geo = buildPreviewGeometry(positions, addVx, $voxels);
       assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo);
     }
-    render();
+    markCanvasDirty();
   });
 
   onDestroy(() => {
@@ -5371,8 +5407,8 @@
     envMap?.dispose();
     boxGeometry?.dispose();
     rollOverMaterial?.dispose();
-    paintHoverWireframeMaterial?.dispose();
-    paintHoverWireframeOccludedMaterial?.dispose();
+    paintHoverMaterial?.dispose();
+    paintHoverOccludedMaterial?.dispose();
     previewMaterial?.dispose();
     if (preciseGuidePlaneMesh && scene) scene.remove(preciseGuidePlaneMesh);
     preciseGuidePlaneMesh?.geometry?.dispose();

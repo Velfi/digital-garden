@@ -46,10 +46,10 @@ export interface SceneSetupRefs {
   voxelGroup: THREE.Group;
   rollOverMesh: THREE.Mesh;
   rollOverMaterial: THREE.MeshBasicMaterial;
-  paintHoverWireframeMesh: THREE.Mesh;
-  paintHoverWireframeMaterial: THREE.MeshBasicMaterial;
-  paintHoverWireframeOccludedMesh: THREE.Mesh;
-  paintHoverWireframeOccludedMaterial: THREE.MeshBasicMaterial;
+  paintHoverMesh: THREE.Mesh;
+  paintHoverMaterial: THREE.MeshBasicMaterial;
+  paintHoverOccludedMesh: THREE.Mesh;
+  paintHoverOccludedMaterial: THREE.MeshBasicMaterial;
   boxGeometry: THREE.BoxGeometry;
   selectionGroup: THREE.Group;
   previewMesh: THREE.Mesh;
@@ -235,42 +235,39 @@ export async function createSceneSetupAsync(
   rollOverMesh.renderOrder = ROLLOVER_DEFAULT_RENDER_ORDER;
   scene.add(rollOverMesh);
 
-  const paintHoverWireframeMaterial = new THREE.MeshBasicMaterial({
+  const paintHoverMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffff,
+    opacity: 0.5,
     transparent: true,
-    opacity: 1,
-    wireframe: true,
     depthTest: true,
-    depthWrite: false,
-    depthFunc: THREE.LessEqualDepth,
-    blending: THREE.NormalBlending
+    depthWrite: true,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1
   });
-  const paintHoverWireframeMesh = new THREE.Mesh(boxGeometry, paintHoverWireframeMaterial);
-  paintHoverWireframeMesh.visible = false;
-  paintHoverWireframeMesh.scale.setScalar(1.015);
-  paintHoverWireframeMesh.renderOrder = 210;
-  paintHoverWireframeMesh.raycast = () => {};
-  scene.add(paintHoverWireframeMesh);
+  const paintHoverMesh = new THREE.Mesh(boxGeometry, paintHoverMaterial);
+  paintHoverMesh.visible = false;
+  paintHoverMesh.renderOrder = PREVIEW_DEFAULT_RENDER_ORDER;
+  paintHoverMesh.raycast = () => {};
+  scene.add(paintHoverMesh);
 
-  const paintHoverWireframeOccludedMaterial = new THREE.MeshBasicMaterial({
-    color: 0x6ea3ff,
+  const paintHoverOccludedMaterial = new THREE.MeshBasicMaterial({
+    vertexColors: false,
+    color: 0x5577cc,
+    opacity: 0.4,
     transparent: true,
-    opacity: 0.42,
-    wireframe: true,
     depthTest: true,
     depthWrite: false,
     depthFunc: THREE.GreaterDepth,
-    blending: THREE.AdditiveBlending
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1
   });
-  const paintHoverWireframeOccludedMesh = new THREE.Mesh(
-    boxGeometry,
-    paintHoverWireframeOccludedMaterial
-  );
-  paintHoverWireframeOccludedMesh.visible = false;
-  paintHoverWireframeOccludedMesh.scale.setScalar(1.015);
-  paintHoverWireframeOccludedMesh.renderOrder = 209;
-  paintHoverWireframeOccludedMesh.raycast = () => {};
-  scene.add(paintHoverWireframeOccludedMesh);
+  const paintHoverOccludedMesh = new THREE.Mesh(boxGeometry, paintHoverOccludedMaterial);
+  paintHoverOccludedMesh.visible = false;
+  paintHoverOccludedMesh.renderOrder = PREVIEW_OCCLUDED_RENDER_ORDER;
+  paintHoverOccludedMesh.raycast = () => {};
+  scene.add(paintHoverOccludedMesh);
 
   const voxelGroup = new THREE.Group();
   scene.add(voxelGroup);
@@ -486,10 +483,10 @@ export async function createSceneSetupAsync(
     voxelGroup,
     rollOverMesh,
     rollOverMaterial,
-    paintHoverWireframeMesh,
-    paintHoverWireframeMaterial,
-    paintHoverWireframeOccludedMesh,
-    paintHoverWireframeOccludedMaterial,
+    paintHoverMesh,
+    paintHoverMaterial,
+    paintHoverOccludedMesh,
+    paintHoverOccludedMaterial,
     boxGeometry,
     selectionGroup,
     previewMesh,

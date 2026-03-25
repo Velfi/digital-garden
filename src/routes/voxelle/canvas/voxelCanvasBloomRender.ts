@@ -1,6 +1,7 @@
 /**
  * Selective glow bloom: stash non-glow materials and primary WebGL/WebGPU render branches.
  */
+import { dev } from '$app/environment';
 import * as THREE from 'three';
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import type { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -41,6 +42,25 @@ export function restoreStashedBloomMaterials(
       delete bloomMaterialStash[id];
     }
   });
+}
+
+/** Stash non-glow materials, run `fn`, then restore in `finally` (survives throws). */
+export function withBloomMaterialStash(
+  scene: THREE.Scene,
+  bloomDarkMaterial: THREE.MeshBasicMaterial | null,
+  bloomMaterialStash: Record<string, THREE.Material | THREE.Material[]>,
+  fn: () => void
+): void {
+  if (!bloomDarkMaterial) {
+    fn();
+    return;
+  }
+  stashNonGlowMaterialsForBloom(scene, bloomDarkMaterial, bloomMaterialStash);
+  try {
+    fn();
+  } finally {
+    restoreStashedBloomMaterials(scene, bloomMaterialStash);
+  }
 }
 
 export function hasGlowInVoxelGroup(voxelGroup: THREE.Group | null): boolean {
@@ -88,6 +108,11 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
     bloomMaterialStash
   } = p;
 
+  if (dev && Object.keys(bloomMaterialStash).length > 0) {
+    console.warn('Voxelle: bloomMaterialStash non-empty at frame start; restoring.');
+    restoreStashedBloomMaterials(scene, bloomMaterialStash);
+  }
+
   const rayBloomEligible = renderingMode === 'ray' && rayRenderer != null;
   const rayOut = rayRenderer?.output;
 
@@ -121,18 +146,18 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
       } else {
         webgpuBloomPipeline.renderSceneToTarget(rw, scene, camera);
         const savedWebGpuBloomBg = scene.background;
-        stashNonGlowMaterialsForBloom(scene, bloomDarkMaterial, bloomMaterialStash);
-        if (bloomPassBackground) scene.background = bloomPassBackground;
-        try {
-          webgpuBloomPipeline.renderBloomSourceToTarget(
-            renderer as Parameters<WebGPUBloomPipeline['renderBloomSourceToTarget']>[0],
-            scene,
-            camera
-          );
-        } finally {
-          scene.background = savedWebGpuBloomBg;
-          restoreStashedBloomMaterials(scene, bloomMaterialStash);
-        }
+        withBloomMaterialStash(scene, bloomDarkMaterial, bloomMaterialStash, () => {
+          if (bloomPassBackground) scene.background = bloomPassBackground;
+          try {
+            webgpuBloomPipeline.renderBloomSourceToTarget(
+              renderer as Parameters<WebGPUBloomPipeline['renderBloomSourceToTarget']>[0],
+              scene,
+              camera
+            );
+          } finally {
+            scene.background = savedWebGpuBloomBg;
+          }
+        });
         webgpuBloomPipeline.renderPipeline.render();
       }
     } else {
@@ -150,15 +175,15 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
       if (!hasGlow) {
         renderer.render(scene, camera);
       } else {
-        stashNonGlowMaterialsForBloom(scene, bloomDarkMaterial, bloomMaterialStash);
-        const savedSceneBackground = scene.background;
-        if (bloomPassBackground) scene.background = bloomPassBackground;
-        try {
-          bloomComposer.render();
-        } finally {
-          scene.background = savedSceneBackground;
-          restoreStashedBloomMaterials(scene, bloomMaterialStash);
-        }
+        withBloomMaterialStash(scene, bloomDarkMaterial, bloomMaterialStash, () => {
+          const savedSceneBackground = scene.background;
+          if (bloomPassBackground) scene.background = bloomPassBackground;
+          try {
+            bloomComposer.render();
+          } finally {
+            scene.background = savedSceneBackground;
+          }
+        });
         finalComposer.render();
       }
     } else {

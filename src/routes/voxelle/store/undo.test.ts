@@ -112,6 +112,31 @@ describe('createUndo', () => {
     expect(get(undo.canRedoStore)).toBe(false);
   });
 
+  it('calls noteVoxelKeysDirty with all voxel keys touched by delta undo/redo', () => {
+    const touched = new Set<string>();
+    const voxels = writable(makeVoxels([['0,0,0', plasticVoxel(0xff0000)]]));
+    const selection = writable(new Map<string, Voxel>());
+    const undo = createUndo(voxels, selection, {
+      noteVoxelKeysDirty: (keys) => {
+        for (const k of keys) touched.add(k);
+      }
+    });
+
+    commitDelta(undo, voxels, selection, () => {
+      voxels.set(makeVoxels([['1,1,1', plasticVoxel(0x00ff00)]]));
+    });
+
+    touched.clear();
+    undo.doUndo();
+    expect(touched.has('0,0,0')).toBe(true);
+    expect(touched.has('1,1,1')).toBe(true);
+
+    touched.clear();
+    undo.doRedo();
+    expect(touched.has('0,0,0')).toBe(true);
+    expect(touched.has('1,1,1')).toBe(true);
+  });
+
   it('history.undo and history.redo work', () => {
     const voxels = writable(makeVoxels([['0,0,0', plasticVoxel(0xff0000)]]));
     const selection = writable(new Map<string, Voxel>());

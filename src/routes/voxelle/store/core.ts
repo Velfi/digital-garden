@@ -346,8 +346,14 @@ export const symmetryX = writable<boolean>(false);
 export const symmetryY = writable<boolean>(false);
 export const symmetryZ = writable<boolean>(false);
 
+const dirtyVoxelKeys = new Set<string>();
+
+function noteDirtyVoxelKeysForMesh(keys: ReadonlySet<string>): void {
+  for (const k of keys) dirtyVoxelKeys.add(k);
+}
+
 // Undo system
-const undo = createUndo(voxels, selection);
+const undo = createUndo(voxels, selection, { noteVoxelKeysDirty: noteDirtyVoxelKeysForMesh });
 const pushUndoDelta = undo.pushUndoDelta;
 
 /** Baseline for one logical stroke (`beginStroke` … `endStrokeUndo`): map refs at stroke start (no full clone). */
@@ -800,8 +806,6 @@ export function getAllVoxels(): Map<string, Voxel> {
   for (const [key, vx] of hidden) out.set(key, cloneVoxel(vx));
   return out;
 }
-
-const dirtyVoxelKeys = new Set<string>();
 
 function sameVoxelValue(a: Voxel | undefined, b: Voxel | undefined): boolean {
   if (!a && !b) return true;

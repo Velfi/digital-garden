@@ -1,7 +1,36 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import { gridSize, voxels, hiddenVoxels, projectPerfMetrics } from '../store/index';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
+
+  let copyJsonLabel = $state('Copy JSON');
+  let copyJsonTimer: ReturnType<typeof setTimeout> | null = null;
+
+  onDestroy(() => {
+    if (copyJsonTimer !== null) clearTimeout(copyJsonTimer);
+  });
+
+  async function copyStatsAsJson() {
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) return;
+    const payload = {
+      gridSize: get(gridSize),
+      filledVoxelCount: get(voxels).size + get(hiddenVoxels).size,
+      ...get(projectPerfMetrics)
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      copyJsonLabel = 'Copied!';
+      if (copyJsonTimer !== null) clearTimeout(copyJsonTimer);
+      copyJsonTimer = setTimeout(() => {
+        copyJsonLabel = 'Copy JSON';
+        copyJsonTimer = null;
+      }, 2000);
+    } catch {
+      /* ignore clipboard errors */
+    }
+  }
 
   const filledVoxelCount = $derived($voxels.size + $hiddenVoxels.size);
   const gridSizeLabel = $derived(`${$gridSize} x ${$gridSize} x ${$gridSize}`);
@@ -19,6 +48,16 @@
     $projectPerfMetrics.lastRedoDurationMs === null
       ? 'n/a'
       : `${$projectPerfMetrics.lastRedoDurationMs.toFixed(2)} ms`
+  );
+  const lastUndoSyncDurationLabel = $derived(
+    $projectPerfMetrics.lastUndoSyncDurationMs === null
+      ? 'n/a'
+      : `${$projectPerfMetrics.lastUndoSyncDurationMs.toFixed(2)} ms`
+  );
+  const lastRedoSyncDurationLabel = $derived(
+    $projectPerfMetrics.lastRedoSyncDurationMs === null
+      ? 'n/a'
+      : `${$projectPerfMetrics.lastRedoSyncDurationMs.toFixed(2)} ms`
   );
   const lastEditSyncDurationLabel = $derived(
     $projectPerfMetrics.lastEditSyncDurationMs === null
@@ -64,6 +103,16 @@
     $projectPerfMetrics.lastEditResultIndexCount === null
       ? 'n/a'
       : `${$projectPerfMetrics.lastEditResultIndexCount}`
+  );
+  const lastWorkerParseInputLabel = $derived(
+    $projectPerfMetrics.lastWorkerParseInputMs === null
+      ? 'n/a'
+      : `${$projectPerfMetrics.lastWorkerParseInputMs.toFixed(2)} ms`
+  );
+  const lastWorkerMeshComputeLabel = $derived(
+    $projectPerfMetrics.lastWorkerMeshComputeMs === null
+      ? 'n/a'
+      : `${$projectPerfMetrics.lastWorkerMeshComputeMs.toFixed(2)} ms`
   );
 </script>
 
@@ -129,15 +178,32 @@
           <dd>{lastEditResultIndicesLabel}</dd>
         </div>
         <div class="stat-row">
-          <dt>Last undo duration</dt>
+          <dt>Last worker parse input</dt>
+          <dd>{lastWorkerParseInputLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>Last worker mesh compute</dt>
+          <dd>{lastWorkerMeshComputeLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>Last undo duration (gesture → mesh)</dt>
           <dd>{lastUndoDurationLabel}</dd>
         </div>
         <div class="stat-row">
-          <dt>Last redo duration</dt>
+          <dt>Last undo sync (main thread)</dt>
+          <dd>{lastUndoSyncDurationLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>Last redo duration (gesture → mesh)</dt>
           <dd>{lastRedoDurationLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>Last redo sync (main thread)</dt>
+          <dd>{lastRedoSyncDurationLabel}</dd>
         </div>
       </dl>
       <div class="modal-buttons">
+        <button type="button" onclick={() => void copyStatsAsJson()}>{copyJsonLabel}</button>
         <button type="button" onclick={() => (open = false)}>Close</button>
       </div>
     </div>
@@ -177,6 +243,13 @@
   dd {
     margin: 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  }
+
+  .modal-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: flex-end;
   }
 
   .modal-buttons button {
