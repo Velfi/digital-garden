@@ -32,6 +32,7 @@ import {
   GLASS_SHADOW_VERTEX_AO_POW,
   GLASS_SHADOW_VERTEX_AO_SCALE
 } from './glassShadowConstants';
+import { perfLog, perfNow, voxellePerfEnabled } from './voxellePerf';
 
 export interface MeshManagerOptions {
   enableShadows: boolean;
@@ -316,6 +317,7 @@ export function createMeshManager(
     });
     meshWorker.onmessage = (e: MessageEvent<{ results: unknown[]; gen?: number }>) => {
       if (e.data.gen !== meshRebuildGen) return;
+      const t0 = voxellePerfEnabled() ? perfNow() : 0;
       callbacks.onLoadingChange(false);
       callbacks.onSpinnerChange(false);
       if (spinnerTimeoutId) {
@@ -323,6 +325,7 @@ export function createMeshManager(
         spinnerTimeoutId = null;
       }
       applyVoxelMeshResults(e.data.results as Parameters<typeof applyVoxelMeshResults>[0]);
+      if (voxellePerfEnabled()) perfLog('meshWorker.applyResults', perfNow() - t0);
       callbacks.render();
     };
   }
@@ -352,7 +355,9 @@ export function createMeshManager(
     }, SPINNER_DELAY_MS);
     const postToWorker = () => {
       if (!meshWorker || gen !== meshRebuildGen) return;
+      const tPack = voxellePerfEnabled() ? perfNow() : 0;
       const packedVoxels = packVoxelsForWorker(v);
+      if (voxellePerfEnabled()) perfLog('meshWorker.packVoxels', perfNow() - tPack);
       const chunkSize = v.size >= CHUNK_THRESHOLD ? 32 : 0;
       meshWorker.postMessage(
         {

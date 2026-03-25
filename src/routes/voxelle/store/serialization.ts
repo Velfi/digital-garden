@@ -88,6 +88,89 @@ export function computeUndoDelta(
   return { voxelAdded, voxelRemoved, selectionAdded, selectionRemoved };
 }
 
+/** Voxel diff only for keys that were touched (e.g. via sculpt updater). */
+export function computeUndoDeltaForVoxelKeys(
+  oldV: Map<string, Voxel>,
+  newV: Map<string, Voxel>,
+  touchedKeys: ReadonlySet<string>
+): Pick<UndoDelta, 'voxelAdded' | 'voxelRemoved'> {
+  const voxelAdded: [string, Voxel][] = [];
+  const voxelRemoved: [string, Voxel][] = [];
+  for (const k of touchedKeys) {
+    const oldC = oldV.get(k);
+    const newC = newV.get(k);
+    if (!oldC && newC) {
+      voxelAdded.push([k, newC]);
+    } else if (oldC && !newC) {
+      voxelRemoved.push([k, oldC]);
+    } else if (oldC && newC && (oldC.color !== newC.color || oldC.material !== newC.material)) {
+      voxelRemoved.push([k, oldC]);
+      voxelAdded.push([k, newC]);
+    }
+  }
+  return { voxelAdded, voxelRemoved };
+}
+
+/** Selection diff only (full walk of both maps; selection is usually smaller than voxels). */
+export function computeUndoDeltaForSelectionOnly(
+  oldS: Map<string, Voxel>,
+  newS: Map<string, Voxel>
+): Pick<UndoDelta, 'selectionAdded' | 'selectionRemoved'> {
+  const selectionAdded: [string, Voxel][] = [];
+  const selectionRemoved: [string, Voxel][] = [];
+  for (const [k, c] of newS) {
+    const oldC = oldS.get(k);
+    if (!oldC || oldC.color !== c.color || oldC.material !== c.material) {
+      selectionAdded.push([k, c]);
+      if (oldC) selectionRemoved.push([k, oldC]);
+    }
+  }
+  for (const [k, c] of oldS) {
+    if (!newS.has(k)) selectionRemoved.push([k, c]);
+  }
+  return { selectionAdded, selectionRemoved };
+}
+
+export function mergeUndoParts(
+  voxelPart: Pick<UndoDelta, 'voxelAdded' | 'voxelRemoved'>,
+  selectionPart: Pick<UndoDelta, 'selectionAdded' | 'selectionRemoved'>
+): UndoDelta {
+  return {
+    voxelAdded: voxelPart.voxelAdded,
+    voxelRemoved: voxelPart.voxelRemoved,
+    selectionAdded: selectionPart.selectionAdded,
+    selectionRemoved: selectionPart.selectionRemoved
+  };
+}
+
+/**
+ * Stroke-end voxel delta: compare per-key “before stroke” snapshot (lazy) to current map.
+ * `beforeSnapshot` stores `null` when the cell was empty at first touch in the stroke.
+ */
+export function computeStrokeVoxelUndoDelta(
+  newV: Map<string, Voxel>,
+  touchedKeys: ReadonlySet<string>,
+  beforeSnapshot: ReadonlyMap<string, Voxel | null>
+): Pick<UndoDelta, 'voxelAdded' | 'voxelRemoved'> {
+  const voxelAdded: [string, Voxel][] = [];
+  const voxelRemoved: [string, Voxel][] = [];
+  for (const k of touchedKeys) {
+    const beforeRec = beforeSnapshot.get(k);
+    const before: Voxel | null =
+      beforeRec !== undefined ? beforeRec : null;
+    const after = newV.get(k);
+    if (before === null && after) {
+      voxelAdded.push([k, after]);
+    } else if (before !== null && !after) {
+      voxelRemoved.push([k, before]);
+    } else if (before !== null && after && (before.color !== after.color || before.material !== after.material)) {
+      voxelRemoved.push([k, before]);
+      voxelAdded.push([k, after]);
+    }
+  }
+  return { voxelAdded, voxelRemoved };
+}
+
 export function applyUndoDeltaForward(
   v: Map<string, Voxel>,
   s: Map<string, Voxel>,

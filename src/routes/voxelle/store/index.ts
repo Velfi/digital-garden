@@ -256,6 +256,8 @@ export {
   getPaintColorResolver
 } from './core';
 
+export { glowVoxelCount, recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
+
 export {
   GENERATOR_TOOLS,
   GENERATOR_FACE_CLICK_TOOLS,

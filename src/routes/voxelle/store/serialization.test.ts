@@ -3,7 +3,12 @@ import {
   cloneVoxels,
   serializeVoxels,
   deserializeVoxels,
-  canonicalizeVoxelMap
+  canonicalizeVoxelMap,
+  computeUndoDeltaForVoxelKeys,
+  computeUndoDeltaForSelectionOnly,
+  computeStrokeVoxelUndoDelta,
+  mergeUndoParts,
+  isUndoDeltaEmpty
 } from './serialization';
 import { plasticVoxel, voxelEquals } from '../voxelMaterial';
 
@@ -80,6 +85,56 @@ describe('serialization', () => {
       const c = canonicalizeVoxelMap(map);
       expect(c.size).toBe(1);
       expect(c.get('0,0,0')).toEqual(plasticVoxel(1));
+    });
+  });
+
+  describe('sparse undo helpers', () => {
+    it('computeUndoDeltaForVoxelKeys only inspects touched keys', () => {
+      const oldV = new Map([
+        ['0,0,0', plasticVoxel(0xff0000)],
+        ['9,9,9', plasticVoxel(0x111111)]
+      ]);
+      const newV = new Map([
+        ['0,0,0', { color: 0x00ff00, material: 'plastic' as const }],
+        ['9,9,9', plasticVoxel(0x111111)]
+      ]);
+      const part = computeUndoDeltaForVoxelKeys(oldV, newV, new Set(['0,0,0']));
+      expect(part.voxelRemoved.length).toBe(1);
+      expect(part.voxelAdded.length).toBe(1);
+      expect(part.voxelRemoved[0]![0]).toBe('0,0,0');
+      expect(part.voxelAdded[0]![1].color).toBe(0x00ff00);
+    });
+
+    it('mergeUndoParts combines voxel and selection slices', () => {
+      const vPart = computeUndoDeltaForVoxelKeys(
+        new Map(),
+        new Map([['0,0,0', plasticVoxel(0xff0000)]]),
+        new Set(['0,0,0'])
+      );
+      const sPart = computeUndoDeltaForSelectionOnly(
+        new Map(),
+        new Map([['1,1,1', plasticVoxel(0x3357ff)]])
+      );
+      const d = mergeUndoParts(vPart, sPart);
+      expect(isUndoDeltaEmpty(d)).toBe(false);
+      expect(d.voxelAdded.length).toBe(1);
+      expect(d.selectionAdded.length).toBe(1);
+    });
+
+    it('computeStrokeVoxelUndoDelta uses per-key before snapshot', () => {
+      const before = new Map<string, import('../voxelMaterial').Voxel | null>([
+        ['0,0,0', null],
+        ['1,0,0', plasticVoxel(0xff0000)]
+      ]);
+      const newV = new Map([
+        ['0,0,0', plasticVoxel(0x00ff00)],
+        ['1,0,0', plasticVoxel(0x0000ff)]
+      ]);
+      const touched = new Set(['0,0,0', '1,0,0']);
+      const part = computeStrokeVoxelUndoDelta(newV, touched, before);
+      expect(part.voxelAdded.some(([k]) => k === '0,0,0')).toBe(true);
+      expect(part.voxelRemoved.some(([k]) => k === '1,0,0')).toBe(true);
+      expect(part.voxelAdded.some(([k]) => k === '1,0,0')).toBe(true);
     });
   });
 });

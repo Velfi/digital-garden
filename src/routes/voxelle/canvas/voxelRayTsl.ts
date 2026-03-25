@@ -7,6 +7,7 @@ import {
 } from './voxelRayProgressive';
 import { buildVoxelRayGpuResources, type VoxelRayGpuResources } from './voxelRayGpuResources';
 import type { VoxelRayTraceParams } from './voxelRayShared';
+import { perfLog, perfNow, voxellePerfEnabled } from './voxellePerf';
 
 export type VoxelRayTslOutput = {
   beautyTexture: THREE.Texture;
@@ -56,9 +57,11 @@ export class VoxelRayTsl {
     budgetMs: number = DEFAULT_RAY_TICK_BUDGET_MS
   ): void {
     if (invalidated) {
+      const t0 = voxellePerfEnabled() ? perfNow() : 0;
       this.resources?.dispose();
       this.resources = buildVoxelRayGpuResources(voxels);
       this.voxelStamp++;
+      if (voxellePerfEnabled()) perfLog('rayGpu.rebuildResources', perfNow() - t0);
     }
 
     // Keep ray mode responsive under high DPR while matching historical quality cap.

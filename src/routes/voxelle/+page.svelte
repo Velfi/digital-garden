@@ -330,6 +330,7 @@
   .page :global(.polygon-actions),
   .page :global(.cuboid-done-btn),
   .page :global(.delta-display),
+  .page :global(.fps-counter),
   .page > p {
     transition: opacity 0.2s ease;
   }
@@ -347,6 +348,7 @@
   .page.fullscreen-ui-hidden :global(.polygon-actions),
   .page.fullscreen-ui-hidden :global(.cuboid-done-btn),
   .page.fullscreen-ui-hidden :global(.delta-display),
+  .page.fullscreen-ui-hidden :global(.fps-counter),
   .page.fullscreen-ui-hidden > p {
     opacity: 0;
     pointer-events: none;

@@ -1,6 +1,7 @@
 import { get } from 'svelte/store';
 import { coordKey, parseCoordKey } from '../coordUtils';
 import { voxels, hiddenVoxels, gridSize, focalLength, orthographic, resetUndo } from './core';
+import { recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 import type { GridSize } from './core';
 import { VOXELLE_FORMAT_VERSION, type VoxelleFileFormat } from './voxelleFormatCore';
 import { canonicalizeVoxelMap } from './serialization';
@@ -176,6 +177,7 @@ function applyModelData(data: VoxelleFileFormat): void {
   resetUndo();
   gridSize.set(sz as GridSize);
   voxels.set(voxelsMap);
+  recomputeGlowVoxelCountFromMap(voxelsMap);
   hiddenVoxels.set(hiddenMap);
   if (data.scene) {
     if (

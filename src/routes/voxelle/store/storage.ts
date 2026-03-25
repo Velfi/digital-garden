@@ -13,6 +13,7 @@ import {
   serializeVoxels,
   deserializeVoxels
 } from './core';
+import { recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 import type { UndoSnapshot } from './undo';
 import { getAutosaveSnapshot, putAutosaveSnapshot } from './idbAutosave';
 
@@ -47,7 +48,9 @@ function applyStoragePayload(data: unknown): boolean {
     const sz = d.gridSize;
     if (typeof sz !== 'number' || sz < 1 || !Number.isInteger(sz)) return false;
     gridSize.set(sz);
-    voxels.set(deserializeVoxels(d.voxelsJson as string));
+    const loadedVoxels = deserializeVoxels(d.voxelsJson as string);
+    voxels.set(loadedVoxels);
+    recomputeGlowVoxelCountFromMap(loadedVoxels);
     if (typeof d.hiddenVoxelsJson === 'string') {
       hiddenVoxels.set(deserializeVoxels(d.hiddenVoxelsJson));
     } else {

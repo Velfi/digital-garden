@@ -14,6 +14,7 @@
   import {
     voxels,
     gridSize,
+    glowVoxelCount,
     showGrid,
     renderingMode,
     activeRendererIsWebGPU,
@@ -281,6 +282,7 @@
     type VoxelleRenderer
   } from './canvas/sceneSetup';
   import { createMeshManager, syncGlassShadowUniformsFromBuckets } from './canvas/meshManager';
+  import { perfLog, perfNow, voxellePerfEnabled } from './canvas/voxellePerf';
   import { VoxelRayTsl } from './canvas/voxelRayTsl';
   import { isWebGLRenderer, isWebGPURenderer } from './canvas/rendererUtils';
   import { createWebGPUBloomPipeline, type WebGPUBloomPipeline } from './canvas/webgpuBloom';
@@ -529,7 +531,47 @@
   const prevRayCamPos = new THREE.Vector3();
   const prevRayCamQuat = new THREE.Quaternion();
   let prevRayCamInitialized = false;
-  let rayTraceContentDirty = true;
+  /** Set when voxels/lighting change; coalesced via rAF flush, consumed once per frame in `animate` before ray tick. */
+  let pendingRayContentInvalidate = true;
+  let pendingPipelineMesh = false;
+  let pendingPipelineGrid = false;
+  let pendingPipelineRay = false;
+
+  /** Apply batched mesh/grid/ray flags once per animation frame (coalesces burst edits). */
+  function applyPendingVoxelPipelineMutations(): boolean {
+    let did = false;
+    const v = get(voxels);
+    const tAll = voxellePerfEnabled() ? perfNow() : 0;
+    if (pendingPipelineMesh && meshManager) {
+      const t0 = voxellePerfEnabled() ? perfNow() : 0;
+      meshManager.requestRebuildVoxelMeshes(v);
+      if (voxellePerfEnabled()) perfLog('voxelPipeline.meshRequest', perfNow() - t0);
+      pendingPipelineMesh = false;
+      did = true;
+    }
+    if (pendingPipelineGrid && meshManager && get(showGrid)) {
+      const t0 = voxellePerfEnabled() ? perfNow() : 0;
+      meshManager.buildGrid(get(gridSize), v);
+      if (voxellePerfEnabled()) perfLog('voxelPipeline.gridRebuild', perfNow() - t0);
+      pendingPipelineGrid = false;
+      did = true;
+    } else {
+      pendingPipelineGrid = false;
+    }
+    if (pendingPipelineRay) {
+      pendingRayContentInvalidate = true;
+      pendingPipelineRay = false;
+      did = true;
+    }
+    if (voxellePerfEnabled() && did) perfLog('voxelPipeline.applyTotal', perfNow() - tAll);
+    return did;
+  }
+
+  function queueVoxelPipelineRebuild(opts: { mesh?: boolean; grid?: boolean; ray?: boolean }): void {
+    if (opts.mesh) pendingPipelineMesh = true;
+    if (opts.grid) pendingPipelineGrid = true;
+    if (opts.ray) pendingPipelineRay = true;
+  }
   let rollOverMesh: THREE.Mesh;
   let rollOverMaterial: THREE.MeshBasicMaterial;
   let dirLight: THREE.DirectionalLight;
@@ -4282,6 +4324,7 @@
   function animate(now?: number) {
     animationFrameId = requestAnimationFrame(animate);
     const t = now ?? performance.now();
+    const pipelineApplied = applyPendingVoxelPipelineMutations();
     runVoxelCanvasAnimateStep({
       nowMs: t,
       showFpsCounter: get(voxellePreferences).showFpsCounter,
@@ -4325,9 +4368,13 @@
       getAmbientIntensity: () => get(ambientIntensity),
       getSceneEnvironmentIntensity: () => get(sceneEnvironmentIntensity),
       getEnableShadows: () => get(enableShadows),
-      getRayTraceContentDirty: () => rayTraceContentDirty,
+      getRayTraceContentDirty: () => {
+        const p = pendingRayContentInvalidate;
+        pendingRayContentInvalidate = false;
+        return p;
+      },
       setRayTraceContentDirty: (v) => {
-        rayTraceContentDirty = v;
+        if (v) pendingRayContentInvalidate = true;
       },
       getPrevRayCamInitialized: () => prevRayCamInitialized,
       prevRayCamPos,
@@ -4343,6 +4390,7 @@
       getRoofPhase: () => roofPhase,
       getRopePhase: () => ropePhase,
       getFlyControlsEnabled: () => !!flyControls?.enabled,
+      getPipelineAppliedThisFrame: () => pipelineApplied,
       render
     });
   }
@@ -4454,18 +4502,21 @@
   });
 
   $effect(() => {
-    const v = $voxels;
+    void $voxels;
     void $gridSize;
     void $aoStrength;
     void $renderingMode;
-    sceneHasGlowMesh = Array.from(v.values()).some((voxel) => voxel.material === 'glow');
-    meshManager?.requestRebuildVoxelMeshes(v);
-    render();
+    void $glowVoxelCount;
+    sceneHasGlowMesh = $glowVoxelCount > 0;
+    queueVoxelPipelineRebuild({
+      mesh: true,
+      grid: true,
+      ray: $renderingMode === 'ray'
+    });
   });
 
   $effect(() => {
     void $renderingMode;
-    void $voxels;
     void $lightAngle;
     void $lightElevation;
     void $lightColor;
@@ -4478,8 +4529,9 @@
     void $gridSize;
     void $focalLength;
     void $orthographic;
-    // Camera movement is already tracked via `camDirty` in animate(); avoid re-resetting every frame.
-    if ($renderingMode === 'ray') rayTraceContentDirty = true;
+    if ($renderingMode === 'ray') {
+      queueVoxelPipelineRebuild({ ray: true });
+    }
   });
 
   $effect(() => {
@@ -4907,12 +4959,17 @@
   });
 
   $effect(() => {
-    const sz = $gridSize;
-    const v = $voxels;
-    if (gridGroup) {
-      buildGrid(sz, v);
-      gridGroup.visible = $showGrid;
+    void $showGrid;
+    if (gridGroup) gridGroup.visible = $showGrid;
+    if ($showGrid) {
+      queueVoxelPipelineRebuild({ grid: true });
     }
+  });
+
+  $effect(() => {
+    void $gridSize;
+    void $voxels;
+    void $orthographic;
     if ($orthographic && orthographicCamera) updateOrthoFrustum();
     updateZoomPercent();
     render();

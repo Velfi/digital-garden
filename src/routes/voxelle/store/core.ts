@@ -23,8 +23,13 @@ import {
   serializeVoxels,
   deserializeVoxels,
   computeUndoDelta,
+  computeUndoDeltaForVoxelKeys,
+  computeUndoDeltaForSelectionOnly,
+  computeStrokeVoxelUndoDelta,
+  mergeUndoParts,
   isUndoDeltaEmpty
 } from './serialization';
+import { bumpGlowVoxelCount, recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 import { createUndo } from './undo';
 import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
 import { cloneVoxel } from '../voxelMaterial';
@@ -338,11 +343,32 @@ export const symmetryZ = writable<boolean>(false);
 const undo = createUndo(voxels, selection);
 const pushUndoDelta = undo.pushUndoDelta;
 
-/** Baseline for one logical stroke (`beginStroke` … `endStrokeUndo`). */
+/** Baseline for one logical stroke (`beginStroke` … `endStrokeUndo`): map refs at stroke start (no full clone). */
 let strokeUndoBaseline: { v: Map<string, Voxel>; s: Map<string, Voxel> } | null = null;
+const strokeVoxelTouched = new Set<string>();
+/** Per key: voxel at stroke start, or `null` if empty (first touch recorded on edit). */
+const strokeVoxelBefore = new Map<string, Voxel | null>();
+
+let commitUndoDepth = 0;
+const commitUndoTouchedVoxels = new Set<string>();
+
+function recordVoxelKeyForUndo(k: string): void {
+  if (strokeUndoBaseline) {
+    if (!strokeVoxelBefore.has(k)) {
+      const p = strokeUndoBaseline.v.get(k);
+      strokeVoxelBefore.set(k, p ? cloneVoxel(p) : null);
+    }
+    strokeVoxelTouched.add(k);
+  }
+  if (commitUndoDepth > 0) {
+    commitUndoTouchedVoxels.add(k);
+  }
+}
 
 export function resetUndo() {
   strokeUndoBaseline = null;
+  strokeVoxelTouched.clear();
+  strokeVoxelBefore.clear();
   undo.reset();
 }
 
@@ -350,8 +376,29 @@ export function commitUndoAfter(fn: () => void): void {
   undo.clearRedo();
   const oldV = get(voxels);
   const oldS = get(selection);
-  fn();
-  const delta = computeUndoDelta(oldV, oldS, get(voxels), get(selection));
+  commitUndoDepth++;
+  commitUndoTouchedVoxels.clear();
+  try {
+    fn();
+  } finally {
+    commitUndoDepth--;
+  }
+  const newV = get(voxels);
+  const newS = get(selection);
+  let delta;
+  if (commitUndoTouchedVoxels.size > 0) {
+    delta = mergeUndoParts(
+      computeUndoDeltaForVoxelKeys(oldV, newV, commitUndoTouchedVoxels),
+      computeUndoDeltaForSelectionOnly(oldS, newS)
+    );
+  } else if (newV === oldV) {
+    delta = mergeUndoParts(
+      { voxelAdded: [], voxelRemoved: [] },
+      computeUndoDeltaForSelectionOnly(oldS, newS)
+    );
+  } else {
+    delta = computeUndoDelta(oldV, oldS, newV, newS);
+  }
   if (!isUndoDeltaEmpty(delta)) {
     pushUndoDelta(delta);
   }
@@ -361,21 +408,23 @@ export function commitUndoAfter(fn: () => void): void {
 export function beginStroke() {
   undo.clearRedo();
   strokeUndoBaseline = {
-    v: cloneVoxelsImpl(get(voxels)),
-    s: cloneVoxelsImpl(get(selection))
+    v: get(voxels),
+    s: get(selection)
   };
+  strokeVoxelTouched.clear();
+  strokeVoxelBefore.clear();
 }
 
 /** Finish a stroke begun with `beginStroke` and record one delta on the undo stack. */
 export function endStrokeUndo() {
   if (!strokeUndoBaseline) return;
-  const delta = computeUndoDelta(
-    strokeUndoBaseline.v,
-    strokeUndoBaseline.s,
-    get(voxels),
-    get(selection)
-  );
+  const baseline = strokeUndoBaseline;
   strokeUndoBaseline = null;
+  const vPart = computeStrokeVoxelUndoDelta(get(voxels), strokeVoxelTouched, strokeVoxelBefore);
+  const sPart = computeUndoDeltaForSelectionOnly(baseline.s, get(selection));
+  const delta = mergeUndoParts(vPart, sPart);
+  strokeVoxelTouched.clear();
+  strokeVoxelBefore.clear();
   if (!isUndoDeltaEmpty(delta)) {
     pushUndoDelta(delta);
   }
@@ -454,6 +503,7 @@ export function shiftVoxelsAndSelection(dx: number, dy: number, dz: number): voi
     const positions = [...newVoxels.keys()].map((k) => parseCoordKey(k));
     ensureGridFitsPositions(positions);
     voxels.set(newVoxels);
+    recomputeGlowVoxelCountFromMap(newVoxels);
     selection.set(newSel);
   });
 }
@@ -498,6 +548,7 @@ export function scaleProjectBy2(): void {
     const positions = [...next.keys()].map((k) => parseCoordKey(k));
     ensureGridFitsPositions(positions);
     voxels.set(next);
+    recomputeGlowVoxelCountFromMap(next);
     selection.set(nextSel);
   });
 }
@@ -550,6 +601,7 @@ export function scaleProjectByHalf(): void {
     const positions = [...next.keys()].map((k) => parseCoordKey(k));
     ensureGridFitsPositions(positions);
     voxels.set(next);
+    recomputeGlowVoxelCountFromMap(next);
     selection.set(nextSel);
   });
 }
@@ -622,6 +674,7 @@ export function rotateProjectQuarterTurns(axis: 0 | 1 | 2, deltaQuarters: number
     }
     ensureGridFitsPositions([...next.keys()].map((k) => parseCoordKey(k)));
     voxels.set(next);
+    recomputeGlowVoxelCountFromMap(next);
     const newSel = new Map<string, Voxel>();
     for (let i = 0; i < allKeys.length; i++) {
       const col = sel.get(allKeys[i]!);
@@ -656,6 +709,7 @@ export function shiftSelection(dx: number, dy: number, dz: number): void {
     const positions = [...newSel.keys()].map((k) => parseCoordKey(k));
     ensureGridFitsPositions(positions);
     voxels.set(nextVoxels);
+    recomputeGlowVoxelCountFromMap(nextVoxels);
     selection.set(newSel);
   });
 }
@@ -713,13 +767,17 @@ export { serializeVoxels, deserializeVoxels };
 export function initCanvas(size: GridSize, shape: StartShape = 'cube') {
   resetUndo();
   hiddenVoxels.set(new Map());
-  voxels.set(initShape(size, shape));
+  const initial = initShape(size, shape);
+  voxels.set(initial);
+  recomputeGlowVoxelCountFromMap(initial);
 }
 
 export function resetCanvas(size: GridSize, shape: StartShape = 'cube') {
   commitUndoAfter(() => {
     hiddenVoxels.set(new Map());
-    voxels.set(initShape(size, shape));
+    const initial = initShape(size, shape);
+    voxels.set(initial);
+    recomputeGlowVoxelCountFromMap(initial);
   });
 }
 
@@ -753,6 +811,7 @@ export function hideSelectedVoxels(): void {
     if (!moved.has(key)) nextSel.set(key, vx);
   }
   voxels.set(nextVoxels);
+  recomputeGlowVoxelCountFromMap(nextVoxels);
   hiddenVoxels.set(nextHidden);
   selection.set(nextSel);
 }
@@ -766,6 +825,7 @@ export function unhideAllVoxels(): void {
     nextVoxels.set(key, cloneVoxel(vx));
   }
   voxels.set(nextVoxels);
+  recomputeGlowVoxelCountFromMap(nextVoxels);
   hiddenVoxels.set(new Map());
 }
 
@@ -773,46 +833,107 @@ export function unhideAllVoxels(): void {
  * Map API passed to `updateVoxels` / `updateVoxelsInStroke` callbacks.
  * With symmetry on, writes mirror across axes; only these methods are guaranteed.
  */
-export type VoxelUpdaterMap = Pick<Map<string, Voxel>, 'get' | 'set' | 'delete' | 'has'>;
+/** Map-like API for sculpt callbacks; `set` returns the same interface for chaining (not a raw `Map`). */
+export type VoxelUpdaterMap = {
+  get(key: string): Voxel | undefined;
+  has(key: string): boolean;
+  set(key: string, value: Voxel): VoxelUpdaterMap;
+  delete(key: string): boolean;
+};
 
-/** Map-like view that mirrors set/delete across symmetry axes; get/has delegate to underlying. */
-function createMirrorMap(underlying: Map<string, Voxel>, axes: SymmetryAxes): VoxelUpdaterMap {
-  return {
-    get(key: string) {
-      return underlying.get(key);
-    },
-    set(key: string, value: Voxel) {
-      const [x, y, z] = parseCoordKey(key);
-      for (const k of getMirrorCoordKeys(x, y, z, axes)) {
-        underlying.set(k, cloneVoxel(value));
-      }
-      return underlying;
-    },
-    has(key: string) {
-      return underlying.has(key);
-    },
-    delete(key: string) {
-      const [x, y, z] = parseCoordKey(key);
-      let deleted = false;
-      for (const k of getMirrorCoordKeys(x, y, z, axes)) {
-        if (underlying.delete(k)) deleted = true;
-      }
-      return deleted;
-    }
-  };
-}
+const OVERLAY_TOMB = Symbol('voxelOverlayTomb');
+type OverlayCell = Voxel | typeof OVERLAY_TOMB;
 
 function applyVoxelUpdater(updater: (v: VoxelUpdaterMap) => void): void {
-  voxels.update((v) => {
-    const next = cloneVoxelsImpl(v);
+  voxels.update((readMap) => {
+    const overlays = new Map<string, OverlayCell>();
+
+    function read(k: string): Voxel | undefined {
+      if (overlays.has(k)) {
+        const o = overlays.get(k)!;
+        return o === OVERLAY_TOMB ? undefined : o;
+      }
+      return readMap.get(k);
+    }
+
+    function setKey(k: string, val: Voxel) {
+      const prev = read(k);
+      const next = cloneVoxel(val);
+      recordVoxelKeyForUndo(k);
+      bumpGlowVoxelCount(prev, next);
+      overlays.set(k, next);
+    }
+
+    function deleteKey(k: string): boolean {
+      const prev = read(k);
+      if (prev === undefined) return false;
+      recordVoxelKeyForUndo(k);
+      bumpGlowVoxelCount(prev, undefined);
+      if (readMap.has(k)) {
+        overlays.set(k, OVERLAY_TOMB);
+      } else {
+        overlays.delete(k);
+      }
+      return true;
+    }
+
     const axes: SymmetryAxes = {
       x: get(symmetryX),
       y: get(symmetryY),
       z: get(symmetryZ)
     };
-    const target: VoxelUpdaterMap = axes.x || axes.y || axes.z ? createMirrorMap(next, axes) : next;
+
+    const plain: VoxelUpdaterMap = {
+      get(key: string) {
+        return read(key);
+      },
+      has(key: string) {
+        return read(key) !== undefined;
+      },
+      set(key: string, value: Voxel) {
+        setKey(key, value);
+        return plain;
+      },
+      delete(key: string) {
+        return deleteKey(key);
+      }
+    };
+
+    const mirrorTarget: VoxelUpdaterMap = {
+      get(key: string) {
+        return read(key);
+      },
+      has(key: string) {
+        return read(key) !== undefined;
+      },
+      set(key: string, value: Voxel) {
+        const [x, y, z] = parseCoordKey(key);
+        for (const k of getMirrorCoordKeys(x, y, z, axes)) {
+          setKey(k, value);
+        }
+        return mirrorTarget;
+      },
+      delete(key: string) {
+        const [x, y, z] = parseCoordKey(key);
+        let deleted = false;
+        for (const k of getMirrorCoordKeys(x, y, z, axes)) {
+          if (deleteKey(k)) deleted = true;
+        }
+        return deleted;
+      }
+    };
+
+    const target: VoxelUpdaterMap = axes.x || axes.y || axes.z ? mirrorTarget : plain;
+
     updater(target);
-    return next;
+
+    if (overlays.size === 0) return readMap;
+    const out = new Map(readMap);
+    for (const [k, v] of overlays) {
+      if (v === OVERLAY_TOMB) out.delete(k);
+      else out.set(k, v);
+    }
+    return out;
   });
 }
 

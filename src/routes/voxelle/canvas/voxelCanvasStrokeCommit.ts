@@ -21,7 +21,6 @@ import {
   mergeSelection,
   selection,
   selectionMode,
-  voxels,
   updateVoxelsInStroke,
   runVoxelStroke,
   getPaintColorResolver,
@@ -373,11 +372,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
       }
     };
     if (useCenteredShiftSymmetry) {
-      voxels.update((existing) => {
-        const next = new Map(existing);
-        applyToMap(next);
-        return next;
-      });
+      updateVoxelsInStroke((m) => applyToMap(m));
       return;
     }
     updateVoxelsInStroke((v) => {

@@ -59,6 +59,8 @@ export type VoxelCanvasAnimateContext = {
   getRoofPhase: () => 'placing' | null;
   getRopePhase: () => 'placing' | 'tension' | null;
   getFlyControlsEnabled: () => boolean;
+  /** True when mesh/grid/ray-invalidate batch ran this frame (greedy mode needs a redraw). */
+  getPipelineAppliedThisFrame: () => boolean;
   render: () => void;
 };
 
@@ -176,7 +178,13 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
     ctx.getPolygonPhase() !== null ||
     ctx.getRoofPhase() !== null ||
     ctx.getRopePhase() !== null;
-  if (mode === 'ray' || controlsDirty || hasActiveInteraction || ctx.getFlyControlsEnabled()) {
+  if (
+    mode === 'ray' ||
+    controlsDirty ||
+    hasActiveInteraction ||
+    ctx.getFlyControlsEnabled() ||
+    ctx.getPipelineAppliedThisFrame()
+  ) {
     ctx.render();
   }
 }

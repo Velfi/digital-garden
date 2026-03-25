@@ -4,6 +4,7 @@
 import { get } from 'svelte/store';
 import type { Voxel } from '../voxelMaterial';
 import { commitUndoAfter, runVoxelStroke, selection, voxels, type SelectionMode } from './core';
+import { recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 import { mergeSelection } from './selection';
 
 export { commitUndoAfter, runVoxelStroke };
@@ -24,5 +25,6 @@ export function commitSelectionMergeEdit(
 export function commitVoxelMapReplace(next: Map<string, Voxel>): void {
   commitUndoAfter(() => {
     voxels.set(next);
+    recomputeGlowVoxelCountFromMap(next);
   });
 }

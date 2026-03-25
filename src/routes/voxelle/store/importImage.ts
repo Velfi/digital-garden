@@ -1,6 +1,7 @@
 import { get } from 'svelte/store';
 import { coordKey } from '../coordUtils';
 import { voxels, selection, ensureGridFitsPositions, commitUndoAfter } from './core';
+import { recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 import type { Voxel } from '../voxelMaterial';
 import { plasticVoxel } from '../voxelMaterial';
 
@@ -88,6 +89,7 @@ export async function importImageFromFile(file: File): Promise<boolean> {
       next.set(key, col);
     }
     voxels.set(next);
+    recomputeGlowVoxelCountFromMap(next);
     selection.set(selectionMap);
   });
   return true;

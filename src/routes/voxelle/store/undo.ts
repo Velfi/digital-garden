@@ -4,6 +4,7 @@ import { serializeVoxels, deserializeVoxels } from './serialization';
 import type { UndoDelta } from './serialization';
 import { applyUndoDeltaInverse, applyUndoDeltaForward, isUndoDeltaEmpty } from './serialization';
 import type { Voxel } from '../voxelMaterial';
+import { recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 
 const MAX_UNDO = 50;
 
@@ -71,6 +72,7 @@ export function createUndo(
         s: serializeVoxels(get(selection))
       });
       voxels.set(deserializeVoxels(entry.v));
+      recomputeGlowVoxelCountFromMap(get(voxels));
       selection.set(deserializeVoxels(entry.s));
     } else {
       redoStack.push(entry);
@@ -78,6 +80,7 @@ export function createUndo(
       const curS = get(selection);
       const { v, s } = applyUndoDeltaInverse(curV, curS, entry.d);
       voxels.set(v);
+      recomputeGlowVoxelCountFromMap(v);
       selection.set(s);
     }
     canUndoStore.set(undoStack.length > 0);
@@ -94,6 +97,7 @@ export function createUndo(
         s: serializeVoxels(get(selection))
       });
       voxels.set(deserializeVoxels(entry.v));
+      recomputeGlowVoxelCountFromMap(get(voxels));
       selection.set(deserializeVoxels(entry.s));
     } else {
       undoStack.push(entry);
@@ -101,6 +105,7 @@ export function createUndo(
       const curS = get(selection);
       const { v, s } = applyUndoDeltaForward(curV, curS, entry.d);
       voxels.set(v);
+      recomputeGlowVoxelCountFromMap(v);
       selection.set(s);
     }
     canUndoStore.set(undoStack.length > 0);
