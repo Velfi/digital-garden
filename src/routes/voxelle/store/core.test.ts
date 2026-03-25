@@ -31,6 +31,8 @@ import {
   applySelectionRotationInStroke,
   hideSelectedVoxels,
   unhideAllVoxels,
+  updateVoxels,
+  consumeDirtyVoxelKeys,
   type FaceNormal
 } from './core';
 import { plasticVoxel, type Voxel } from '../voxelMaterial';
@@ -46,6 +48,7 @@ describe('core', () => {
     hiddenVoxels.set(new Map());
     selection.set(new Map());
     voxelMaterial.set('plastic');
+    consumeDirtyVoxelKeys();
     resetUndo();
   });
 
@@ -535,6 +538,28 @@ describe('core', () => {
       }
       expect(colors.has(0xff0000)).toBe(true);
       expect(colors.has(0x00ff00)).toBe(true);
+    });
+  });
+
+  describe('dirty voxel tracking', () => {
+    it('tracks changed keys and clears on consume', () => {
+      updateVoxels((v) => {
+        v.set(coordKey(1, 2, 3), pv(0xff0000));
+        v.set(coordKey(2, 2, 3), pv(0x00ff00));
+      });
+      const dirty = consumeDirtyVoxelKeys();
+      expect(dirty.has(coordKey(1, 2, 3))).toBe(true);
+      expect(dirty.has(coordKey(2, 2, 3))).toBe(true);
+      expect(consumeDirtyVoxelKeys().size).toBe(0);
+    });
+
+    it('does not track no-op writes', () => {
+      voxels.set(new Map([[coordKey(0, 0, 0), pv(0xff00ff)]]));
+      consumeDirtyVoxelKeys();
+      updateVoxels((v) => {
+        v.set(coordKey(0, 0, 0), pv(0xff00ff));
+      });
+      expect(consumeDirtyVoxelKeys().size).toBe(0);
     });
   });
 });

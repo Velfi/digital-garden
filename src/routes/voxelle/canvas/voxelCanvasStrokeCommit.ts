@@ -30,6 +30,7 @@ import {
   rotatePositionAroundOrigin,
   PUNCH_DEPTH_MAX,
   punchDepth,
+  stampPunchOffsetFromNormal,
   inflateStrength,
   ensureGridFitsPositions,
   generateRockVoxels,
@@ -179,6 +180,19 @@ function getPunchTargetForPlaceOnFace(
 
 function inwardFaceNormal(normal: FaceNormal): FaceNormal {
   return [-normal[0], -normal[1], -normal[2]] as FaceNormal;
+}
+
+function applyNormalOffset(
+  position: [number, number, number],
+  normal: FaceNormal,
+  steps: number
+): [number, number, number] {
+  if (steps === 0) return position;
+  return [
+    position[0] + normal[0] * steps,
+    position[1] + normal[1] * steps,
+    position[2] + normal[2] * steps
+  ];
 }
 
 function expandPunchAlongDepth(
@@ -499,8 +513,10 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     const bounds = getBoundsFromPositions(rotated);
     if (!bounds) return;
     ctx.playPlaceSound();
+    const offsetSteps = get(stampPunchOffsetFromNormal);
+    const offsetPlace = applyNormalOffset(place, normal, offsetSteps);
     const targetForStamp = getStampTargetForPlaceOnFace(
-      place,
+      offsetPlace,
       normal,
       bounds,
       ctx.getStampOriginMode()
@@ -536,8 +552,10 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     }
     const bounds = getBoundsFromPositions(rotated);
     if (!bounds) return;
+    const offsetSteps = get(stampPunchOffsetFromNormal);
+    const offsetPlace = applyNormalOffset(placeVoxel, normal, offsetSteps);
     const targetForPunch = getPunchTargetForPlaceOnFace(
-      placeVoxel,
+      offsetPlace,
       normal,
       bounds,
       ctx.getStampOriginMode()
@@ -812,8 +830,10 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     }
     const bounds = getBoundsFromPositions(rotated);
     if (!bounds) return [];
+    const offsetSteps = get(stampPunchOffsetFromNormal);
+    const offsetPlace = applyNormalOffset(placeVoxel, normal, offsetSteps);
     const targetForPunch = getPunchTargetForPlaceOnFace(
-      placeVoxel,
+      offsetPlace,
       normal,
       bounds,
       ctx.getStampOriginMode()
@@ -842,8 +862,10 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     }
     const bounds = getBoundsFromPositions(rotated);
     if (!bounds) return [];
+    const offsetSteps = get(stampPunchOffsetFromNormal);
+    const offsetPlace = applyNormalOffset(place, normal, offsetSteps);
     const targetForStamp = getStampTargetForPlaceOnFace(
-      place,
+      offsetPlace,
       normal,
       bounds,
       ctx.getStampOriginMode()

@@ -9,6 +9,12 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import type { RendererBackendPreference } from '../store/preferences';
+import {
+  GRID_GROUP_RENDER_ORDER,
+  PREVIEW_DEFAULT_RENDER_ORDER,
+  PREVIEW_OCCLUDED_RENDER_ORDER,
+  ROLLOVER_DEFAULT_RENDER_ORDER
+} from './renderOrder';
 
 export const POLYGON_POINTS_MAX = 64;
 
@@ -40,6 +46,10 @@ export interface SceneSetupRefs {
   voxelGroup: THREE.Group;
   rollOverMesh: THREE.Mesh;
   rollOverMaterial: THREE.MeshBasicMaterial;
+  paintHoverWireframeMesh: THREE.Mesh;
+  paintHoverWireframeMaterial: THREE.MeshBasicMaterial;
+  paintHoverWireframeOccludedMesh: THREE.Mesh;
+  paintHoverWireframeOccludedMaterial: THREE.MeshBasicMaterial;
   boxGeometry: THREE.BoxGeometry;
   selectionGroup: THREE.Group;
   previewMesh: THREE.Mesh;
@@ -222,7 +232,45 @@ export async function createSceneSetupAsync(
   const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
   const rollOverMesh = new THREE.Mesh(boxGeometry, rollOverMaterial);
   rollOverMesh.visible = false;
+  rollOverMesh.renderOrder = ROLLOVER_DEFAULT_RENDER_ORDER;
   scene.add(rollOverMesh);
+
+  const paintHoverWireframeMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 1,
+    wireframe: true,
+    depthTest: true,
+    depthWrite: false,
+    depthFunc: THREE.LessEqualDepth,
+    blending: THREE.NormalBlending
+  });
+  const paintHoverWireframeMesh = new THREE.Mesh(boxGeometry, paintHoverWireframeMaterial);
+  paintHoverWireframeMesh.visible = false;
+  paintHoverWireframeMesh.scale.setScalar(1.015);
+  paintHoverWireframeMesh.renderOrder = 210;
+  paintHoverWireframeMesh.raycast = () => {};
+  scene.add(paintHoverWireframeMesh);
+
+  const paintHoverWireframeOccludedMaterial = new THREE.MeshBasicMaterial({
+    color: 0x6ea3ff,
+    transparent: true,
+    opacity: 0.42,
+    wireframe: true,
+    depthTest: true,
+    depthWrite: false,
+    depthFunc: THREE.GreaterDepth,
+    blending: THREE.AdditiveBlending
+  });
+  const paintHoverWireframeOccludedMesh = new THREE.Mesh(
+    boxGeometry,
+    paintHoverWireframeOccludedMaterial
+  );
+  paintHoverWireframeOccludedMesh.visible = false;
+  paintHoverWireframeOccludedMesh.scale.setScalar(1.015);
+  paintHoverWireframeOccludedMesh.renderOrder = 209;
+  paintHoverWireframeOccludedMesh.raycast = () => {};
+  scene.add(paintHoverWireframeOccludedMesh);
 
   const voxelGroup = new THREE.Group();
   scene.add(voxelGroup);
@@ -235,11 +283,12 @@ export async function createSceneSetupAsync(
     color: 0xffffff,
     opacity: 0.5,
     transparent: true,
-    depthTest: false,
-    depthWrite: false
+    depthTest: true,
+    depthWrite: true
   });
   const previewMesh = new THREE.Mesh(placeholderMeshGeometry(), previewMaterial);
   previewMesh.visible = false;
+  previewMesh.renderOrder = PREVIEW_DEFAULT_RENDER_ORDER;
   previewMesh.raycast = () => {};
   scene.add(previewMesh);
 
@@ -249,12 +298,12 @@ export async function createSceneSetupAsync(
     opacity: 0.5,
     transparent: true,
     depthTest: true,
-    depthWrite: false
+    depthWrite: true
   });
   const addPreviewSharedGeometry = placeholderMeshGeometry();
   const addPreviewMesh = new THREE.Mesh(addPreviewSharedGeometry, addPreviewMaterial);
   addPreviewMesh.visible = false;
-  addPreviewMesh.renderOrder = 1001;
+  addPreviewMesh.renderOrder = PREVIEW_DEFAULT_RENDER_ORDER;
   addPreviewMesh.raycast = () => {};
   scene.add(addPreviewMesh);
 
@@ -275,7 +324,7 @@ export async function createSceneSetupAsync(
     addPreviewOccludedMaterial
   );
   addPreviewOccludedMesh.visible = false;
-  addPreviewOccludedMesh.renderOrder = 1000;
+  addPreviewOccludedMesh.renderOrder = PREVIEW_OCCLUDED_RENDER_ORDER;
   addPreviewOccludedMesh.raycast = () => {};
   scene.add(addPreviewOccludedMesh);
 
@@ -413,7 +462,7 @@ export async function createSceneSetupAsync(
       });
 
   const gridGroup = new THREE.Group();
-  gridGroup.renderOrder = 1;
+  gridGroup.renderOrder = GRID_GROUP_RENDER_ORDER;
   scene.add(gridGroup);
 
   const initialCamera = perspectiveCamera;
@@ -437,6 +486,10 @@ export async function createSceneSetupAsync(
     voxelGroup,
     rollOverMesh,
     rollOverMaterial,
+    paintHoverWireframeMesh,
+    paintHoverWireframeMaterial,
+    paintHoverWireframeOccludedMesh,
+    paintHoverWireframeOccludedMaterial,
     boxGeometry,
     selectionGroup,
     previewMesh,

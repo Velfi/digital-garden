@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { processVoxelMeshMessage } from './voxelMeshWorkerLogic';
 import { plasticVoxel, type Voxel } from './voxelMaterial';
-import { packVoxelsForWorker } from './meshWorkerTransfer';
+import { packSparseChunksForWorker, packVoxelsForWorker } from './meshWorkerTransfer';
 import { coordKey } from './coordUtils';
 
 describe('voxelMeshWorkerLogic', () => {
@@ -162,5 +162,97 @@ describe('voxelMeshWorkerLogic', () => {
       expect(r.indices.length).toBe(expected!.indices.length);
       expect(r.slabThickness.length).toBe(expected!.slabThickness.length);
     }
+  });
+
+  it('supports incremental dirty chunk rebuilds with changed bucket list', () => {
+    const initial = new Map<string, Voxel>([
+      [coordKey(0, 0, 0), plasticVoxel(0xff5733)],
+      [coordKey(1, 0, 0), plasticVoxel(0xff5733)],
+      [coordKey(40, 0, 0), plasticVoxel(0x33aaff)]
+    ]);
+    const initialOut = processVoxelMeshMessage({
+      mode: 'greedy',
+      voxels: packVoxelsForWorker(initial),
+      options: { chunkSize: 32 }
+    });
+    expect(initialOut.results.length).toBeGreaterThan(0);
+
+    const next = new Map(initial);
+    next.set(coordKey(2, 0, 0), plasticVoxel(0xff5733));
+    const sparse = packSparseChunksForWorker(next, ['0,0,0'], ['1,0,0'], 32);
+    const incrementalOut = processVoxelMeshMessage({
+      mode: 'greedy',
+      voxels: sparse,
+      options: { chunkSize: 32 },
+      dirtyChunkIds: ['0,0,0']
+    });
+    const fullOut = processVoxelMeshMessage({
+      mode: 'greedy',
+      voxels: packVoxelsForWorker(next),
+      options: { chunkSize: 32 }
+    });
+    expect((incrementalOut.changedBuckets ?? []).length).toBeGreaterThan(0);
+    const fullByBucket = new Map(fullOut.results.map((r) => [r.bucketKey, r]));
+    for (const r of incrementalOut.results) {
+      const expected = fullByBucket.get(r.bucketKey);
+      expect(expected).toBeTruthy();
+      expect(r.positions.length).toBe(expected!.positions.length);
+      expect(r.indices.length).toBe(expected!.indices.length);
+    }
+  });
+
+  it('supports sparse dirty+halo payload incremental rebuild', () => {
+    const initial = new Map<string, Voxel>([
+      [coordKey(0, 0, 0), plasticVoxel(0xff5733)],
+      [coordKey(1, 0, 0), plasticVoxel(0xff5733)],
+      [coordKey(40, 0, 0), plasticVoxel(0x33aaff)]
+    ]);
+    processVoxelMeshMessage({
+      mode: 'greedy',
+      voxels: packVoxelsForWorker(initial),
+      options: { chunkSize: 32 }
+    });
+
+    const next = new Map(initial);
+    next.set(coordKey(2, 0, 0), plasticVoxel(0xff5733));
+    const sparse = packSparseChunksForWorker(next, ['0,0,0'], ['1,0,0'], 32);
+    const incrementalOut = processVoxelMeshMessage({
+      mode: 'greedy',
+      voxels: sparse,
+      options: { chunkSize: 32 },
+      dirtyChunkIds: ['0,0,0']
+    });
+    const fullOut = processVoxelMeshMessage({
+      mode: 'greedy',
+      voxels: packVoxelsForWorker(next),
+      options: { chunkSize: 32 }
+    });
+    expect(incrementalOut.changedBuckets).toBeTruthy();
+    expect(incrementalOut.results.length).toBeLessThanOrEqual(fullOut.results.length);
+    const fullByBucket = new Map(fullOut.results.map((r) => [r.bucketKey, r]));
+    const changed = new Set(incrementalOut.changedBuckets ?? []);
+    for (const r of incrementalOut.results) {
+      expect(changed.has(r.bucketKey)).toBe(true);
+      const expected = fullByBucket.get(r.bucketKey);
+      expect(expected).toBeTruthy();
+      expect(r.positions.length).toBe(expected!.positions.length);
+      expect(r.indices.length).toBe(expected!.indices.length);
+    }
+  });
+
+  it('falls back safely when sparse payload is invalid for incremental state', () => {
+    const sparse = packSparseChunksForWorker(
+      new Map([[coordKey(0, 0, 0), plasticVoxel(0xff5733)]]),
+      ['0,0,0'],
+      [],
+      32
+    );
+    const out = processVoxelMeshMessage({
+      mode: 'greedy',
+      voxels: sparse,
+      options: { chunkSize: 16 },
+      dirtyChunkIds: ['0,0,0']
+    });
+    expect(out.changedBuckets ?? []).toHaveLength(0);
   });
 });

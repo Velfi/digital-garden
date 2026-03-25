@@ -34,7 +34,11 @@
     rotateProjectQuarterTurns,
     saveToFile,
     loadFromFile,
-    importImageFromFile
+    importImageFromFile,
+    LARGE_PROJECT_OPEN_VOXEL_THRESHOLD,
+    beginProjectOpenLoading,
+    updateProjectOpenLoadingProgress,
+    completeProjectOpenLoading
   } from './store/index';
   import type { SelectionMode } from './store/index';
 
@@ -165,6 +169,11 @@
     closeMenus();
   }
 
+  function handleProjectStats() {
+    modalRequest.set('projectStats');
+    closeMenus();
+  }
+
   function handleDeleteSelected() {
     deleteSelectedVoxels();
     closeMenus();
@@ -221,14 +230,27 @@
     const file = input.files?.[0];
     if (!file) return;
     input.value = '';
+    const shouldTrackOpen = file.size >= 1_000_000;
+    if (shouldTrackOpen) {
+      beginProjectOpenLoading('Reading project file…');
+      updateProjectOpenLoadingProgress(0.12);
+    }
     try {
       const ok = await loadFromFile(file);
       if (!ok) {
+        if (shouldTrackOpen) completeProjectOpenLoading();
         alert('Could not load file. The file may be corrupted or not a valid .voxelle file.');
       } else if (typeof window !== 'undefined') {
+        if ($voxels.size >= LARGE_PROJECT_OPEN_VOXEL_THRESHOLD) {
+          beginProjectOpenLoading('Opening project…');
+          updateProjectOpenLoadingProgress(0.28, 'Preparing scene…');
+        } else if (shouldTrackOpen) {
+          completeProjectOpenLoading();
+        }
         window.dispatchEvent(new Event(VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT));
       }
     } catch (err) {
+      if (shouldTrackOpen) completeProjectOpenLoading();
       alert(`Failed to load file: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }
@@ -491,6 +513,7 @@
     {#if viewOpen}
       <div class="dropdown" role="menu">
         <button type="button" role="menuitem" onclick={handleStampBook}> Stamp book… </button>
+        <button type="button" role="menuitem" onclick={handleProjectStats}> Project stats… </button>
       </div>
     {/if}
   </div>

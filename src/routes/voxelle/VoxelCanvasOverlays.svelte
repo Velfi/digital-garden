@@ -11,6 +11,9 @@
     gizmoRef?: { draw: () => void } | undefined;
     rayRefinementProgress: number;
     showGreedyMeshSpinner: boolean;
+    projectOpenLoadingActive: boolean;
+    projectOpenLoadingMessage: string;
+    projectOpenLoadingProgress: number;
     fillBusy: boolean;
     fillMessage: string;
     fillVisited: number;
@@ -59,6 +62,9 @@
     gizmoRef = $bindable(),
     rayRefinementProgress,
     showGreedyMeshSpinner,
+    projectOpenLoadingActive,
+    projectOpenLoadingMessage,
+    projectOpenLoadingProgress,
     fillBusy,
     fillMessage,
     fillVisited,
@@ -128,6 +134,30 @@
   <div class="greedy-mesh-spinner" role="status" aria-live="polite">
     <div class="spinner" aria-hidden="true"></div>
     <span>Building mesh…</span>
+  </div>
+{/if}
+{#if projectOpenLoadingActive}
+  <div class="project-open-loading" role="status" aria-live="polite">
+    <div class="project-open-loading-card">
+      <div class="project-open-loading-title">Opening project</div>
+      <div class="project-open-loading-message">{projectOpenLoadingMessage}</div>
+      <div
+        class="project-open-loading-progress"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(projectOpenLoadingProgress * 100)}
+        aria-label="Project open progress"
+      >
+        <div
+          class="project-open-loading-progress-fill"
+          style="transform: scaleX({projectOpenLoadingProgress})"
+        ></div>
+      </div>
+      <div class="project-open-loading-percent">
+        {Math.round(projectOpenLoadingProgress * 100)}%
+      </div>
+    </div>
   </div>
 {/if}
 {#if fillBusy}
@@ -517,6 +547,63 @@
     border-top-color: #fff;
     border-radius: 50%;
     animation: greedy-mesh-spin 0.8s linear infinite;
+  }
+
+  .project-open-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(7, 10, 18, 0.82);
+    z-index: 14;
+    pointer-events: auto;
+  }
+
+  .project-open-loading-card {
+    width: min(30rem, calc(100vw - 2rem));
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 0.55rem;
+    background: rgba(0, 0, 0, 0.56);
+    color: #fff;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  .project-open-loading-title {
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  .project-open-loading-message {
+    font-size: 0.86rem;
+    opacity: 0.9;
+  }
+
+  .project-open-loading-progress {
+    height: 0.52rem;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .project-open-loading-progress-fill {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, #58a6ff, #9ed6ff);
+    transform-origin: left center;
+    will-change: transform;
+  }
+
+  .project-open-loading-percent {
+    font-size: 0.8rem;
+    opacity: 0.86;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
   }
 
   .fill-progress {

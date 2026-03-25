@@ -5,6 +5,7 @@ import type { UndoDelta } from './serialization';
 import { applyUndoDeltaInverse, applyUndoDeltaForward, isUndoDeltaEmpty } from './serialization';
 import type { Voxel } from '../voxelMaterial';
 import { recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
+import { measureRedoDuration, measureUndoDuration } from './projectPerf';
 
 const MAX_UNDO = 50;
 
@@ -63,53 +64,57 @@ export function createUndo(
   }
 
   function doUndo() {
-    if (undoStack.length === 0) return;
-    const entry = undoStack.pop()!;
-    if (entry.k === 'f') {
-      redoStack.push({
-        k: 'f',
-        v: serializeVoxels(get(voxels)),
-        s: serializeVoxels(get(selection))
-      });
-      voxels.set(deserializeVoxels(entry.v));
-      recomputeGlowVoxelCountFromMap(get(voxels));
-      selection.set(deserializeVoxels(entry.s));
-    } else {
-      redoStack.push(entry);
-      const curV = get(voxels);
-      const curS = get(selection);
-      const { v, s } = applyUndoDeltaInverse(curV, curS, entry.d);
-      voxels.set(v);
-      recomputeGlowVoxelCountFromMap(v);
-      selection.set(s);
-    }
-    canUndoStore.set(undoStack.length > 0);
-    canRedoStore.set(redoStack.length > 0);
+    measureUndoDuration(() => {
+      if (undoStack.length === 0) return;
+      const entry = undoStack.pop()!;
+      if (entry.k === 'f') {
+        redoStack.push({
+          k: 'f',
+          v: serializeVoxels(get(voxels)),
+          s: serializeVoxels(get(selection))
+        });
+        voxels.set(deserializeVoxels(entry.v));
+        recomputeGlowVoxelCountFromMap(get(voxels));
+        selection.set(deserializeVoxels(entry.s));
+      } else {
+        redoStack.push(entry);
+        const curV = get(voxels);
+        const curS = get(selection);
+        const { v, s } = applyUndoDeltaInverse(curV, curS, entry.d);
+        voxels.set(v);
+        recomputeGlowVoxelCountFromMap(v);
+        selection.set(s);
+      }
+      canUndoStore.set(undoStack.length > 0);
+      canRedoStore.set(redoStack.length > 0);
+    });
   }
 
   function doRedo() {
-    if (redoStack.length === 0) return;
-    const entry = redoStack.pop()!;
-    if (entry.k === 'f') {
-      undoStack.push({
-        k: 'f',
-        v: serializeVoxels(get(voxels)),
-        s: serializeVoxels(get(selection))
-      });
-      voxels.set(deserializeVoxels(entry.v));
-      recomputeGlowVoxelCountFromMap(get(voxels));
-      selection.set(deserializeVoxels(entry.s));
-    } else {
-      undoStack.push(entry);
-      const curV = get(voxels);
-      const curS = get(selection);
-      const { v, s } = applyUndoDeltaForward(curV, curS, entry.d);
-      voxels.set(v);
-      recomputeGlowVoxelCountFromMap(v);
-      selection.set(s);
-    }
-    canUndoStore.set(undoStack.length > 0);
-    canRedoStore.set(redoStack.length > 0);
+    measureRedoDuration(() => {
+      if (redoStack.length === 0) return;
+      const entry = redoStack.pop()!;
+      if (entry.k === 'f') {
+        undoStack.push({
+          k: 'f',
+          v: serializeVoxels(get(voxels)),
+          s: serializeVoxels(get(selection))
+        });
+        voxels.set(deserializeVoxels(entry.v));
+        recomputeGlowVoxelCountFromMap(get(voxels));
+        selection.set(deserializeVoxels(entry.s));
+      } else {
+        undoStack.push(entry);
+        const curV = get(voxels);
+        const curS = get(selection);
+        const { v, s } = applyUndoDeltaForward(curV, curS, entry.d);
+        voxels.set(v);
+        recomputeGlowVoxelCountFromMap(v);
+        selection.set(s);
+      }
+      canUndoStore.set(undoStack.length > 0);
+      canRedoStore.set(redoStack.length > 0);
+    });
   }
 
   function reset() {

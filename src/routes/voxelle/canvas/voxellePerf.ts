@@ -13,10 +13,14 @@ function readVoxellePerfFlag(): boolean {
   }
 }
 
-const enabled = readVoxellePerfFlag();
+/** Lazy so SSR imports never touch storage; first client call caches the flag. */
+let perfEnabledCached: boolean | undefined;
 
 export function voxellePerfEnabled(): boolean {
-  return enabled;
+  if (perfEnabledCached === undefined) {
+    perfEnabledCached = readVoxellePerfFlag();
+  }
+  return perfEnabledCached;
 }
 
 export function perfNow(): number {
@@ -24,7 +28,7 @@ export function perfNow(): number {
 }
 
 export function perfLog(label: string, ms: number): void {
-  if (!enabled) return;
+  if (!voxellePerfEnabled()) return;
   // eslint-disable-next-line no-console
   console.log(`[voxelle perf] ${label}: ${ms.toFixed(2)}ms`);
 }

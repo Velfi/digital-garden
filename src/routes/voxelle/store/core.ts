@@ -31,6 +31,7 @@ import {
 } from './serialization';
 import { bumpGlowVoxelCount, recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 import { createUndo } from './undo';
+import { measureEditDuration } from './projectPerf';
 import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
 import { cloneVoxel } from '../voxelMaterial';
 
@@ -287,6 +288,7 @@ export const modalRequest = writable<
   | 'exportGltf'
   | 'preferences'
   | 'stampBook'
+  | 'projectStats'
   | null
 >(null);
 export const addPanelStore = writable<AddPanelState>({ ...defaultAddPanel });
@@ -300,6 +302,11 @@ export const stampRotation = writable<StampRotation>({ rotX: 0, rotY: 0, rotZ: 0
 export type StampOriginMode = 'center' | 'corner';
 /** Stamp anchor on face tangent axes: center (legacy) or min-corner aligned to click cell. */
 export const stampOriginMode = writable<StampOriginMode>('center');
+/**
+ * Stamp/punch: integer steps along the clicked face normal before placement.
+ * 0 keeps current behavior; positive moves outward, negative moves inward.
+ */
+export const stampPunchOffsetFromNormal = writable<number>(0);
 /** Punch: how many voxel layers to remove along the inward face normal (1 = surface slice only). */
 export const PUNCH_DEPTH_MAX = 32;
 export const punchDepth = writable<number>(1);
@@ -373,35 +380,37 @@ export function resetUndo() {
 }
 
 export function commitUndoAfter(fn: () => void): void {
-  undo.clearRedo();
-  const oldV = get(voxels);
-  const oldS = get(selection);
-  commitUndoDepth++;
-  commitUndoTouchedVoxels.clear();
-  try {
-    fn();
-  } finally {
-    commitUndoDepth--;
-  }
-  const newV = get(voxels);
-  const newS = get(selection);
-  let delta;
-  if (commitUndoTouchedVoxels.size > 0) {
-    delta = mergeUndoParts(
-      computeUndoDeltaForVoxelKeys(oldV, newV, commitUndoTouchedVoxels),
-      computeUndoDeltaForSelectionOnly(oldS, newS)
-    );
-  } else if (newV === oldV) {
-    delta = mergeUndoParts(
-      { voxelAdded: [], voxelRemoved: [] },
-      computeUndoDeltaForSelectionOnly(oldS, newS)
-    );
-  } else {
-    delta = computeUndoDelta(oldV, oldS, newV, newS);
-  }
-  if (!isUndoDeltaEmpty(delta)) {
-    pushUndoDelta(delta);
-  }
+  measureEditDuration(() => {
+    undo.clearRedo();
+    const oldV = get(voxels);
+    const oldS = get(selection);
+    commitUndoDepth++;
+    commitUndoTouchedVoxels.clear();
+    try {
+      fn();
+    } finally {
+      commitUndoDepth--;
+    }
+    const newV = get(voxels);
+    const newS = get(selection);
+    let delta;
+    if (commitUndoTouchedVoxels.size > 0) {
+      delta = mergeUndoParts(
+        computeUndoDeltaForVoxelKeys(oldV, newV, commitUndoTouchedVoxels),
+        computeUndoDeltaForSelectionOnly(oldS, newS)
+      );
+    } else if (newV === oldV) {
+      delta = mergeUndoParts(
+        { voxelAdded: [], voxelRemoved: [] },
+        computeUndoDeltaForSelectionOnly(oldS, newS)
+      );
+    } else {
+      delta = computeUndoDelta(oldV, oldS, newV, newS);
+    }
+    if (!isUndoDeltaEmpty(delta)) {
+      pushUndoDelta(delta);
+    }
+  });
 }
 
 /** Start a stroke: remember voxels+selection for a single undo step when `endStrokeUndo` runs. */
@@ -431,12 +440,14 @@ export function endStrokeUndo() {
 }
 
 export function runVoxelStroke(fn: () => void): void {
-  beginStroke();
-  try {
-    fn();
-  } finally {
-    endStrokeUndo();
-  }
+  measureEditDuration(() => {
+    beginStroke();
+    try {
+      fn();
+    } finally {
+      endStrokeUndo();
+    }
+  });
 }
 
 export const getUndoSnapshot = undo.getSnapshot;
@@ -790,6 +801,25 @@ export function getAllVoxels(): Map<string, Voxel> {
   return out;
 }
 
+const dirtyVoxelKeys = new Set<string>();
+
+function sameVoxelValue(a: Voxel | undefined, b: Voxel | undefined): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.color === b.color && a.material === b.material;
+}
+
+/**
+ * Return and clear voxel keys changed since the last consume call.
+ * Used by the mesh pipeline to derive dirty chunk updates.
+ */
+export function consumeDirtyVoxelKeys(): Set<string> {
+  if (dirtyVoxelKeys.size === 0) return new Set();
+  const out = new Set(dirtyVoxelKeys);
+  dirtyVoxelKeys.clear();
+  return out;
+}
+
 /** Move currently selected occupied voxels into `hiddenVoxels` and clear them from selection. */
 export function hideSelectedVoxels(): void {
   const v = get(voxels);
@@ -928,12 +958,15 @@ function applyVoxelUpdater(updater: (v: VoxelUpdaterMap) => void): void {
     updater(target);
 
     if (overlays.size === 0) return readMap;
-    const out = new Map(readMap);
     for (const [k, v] of overlays) {
-      if (v === OVERLAY_TOMB) out.delete(k);
-      else out.set(k, v);
+      const before = readMap.get(k);
+      const after = v === OVERLAY_TOMB ? undefined : v;
+      if (sameVoxelValue(before, after)) continue;
+      if (v === OVERLAY_TOMB) readMap.delete(k);
+      else readMap.set(k, v);
+      dirtyVoxelKeys.add(k);
     }
-    return out;
+    return readMap;
   });
 }
 

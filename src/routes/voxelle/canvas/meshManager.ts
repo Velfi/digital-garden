@@ -7,6 +7,8 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import {
+  coordKey,
+  parseCoordKey,
   getSelectionBounds,
   selectionAabbWireframePositions,
   type SelectionBounds,
@@ -14,10 +16,12 @@ import {
   VOXELLE_SELECTION_PIVOT_CHILD_KEY
 } from '../coordUtils';
 import { SELECTION_OVERLAY_MESH_THRESHOLD } from '../strokePreviewBounds';
+import { CUBE_EDGES, EDGE_NEIGHBORS } from '../gridLines';
 import { buildGridPositions } from '../gridLines';
 import { buildGreedyMesh, buildPreviewGeometry, PREVIEW_MESH_OPTIONS } from '../greedyMesh';
 import type { SceneSetupRefs } from './sceneSetup';
 import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
+import { PREVIEW_GRID_RENDER_ORDER } from './renderOrder';
 import {
   createVoxelSurfaceMaterial,
   parseBucketKey,
@@ -25,7 +29,12 @@ import {
   VOXELLE_GLOW_BLOOM_USERDATA_KEY,
   VOXELLE_MESH_MATERIAL_USERDATA_KEY
 } from '../voxelMaterial';
-import { packVoxelsForWorker, transferablesFromPackedVoxelInput } from '../meshWorkerTransfer';
+import {
+  packSparseChunksForWorker,
+  packVoxelsForWorker,
+  transferablesFromPackedSparseChunks,
+  transferablesFromPackedVoxelInput
+} from '../meshWorkerTransfer';
 import {
   GLASS_SHADOW_SLAB_ABSORPTION,
   GLASS_SHADOW_SLAB_MIN_TRANSMITTANCE,
@@ -33,6 +42,16 @@ import {
   GLASS_SHADOW_VERTEX_AO_SCALE
 } from './glassShadowConstants';
 import { perfLog, perfNow, voxellePerfEnabled } from './voxellePerf';
+import { consumeDirtyVoxelKeys } from '../store/core';
+import type { VoxelMeshWorkerOutput } from '../voxelMeshWorkerLogic';
+import {
+  markEditApplyDuration,
+  markEditMeshRequested,
+  markEditResultStats,
+  markEditRendered,
+  markEditTransferStats,
+  markEditWorkerRoundTrip
+} from '../store/projectPerf';
 
 export interface MeshManagerOptions {
   enableShadows: boolean;
@@ -52,8 +71,12 @@ export interface MeshManagerCallbacks {
 const CHUNK_THRESHOLD = 50000;
 const LARGE_REBUILD_DEFER_THRESHOLD = 150000;
 const SPINNER_DELAY_MS = 2000;
+const INCREMENTAL_REBUILD_MAX_DIRTY_KEYS = 2048;
+const INCREMENTAL_GRID_MAX_DIRTY_KEYS = 256;
 const SELECTION_OVERLAY_HEX = 0x3399ff;
 const GRID_SURFACE_LIFT = 0.01;
+const PREVIEW_GRID_HEX = 0x2f3542;
+const PREVIEW_GRID_OPACITY = 0.36;
 
 /**
  * Max linear-depth bias in the shadow pass when net transmittance is 1 (non-reversed Z: pushes clip z
@@ -223,18 +246,119 @@ export function createMeshManager(
   let selectionOccludedMaterial: THREE.MeshBasicMaterial | null = null;
   let selectionWireframe: THREE.LineSegments | null = null;
   let selectionWireframeMaterial: THREE.LineBasicMaterial | null = null;
+  let previewGridLines: THREE.LineSegments | null = null;
+  let previewGridMaterial: THREE.LineBasicMaterial | null = null;
   let spinnerTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  const workerRequestStartByGen = new Map<number, number>();
+  const gridEdgeSegments = new Map<string, [number, number, number, number, number, number]>();
+  let pendingDirtyGridKeys: Set<string> | null = null;
+
+  function deriveDirtyAndHaloChunkIds(
+    keys: ReadonlySet<string>,
+    chunkSize: number,
+    options: { aoStrength: number; highScaleScene: boolean }
+  ): { dirtyChunkIds: string[]; haloChunkIds: string[] } {
+    const dirty = new Set<string>();
+    const halo = new Set<string>();
+    const useReducedHalo = options.highScaleScene && keys.size <= 8 && options.aoStrength <= 1;
+    for (const key of keys) {
+      const [x, y, z] = parseCoordKey(key);
+      const cx = Math.floor(x / chunkSize);
+      const cy = Math.floor(y / chunkSize);
+      const cz = Math.floor(z / chunkSize);
+      dirty.add(`${cx},${cy},${cz}`);
+      if (useReducedHalo) {
+        const neighbors: Array<[number, number, number]> = [
+          [cx, cy, cz],
+          [cx + 1, cy, cz],
+          [cx - 1, cy, cz],
+          [cx, cy + 1, cz],
+          [cx, cy - 1, cz],
+          [cx, cy, cz + 1],
+          [cx, cy, cz - 1]
+        ];
+        for (const [nx, ny, nz] of neighbors) {
+          halo.add(`${nx},${ny},${nz}`);
+        }
+      } else {
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dz = -1; dz <= 1; dz++) {
+              halo.add(`${cx + dx},${cy + dy},${cz + dz}`);
+            }
+          }
+        }
+      }
+    }
+    for (const id of dirty) halo.delete(id);
+    return { dirtyChunkIds: [...dirty], haloChunkIds: [...halo] };
+  }
+
+  function buildVoxelMeshEntry(
+    bucketKey: string,
+    positions: Float32Array,
+    normals: Float32Array,
+    colors: Float32Array,
+    slabThickness: Float32Array,
+    indices: Uint32Array
+  ): { mesh: THREE.Mesh; materialId: VoxelMaterialId } {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('slabThickness', new THREE.BufferAttribute(slabThickness, 1));
+    geo.setIndex(new THREE.BufferAttribute(indices, 1));
+    const parsedForNormals = parseBucketKey(bucketKey);
+    const transmissiveGreedy =
+      parsedForNormals?.material === 'water' || parsedForNormals?.material === 'glass';
+    if (!transmissiveGreedy) {
+      geo.computeVertexNormals();
+    }
+    geo.computeBoundingSphere();
+
+    const opts = getOptions();
+    const envMap = scene?.environment ?? null;
+    const parsed = parseBucketKey(bucketKey);
+    const materialId: VoxelMaterialId = parsed?.material ?? 'plastic';
+    const mat = createVoxelSurfaceMaterial(
+      materialId,
+      envMap,
+      parsed?.color ?? 0xffffff,
+      opts.sceneEnvironmentIntensity
+    );
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY] = materialId;
+    mesh.userData[VOXELLE_GLOW_BLOOM_USERDATA_KEY] = materialId === 'glow';
+    if (materialId === 'glass') mesh.renderOrder = 1;
+    else if (materialId === 'water') mesh.renderOrder = 2;
+    mesh.castShadow = opts.enableShadows && materialId !== 'glow';
+    mesh.receiveShadow =
+      opts.enableShadows &&
+      opts.renderingMode !== 'ray' &&
+      materialId !== 'glass' &&
+      materialId !== 'water';
+    if (materialId === 'glass' || materialId === 'water') {
+      mesh.customDepthMaterial = createGlassShadowDepthMaterial(parsed?.color ?? 0xffffff, {
+        marchingCubes: opts.renderingMode === 'marchingCubes'
+      });
+    }
+    return { mesh, materialId };
+  }
+
+  function disposeMeshEntry(mesh: THREE.InstancedMesh | THREE.Mesh): void {
+    if (mesh instanceof THREE.Mesh && mesh.customDepthMaterial) {
+      mesh.customDepthMaterial.dispose();
+      mesh.customDepthMaterial = undefined;
+    }
+    (mesh.material as THREE.Material).dispose();
+    if (mesh instanceof THREE.Mesh && mesh.geometry) mesh.geometry.dispose();
+  }
 
   function disposeAllVoxelMeshes() {
     if (!voxelGroup) return;
     for (const { mesh } of meshesByBucket.values()) {
       voxelGroup.remove(mesh);
-      if (mesh instanceof THREE.Mesh && mesh.customDepthMaterial) {
-        mesh.customDepthMaterial.dispose();
-        mesh.customDepthMaterial = undefined;
-      }
-      (mesh.material as THREE.Material).dispose();
-      if (mesh instanceof THREE.Mesh && mesh.geometry) mesh.geometry.dispose();
+      disposeMeshEntry(mesh);
     }
     meshesByBucket.clear();
   }
@@ -247,65 +371,55 @@ export function createMeshManager(
       colors: Float32Array;
       slabThickness: Float32Array;
       indices: Uint32Array;
-    }>
+    }>,
+    changedBuckets?: readonly string[]
   ) {
     if (!voxelGroup) return;
-    disposeAllVoxelMeshes();
-
-    const opts = getOptions();
-    const envMap = scene?.environment ?? null;
-
+    const byBucket = new Map(results.map((r) => [r.bucketKey, r]));
+    if (!changedBuckets || changedBuckets.length === 0) {
+      disposeAllVoxelMeshes();
+      for (const [bucketKey, data] of byBucket) {
+        const { mesh } = buildVoxelMeshEntry(
+          bucketKey,
+          data.positions,
+          data.normals,
+          data.colors,
+          data.slabThickness,
+          data.indices
+        );
+        voxelGroup.add(mesh);
+        meshesByBucket.set(bucketKey, { mesh, positions: null });
+      }
+    } else {
+      const dirty = new Set(changedBuckets);
+      for (const bucketKey of dirty) {
+        const prev = meshesByBucket.get(bucketKey);
+        if (prev) {
+          voxelGroup.remove(prev.mesh);
+          disposeMeshEntry(prev.mesh);
+          meshesByBucket.delete(bucketKey);
+        }
+        const data = byBucket.get(bucketKey);
+        if (!data) continue;
+        const { mesh } = buildVoxelMeshEntry(
+          bucketKey,
+          data.positions,
+          data.normals,
+          data.colors,
+          data.slabThickness,
+          data.indices
+        );
+        voxelGroup.add(mesh);
+        meshesByBucket.set(bucketKey, { mesh, positions: null });
+      }
+    }
     let hasGlowMesh = false;
-    for (const { bucketKey, positions, normals, colors, slabThickness, indices } of results) {
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      geo.setAttribute('slabThickness', new THREE.BufferAttribute(slabThickness, 1));
-      geo.setIndex(new THREE.BufferAttribute(indices, 1));
-      const parsedForNormals = parseBucketKey(bucketKey);
-      const transmissiveGreedy =
-        parsedForNormals?.material === 'water' || parsedForNormals?.material === 'glass';
-      // Greedy quads are axis-aligned; MeshPhysicalMaterial + transmission need stable face
-      // normals. computeVertexNormals() averages edges and breaks underside / Fresnel views,
-      // especially next to other transmissive meshes.
-      if (!transmissiveGreedy) {
-        geo.computeVertexNormals();
-      }
-      geo.computeBoundingSphere();
-
+    for (const bucketKey of meshesByBucket.keys()) {
       const parsed = parseBucketKey(bucketKey);
-      const materialId: VoxelMaterialId = parsed?.material ?? 'plastic';
-      if (materialId === 'glow') hasGlowMesh = true;
-      const mat = createVoxelSurfaceMaterial(
-        materialId,
-        envMap,
-        parsed?.color ?? 0xffffff,
-        opts.sceneEnvironmentIntensity
-      );
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.userData[VOXELLE_MESH_MATERIAL_USERDATA_KEY] = materialId;
-      mesh.userData[VOXELLE_GLOW_BLOOM_USERDATA_KEY] = materialId === 'glow';
-      // Transmissive stack: draw glass before water so transmission compositing sees inner volume.
-      if (materialId === 'glass') mesh.renderOrder = 1;
-      else if (materialId === 'water') mesh.renderOrder = 2;
-      mesh.castShadow = opts.enableShadows && materialId !== 'glow';
-      mesh.receiveShadow =
-        opts.enableShadows &&
-        opts.renderingMode !== 'ray' &&
-        materialId !== 'glass' &&
-        materialId !== 'water';
-      if (materialId === 'glass' || materialId === 'water') {
-        /**
-         * Use the depth-material glass shadow path on both backends.
-         * WebGPU transmitted shadows can render through opaque occluders.
-         */
-        mesh.customDepthMaterial = createGlassShadowDepthMaterial(parsed?.color ?? 0xffffff, {
-          marchingCubes: opts.renderingMode === 'marchingCubes'
-        });
+      if ((parsed?.material ?? 'plastic') === 'glow') {
+        hasGlowMesh = true;
+        break;
       }
-      voxelGroup.add(mesh);
-      meshesByBucket.set(bucketKey, { mesh, positions: null });
     }
     callbacks.onVoxelMeshesRebuilt?.({ hasGlowMesh });
   }
@@ -315,25 +429,114 @@ export function createMeshManager(
     meshWorker = new Worker(new URL('../voxelMeshWorker.ts', import.meta.url), {
       type: 'module'
     });
-    meshWorker.onmessage = (e: MessageEvent<{ results: unknown[]; gen?: number }>) => {
+    meshWorker.onmessage = (e: MessageEvent<VoxelMeshWorkerOutput>) => {
       if (e.data.gen !== meshRebuildGen) return;
+      const workerRequestAt = workerRequestStartByGen.get(meshRebuildGen);
+      if (workerRequestAt !== undefined) {
+        markEditWorkerRoundTrip(perfNow() - workerRequestAt);
+        workerRequestStartByGen.delete(meshRebuildGen);
+      }
       const t0 = voxellePerfEnabled() ? perfNow() : 0;
+      const applyStart = perfNow();
       callbacks.onLoadingChange(false);
       callbacks.onSpinnerChange(false);
       if (spinnerTimeoutId) {
         clearTimeout(spinnerTimeoutId);
         spinnerTimeoutId = null;
       }
-      applyVoxelMeshResults(e.data.results as Parameters<typeof applyVoxelMeshResults>[0]);
+      let resultVertexCount = 0;
+      let resultIndexCount = 0;
+      for (const r of e.data.results) {
+        resultVertexCount += Math.floor(r.positions.length / 3);
+        resultIndexCount += r.indices.length;
+      }
+      markEditResultStats({
+        changedBucketCount: e.data.changedBuckets ? e.data.changedBuckets.length : null,
+        resultVertexCount,
+        resultIndexCount
+      });
+      applyVoxelMeshResults(e.data.results, e.data.changedBuckets);
       if (voxellePerfEnabled()) perfLog('meshWorker.applyResults', perfNow() - t0);
+      markEditApplyDuration(perfNow() - applyStart);
       callbacks.render();
+      markEditRendered(perfNow());
     };
+  }
+
+  function ensurePreviewGridOverlay() {
+    if (previewGridLines || !scene) return;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+    previewGridMaterial = new THREE.LineBasicMaterial({
+      color: PREVIEW_GRID_HEX,
+      transparent: true,
+      opacity: PREVIEW_GRID_OPACITY,
+      depthTest: true,
+      depthWrite: false
+    });
+    previewGridLines = new THREE.LineSegments(geom, previewGridMaterial);
+    previewGridLines.visible = false;
+    previewGridLines.renderOrder = PREVIEW_GRID_RENDER_ORDER;
+    previewGridLines.raycast = () => {};
+    scene.add(previewGridLines);
+  }
+
+  function updatePreviewGridFromPositions(positions: [number, number, number][]) {
+    ensurePreviewGridOverlay();
+    if (!previewGridLines) return;
+    if (positions.length === 0) {
+      previewGridLines.visible = false;
+      previewGridLines.position.set(0, 0, 0);
+      return;
+    }
+    const previewVoxels = new Map<string, Voxel>();
+    const markerVoxel: Voxel = { color: 0xffffff, material: 'plastic' };
+    for (const [x, y, z] of positions) previewVoxels.set(coordKey(x, y, z), markerVoxel);
+    const gridPositions = buildGridPositions(previewVoxels, GRID_SURFACE_LIFT);
+    if (gridPositions.length === 0) {
+      previewGridLines.visible = false;
+      previewGridLines.position.set(0, 0, 0);
+      return;
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(gridPositions, 3));
+    previewGridLines.geometry.dispose();
+    previewGridLines.geometry = geom;
+    previewGridLines.position.set(0, 0, 0);
+    previewGridLines.visible = true;
+  }
+
+  function updatePreviewGridFromBounds(bounds: SelectionBounds) {
+    ensurePreviewGridOverlay();
+    if (!previewGridLines) return;
+    const wx = bounds.maxX - bounds.minX + 1;
+    const wy = bounds.maxY - bounds.minY + 1;
+    const wz = bounds.maxZ - bounds.minZ + 1;
+    if (wx <= 0 || wy <= 0 || wz <= 0) {
+      previewGridLines.visible = false;
+      previewGridLines.position.set(0, 0, 0);
+      return;
+    }
+    const boxGeo = new THREE.BoxGeometry(wx, wy, wz);
+    const edgesGeo = new THREE.EdgesGeometry(boxGeo);
+    boxGeo.dispose();
+    previewGridLines.geometry.dispose();
+    previewGridLines.geometry = edgesGeo;
+    previewGridLines.position.set(
+      (bounds.minX + bounds.maxX) / 2,
+      (bounds.minY + bounds.maxY) / 2,
+      (bounds.minZ + bounds.maxZ) / 2
+    );
+    previewGridLines.visible = true;
   }
 
   function requestRebuildVoxelMeshes(v: Map<string, Voxel>) {
     if (!meshWorker || !voxelGroup) return;
     const gen = ++meshRebuildGen;
+    workerRequestStartByGen.clear();
     const opts = getOptions();
+    const dirtyKeys = consumeDirtyVoxelKeys();
+    pendingDirtyGridKeys = dirtyKeys.size > 0 ? dirtyKeys : null;
     if (opts.renderingMode === 'ray') {
       if (spinnerTimeoutId) {
         clearTimeout(spinnerTimeoutId);
@@ -344,6 +547,7 @@ export function createMeshManager(
       disposeAllVoxelMeshes();
       callbacks.onVoxelMeshesRebuilt?.({ hasGlowMesh: false });
       callbacks.render();
+      markEditRendered(perfNow());
       return;
     }
     callbacks.onLoadingChange(true);
@@ -353,12 +557,57 @@ export function createMeshManager(
       spinnerTimeoutId = null;
       callbacks.onSpinnerChange(true);
     }, SPINNER_DELAY_MS);
+    const chunkSize = v.size >= CHUNK_THRESHOLD ? 32 : 0;
+    const useIncrementalDirty =
+      chunkSize >= 16 &&
+      dirtyKeys.size > 0 &&
+      dirtyKeys.size <= INCREMENTAL_REBUILD_MAX_DIRTY_KEYS;
     const postToWorker = () => {
       if (!meshWorker || gen !== meshRebuildGen) return;
       const tPack = voxellePerfEnabled() ? perfNow() : 0;
+      const requestStart = perfNow();
+      markEditMeshRequested(requestStart);
+      workerRequestStartByGen.set(gen, requestStart);
+      if (useIncrementalDirty) {
+        const { dirtyChunkIds, haloChunkIds } = deriveDirtyAndHaloChunkIds(dirtyKeys, chunkSize, {
+          aoStrength: opts.aoStrength,
+          highScaleScene: v.size >= 500000
+        });
+        markEditTransferStats({
+          dirtyChunkCount: dirtyChunkIds.length,
+          haloChunkCount: haloChunkIds.length
+        });
+        const sparseChunks = packSparseChunksForWorker(v, dirtyChunkIds, haloChunkIds, chunkSize);
+        if (sparseChunks.totalTransmissiveCount >= 256) {
+          const packedVoxels = packVoxelsForWorker(v);
+          if (voxellePerfEnabled()) perfLog('meshWorker.packVoxels', perfNow() - tPack);
+          meshWorker.postMessage(
+            {
+              voxels: packedVoxels,
+              mode: opts.renderingMode,
+              options: { aoStrength: opts.aoStrength, chunkSize },
+              gen
+            },
+            { transfer: transferablesFromPackedVoxelInput(packedVoxels) }
+          );
+          return;
+        }
+        if (voxellePerfEnabled()) perfLog('meshWorker.packVoxels', perfNow() - tPack);
+        meshWorker.postMessage(
+          {
+            voxels: sparseChunks,
+            mode: opts.renderingMode,
+            dirtyChunkIds,
+            options: { aoStrength: opts.aoStrength, chunkSize },
+            gen
+          },
+          { transfer: transferablesFromPackedSparseChunks(sparseChunks) }
+        );
+        return;
+      }
+      markEditTransferStats({ dirtyChunkCount: null, haloChunkCount: null });
       const packedVoxels = packVoxelsForWorker(v);
       if (voxellePerfEnabled()) perfLog('meshWorker.packVoxels', perfNow() - tPack);
-      const chunkSize = v.size >= CHUNK_THRESHOLD ? 32 : 0;
       meshWorker.postMessage(
         {
           voxels: packedVoxels,
@@ -369,7 +618,11 @@ export function createMeshManager(
         { transfer: transferablesFromPackedVoxelInput(packedVoxels) }
       );
     };
-    if (v.size >= LARGE_REBUILD_DEFER_THRESHOLD && typeof requestAnimationFrame === 'function') {
+    if (
+      !useIncrementalDirty &&
+      v.size >= LARGE_REBUILD_DEFER_THRESHOLD &&
+      typeof requestAnimationFrame === 'function'
+    ) {
       requestAnimationFrame(() => postToWorker());
       return;
     }
@@ -507,14 +760,125 @@ export function createMeshManager(
 
   function buildGrid(_size: number, v: Map<string, Voxel>) {
     if (!gridGroup || !gridLineMaterial || !scene) return;
+    const dirty = pendingDirtyGridKeys;
+    const canPatchIncremental =
+      dirty &&
+      dirty.size > 0 &&
+      dirty.size <= INCREMENTAL_GRID_MAX_DIRTY_KEYS &&
+      gridEdgeSegments.size > 0;
+    if (!canPatchIncremental) {
+      gridEdgeSegments.clear();
+      for (const key of v.keys()) {
+        const [x, y, z] = parseCoordKey(key);
+        const has = (nx: number, ny: number, nz: number) => v.has(coordKey(nx, ny, nz));
+        for (let edgeIdx = 0; edgeIdx < CUBE_EDGES.length; edgeIdx++) {
+          const [[dx1, dy1, dz1], [dx2, dy2, dz2]] = EDGE_NEIGHBORS[edgeIdx]!;
+          const n1 = has(x + dx1, y + dy1, z + dz1);
+          const n2 = has(x + dx2, y + dy2, z + dz2);
+          if (n1 && n2) continue;
+          const edge = CUBE_EDGES[edgeIdx]!;
+          let ox = 0;
+          let oy = 0;
+          let oz = 0;
+          if (GRID_SURFACE_LIFT > 0) {
+            if (!n1) {
+              ox += dx1;
+              oy += dy1;
+              oz += dz1;
+            }
+            if (!n2) {
+              ox += dx2;
+              oy += dy2;
+              oz += dz2;
+            }
+            const len = Math.hypot(ox, oy, oz);
+            if (len > 0) {
+              const k = GRID_SURFACE_LIFT / len;
+              ox *= k;
+              oy *= k;
+              oz *= k;
+            }
+          }
+          gridEdgeSegments.set(`${key}|${edgeIdx}`, [
+            x + edge[0] + ox,
+            y + edge[1] + oy,
+            z + edge[2] + oz,
+            x + edge[3] + ox,
+            y + edge[4] + oy,
+            z + edge[5] + oz
+          ]);
+        }
+      }
+    } else {
+      const affected = new Set<string>();
+      for (const key of dirty) {
+        const [x, y, z] = parseCoordKey(key);
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dz = -1; dz <= 1; dz++) {
+              affected.add(coordKey(x + dx, y + dy, z + dz));
+            }
+          }
+        }
+      }
+      for (const key of affected) {
+        const [x, y, z] = parseCoordKey(key);
+        for (let edgeIdx = 0; edgeIdx < CUBE_EDGES.length; edgeIdx++) {
+          gridEdgeSegments.delete(`${key}|${edgeIdx}`);
+        }
+        if (!v.has(key)) continue;
+        const has = (nx: number, ny: number, nz: number) => v.has(coordKey(nx, ny, nz));
+        for (let edgeIdx = 0; edgeIdx < CUBE_EDGES.length; edgeIdx++) {
+          const [[dx1, dy1, dz1], [dx2, dy2, dz2]] = EDGE_NEIGHBORS[edgeIdx]!;
+          const n1 = has(x + dx1, y + dy1, z + dz1);
+          const n2 = has(x + dx2, y + dy2, z + dz2);
+          if (n1 && n2) continue;
+          const edge = CUBE_EDGES[edgeIdx]!;
+          let ox = 0;
+          let oy = 0;
+          let oz = 0;
+          if (GRID_SURFACE_LIFT > 0) {
+            if (!n1) {
+              ox += dx1;
+              oy += dy1;
+              oz += dz1;
+            }
+            if (!n2) {
+              ox += dx2;
+              oy += dy2;
+              oz += dz2;
+            }
+            const len = Math.hypot(ox, oy, oz);
+            if (len > 0) {
+              const k = GRID_SURFACE_LIFT / len;
+              ox *= k;
+              oy *= k;
+              oz *= k;
+            }
+          }
+          gridEdgeSegments.set(`${key}|${edgeIdx}`, [
+            x + edge[0] + ox,
+            y + edge[1] + oy,
+            z + edge[2] + oz,
+            x + edge[3] + ox,
+            y + edge[4] + oy,
+            z + edge[5] + oz
+          ]);
+        }
+      }
+    }
     while (gridGroup.children.length > 0) {
       const child = gridGroup.children[0];
       gridGroup.remove(child);
       const geom = (child as { geometry?: THREE.BufferGeometry }).geometry;
       if (geom) geom.dispose();
     }
-    const positions = buildGridPositions(v, GRID_SURFACE_LIFT);
-    if (positions.length === 0) return;
+    const positions: number[] = [];
+    for (const segment of gridEdgeSegments.values()) positions.push(...segment);
+    if (positions.length === 0) {
+      pendingDirtyGridKeys = null;
+      return;
+    }
     if (isWebGPU) {
       const geom = new THREE.BufferGeometry();
       geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -528,6 +892,7 @@ export function createMeshManager(
       lines.raycast = () => {};
       gridGroup.add(lines);
     }
+    pendingDirtyGridKeys = null;
   }
 
   function selectionBoundsToBoxGeometry(b: SelectionBounds): THREE.BoxGeometry {
@@ -550,6 +915,7 @@ export function createMeshManager(
     const wz = bounds.maxZ - bounds.minZ + 1;
     if (wx <= 0 || wy <= 0 || wz <= 0) {
       previewMesh.visible = false;
+      if (previewGridLines) previewGridLines.visible = false;
       return;
     }
     if (previewMesh.geometry) previewMesh.geometry.dispose();
@@ -558,6 +924,7 @@ export function createMeshManager(
     previewMaterial.vertexColors = false;
     previewMaterial.color.setHex(voxel.color & 0xffffff);
     previewMesh.visible = true;
+    updatePreviewGridFromBounds(bounds);
   }
 
   function updatePreviewMesh(
@@ -571,6 +938,7 @@ export function createMeshManager(
       previewMesh.position.set(0, 0, 0);
       previewMaterial.vertexColors = true;
       previewMaterial.color.setHex(0xffffff);
+      if (previewGridLines) previewGridLines.visible = false;
       return;
     }
     previewMesh.position.set(0, 0, 0);
@@ -581,8 +949,10 @@ export function createMeshManager(
       if (previewMesh.geometry) previewMesh.geometry.dispose();
       previewMesh.geometry = geo;
       previewMesh.visible = true;
+      updatePreviewGridFromPositions(positions);
     } else {
       previewMesh.visible = false;
+      if (previewGridLines) previewGridLines.visible = false;
     }
   }
 
@@ -592,14 +962,10 @@ export function createMeshManager(
     meshWorker = null;
     if (spinnerTimeoutId) clearTimeout(spinnerTimeoutId);
     for (const { mesh } of meshesByBucket.values()) {
-      if (mesh.customDepthMaterial) {
-        mesh.customDepthMaterial.dispose();
-        mesh.customDepthMaterial = undefined;
-      }
-      mesh.geometry?.dispose();
-      (mesh.material as THREE.Material).dispose();
+      disposeMeshEntry(mesh);
     }
     meshesByBucket.clear();
+    gridEdgeSegments.clear();
     if (selectionMesh || selectionOccludedMesh) {
       const sharedGeo = selectionMesh?.geometry ?? selectionOccludedMesh?.geometry;
       if (sharedGeo) sharedGeo.dispose();
@@ -611,6 +977,13 @@ export function createMeshManager(
       selectionWireframeMaterial?.dispose();
       selectionWireframe = null;
       selectionWireframeMaterial = null;
+    }
+    if (previewGridLines) {
+      scene.remove(previewGridLines);
+      previewGridLines.geometry.dispose();
+      previewGridMaterial?.dispose();
+      previewGridLines = null;
+      previewGridMaterial = null;
     }
     gridGroup?.traverse((obj) => {
       const geom = (obj as { geometry?: THREE.BufferGeometry }).geometry;

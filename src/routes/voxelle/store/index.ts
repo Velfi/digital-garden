@@ -79,6 +79,7 @@ export {
   selectionGizmoMode,
   stampRotation,
   stampOriginMode,
+  stampPunchOffsetFromNormal,
   punchDepth,
   PUNCH_DEPTH_MAX,
   rockSize,
@@ -238,6 +239,7 @@ export {
   initCanvas,
   resetCanvas,
   getAllVoxels,
+  consumeDirtyVoxelKeys,
   hideSelectedVoxels,
   unhideAllVoxels,
   updateVoxels,
@@ -257,6 +259,14 @@ export {
 } from './core';
 
 export { glowVoxelCount, recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
+export { projectPerfMetrics } from './projectPerf';
+export {
+  projectOpenLoading,
+  LARGE_PROJECT_OPEN_VOXEL_THRESHOLD,
+  beginProjectOpenLoading,
+  updateProjectOpenLoadingProgress,
+  completeProjectOpenLoading
+} from './projectLoad';
 
 export {
   GENERATOR_TOOLS,

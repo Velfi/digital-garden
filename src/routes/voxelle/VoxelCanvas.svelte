@@ -206,6 +206,11 @@
     insectaWingHindOffset,
     getPiscinaPositions,
     getInsectaPositions,
+    projectOpenLoading,
+    LARGE_PROJECT_OPEN_VOXEL_THRESHOLD,
+    beginProjectOpenLoading,
+    updateProjectOpenLoadingProgress,
+    completeProjectOpenLoading,
     roofStyle,
     roofHeight,
     roofThickness,
@@ -338,6 +343,12 @@
   } from './canvas/voxelCanvasLighting';
   import { renderVoxelCanvasPrimaryScene } from './canvas/voxelCanvasBloomRender';
   import { runVoxelCanvasAnimateStep } from './canvas/voxelCanvasAnimate';
+  import {
+    PRECISE_PREVIEW_RENDER_ORDER,
+    PRECISE_ROLLOVER_RENDER_ORDER,
+    PREVIEW_DEFAULT_RENDER_ORDER,
+    ROLLOVER_DEFAULT_RENDER_ORDER
+  } from './canvas/renderOrder';
   import {
     createVoxelCanvasStrokeCommit,
     defaultPlayPlaceSound,
@@ -574,6 +585,10 @@
   }
   let rollOverMesh: THREE.Mesh;
   let rollOverMaterial: THREE.MeshBasicMaterial;
+  let paintHoverWireframeMesh: THREE.Mesh | null = null;
+  let paintHoverWireframeMaterial: THREE.MeshBasicMaterial | null = null;
+  let paintHoverWireframeOccludedMesh: THREE.Mesh | null = null;
+  let paintHoverWireframeOccludedMaterial: THREE.MeshBasicMaterial | null = null;
   let dirLight: THREE.DirectionalLight;
   let hemisphereLight: THREE.HemisphereLight;
   let sky: InstanceType<typeof Sky> | THREE.Mesh | null = null;
@@ -627,6 +642,16 @@
 
   /** Only show spinner after build has taken >2s */
   let showGreedyMeshSpinner = $state(false);
+  let awaitingFirstProjectOpenMeshBuild = false;
+
+  $effect(() => {
+    if ($projectOpenLoading.active && !awaitingFirstProjectOpenMeshBuild) {
+      awaitingFirstProjectOpenMeshBuild = true;
+    }
+    if (!$projectOpenLoading.active && awaitingFirstProjectOpenMeshBuild && !meshManager) {
+      awaitingFirstProjectOpenMeshBuild = false;
+    }
+  });
 
   // Cuboid two-phase: first drag = plane, then scroll/drag = depth
   let cuboidPhase = $state<'plane' | 'depth' | null>(null);
@@ -1282,14 +1307,14 @@
   }
 
   function applyPrecisePreviewRenderOrder() {
-    if (previewMesh) previewMesh.renderOrder = 50;
-    if (rollOverMesh) rollOverMesh.renderOrder = 200;
+    if (previewMesh) previewMesh.renderOrder = PRECISE_PREVIEW_RENDER_ORDER;
+    if (rollOverMesh) rollOverMesh.renderOrder = PRECISE_ROLLOVER_RENDER_ORDER;
     if (rollOverMaterial) rollOverMaterial.depthTest = false;
   }
 
   function resetPrecisePreviewRenderOrder() {
-    if (previewMesh) previewMesh.renderOrder = 0;
-    if (rollOverMesh) rollOverMesh.renderOrder = 0;
+    if (previewMesh) previewMesh.renderOrder = PREVIEW_DEFAULT_RENDER_ORDER;
+    if (rollOverMesh) rollOverMesh.renderOrder = ROLLOVER_DEFAULT_RENDER_ORDER;
     if (rollOverMaterial) rollOverMaterial.depthTest = true;
   }
 
@@ -2822,6 +2847,8 @@
   }
 
   function handlePointerMove(event?: PointerEvent) {
+    if (paintHoverWireframeMesh) paintHoverWireframeMesh.visible = false;
+    if (paintHoverWireframeOccludedMesh) paintHoverWireframeOccludedMesh.visible = false;
     if (
       runPointerMovePrelude(event, {
         pointerHandlerContext,
@@ -3662,6 +3689,41 @@
         } else {
           rollOverMesh.visible = false;
         }
+      } else if (
+        $tool === 'remove' ||
+        $tool === 'paint' ||
+        $tool === 'select' ||
+        $tool === 'selectByColor' ||
+        $tool === 'selectCoplanar' ||
+        $tool === 'selectCoplanarEmpty'
+      ) {
+        const previewPos =
+          $tool === 'selectCoplanarEmpty' ? getAddPosition(hit) : getVoxelPosition(hit);
+        const isValidPreview =
+          previewPos &&
+          ($tool === 'selectCoplanarEmpty'
+            ? !$voxels.has(coordKey(previewPos[0], previewPos[1], previewPos[2]))
+            : $voxels.has(coordKey(previewPos[0], previewPos[1], previewPos[2])));
+        if (previewPos && isValidPreview) {
+          if (paintHoverWireframeMesh) {
+            paintHoverWireframeMesh.position.set(previewPos[0], previewPos[1], previewPos[2]);
+            paintHoverWireframeMesh.visible = true;
+            if (paintHoverWireframeOccludedMesh) {
+              paintHoverWireframeOccludedMesh.position.set(
+                previewPos[0],
+                previewPos[1],
+                previewPos[2]
+              );
+              paintHoverWireframeOccludedMesh.visible = true;
+            }
+            rollOverMesh.visible = false;
+          } else {
+            rollOverMesh.position.set(previewPos[0], previewPos[1], previewPos[2]);
+            rollOverMesh.visible = true;
+          }
+        } else {
+          rollOverMesh.visible = false;
+        }
       } else {
         rollOverMesh.visible = false;
       }
@@ -3694,6 +3756,11 @@
 
   function onContainerPointerLeave() {
     selectionGizmo?.clearGizmoHoverCursor();
+    if (paintHoverWireframeMesh) {
+      paintHoverWireframeMesh.visible = false;
+      if (paintHoverWireframeOccludedMesh) paintHoverWireframeOccludedMesh.visible = false;
+      render();
+    }
   }
 
   function onPointerMove(event: PointerEvent) {
@@ -4734,12 +4801,19 @@
   onMount(async () => {
     window.addEventListener(VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT, onProjectOpenFitCamera);
 
-    const { loadedFromStorage } = await loadVoxelCanvasBootstrapModel({
+    const { loadedFromStorage, fromUrl } = await loadVoxelCanvasBootstrapModel({
       loadFromBytes,
       loadFromStorageAsync,
       initCanvas,
       getGridSize: () => get(gridSize)
     });
+    const openingLargeProject =
+      (loadedFromStorage || fromUrl) && get(voxels).size >= LARGE_PROJECT_OPEN_VOXEL_THRESHOLD;
+    if (openingLargeProject) {
+      beginProjectOpenLoading('Opening project…');
+      updateProjectOpenLoadingProgress(0.22, 'Preparing scene…');
+      awaitingFirstProjectOpenMeshBuild = true;
+    }
     const sz = get(gridSize);
 
     const setupRefs = await createSceneSetupAsync(
@@ -4771,6 +4845,10 @@
     voxelGroup = setupRefs.voxelGroup;
     rollOverMesh = setupRefs.rollOverMesh;
     rollOverMaterial = setupRefs.rollOverMaterial;
+    paintHoverWireframeMesh = setupRefs.paintHoverWireframeMesh;
+    paintHoverWireframeMaterial = setupRefs.paintHoverWireframeMaterial;
+    paintHoverWireframeOccludedMesh = setupRefs.paintHoverWireframeOccludedMesh;
+    paintHoverWireframeOccludedMaterial = setupRefs.paintHoverWireframeOccludedMaterial;
     boxGeometry = setupRefs.boxGeometry;
     selectionGroup = setupRefs.selectionGroup;
 
@@ -4810,6 +4888,9 @@
       console.warn('Voxelle: selective bloom disabled', e);
     }
     await setupWebGPUBloomPipeline();
+    if ($projectOpenLoading.active && awaitingFirstProjectOpenMeshBuild) {
+      updateProjectOpenLoadingProgress(0.46, 'Initializing renderer…');
+    }
     orbitControls.addEventListener('change', updateZoomPercent);
 
     meshManager = createMeshManager(
@@ -4821,12 +4902,22 @@
         sceneEnvironmentIntensity: $sceneEnvironmentIntensity
       }),
       {
-        onLoadingChange: () => {},
+        onLoadingChange: (loading) => {
+          if (!awaitingFirstProjectOpenMeshBuild || !$projectOpenLoading.active) return;
+          if (loading) {
+            updateProjectOpenLoadingProgress(0.72, 'Building first mesh…');
+          }
+        },
         onSpinnerChange: (v) => (showGreedyMeshSpinner = v),
         onVoxelMeshesRebuilt: ({ hasGlowMesh }) => {
           sceneHasGlowMesh = hasGlowMesh;
           invalidateDirectionalShadowMap();
           syncVoxelMaterialEnvMaps();
+          if (awaitingFirstProjectOpenMeshBuild && $projectOpenLoading.active) {
+            awaitingFirstProjectOpenMeshBuild = false;
+            updateProjectOpenLoadingProgress(1, 'Finalizing…');
+            completeProjectOpenLoading();
+          }
         },
         render
       }
@@ -4908,6 +4999,9 @@
     window.addEventListener('resize', onWindowResize);
 
     meshManager?.requestRebuildVoxelMeshes($voxels);
+    if ($projectOpenLoading.active && awaitingFirstProjectOpenMeshBuild) {
+      updateProjectOpenLoadingProgress(0.64, 'Building first mesh…');
+    }
     invalidateDirectionalShadowMap();
     onWindowResize();
     if (loadedFromStorage) fitToView();
@@ -4916,6 +5010,22 @@
 
   $effect(() => {
     if (rollOverMaterial) rollOverMaterial.color.setHex(hexToInt($color));
+    if (paintHoverWireframeMaterial) {
+      if ($tool === 'paint') {
+        paintHoverWireframeMaterial.color.setHex(hexToInt($color));
+      } else {
+        paintHoverWireframeMaterial.color.setHex(0x7b61ff);
+      }
+    }
+    if (paintHoverWireframeOccludedMaterial) {
+      const baseHex = hexToInt($color);
+      const invertedHex = 0xffffff ^ (baseHex & 0xffffff);
+      if ($tool === 'paint') {
+        paintHoverWireframeOccludedMaterial.color.setHex(invertedHex);
+      } else {
+        paintHoverWireframeOccludedMaterial.color.setHex(invertedHex);
+      }
+    }
     render();
   });
 
@@ -5060,6 +5170,8 @@
       resetInsectaPlacementFlow();
       selectionGizmo?.clearGizmoHoverCursor();
       rollOverMesh.visible = false;
+      if (paintHoverWireframeMesh) paintHoverWireframeMesh.visible = false;
+      if (paintHoverWireframeOccludedMesh) paintHoverWireframeOccludedMesh.visible = false;
       updatePreviewMesh([]);
       if (
         isSegmentedStrokeGestureActive({
@@ -5098,6 +5210,8 @@
     if (!wasAddShapePanelOpen && open) {
       if (rollOverMesh && meshManager) {
         rollOverMesh.visible = false;
+        if (paintHoverWireframeMesh) paintHoverWireframeMesh.visible = false;
+        if (paintHoverWireframeOccludedMesh) paintHoverWireframeOccludedMesh.visible = false;
         updatePreviewMesh([]);
         render();
       }
@@ -5257,6 +5371,8 @@
     envMap?.dispose();
     boxGeometry?.dispose();
     rollOverMaterial?.dispose();
+    paintHoverWireframeMaterial?.dispose();
+    paintHoverWireframeOccludedMaterial?.dispose();
     previewMaterial?.dispose();
     if (preciseGuidePlaneMesh && scene) scene.remove(preciseGuidePlaneMesh);
     preciseGuidePlaneMesh?.geometry?.dispose();
@@ -5316,6 +5432,9 @@
     bind:gizmoRef
     {rayRefinementProgress}
     {showGreedyMeshSpinner}
+    projectOpenLoadingActive={$projectOpenLoading.active}
+    projectOpenLoadingMessage={$projectOpenLoading.message}
+    projectOpenLoadingProgress={$projectOpenLoading.progress}
     {fillBusy}
     {fillMessage}
     {fillVisited}

@@ -5,6 +5,7 @@
     bookStampPattern,
     stampRotation,
     stampOriginMode,
+    stampPunchOffsetFromNormal,
     punchDepth,
     PUNCH_DEPTH_MAX,
     clampQuarterTurn,
@@ -57,6 +58,20 @@
         <option value="center">From center</option>
         <option value="corner">From corner</option>
       </select>
+    </div>
+    <div class="tool-panel-row tool-panel-row--wide-label">
+      <span class="tool-panel-label">Offset from normal</span>
+      <input
+        type="range"
+        min="-8"
+        max="8"
+        step="1"
+        value={$stampPunchOffsetFromNormal}
+        oninput={(e) =>
+          stampPunchOffsetFromNormal.set(Number((e.target as HTMLInputElement).value))}
+        title="Voxel steps along the clicked face normal before stamp/punch placement"
+      />
+      <span class="tool-panel-value">{$stampPunchOffsetFromNormal}</span>
     </div>
     <div class="tool-panel-row">
       <span class="tool-panel-label">Rot</span>

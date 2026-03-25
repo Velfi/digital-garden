@@ -29,6 +29,7 @@
   import ExportGltfModal from './sidebar/ExportGltfModal.svelte';
   import PreferencesModal from './sidebar/PreferencesModal.svelte';
   import StampBookModal from './sidebar/StampBookModal.svelte';
+  import ProjectStatsModal from './sidebar/ProjectStatsModal.svelte';
   import StartupScreen from './StartupScreen.svelte';
 
   const STARTUP_URL = '/voxelle/STARTUP.md';
@@ -39,6 +40,7 @@
   let showExportGltfModal = $state(false);
   let showPreferencesModal = $state(false);
   let showStampBookModal = $state(false);
+  let showProjectStatsModal = $state(false);
   let showStartupScreen = $state(false);
   let startupContentUrl = $state(STARTUP_URL);
   let shareUrl = $state('');
@@ -110,6 +112,9 @@
       modalRequest.set(null);
     } else if (req === 'stampBook') {
       showStampBookModal = true;
+      modalRequest.set(null);
+    } else if (req === 'projectStats') {
+      showProjectStatsModal = true;
       modalRequest.set(null);
     } else if (req === 'help') {
       startupContentUrl = HELP_URL;
@@ -241,6 +246,7 @@
   <ExportGltfModal bind:open={showExportGltfModal} />
   <PreferencesModal bind:open={showPreferencesModal} />
   <StampBookModal bind:open={showStampBookModal} />
+  <ProjectStatsModal bind:open={showProjectStatsModal} />
   <StartupScreen
     bind:open={showStartupScreen}
     contentUrl={startupContentUrl}

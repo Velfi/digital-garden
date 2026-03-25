@@ -2,6 +2,7 @@ import { parseCoordKey } from './coordUtils';
 import { computeGreedyMesh } from './greedyMeshCore';
 import { computeMarchingCubes } from './marchingCubesCore';
 import { voxelsFromInput } from './greedyMeshWorkerLogic';
+import type { PackedSparseChunkInput, PackedVoxelInput } from './meshWorkerTransfer';
 import { parseBucketKey, voxelBucketKey, type Voxel } from './voxelMaterial';
 
 export type RenderingMode = 'greedy' | 'marchingCubes' | 'ray';
@@ -10,14 +11,19 @@ const CHUNK_SIZE_DEFAULT = 0;
 const GLASS_FULL_SCENE_REBUILD_THRESHOLD = 256;
 
 export interface VoxelMeshWorkerInput {
-  voxels: [string, Voxel][] | { coords: Int32Array; colors: Uint32Array; materials?: Uint8Array };
+  voxels:
+    | [string, Voxel][]
+    | { coords: Int32Array; colors: Uint32Array; materials?: Uint8Array }
+    | PackedSparseChunkInput;
   mode?: RenderingMode;
   options?: { aoEnabled?: boolean; aoStrength?: 0 | 1 | 2; chunkSize?: number };
+  dirtyChunkIds?: string[];
   gen?: number;
 }
 
 export interface VoxelMeshWorkerOutput {
   gen?: number;
+  changedBuckets?: string[];
   results: Array<{
     bucketKey: string;
     positions: Float32Array;
@@ -27,6 +33,11 @@ export interface VoxelMeshWorkerOutput {
     indices: Uint32Array;
   }>;
 }
+
+type BucketGeometry = VoxelMeshWorkerOutput['results'][number];
+
+let cachedChunkSize = CHUNK_SIZE_DEFAULT;
+let cachedChunkResults = new Map<string, BucketGeometry[]>();
 
 function chunkKey(cx: number, cy: number, cz: number): string {
   return `${cx},${cy},${cz}`;
@@ -98,6 +109,29 @@ function mergeChunkResults(
   return results;
 }
 
+function mergeCachedChunkResults(
+  cache: ReadonlyMap<string, BucketGeometry[]>
+): VoxelMeshWorkerOutput['results'] {
+  const all: BucketGeometry[] = [];
+  for (const results of cache.values()) {
+    for (const r of results) all.push(r);
+  }
+  return mergeChunkResults(all);
+}
+
+function mergeChunkResultsForBucketSet(
+  cache: ReadonlyMap<string, BucketGeometry[]>,
+  buckets: ReadonlySet<string>
+): VoxelMeshWorkerOutput['results'] {
+  const all: BucketGeometry[] = [];
+  for (const results of cache.values()) {
+    for (const r of results) {
+      if (buckets.has(r.bucketKey)) all.push(r);
+    }
+  }
+  return mergeChunkResults(all);
+}
+
 /** All voxels that belong to one greedy bucket (color|material). */
 function voxelsForBucket(voxels: Map<string, Voxel>, bucketKey: string): Map<string, Voxel> {
   const out = new Map<string, Voxel>();
@@ -148,46 +182,122 @@ function countTransmissiveVoxels(voxels: Map<string, Voxel>): number {
   return count;
 }
 
+function computeChunkGeometry(
+  chunkVoxels: Map<string, Voxel>,
+  allVoxels: Map<string, Voxel>,
+  options: { aoEnabled?: boolean; aoStrength?: 0 | 1 | 2 }
+): BucketGeometry[] {
+  const results: BucketGeometry[] = [];
+  const coreResults = computeGreedyMesh(chunkVoxels, {
+    aoEnabled: options.aoEnabled,
+    aoStrength: options.aoStrength,
+    occlusionVoxels: allVoxels
+  });
+  for (const [bucketKey, data] of coreResults) {
+    results.push({
+      bucketKey,
+      positions: data.positions,
+      normals: data.normals,
+      colors: data.colors,
+      slabThickness: data.slabThickness,
+      indices: data.indices
+    });
+  }
+  return results;
+}
+
+function isPackedSparseChunkInput(input: VoxelMeshWorkerInput['voxels']): input is PackedSparseChunkInput {
+  return !Array.isArray(input) && 'dirtyChunks' in input && 'haloChunks' in input;
+}
+
+function voxelMapFromPacked(input: PackedVoxelInput): Map<string, Voxel> {
+  return voxelsFromInput(input);
+}
+
+function buildSparseChunkMaps(input: PackedSparseChunkInput): {
+  dirtyByChunk: Map<string, Map<string, Voxel>>;
+  occupancy: Map<string, Voxel>;
+} {
+  const dirtyByChunk = new Map<string, Map<string, Voxel>>();
+  const occupancy = new Map<string, Voxel>();
+  for (const chunk of input.haloChunks) {
+    const m = voxelMapFromPacked(chunk.voxels);
+    for (const [k, v] of m) occupancy.set(k, v);
+  }
+  for (const chunk of input.dirtyChunks) {
+    const m = voxelMapFromPacked(chunk.voxels);
+    dirtyByChunk.set(chunk.chunkId, m);
+    for (const [k, v] of m) occupancy.set(k, v);
+  }
+  return { dirtyByChunk, occupancy };
+}
+
 export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshWorkerOutput {
-  const { voxels: voxelInput, mode = 'greedy', options = {}, gen } = input;
+  const { voxels: voxelInput, mode = 'greedy', options = {}, dirtyChunkIds, gen } = input;
   if (mode === 'ray') {
     return { results: [], gen };
   }
-  const voxels = voxelsFromInput(voxelInput);
+  const isSparse = isPackedSparseChunkInput(voxelInput);
+  const voxels = isSparse ? null : voxelsFromInput(voxelInput);
   const chunkSize = options.chunkSize ?? CHUNK_SIZE_DEFAULT;
 
-  if (chunkSize >= 16 && mode === 'greedy' && voxels.size > 0) {
-    const chunks = partitionByChunks(voxels, chunkSize);
-    const allChunkResults: VoxelMeshWorkerOutput['results'] = [];
-    for (const ch of chunks.values()) {
-      // Use full-scene occupancy for culling/AO so chunk-edge neighbors do not emit duplicate faces.
-      const coreResults = computeGreedyMesh(ch, {
-        aoEnabled: options.aoEnabled,
-        aoStrength: options.aoStrength,
-        occlusionVoxels: voxels
-      });
-      for (const [bucketKey, data] of coreResults) {
-        allChunkResults.push({
-          bucketKey,
-          positions: data.positions,
-          normals: data.normals,
-          colors: data.colors,
-          slabThickness: data.slabThickness,
-          indices: data.indices
-        });
-      }
-    }
-    const merged = mergeChunkResults(allChunkResults);
-    const transmissiveCount = countTransmissiveVoxels(voxels);
+  if (chunkSize >= 16 && mode === 'greedy' && (isSparse || (voxels && voxels.size > 0))) {
+    const transmissiveCount = isSparse
+      ? voxelInput.totalTransmissiveCount
+      : countTransmissiveVoxels(voxels!);
     const needsGlassRepair = transmissiveCount >= GLASS_FULL_SCENE_REBUILD_THRESHOLD;
-    const results = needsGlassRepair
-      ? replaceGlassBucketsWithFullSceneGreedy(merged, voxels, options)
-      : merged;
+    const canUseIncremental =
+      !needsGlassRepair &&
+      isSparse &&
+      Array.isArray(dirtyChunkIds) &&
+      dirtyChunkIds.length > 0 &&
+      cachedChunkSize === chunkSize &&
+      cachedChunkResults.size > 0;
+    if (canUseIncremental) {
+      if (voxelInput.chunkSize !== chunkSize) {
+        return { results: mergeCachedChunkResults(cachedChunkResults), gen, changedBuckets: [] };
+      }
+      const dirtySet = new Set(dirtyChunkIds);
+      const { dirtyByChunk, occupancy } = buildSparseChunkMaps(voxelInput);
+      const changedBuckets = new Set<string>();
+      for (const ck of dirtySet) {
+        const prev = cachedChunkResults.get(ck);
+        if (prev) for (const bucket of prev) changedBuckets.add(bucket.bucketKey);
+        const ch = dirtyByChunk.get(ck);
+        if (!ch || ch.size === 0) {
+          cachedChunkResults.delete(ck);
+          continue;
+        }
+        const next = computeChunkGeometry(ch, occupancy, options);
+        for (const bucket of next) changedBuckets.add(bucket.bucketKey);
+        cachedChunkResults.set(ck, next);
+      }
+      const changed = [...changedBuckets];
+      const deltaResults = mergeChunkResultsForBucketSet(cachedChunkResults, changedBuckets);
+      return { results: deltaResults, gen, changedBuckets: changed };
+    }
+
+    if (isSparse) {
+      return { results: mergeCachedChunkResults(cachedChunkResults), gen, changedBuckets: [] };
+    }
+
+    const chunks = partitionByChunks(voxels!, chunkSize);
+    const nextCache = new Map<string, BucketGeometry[]>();
+    for (const [ck, ch] of chunks) {
+      nextCache.set(ck, computeChunkGeometry(ch, voxels!, options));
+    }
+    cachedChunkResults = nextCache;
+    cachedChunkSize = chunkSize;
+    const merged = mergeCachedChunkResults(cachedChunkResults);
+    const results = needsGlassRepair ? replaceGlassBucketsWithFullSceneGreedy(merged, voxels!, options) : merged;
     return { results, gen };
   }
 
+  cachedChunkResults = new Map();
+  cachedChunkSize = CHUNK_SIZE_DEFAULT;
+
   if (mode === 'marchingCubes') {
-    const coreResults = computeMarchingCubes(voxels);
+    const coreResults = computeMarchingCubes(voxels!);
     const results: VoxelMeshWorkerOutput['results'] = [];
     for (const [bucketKey, data] of coreResults) {
       const n = data.positions.length / 3;
@@ -203,7 +313,7 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
     return { results, gen };
   }
 
-  const coreResults = computeGreedyMesh(voxels, options);
+  const coreResults = computeGreedyMesh(voxels!, options);
   const results: VoxelMeshWorkerOutput['results'] = [];
   for (const [bucketKey, data] of coreResults) {
     results.push({
