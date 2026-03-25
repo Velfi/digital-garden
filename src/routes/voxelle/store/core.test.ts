@@ -15,6 +15,8 @@ import {
   ensureGridFitsPositions,
   shiftVoxelsAndSelection,
   scaleProjectBy2,
+  scaleProjectByHalf,
+  rotateProjectQuarterTurns,
   shiftSelection,
   centerOriginOnObject,
   centerOriginOnSelection,
@@ -200,6 +202,55 @@ describe('core', () => {
     it('no-op when voxels empty', () => {
       scaleProjectBy2();
       expect(get(voxels).size).toBe(0);
+    });
+  });
+
+  describe('scaleProjectByHalf', () => {
+    it('inverts scale up for a single voxel', () => {
+      voxels.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
+      scaleProjectBy2();
+      expect(get(voxels).size).toBe(8);
+      scaleProjectByHalf();
+      expect(get(voxels).size).toBe(1);
+      expect(get(voxels).get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
+    });
+    it('no-op when voxels empty', () => {
+      scaleProjectByHalf();
+      expect(get(voxels).size).toBe(0);
+    });
+  });
+
+  describe('rotateProjectQuarterTurns', () => {
+    it('no-op when voxels empty', () => {
+      rotateProjectQuarterTurns(2, 1);
+      expect(get(voxels).size).toBe(0);
+    });
+    it('single voxel at origin is unchanged by 90° Z', () => {
+      voxels.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
+      rotateProjectQuarterTurns(2, 1);
+      expect(get(voxels).size).toBe(1);
+      expect(get(voxels).get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
+    });
+    it('90° Z keeps two-voxel bar size (matches selection gizmo math)', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x00ff00)]
+        ])
+      );
+      selection.set(cloneVoxels(get(voxels)));
+      beginStroke();
+      applySelectionRotationInStroke(2, 1);
+      const expected = cloneVoxels(get(voxels));
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x00ff00)]
+        ])
+      );
+      selection.set(new Map());
+      rotateProjectQuarterTurns(2, 1);
+      expect(get(voxels)).toEqual(expected);
     });
   });
 

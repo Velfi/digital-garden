@@ -502,6 +502,135 @@ export function scaleProjectBy2(): void {
   });
 }
 
+/**
+ * Scale the whole model by ½ about the origin: voxel at (x,y,z) maps to
+ * (⌊x/2⌋, ⌊y/2⌋, ⌊z/2⌋). When several voxels merge into one cell, the voxel at the
+ * lexicographically smallest (x,y,z) among them wins. Selection is scaled the same way.
+ */
+export function scaleProjectByHalf(): void {
+  const v = get(voxels);
+  if (v.size === 0) return;
+  commitUndoAfter(() => {
+    const groups = new Map<string, { x: number; y: number; z: number; vx: Voxel }[]>();
+    for (const [key, vx] of v) {
+      const [x, y, z] = parseCoordKey(key);
+      const ix = Math.floor(x / 2);
+      const iy = Math.floor(y / 2);
+      const iz = Math.floor(z / 2);
+      const dk = coordKey(ix, iy, iz);
+      let arr = groups.get(dk);
+      if (!arr) {
+        arr = [];
+        groups.set(dk, arr);
+      }
+      arr.push({ x, y, z, vx });
+    }
+    const next = new Map<string, Voxel>();
+    for (const [dk, arr] of groups) {
+      arr.sort((a, b) => a.x - b.x || a.y - b.y || a.z - b.z);
+      next.set(dk, arr[0]!.vx);
+    }
+    const sel = get(selection);
+    const selGroups = new Map<string, { x: number; y: number; z: number; col: Voxel }[]>();
+    for (const [key, col] of sel) {
+      const [x, y, z] = parseCoordKey(key);
+      const dk = coordKey(Math.floor(x / 2), Math.floor(y / 2), Math.floor(z / 2));
+      let arr = selGroups.get(dk);
+      if (!arr) {
+        arr = [];
+        selGroups.set(dk, arr);
+      }
+      arr.push({ x, y, z, col });
+    }
+    const nextSel = new Map<string, Voxel>();
+    for (const [dk, arr] of selGroups) {
+      arr.sort((a, b) => a.x - b.x || a.y - b.y || a.z - b.z);
+      nextSel.set(dk, arr[0]!.col);
+    }
+    const positions = [...next.keys()].map((k) => parseCoordKey(k));
+    ensureGridFitsPositions(positions);
+    voxels.set(next);
+    selection.set(nextSel);
+  });
+}
+
+/**
+ * Rotate the whole model (visible voxels + selection) by 90° steps about the voxel bounding-box center.
+ * No-op if rounding would merge two voxels or two selection cells, or if a voxel would land on an
+ * uninvolved solid (same rules as the selection rotate gizmo).
+ */
+export function rotateProjectQuarterTurns(axis: 0 | 1 | 2, deltaQuarters: number): void {
+  let q = deltaQuarters % 4;
+  if (q < 0) q += 4;
+  if (q === 0) return;
+
+  const v = get(voxels);
+  const sel = get(selection);
+  if (v.size === 0) return;
+
+  const pivot = getVoxelCenter(v);
+  if (!pivot) return;
+
+  const rawRotatedKey = (key: string) => {
+    const [x, y, z] = parseCoordKey(key);
+    const rel: [number, number, number] = [x - pivot[0], y - pivot[1], z - pivot[2]];
+    const [rx, ry, rz] = rotateVectorByAxisQuarters(rel, axis, q);
+    return coordKey(
+      Math.round(pivot[0] + rx),
+      Math.round(pivot[1] + ry),
+      Math.round(pivot[2] + rz)
+    );
+  };
+
+  const allKeys = [...new Set([...v.keys(), ...sel.keys()])];
+  const rawKeys = allKeys.map((k) => rawRotatedKey(k));
+  if (new Set(rawKeys).size !== rawKeys.length) return;
+
+  const provisional = new Map<string, Voxel>();
+  const dummy: Voxel = { color: 0, material: 'plastic' };
+  for (let i = 0; i < rawKeys.length; i++) {
+    provisional.set(rawKeys[i]!, dummy);
+  }
+  const pivotAfter = getVoxelCenter(provisional);
+  if (!pivotAfter) return;
+
+  const tx = Math.round(pivot[0] - pivotAfter[0]);
+  const ty = Math.round(pivot[1] - pivotAfter[1]);
+  const tz = Math.round(pivot[2] - pivotAfter[2]);
+
+  const finalKey = (key: string) => {
+    const rk = rawRotatedKey(key);
+    const [x, y, z] = parseCoordKey(rk);
+    return coordKey(x + tx, y + ty, z + tz);
+  };
+
+  const newSelKeys = allKeys.map((k) => finalKey(k));
+  if (new Set(newSelKeys).size !== newSelKeys.length) return;
+
+  const sourceKeys = new Set(v.keys());
+  const toMove: [string, Voxel][] = [...v.entries()];
+  const destKeys = toMove.map(([key]) => finalKey(key));
+
+  for (const nk of destKeys) {
+    if (v.has(nk) && !sourceKeys.has(nk)) return;
+  }
+
+  commitUndoAfter(() => {
+    const next = new Map<string, Voxel>();
+    for (let i = 0; i < toMove.length; i++) {
+      next.set(destKeys[i]!, toMove[i]![1]);
+    }
+    ensureGridFitsPositions([...next.keys()].map((k) => parseCoordKey(k)));
+    voxels.set(next);
+    const newSel = new Map<string, Voxel>();
+    for (let i = 0; i < allKeys.length; i++) {
+      const col = sel.get(allKeys[i]!);
+      if (col !== undefined) newSel.set(newSelKeys[i]!, col);
+    }
+    selection.set(newSel);
+  });
+}
+
 /** Shift only the selected voxels (and the selection). Call when selection is active. */
 export function shiftSelection(dx: number, dy: number, dz: number): void {
   const v = get(voxels);

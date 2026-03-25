@@ -30,6 +30,8 @@
     pasteFromClipboard,
     hollowOut,
     scaleProjectBy2,
+    scaleProjectByHalf,
+    rotateProjectQuarterTurns,
     saveToFile,
     loadFromFile,
     importImageFromFile
@@ -175,6 +177,16 @@
 
   function handleScaleProjectBy2() {
     scaleProjectBy2();
+    closeMenus();
+  }
+
+  function handleScaleProjectByHalf() {
+    scaleProjectByHalf();
+    closeMenus();
+  }
+
+  function handleRotateProject(axis: 0 | 1 | 2, deltaQuarters: number) {
+    rotateProjectQuarterTurns(axis, deltaQuarters);
     closeMenus();
   }
 
@@ -548,6 +560,71 @@
           title="Each voxel becomes a 2×2×2 block (coordinates double)"
         >
           Scale project up by 2×
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={handleScaleProjectByHalf}
+          disabled={$voxels.size === 0}
+          title="Each voxel maps to ⌊x/2⌋,⌊y/2⌋,⌊z/2⌋; merged cells keep the lexicographically smallest source voxel"
+        >
+          Scale project down by 2×
+        </button>
+        <div class="menu-separator" role="separator"></div>
+        <span class="menu-label">Rotate 90°</span>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={() => handleRotateProject(0, 1)}
+          disabled={$voxels.size === 0}
+          title="Rigid rotation about the model bounding-box center (+X right-hand rule)"
+        >
+          +90° around X
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={() => handleRotateProject(0, -1)}
+          disabled={$voxels.size === 0}
+          title="Rigid rotation about the model bounding-box center"
+        >
+          −90° around X
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={() => handleRotateProject(1, 1)}
+          disabled={$voxels.size === 0}
+          title="Rigid rotation about the model bounding-box center (+Y right-hand rule)"
+        >
+          +90° around Y
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={() => handleRotateProject(1, -1)}
+          disabled={$voxels.size === 0}
+          title="Rigid rotation about the model bounding-box center"
+        >
+          −90° around Y
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={() => handleRotateProject(2, 1)}
+          disabled={$voxels.size === 0}
+          title="Rigid rotation about the model bounding-box center (+Z right-hand rule)"
+        >
+          +90° around Z
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onclick={() => handleRotateProject(2, -1)}
+          disabled={$voxels.size === 0}
+          title="Rigid rotation about the model bounding-box center"
+        >
+          −90° around Z
         </button>
       </div>
     {/if}

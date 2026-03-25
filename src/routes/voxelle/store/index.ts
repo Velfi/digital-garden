@@ -225,6 +225,8 @@ export {
   resizeGridToContent,
   shiftVoxelsAndSelection,
   scaleProjectBy2,
+  scaleProjectByHalf,
+  rotateProjectQuarterTurns,
   shiftSelection,
   centerOriginOnObject,
   centerOriginOnSelection,
