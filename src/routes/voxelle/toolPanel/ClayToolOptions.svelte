@@ -3,8 +3,12 @@
     tool,
     clayMode,
     clayBrushRadius,
-    bulkBrushShape,
+    clayBrushShape,
     inflateStrength,
+    smoothNeighborRadius,
+    smoothAggressiveness,
+    meltMaxPasses,
+    meltStyle,
     branchTaper,
     branchTaperStartSize,
     branchTaperEndSize,
@@ -19,6 +23,7 @@
     MAX_BRUSH_SIZE
   } from '../store/index';
   import type { SprayDirection } from '../store/index';
+  import { SMOOTH_NEIGHBOR_RADIUS_MAX } from '../clayOps';
 
   const BRUSH_SIZE_MAX = MAX_BRUSH_SIZE - 1;
   const clayVisible = $derived($tool === 'clay');
@@ -40,28 +45,86 @@
         />
         <span class="tool-panel-value">{$clayBrushRadius + 1}</span>
       </div>
-      {#if $clayMode === 'bulk'}
-        <div class="tool-panel-row">
+      {#if $clayMode === 'bulk' || $clayMode === 'smooth' || $clayMode === 'melt'}
+        <div class="tool-panel-row tool-panel-row--brush-shape">
           <span class="tool-panel-label">Brush shape</span>
-          <div class="stroke-buttons" role="group" aria-label="Bulk brush shape">
+          <div class="clay-brush-shape-rows" role="group" aria-label="Clay brush shape">
+            <div class="stroke-buttons">
+              <button
+                type="button"
+                class:active={$clayBrushShape === 'square'}
+                onclick={() => clayBrushShape.set('square')}
+                title="Flat square in the surface plane (single layer)"
+              >
+                Square
+              </button>
+              <button
+                type="button"
+                class:active={$clayBrushShape === 'circle'}
+                onclick={() => clayBrushShape.set('circle')}
+                title="Flat circle in the surface plane (single layer)"
+              >
+                Circle
+              </button>
+            </div>
+            <div class="stroke-buttons">
+              <button
+                type="button"
+                class:active={$clayBrushShape === 'cube'}
+                onclick={() => clayBrushShape.set('cube')}
+                title="3D axis-aligned cube (Chebyshev) along the stroke"
+              >
+                Cube
+              </button>
+              <button
+                type="button"
+                class:active={$clayBrushShape === 'sphere'}
+                onclick={() => clayBrushShape.set('sphere')}
+                title="3D Euclidean sphere along the stroke"
+              >
+                Sphere
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
+      {#if $clayMode === 'melt'}
+        <div class="tool-panel-row">
+          <span class="tool-panel-label">Style</span>
+          <div class="stroke-buttons" role="group" aria-label="Melt style">
             <button
               type="button"
-              class:active={$bulkBrushShape === 'cube'}
-              onclick={() => bulkBrushShape.set('cube')}
-              title="Square footprint in the surface plane"
+              class:active={$meltStyle === 'friedEgg'}
+              onclick={() => meltStyle.set('friedEgg')}
+              title="Flatten orb into a puddle with a thicker center (yolk)"
             >
-              Cube
+              Fried egg
             </button>
             <button
               type="button"
-              class:active={$bulkBrushShape === 'sphere'}
-              onclick={() => bulkBrushShape.set('sphere')}
-              title="Round footprint in the surface plane"
+              class:active={$meltStyle === 'gravity'}
+              onclick={() => meltStyle.set('gravity')}
+              title="Voxels flow downhill inside the brush until settled"
             >
-              Sphere
+              Gravity
             </button>
           </div>
         </div>
+        {#if $meltStyle === 'gravity'}
+          <div class="tool-panel-row">
+            <span class="tool-panel-label">Passes</span>
+            <input
+              type="range"
+              min="0"
+              max="256"
+              step="1"
+              value={$meltMaxPasses}
+              oninput={(e) => meltMaxPasses.set(Number((e.target as HTMLInputElement).value))}
+              title="Max gravity steps per stroke (0 = auto from model height)"
+            />
+            <span class="tool-panel-value">{$meltMaxPasses === 0 ? 'Auto' : $meltMaxPasses}</span>
+          </div>
+        {/if}
       {/if}
       {#if $clayMode === 'branch'}
         <div class="tool-panel-row">
@@ -104,6 +167,36 @@
             <span class="tool-panel-value">{$branchTaperEndSize + 1}</span>
           </div>
         {/if}
+      {/if}
+      {#if $clayMode === 'smooth'}
+        <div class="tool-panel-row">
+          <span class="tool-panel-label">Reach</span>
+          <input
+            type="range"
+            min="0"
+            max={SMOOTH_NEIGHBOR_RADIUS_MAX}
+            step="1"
+            value={$smoothNeighborRadius}
+            oninput={(e) =>
+              smoothNeighborRadius.set(Number((e.target as HTMLInputElement).value))}
+            title="Neighborhood size: 0 = face-adjacent only; higher = wider smoothing for large models"
+          />
+          <span class="tool-panel-value">{$smoothNeighborRadius}</span>
+        </div>
+        <div class="tool-panel-row">
+          <span class="tool-panel-label">Strength</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={$smoothAggressiveness}
+            oninput={(e) =>
+              smoothAggressiveness.set(Number((e.target as HTMLInputElement).value))}
+            title="0 = gentle; 100 = strongest fill/remove (legacy behavior at reach 0)"
+          />
+          <span class="tool-panel-value">{$smoothAggressiveness}</span>
+        </div>
       {/if}
       {#if $clayMode === 'inflate'}
         <div class="tool-panel-row">

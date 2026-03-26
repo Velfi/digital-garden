@@ -7,8 +7,8 @@ import { coordKey, parseCoordKey } from './coordUtils';
 import type { Voxel } from './voxelMaterial';
 import { previewOverlapColor, type PreviewOverlapShading } from './greedyMesh';
 
-/** Coarse cell count above which we use LOD. */
-const LOD_COARSE_TARGET = 12_000;
+/** Coarse cell count above which stroke/add-shape preview uses LOD downsampling. */
+export const PREVIEW_LOD_COARSE_TARGET = 12_000;
 const MAX_STRIDE = 8;
 
 export type MinTuple = [number, number, number];
@@ -21,7 +21,7 @@ export function computePreviewLodStride(
   count: number,
   options?: { maxCoarse?: number; maxStride?: number }
 ): number {
-  const maxCoarse = options?.maxCoarse ?? LOD_COARSE_TARGET;
+  const maxCoarse = options?.maxCoarse ?? PREVIEW_LOD_COARSE_TARGET;
   const maxStride = options?.maxStride ?? MAX_STRIDE;
   if (count <= maxCoarse) return 1;
   let s = 1;

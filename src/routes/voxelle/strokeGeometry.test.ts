@@ -15,7 +15,9 @@ import {
   getRayDirectionPath,
   getRopeCurveVoxels,
   applyBrushAlongPath,
-  getSprayDirectionVector
+  getSprayDirectionVector,
+  mergeAirbrushSphereDropletIntoSeen,
+  mergeAirbrushCubeDropletIntoSeen
 } from './strokeGeometry';
 import type { StrokeMode } from './store/core';
 
@@ -34,8 +36,7 @@ describe('thickenPathForStroke', () => {
   it('clay modes ignore stroke mode (e.g. airbrush) and use clay brush logic', () => {
     // Bug: stroke mode was checked before clay mode, so clay tools (melt, smooth, etc.)
     // incorrectly used airbrush spherical expansion when stroke mode was "airbrush".
-    // Clay with brush radius 1 should use thickenPath (3x3 cube = 27 voxels per point),
-    // not puffPath (sphere ≈ 7 voxels per point for r=1).
+    // Melt/smooth/bulk use surface-plane thickening: default Y layer, cube r=1 => 3×3.
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const clayResult = thickenPathForStroke(singlePoint, {
       ...defaultParams,
@@ -43,9 +44,8 @@ describe('thickenPathForStroke', () => {
       clayMode: 'melt',
       clayBrushRadius: 1
     });
-    const expectedClayBrush = thickenPath(singlePoint, 1);
-    expect(clayResult).toEqual(expectedClayBrush);
-    expect(clayResult.length).toBe(27); // 3x3x3 cube, not sphere
+    expect(clayResult.length).toBe(9);
+    expect(new Set(clayResult.map(([, y]) => y)).size).toBe(1);
   });
 
   it('stroke mode airbrush applies when not using clay', () => {
@@ -118,25 +118,25 @@ describe('thickenPathForStroke', () => {
     expect(new Set(result.map(([, y]) => y)).size).toBe(1);
   });
 
-  it('bulk with bulkBrushShape sphere uses disk in layer plane', () => {
+  it('bulk clay circle: flat disk in layer plane', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       clayMode: 'bulk',
       clayBrushRadius: 1,
-      bulkBrushShape: 'sphere'
+      clayBrushShape: 'circle'
     });
-    expect(result.length).toBe(5); // disk r=1 in XZ
+    expect(result.length).toBe(5);
     expect(new Set(result.map(([, y]) => y)).size).toBe(1);
   });
 
-  it('bulk cube with face normal keeps layer in plane perpendicular to normal', () => {
+  it('bulk clay square with face normal keeps layer in plane perpendicular to normal', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       clayMode: 'bulk',
       clayBrushRadius: 1,
-      bulkBrushShape: 'cube',
+      clayBrushShape: 'square',
       drawBrushFaceNormal: { x: 0, y: 1, z: 0 }
     });
     expect(result.length).toBe(9);
@@ -145,19 +145,43 @@ describe('thickenPathForStroke', () => {
     }
   });
 
-  it('bulk sphere with face normal matches disk in that plane', () => {
+  it('bulk clay circle with face normal stays in that plane', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       clayMode: 'bulk',
       clayBrushRadius: 1,
-      bulkBrushShape: 'sphere',
+      clayBrushShape: 'circle',
       drawBrushFaceNormal: { x: 0, y: 1, z: 0 }
     });
     expect(result.length).toBe(5);
     for (const [, y] of result) {
       expect(y).toBe(0);
     }
+  });
+
+  it('bulk clay cube: 3D Chebyshev ball per path point', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      clayMode: 'bulk',
+      clayBrushRadius: 1,
+      clayBrushShape: 'cube'
+    });
+    expect(result).toEqual(thickenPath(singlePoint, 1));
+    expect(result.length).toBe(27);
+  });
+
+  it('bulk clay sphere: 3D Euclidean ball per path point', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      clayMode: 'bulk',
+      clayBrushRadius: 1,
+      clayBrushShape: 'sphere'
+    });
+    expect(result).toEqual(puffPath(singlePoint, 1, 0));
+    expect(result.length).toBe(7);
   });
 
   it('without clayMode, selection method determines behavior (callers must pass clayMode when in clay)', () => {
@@ -175,7 +199,30 @@ describe('thickenPathForStroke', () => {
       clayBrushRadius: 1,
       clayMode: 'melt'
     });
-    expect(withClay.length).toBe(27); // clay brush
+    expect(withClay.length).toBe(9); // melt: in-plane cube brush
+  });
+
+  it('smooth with clay circle matches bulk circle thickening', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      clayMode: 'smooth',
+      clayBrushRadius: 1,
+      clayBrushShape: 'circle'
+    });
+    expect(result.length).toBe(5);
+    expect(new Set(result.map(([, y]) => y)).size).toBe(1);
+  });
+
+  it('melt with clay circle matches disk in layer plane', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const result = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      clayMode: 'melt',
+      clayBrushRadius: 1,
+      clayBrushShape: 'circle'
+    });
+    expect(result.length).toBe(5);
   });
 
   it('clay wall with direction and wallHeight adds voxels along direction', () => {
@@ -673,6 +720,48 @@ describe('applyBrushAlongPath', () => {
     ];
     expect(applyBrushAlongPath(path, 'sphere', 0)).toEqual(path);
     expect(applyBrushAlongPath(path, 'cube', 0)).toEqual(path);
+  });
+});
+
+function sortPositionKeys(pos: [number, number, number][]): string[] {
+  return pos
+    .map(([a, b, c]) => `${a},${b},${c}`)
+    .sort();
+}
+
+describe('airbrush incremental droplet merge', () => {
+  it('incremental sphere merge matches puffPath (no scatter/range)', () => {
+    const path: [number, number, number][] = [
+      [0, 0, 0],
+      [2, 0, 0],
+      [4, 0, 0]
+    ];
+    const full = puffPath(path, 1.5, 0);
+    const seen = new Set<string>();
+    const out: [number, number, number][] = [];
+    for (const p of path) {
+      mergeAirbrushSphereDropletIntoSeen(p[0], p[1], p[2], 1.5, seen, out);
+    }
+    expect(sortPositionKeys(out)).toEqual(sortPositionKeys(full));
+  });
+
+  it('incremental cube merge matches airbrush cube thickenPathForStroke', () => {
+    const path: [number, number, number][] = [
+      [0, 0, 0],
+      [3, 0, 0]
+    ];
+    const full = thickenPathForStroke(path, {
+      ...defaultParams,
+      strokeMode: 'airbrush',
+      airbrushBrushShape: 'cube',
+      airbrushRadius: 2
+    });
+    const seen = new Set<string>();
+    const out: [number, number, number][] = [];
+    for (const p of path) {
+      mergeAirbrushCubeDropletIntoSeen(p[0], p[1], p[2], 2, seen, out);
+    }
+    expect(sortPositionKeys(out)).toEqual(sortPositionKeys(full));
   });
 });
 

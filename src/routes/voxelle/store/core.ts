@@ -207,9 +207,9 @@ export const planeCuboidHollowWallThickness = writable<number>(1);
 export const clayMode = writable<ClayMode>('bulk');
 /** Clay brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
 export const clayBrushRadius = writable<number>(2);
-/** Bulk mode: footprint in the surface plane (square = Chebyshev, round = Euclidean disk). */
-export type BulkBrushShape = 'cube' | 'sphere';
-export const bulkBrushShape = writable<BulkBrushShape>('cube');
+/** Bulk / smooth / melt: 2D stamp (square, circle) or 3D brush (cube, sphere) along the stroke. */
+export type ClayBrushShape = 'square' | 'circle' | 'cube' | 'sphere';
+export const clayBrushShape = writable<ClayBrushShape>('square');
 /** Branch mode: taper from thick base to thin tip. */
 export const branchTaper = writable<boolean>(false);
 /** Branch taper: start size index 0..(MAX_BRUSH_SIZE-1) (when taper on). */
@@ -218,6 +218,14 @@ export const branchTaperStartSize = writable<number>(2);
 export const branchTaperEndSize = writable<number>(0);
 /** Inflate mode: 0–1 probability of adding each empty face-neighbor (1=always). */
 export const inflateStrength = writable<number>(1);
+/** Smooth mode: Chebyshev neighborhood radius beyond face-only (0 = legacy 6-neighbor window). */
+export const smoothNeighborRadius = writable<number>(0);
+/** Smooth mode: 0 = gentle thresholds, 100 = same rule as legacy scaled to local neighbor count. */
+export const smoothAggressiveness = writable<number>(100);
+/** Melt mode: max gravity passes per stroke (0 = auto from grid/bounds only). */
+export const meltMaxPasses = writable<number>(0);
+/** Melt: fried-egg flatten vs legacy gravity flow inside brush. */
+export const meltStyle = writable<'friedEgg' | 'gravity'>('friedEgg');
 /** Rope mode: tension 0–1 (0=max sag, 1=taut). */
 export const ropeTension = writable<number>(0.5);
 /** Rope mode: brush shape (sphere or cube). */

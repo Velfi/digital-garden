@@ -21,9 +21,12 @@ import { buildGridPositions } from '../gridLines';
 import {
   buildGreedyMesh,
   buildPreviewGeometry,
+  buildPreviewGeometryFromVoxelMap,
   PREVIEW_MESH_OPTIONS,
   type PreviewOverlapShading
 } from '../greedyMesh';
+import { alignPreviewMeshToLod, resetPreviewMeshTransform } from '../previewMeshLod';
+import { safeDisposeBufferGeometry } from './previewMeshUtils';
 import type { SceneSetupRefs } from './sceneSetup';
 import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
 import { PREVIEW_GRID_RENDER_ORDER } from './renderOrder';
@@ -256,6 +259,7 @@ export function createMeshManager(
   let previewGridLines: THREE.LineSegments | null = null;
   let previewGridMaterial: THREE.LineBasicMaterial | null = null;
   let spinnerTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
   const workerRequestStartByGen = new Map<number, number>();
   const gridEdgeSegments = new Map<string, [number, number, number, number, number, number]>();
   let pendingDirtyGridKeys: Set<string> | null = null;
@@ -360,7 +364,9 @@ export function createMeshManager(
       mesh.customDepthMaterial = undefined;
     }
     (mesh.material as THREE.Material).dispose();
-    if (mesh instanceof THREE.Mesh && mesh.geometry) mesh.geometry.dispose();
+    if (mesh instanceof THREE.Mesh && mesh.geometry) {
+      safeDisposeBufferGeometry(mesh.geometry, isWebGPU);
+    }
   }
 
   function disposeAllVoxelMeshes() {
@@ -514,8 +520,9 @@ export function createMeshManager(
     }
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.Float32BufferAttribute(gridPositions, 3));
-    previewGridLines.geometry.dispose();
+    const prevGridGeo = previewGridLines.geometry;
     previewGridLines.geometry = geom;
+    safeDisposeBufferGeometry(prevGridGeo, isWebGPU);
     previewGridLines.position.set(0, 0, 0);
     previewGridLines.visible = true;
   }
@@ -533,9 +540,10 @@ export function createMeshManager(
     }
     const boxGeo = new THREE.BoxGeometry(wx, wy, wz);
     const edgesGeo = new THREE.EdgesGeometry(boxGeo);
-    boxGeo.dispose();
-    previewGridLines.geometry.dispose();
+    safeDisposeBufferGeometry(boxGeo, isWebGPU);
+    const prevEdgesParent = previewGridLines.geometry;
     previewGridLines.geometry = edgesGeo;
+    safeDisposeBufferGeometry(prevEdgesParent, isWebGPU);
     previewGridLines.position.set(
       (bounds.minX + bounds.maxX) / 2,
       (bounds.minY + bounds.maxY) / 2,
@@ -652,8 +660,12 @@ export function createMeshManager(
       if (selectionMesh) selectionGroup.remove(selectionMesh);
       if (selectionOccludedMesh) selectionGroup.remove(selectionOccludedMesh);
       if (selectionWireframe) selectionGroup.remove(selectionWireframe);
-      const sharedGeo = selectionMesh?.geometry ?? selectionOccludedMesh?.geometry;
-      if (sharedGeo) sharedGeo.dispose();
+      const overlayGeos = new Set<THREE.BufferGeometry>();
+      if (selectionMesh?.geometry) overlayGeos.add(selectionMesh.geometry);
+      if (selectionOccludedMesh?.geometry) overlayGeos.add(selectionOccludedMesh.geometry);
+      for (const g of overlayGeos) {
+        safeDisposeBufferGeometry(g, isWebGPU);
+      }
       selectionMaterial?.dispose();
       selectionOccludedMaterial?.dispose();
       selectionMesh = null;
@@ -661,7 +673,7 @@ export function createMeshManager(
       selectionMaterial = null;
       selectionOccludedMaterial = null;
       if (selectionWireframe) {
-        selectionWireframe.geometry.dispose();
+        safeDisposeBufferGeometry(selectionWireframe.geometry, isWebGPU);
         selectionWireframeMaterial?.dispose();
         selectionWireframe = null;
         selectionWireframeMaterial = null;
@@ -718,7 +730,8 @@ export function createMeshManager(
         selectionGroup.add(selectionOccludedMesh);
       }
     } else {
-      const boxGeo = selectionBoundsToBoxGeometry(bounds);
+      const boxGeoPrimary = selectionBoundsToBoxGeometry(bounds);
+      const boxGeoOccluded = boxGeoPrimary.clone();
       selectionMaterial = new THREE.MeshBasicMaterial({
         color: SELECTION_OVERLAY_HEX,
         vertexColors: false,
@@ -727,7 +740,7 @@ export function createMeshManager(
         depthTest: false,
         depthWrite: false
       });
-      selectionMesh = new THREE.Mesh(boxGeo, selectionMaterial);
+      selectionMesh = new THREE.Mesh(boxGeoPrimary, selectionMaterial);
       selectionMesh.raycast = () => {};
       selectionMesh.renderOrder = 1001;
       selectionMesh.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
@@ -749,7 +762,7 @@ export function createMeshManager(
         polygonOffsetFactor: 1,
         polygonOffsetUnits: 1
       });
-      selectionOccludedMesh = new THREE.Mesh(boxGeo, selectionOccludedMaterial);
+      selectionOccludedMesh = new THREE.Mesh(boxGeoOccluded, selectionOccludedMaterial);
       selectionOccludedMesh.raycast = () => {};
       selectionOccludedMesh.renderOrder = 1000;
       selectionOccludedMesh.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
@@ -888,7 +901,7 @@ export function createMeshManager(
       const child = gridGroup.children[0];
       gridGroup.remove(child);
       const geom = (child as { geometry?: THREE.BufferGeometry }).geometry;
-      if (geom) geom.dispose();
+      if (geom) safeDisposeBufferGeometry(geom, isWebGPU);
     }
     const positions: number[] = [];
     for (const segment of gridEdgeSegments.values()) positions.push(...segment);
@@ -935,11 +948,16 @@ export function createMeshManager(
       if (previewGridLines) previewGridLines.visible = false;
       return;
     }
-    if (previewMesh.geometry) previewMesh.geometry.dispose();
-    previewMesh.geometry = new THREE.BoxGeometry(wx, wy, wz);
-    positionMeshAtSelectionBounds(previewMesh, bounds);
+    previewMesh.visible = false;
+    resetPreviewMeshTransform(previewMesh);
     previewMaterial.vertexColors = false;
+    previewMaterial.needsUpdate = true;
     previewMaterial.color.setHex(voxel.color & 0xffffff);
+    const prevPreviewGeo = previewMesh.geometry;
+    const nextBoxGeo = new THREE.BoxGeometry(wx, wy, wz);
+    previewMesh.geometry = nextBoxGeo;
+    safeDisposeBufferGeometry(prevPreviewGeo, isWebGPU);
+    positionMeshAtSelectionBounds(previewMesh, bounds);
     previewMesh.visible = true;
     updatePreviewGridFromBounds(bounds);
   }
@@ -953,25 +971,60 @@ export function createMeshManager(
     if (!previewMesh || !previewMaterial) return;
     if (positions.length === 0) {
       previewMesh.visible = false;
-      previewMesh.position.set(0, 0, 0);
+      resetPreviewMeshTransform(previewMesh);
       previewMaterial.vertexColors = true;
       previewMaterial.color.setHex(0xffffff);
       if (previewGridLines) previewGridLines.visible = false;
       return;
     }
-    previewMesh.position.set(0, 0, 0);
+    previewMesh.visible = false;
+    resetPreviewMeshTransform(previewMesh);
     previewMaterial.vertexColors = true;
+    previewMaterial.needsUpdate = true;
     previewMaterial.color.setHex(0xffffff);
     const geo = buildPreviewGeometry(positions, voxel, existingVoxels, overlapShading);
     if (geo) {
-      if (previewMesh.geometry) previewMesh.geometry.dispose();
+      const prevPreviewGeo = previewMesh.geometry;
       previewMesh.geometry = geo;
+      safeDisposeBufferGeometry(prevPreviewGeo, isWebGPU);
       previewMesh.visible = true;
       updatePreviewGridFromPositions(positions);
     } else {
       previewMesh.visible = false;
       if (previewGridLines) previewGridLines.visible = false;
     }
+  }
+
+  /** Coarse voxel map preview (scaled/positioned); grid uses full `gridBounds` AABB. */
+  function updatePreviewMeshLod(
+    coarseMap: Map<string, Voxel>,
+    existingVoxels: Map<string, Voxel> | undefined,
+    overlapShading: PreviewOverlapShading,
+    stride: number,
+    min: [number, number, number],
+    gridBounds: SelectionBounds
+  ) {
+    if (!previewMesh || !previewMaterial) return;
+    const geo = buildPreviewGeometryFromVoxelMap(
+      coarseMap,
+      existingVoxels ?? new Map(),
+      overlapShading
+    );
+    if (!geo) {
+      previewMesh.visible = false;
+      if (previewGridLines) previewGridLines.visible = false;
+      return;
+    }
+    previewMesh.visible = false;
+    previewMaterial.vertexColors = true;
+    previewMaterial.needsUpdate = true;
+    previewMaterial.color.setHex(0xffffff);
+    const prevPreviewGeo = previewMesh.geometry;
+    previewMesh.geometry = geo;
+    safeDisposeBufferGeometry(prevPreviewGeo, isWebGPU);
+    previewMesh.visible = true;
+    alignPreviewMeshToLod(previewMesh, stride, min);
+    updatePreviewGridFromBounds(gridBounds);
   }
 
   function destroy() {
@@ -985,27 +1038,31 @@ export function createMeshManager(
     meshesByBucket.clear();
     gridEdgeSegments.clear();
     if (selectionMesh || selectionOccludedMesh) {
-      const sharedGeo = selectionMesh?.geometry ?? selectionOccludedMesh?.geometry;
-      if (sharedGeo) sharedGeo.dispose();
+      const overlayGeos = new Set<THREE.BufferGeometry>();
+      if (selectionMesh?.geometry) overlayGeos.add(selectionMesh.geometry);
+      if (selectionOccludedMesh?.geometry) overlayGeos.add(selectionOccludedMesh.geometry);
+      for (const g of overlayGeos) {
+        safeDisposeBufferGeometry(g, isWebGPU);
+      }
       selectionMaterial?.dispose();
       selectionOccludedMaterial?.dispose();
     }
     if (selectionWireframe) {
-      selectionWireframe.geometry.dispose();
+      safeDisposeBufferGeometry(selectionWireframe.geometry, isWebGPU);
       selectionWireframeMaterial?.dispose();
       selectionWireframe = null;
       selectionWireframeMaterial = null;
     }
     if (previewGridLines) {
       scene.remove(previewGridLines);
-      previewGridLines.geometry.dispose();
+      safeDisposeBufferGeometry(previewGridLines.geometry, isWebGPU);
       previewGridMaterial?.dispose();
       previewGridLines = null;
       previewGridMaterial = null;
     }
     gridGroup?.traverse((obj) => {
       const geom = (obj as { geometry?: THREE.BufferGeometry }).geometry;
-      if (geom) geom.dispose();
+      if (geom) safeDisposeBufferGeometry(geom, isWebGPU);
     });
   }
 
@@ -1016,6 +1073,7 @@ export function createMeshManager(
     rebuildSelectionOverlay,
     buildGrid,
     updatePreviewMesh,
+    updatePreviewMeshLod,
     updatePreviewBoundingBox,
     destroy,
     getMeshesByBucket: () => meshesByBucket

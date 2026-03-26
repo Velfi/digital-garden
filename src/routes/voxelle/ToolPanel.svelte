@@ -181,6 +181,24 @@
     gap: 0.5rem;
   }
 
+  /* Clay: label full width, then 2×2 shape buttons so labels are not clipped in narrow panel */
+  .tool-panel :global(.tool-panel-row--brush-shape) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tool-panel :global(.tool-panel-row--brush-shape > .tool-panel-label) {
+    width: auto;
+  }
+
+  .tool-panel :global(.clay-brush-shape-rows) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    width: 100%;
+    min-width: 0;
+  }
+
   .tool-panel :global(.tool-panel-label) {
     flex-shrink: 0;
     width: 2.5rem;

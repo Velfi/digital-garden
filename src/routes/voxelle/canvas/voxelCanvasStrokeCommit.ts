@@ -32,6 +32,10 @@ import {
   punchDepth,
   stampPunchOffsetFromNormal,
   inflateStrength,
+  smoothNeighborRadius,
+  smoothAggressiveness,
+  meltMaxPasses,
+  meltStyle,
   ensureGridFitsPositions,
   generateRockVoxels,
   generateAshlarVoxels,
@@ -414,7 +418,10 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     const getCol = getPaintColorResolver();
     const v = ctx.getLiveVoxels();
     if (clayModeVal === 'melt') {
-      const { toAdd, toRemove } = applyMelt(v, positions, clayBoundsOrSize);
+      const { toAdd, toRemove } = applyMelt(v, positions, clayBoundsOrSize, {
+        maxPassesCap: get(meltMaxPasses),
+        meltStyle: get(meltStyle)
+      });
       updateVoxelsInStroke((next) => {
         for (const key of toRemove) next.delete(key);
         for (const [key, c] of toAdd) next.set(key, c);
@@ -446,7 +453,10 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
       return;
     }
     if (clayModeVal === 'smooth') {
-      const { toAdd, toRemove } = applySmooth(v, positions, clayBoundsOrSize);
+      const { toAdd, toRemove } = applySmooth(v, positions, clayBoundsOrSize, {
+        neighborRadius: get(smoothNeighborRadius),
+        aggressiveness: get(smoothAggressiveness)
+      });
       updateVoxelsInStroke((next) => {
         for (const key of toRemove) next.delete(key);
         for (const [key, c] of toAdd) next.set(key, c);

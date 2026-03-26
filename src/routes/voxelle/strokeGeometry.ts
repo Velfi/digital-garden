@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { ClayMode, StrokeMode } from './store/core';
+import type { ClayBrushShape, ClayMode, StrokeMode } from './store/core';
 import { ConvexHull } from 'three/addons/math/ConvexHull.js';
 import { parseCoordKey } from './coordUtils';
 
@@ -305,28 +305,98 @@ function thickenPathInPlane(
   return result;
 }
 
-/** Sphere: x²+y²+z² <= r² (Euclidean). r=0 → single voxel, r=1 → 3³ sphere (~14 voxels), r=2 → 5³ sphere. */
-function getSphereVoxels(
+/** Sphere: x²+y²+z² <= r² (Euclidean). Same voxels as legacy getSphereVoxels + per-voxel Math.round (see puffPath). */
+function addSphereVoxelsToSeen(
   cx: number,
   cy: number,
   cz: number,
-  r: number
-): [number, number, number][] {
-  if (r <= 0) return [[Math.round(cx), Math.round(cy), Math.round(cz)]];
+  r: number,
+  seen: Set<string>,
+  result: [number, number, number][]
+): void {
+  if (r <= 0) {
+    const xi = Math.round(cx);
+    const yi = Math.round(cy);
+    const zi = Math.round(cz);
+    const k = `${xi},${yi},${zi}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      result.push([xi, yi, zi]);
+    }
+    return;
+  }
   const lo = -Math.ceil(r);
   const hi = Math.floor(r);
   const rSq = r * r;
-  const positions: [number, number, number][] = [];
   for (let dx = lo; dx <= hi; dx++) {
     for (let dy = lo; dy <= hi; dy++) {
       for (let dz = lo; dz <= hi; dz++) {
         if (dx * dx + dy * dy + dz * dz <= rSq) {
-          positions.push([cx + dx, cy + dy, cz + dz]);
+          const xi = Math.round(cx + dx);
+          const yi = Math.round(cy + dy);
+          const zi = Math.round(cz + dz);
+          const k = `${xi},${yi},${zi}`;
+          if (!seen.has(k)) {
+            seen.add(k);
+            result.push([xi, yi, zi]);
+          }
         }
       }
     }
   }
-  return positions;
+}
+
+/**
+ * One airbrush sphere droplet merged into accumulators (deterministic: no scatter / radius-range RNG).
+ * Matches a single iteration of `puffPath` for that center and radius.
+ */
+export function mergeAirbrushSphereDropletIntoSeen(
+  cx: number,
+  cy: number,
+  cz: number,
+  radius: number,
+  seen: Set<string>,
+  result: [number, number, number][]
+): void {
+  addSphereVoxelsToSeen(cx, cy, cz, radius, seen, result);
+}
+
+/** One airbrush cube droplet (same as thickenPath on a single center). */
+export function mergeAirbrushCubeDropletIntoSeen(
+  px: number,
+  py: number,
+  pz: number,
+  radius: number,
+  seen: Set<string>,
+  result: [number, number, number][]
+): void {
+  if (radius <= 0) {
+    const x = Math.round(px);
+    const y = Math.round(py);
+    const z = Math.round(pz);
+    const k = `${x},${y},${z}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      result.push([x, y, z]);
+    }
+    return;
+  }
+  const lo = -Math.ceil(radius);
+  const hi = Math.floor(radius);
+  for (let dx = lo; dx <= hi; dx++) {
+    for (let dy = lo; dy <= hi; dy++) {
+      for (let dz = lo; dz <= hi; dz++) {
+        const x = px + dx;
+        const y = py + dy;
+        const z = pz + dz;
+        const key = `${x},${y},${z}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          result.push([x, y, z]);
+        }
+      }
+    }
+  }
 }
 
 /** Returns a deterministic RNG in [0, 1) from a seed (mulberry32). */
@@ -367,17 +437,7 @@ export function puffPath(
           Math.floor(rand() * (Math.round(rMax * 2) - Math.round(rMin * 2) + 1))) /
         2
       : rMin;
-    const voxels = getSphereVoxels(px + ox, py + oy, pz + oz, r);
-    for (const [x, y, z] of voxels) {
-      const xi = Math.round(x);
-      const yi = Math.round(y);
-      const zi = Math.round(z);
-      const k = `${xi},${yi},${zi}`;
-      if (!seen.has(k)) {
-        seen.add(k);
-        result.push([xi, yi, zi]);
-      }
-    }
+    addSphereVoxelsToSeen(px + ox, py + oy, pz + oz, r, seen, result);
   }
   return result;
 }
@@ -414,14 +474,7 @@ function cubePuffPath(
     const xi = Math.round(px + ox);
     const yi = Math.round(py + oy);
     const zi = Math.round(pz + oz);
-    const voxels = thickenPath([[xi, yi, zi]], r);
-    for (const [x, y, z] of voxels) {
-      const k = `${x},${y},${z}`;
-      if (!seen.has(k)) {
-        seen.add(k);
-        result.push([x, y, z]);
-      }
-    }
+    mergeAirbrushCubeDropletIntoSeen(xi, yi, zi, r, seen, result);
   }
   return result;
 }
@@ -549,8 +602,8 @@ export interface PathThickenParams {
   /** When true and drawBrushFaceNormal set, offset brush by radius*normal so it sits on surface */
   drawBrushSnapToSurface?: boolean;
   drawBrushFaceNormal?: { x: number; y: number; z: number };
-  /** Bulk mode: footprint in the surface plane. */
-  bulkBrushShape?: 'cube' | 'sphere';
+  /** Bulk / smooth / melt: square|circle = tangent plane; cube|sphere = 3D along stroke. */
+  clayBrushShape?: ClayBrushShape;
   /** Optional seed for deterministic scatter/radius in puffPath (preview and apply use same seed per stroke). */
   seed?: number;
 }
@@ -619,14 +672,27 @@ export function thickenPathForStroke(
     const endR = params.branchTaperEndRadius ?? 0;
     return thickenPathTapered(positions, startR, endR);
   }
-  if (isClayPath && params.clayMode === 'bulk' && params.clayBrushRadius > 0) {
-    const shape = params.bulkBrushShape ?? 'cube';
+  // Bulk, smooth, melt: four brush shapes (2D in tangent plane vs 3D volumetric).
+  if (
+    isClayPath &&
+    (params.clayMode === 'bulk' ||
+      params.clayMode === 'smooth' ||
+      params.clayMode === 'melt') &&
+    params.clayBrushRadius > 0
+  ) {
+    const shape = params.clayBrushShape ?? 'square';
+    const r = params.clayBrushRadius;
     const axis = faceNormalToLayerAxis(params.drawBrushFaceNormal);
-    // Single layer on the painted surface: widen in the tangent plane only, not along the normal.
-    if (shape === 'sphere') {
-      return diskPathInPlane(positions, params.clayBrushRadius, axis);
+    switch (shape) {
+      case 'square':
+        return thickenPathInPlane(positions, r, axis);
+      case 'circle':
+        return diskPathInPlane(positions, r, axis);
+      case 'cube':
+        return thickenPath(positions, r);
+      case 'sphere':
+        return puffPath(positions, r, 0);
     }
-    return thickenPathInPlane(positions, params.clayBrushRadius, axis);
   }
   if (isClayPath && params.clayBrushRadius > 0) {
     return thickenPath(positions, params.clayBrushRadius);

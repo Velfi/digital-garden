@@ -17,7 +17,7 @@
       type="button"
       class:active={$clayMode === 'smooth'}
       onclick={() => clayMode.set('smooth')}
-      title="Smooth: soften edges, fill small gaps"
+      title="Smooth: configurable reach and strength; wider reach helps large-scale surfaces"
     >
       Smooth
     </button>
@@ -57,7 +57,7 @@
       type="button"
       class:active={$clayMode === 'melt'}
       onclick={() => clayMode.set('melt')}
-      title="Melt: spread voxels downhill, highest first"
+      title="Melt: fried-egg flatten or gravity flow; brush shape in tool panel"
     >
       Melt
     </button>

@@ -31,7 +31,7 @@
     planeCuboidHollowWallThickness,
     clayMode,
     clayBrushRadius,
-    bulkBrushShape,
+    clayBrushShape,
     branchTaper,
     branchTaperStartSize,
     branchTaperEndSize,
@@ -255,6 +255,8 @@
     getRopeCurveVoxels,
     applyBrushAlongPath,
     getSprayDirectionVector,
+    mergeAirbrushSphereDropletIntoSeen,
+    mergeAirbrushCubeDropletIntoSeen,
     type PathThickenParams
   } from './strokeGeometry';
   import {
@@ -295,13 +297,15 @@
   import { createWebGPUBloomPipeline, type WebGPUBloomPipeline } from './canvas/webgpuBloom';
   import {
     applyAddShapeOccludedPreviewTint,
-    assignSharedDualPreviewGeometry
+    assignSharedDualPreviewGeometry,
+    safeDisposeBufferGeometry
   } from './canvas/previewMeshUtils';
   import {
     alignPreviewMeshToLod,
     computePreviewLodStride,
     createPreviewRefinementScheduler,
     downsamplePositionsToPreviewMap,
+    PREVIEW_LOD_COARSE_TARGET,
     resetPreviewMeshTransform
   } from './previewMeshLod';
   import { toneMappingPreferenceToThree } from './toneMappingPreference';
@@ -648,6 +652,12 @@
   let nextAshlarPlacementSeed = $state(0);
   /** Clay bulk: last sampled position for path accumulation */
   let lastBulkPos: [number, number, number] | null = null;
+  /** Deterministic airbrush (no scatter / radius range): incremental droplet union per stroke */
+  let airbrushIncrementalSeen: Set<string> | null = null;
+  let airbrushIncrementalOut: [number, number, number][] | null = null;
+  let airbrushIncrementalPathLen = 0;
+  /** Latest full-res stroke preview positions when using LOD coarse path (idle refinement reads this). */
+  let strokePreviewLodPendingFull: [number, number, number][] | null = null;
   /** Branch: pointer down position for view-plane direction and length */
   let branchPointerDownX = 0;
   let branchPointerDownY = 0;
@@ -716,6 +726,7 @@
   let addPreviewOccludedMesh: THREE.Mesh | null = null;
   let addPreviewOccludedMaterial: THREE.MeshBasicMaterial | null = null;
   const addPanelRefinementScheduler = createPreviewRefinementScheduler();
+  const strokePreviewLodScheduler = createPreviewRefinementScheduler();
 
   let selectionGroup: THREE.Group | null = null;
 
@@ -1606,11 +1617,57 @@
     forceUseBbox?: boolean;
   };
 
+  function clearAirbrushIncrementalPuff(): void {
+    airbrushIncrementalSeen = null;
+    airbrushIncrementalOut = null;
+    airbrushIncrementalPathLen = 0;
+  }
+
+  function canUseAirbrushIncrementalPuff(): boolean {
+    return (
+      get(effectiveStrokeMode) === 'airbrush' &&
+      get(airbrushScatter) === 0 &&
+      !get(airbrushRadiusRange)
+    );
+  }
+
+  function ensureAirbrushIncrementalBuffers(): void {
+    if (!airbrushIncrementalSeen || !airbrushIncrementalOut) {
+      airbrushIncrementalSeen = new Set<string>();
+      airbrushIncrementalOut = [];
+      airbrushIncrementalPathLen = 0;
+    }
+  }
+
+  function extendAirbrushIncrementalPuff(
+    path: [number, number, number][],
+    params: PathThickenParams
+  ): void {
+    ensureAirbrushIncrementalBuffers();
+    const seen = airbrushIncrementalSeen!;
+    const out = airbrushIncrementalOut!;
+    const r = params.airbrushRadius;
+    const shape = params.airbrushBrushShape ?? 'sphere';
+    for (let i = airbrushIncrementalPathLen; i < path.length; i++) {
+      const p = path[i]!;
+      if (shape === 'cube') {
+        mergeAirbrushCubeDropletIntoSeen(p[0], p[1], p[2], r, seen, out);
+      } else {
+        mergeAirbrushSphereDropletIntoSeen(p[0], p[1], p[2], r, seen, out);
+      }
+    }
+    airbrushIncrementalPathLen = path.length;
+  }
+
   function updatePreviewMesh(
     positions: [number, number, number][],
     bboxHint: StrokePreviewBboxHint | null = null
   ) {
     if (!meshManager) return;
+    if (positions.length === 0) {
+      strokePreviewLodScheduler.cancel();
+      strokePreviewLodPendingFull = null;
+    }
     const sel = $selection;
     const bboxGated = sel.size > 0 && ($tool === 'paint' || $tool === 'remove') ? null : bboxHint;
 
@@ -1662,6 +1719,8 @@
         b = expandStrokePreviewBoundsOriginMirror(b, getCurrentSymmetryAxes());
       }
       const pv = previewVoxelFor(positions.length > 0 ? positions.length : 1);
+      strokePreviewLodScheduler.cancel();
+      strokePreviewLodPendingFull = null;
       meshManager.updatePreviewBoundingBox(b, pv);
       return;
     }
@@ -1674,10 +1733,58 @@
     const previewVoxel = previewVoxelFor(filtered.length);
     const previewOverlapShading: PreviewOverlapShading =
       $tool === 'remove' ? 'darken' : 'invert';
+    const existingForPreview = filtered.length > 0 ? $voxels : undefined;
+    const stride =
+      filtered.length > PREVIEW_LOD_COARSE_TARGET
+        ? computePreviewLodStride(filtered.length)
+        : 1;
+    const lodBounds = getBoundsFromPositions(filtered);
+    if (stride > 1 && lodBounds) {
+      strokePreviewLodPendingFull = filtered;
+      const min: [number, number, number] = [
+        lodBounds.minX,
+        lodBounds.minY,
+        lodBounds.minZ
+      ];
+      const coarseMap = downsamplePositionsToPreviewMap(
+        filtered,
+        previewVoxel,
+        stride,
+        min,
+        existingForPreview,
+        previewOverlapShading
+      );
+      meshManager.updatePreviewMeshLod(
+        coarseMap,
+        existingForPreview,
+        previewOverlapShading,
+        stride,
+        min,
+        lodBounds
+      );
+      const capturedOverlap = previewOverlapShading;
+      const capturedVoxel = previewVoxel;
+      strokePreviewLodScheduler.schedule(() => {
+        if (!meshManager) return;
+        const pts = strokePreviewLodPendingFull;
+        if (!pts || pts.length === 0) return;
+        const vox = get(voxels);
+        meshManager.updatePreviewMesh(
+          pts,
+          capturedVoxel,
+          vox.size > 0 ? vox : undefined,
+          capturedOverlap
+        );
+        markCanvasDirty();
+      });
+      return;
+    }
+    strokePreviewLodScheduler.cancel();
+    strokePreviewLodPendingFull = null;
     meshManager.updatePreviewMesh(
       filtered,
       previewVoxel,
-      filtered.length > 0 ? $voxels : undefined,
+      existingForPreview,
       previewOverlapShading
     );
   }
@@ -2016,6 +2123,7 @@
       lastBulkPos = null;
       clearShiftPlaneSymmetryState();
       pendingStrokePositions = [];
+      clearAirbrushIncrementalPuff();
       updatePreviewMesh([]);
       // No undo - we never applied changes
     }
@@ -2432,7 +2540,7 @@
             strokeMode: get(strokeMode),
             clayMode: mode,
             clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-            bulkBrushShape: get(bulkBrushShape),
+            clayBrushShape: get(clayBrushShape),
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -2482,7 +2590,7 @@
             strokeMode: get(strokeMode),
             clayMode: 'branch',
             clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-            bulkBrushShape: get(bulkBrushShape),
+            clayBrushShape: get(clayBrushShape),
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -2932,7 +3040,7 @@
       strokeMode: get(strokeMode),
       clayMode: isClayPathFollow ? clayModeVal : undefined,
       clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-      bulkBrushShape: get(bulkBrushShape),
+      clayBrushShape: get(clayBrushShape),
       branchTaper: get(branchTaper),
       branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
       branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -2959,7 +3067,18 @@
         : undefined,
       seed: currentStrokeSeed
     };
-    updatePreviewMesh(thickenPathForStroke(pendingStrokePositions, strokeParams));
+    if (
+      !isClayPathFollow &&
+      get(effectiveStrokeMode) === 'airbrush' &&
+      canUseAirbrushIncrementalPuff()
+    ) {
+      clearAirbrushIncrementalPuff();
+      extendAirbrushIncrementalPuff(pendingStrokePositions, strokeParams);
+      updatePreviewMesh(airbrushIncrementalOut!, null);
+    } else {
+      clearAirbrushIncrementalPuff();
+      updatePreviewMesh(thickenPathForStroke(pendingStrokePositions, strokeParams));
+    }
     requestAnimationFrame(() => render());
   }
 
@@ -3065,7 +3184,7 @@
               strokeMode: get(strokeMode),
               clayMode: 'branch',
               clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-              bulkBrushShape: get(bulkBrushShape),
+              clayBrushShape: get(clayBrushShape),
               branchTaper: get(branchTaper),
               branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
               branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -3313,43 +3432,54 @@
               }
             }
             // Clay path modes: show thickened preview (brush radius); airbrush: droplet preview
-            updatePreviewMesh(
-              thickenPathForStroke(pendingStrokePositions, {
-                strokeMode:
-                  isAirbrushPath && !isClayPathFollow
-                    ? 'airbrush'
-                    : (strokeModeVal ?? get(strokeMode)),
-                clayMode: isClayPathFollow ? clayPathMode : undefined,
-                clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-                bulkBrushShape: get(bulkBrushShape),
-                branchTaper: get(branchTaper),
-                branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
-                branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-                airbrushRadius: (get(airbrushRadius) as number) * 0.5,
-                airbrushScatter: get(airbrushScatter),
-                airbrushRadiusRange: get(airbrushRadiusRange),
-                airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
-                airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
-                airbrushBrushShape: get(airbrushBrushShape),
-                ...airbrushPlaneParamsForStroke(),
-                planeAxis: get(planeAxis),
-                sprayDirection: get(sprayDirection),
-                sprayStreakLength: get(sprayStreakLength),
-                wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
-                wallHeight: get(wallHeight),
-                wallFaceNormal: dragFaceNormal
-                  ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
-                  : undefined,
-                drawBrushShape: get(drawBrushShape),
-                drawBrushSize: get(drawBrushSize) * 0.5,
-                drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-                drawBrushFaceNormal: dragFaceNormal
-                  ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
-                  : undefined,
-                seed: currentStrokeSeed
-              }),
-              strokeBboxHint
-            );
+            const moveStrokeParams: PathThickenParams = {
+              strokeMode:
+                isAirbrushPath && !isClayPathFollow
+                  ? 'airbrush'
+                  : (strokeModeVal ?? get(strokeMode)),
+              clayMode: isClayPathFollow ? clayPathMode : undefined,
+              clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
+              clayBrushShape: get(clayBrushShape),
+              branchTaper: get(branchTaper),
+              branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
+              branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
+              airbrushRadius: (get(airbrushRadius) as number) * 0.5,
+              airbrushScatter: get(airbrushScatter),
+              airbrushRadiusRange: get(airbrushRadiusRange),
+              airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
+              airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
+              airbrushBrushShape: get(airbrushBrushShape),
+              ...airbrushPlaneParamsForStroke(),
+              planeAxis: get(planeAxis),
+              sprayDirection: get(sprayDirection),
+              sprayStreakLength: get(sprayStreakLength),
+              wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
+              wallHeight: get(wallHeight),
+              wallFaceNormal: dragFaceNormal
+                ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+                : undefined,
+              drawBrushShape: get(drawBrushShape),
+              drawBrushSize: get(drawBrushSize) * 0.5,
+              drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+              drawBrushFaceNormal: dragFaceNormal
+                ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+                : undefined,
+              seed: currentStrokeSeed
+            };
+            if (
+              isAirbrushPath &&
+              !isClayPathFollow &&
+              canUseAirbrushIncrementalPuff()
+            ) {
+              extendAirbrushIncrementalPuff(pendingStrokePositions, moveStrokeParams);
+              updatePreviewMesh(airbrushIncrementalOut!, strokeBboxHint);
+            } else {
+              if (isAirbrushPath && !isClayPathFollow) clearAirbrushIncrementalPuff();
+              updatePreviewMesh(
+                thickenPathForStroke(pendingStrokePositions, moveStrokeParams),
+                strokeBboxHint
+              );
+            }
             deltaDisplay = {
               dx: currentPos[0] - dragStartPos[0],
               dy: currentPos[1] - dragStartPos[1],
@@ -3767,7 +3897,7 @@
               strokeMode: 'airbrush',
               clayMode: undefined,
               clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-              bulkBrushShape: get(bulkBrushShape),
+              clayBrushShape: get(clayBrushShape),
               branchTaper: get(branchTaper),
               branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
               branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -4021,7 +4151,7 @@
             strokeMode: mode ?? get(strokeMode),
             clayMode: isClayPath ? clayModeVal : undefined,
             clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-            bulkBrushShape: get(bulkBrushShape),
+            clayBrushShape: get(clayBrushShape),
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -4065,6 +4195,7 @@
       dragFaceNormal = null;
       dragPlaneAxisOverride = null;
       lastBulkPos = null;
+      clearAirbrushIncrementalPuff();
       clearShiftPlaneSymmetryState();
       dragPointerId = null;
     }
@@ -5332,7 +5463,7 @@
       resetPreviewMeshTransform(addPreviewMesh);
       resetPreviewMeshTransform(addPreviewOccludedMesh);
       const geo = buildPreviewGeometryFromVoxelMap(voxelMap, $voxels);
-      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo);
+      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
       markCanvasDirty();
       return;
     }
@@ -5379,7 +5510,7 @@
                 geos.forEach((g) => g.dispose());
                 return m;
               })();
-      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, coarseGeo);
+      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, coarseGeo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
       if (coarseGeo) {
         alignPreviewMeshToLod(addPreviewMesh, stride, min);
         alignPreviewMeshToLod(addPreviewOccludedMesh, stride, min);
@@ -5388,7 +5519,7 @@
         addPanelRefinementScheduler.schedule(() => {
           const fullGeo = buildPreviewGeometry(capturedPositions, capturedVoxel, $voxels);
           if (!fullGeo || !addPreviewMesh || !addPreviewOccludedMesh) return;
-          assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, fullGeo);
+          assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, fullGeo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
           resetPreviewMeshTransform(addPreviewMesh);
           resetPreviewMeshTransform(addPreviewOccludedMesh);
           markCanvasDirty();
@@ -5398,7 +5529,7 @@
       resetPreviewMeshTransform(addPreviewMesh);
       resetPreviewMeshTransform(addPreviewOccludedMesh);
       const geo = buildPreviewGeometry(positions, addVx, $voxels);
-      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo);
+      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
     }
     markCanvasDirty();
   });
