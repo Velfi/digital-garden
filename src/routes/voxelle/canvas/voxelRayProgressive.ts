@@ -46,6 +46,76 @@ export type VoxelRayProgressiveTickOptions = {
 };
 const STRIDES = [8, 4, 2, 1] as const;
 
+/**
+ * Block (u,v) origins for a stride pass, ordered in round (Euclidean) rings from the view
+ * center; within each ring, sort by polar angle so refinement winds in a circular spiral.
+ *
+ * Shell index `I² + J²` with `I = 2i - (nu-1)`, `J = 2j - (nv-1)` matches true squared
+ * distance from the grid center in cell units (avoids fractional half-steps).
+ */
+function fillSpiralBlockOrder(bufW: number, bufH: number, stride: number, out: Uint32Array): number {
+  const nu = Math.ceil(bufW / stride);
+  const nv = Math.ceil(bufH / stride);
+  if (nu === 0 || nv === 0) return 0;
+  const nu1 = nu - 1;
+  const nv1 = nv - 1;
+  const ringCounts = new Map<number, number>();
+  for (let j = 0; j < nv; j++) {
+    const J = 2 * j - nv1;
+    for (let i = 0; i < nu; i++) {
+      const I = 2 * i - nu1;
+      const shell = I * I + J * J;
+      ringCounts.set(shell, (ringCounts.get(shell) ?? 0) + 1);
+    }
+  }
+  const sortedShells = Array.from(ringCounts.keys()).sort((a, b) => a - b);
+  const ringStart = new Map<number, number>();
+  let off = 0;
+  for (const shell of sortedShells) {
+    ringStart.set(shell, off);
+    off += ringCounts.get(shell)!;
+  }
+  const writeAt = new Map(ringStart);
+  const n = nu * nv;
+  const scratch = new Uint32Array(n);
+  for (let j = 0; j < nv; j++) {
+    const J = 2 * j - nv1;
+    for (let i = 0; i < nu; i++) {
+      const I = 2 * i - nu1;
+      const shell = I * I + J * J;
+      const pos = writeAt.get(shell)!;
+      writeAt.set(shell, pos + 1);
+      scratch[pos] = i | (j << 16);
+    }
+  }
+  let w = 0;
+  for (const shell of sortedShells) {
+    const count = ringCounts.get(shell)!;
+    const start = ringStart.get(shell)!;
+    const slice = scratch.subarray(start, start + count);
+    slice.sort((pa, pb) => {
+      const ia = pa & 0xffff;
+      const ja = pa >>> 16;
+      const ib = pb & 0xffff;
+      const jb = pb >>> 16;
+      const Ia = 2 * ia - nu1;
+      const Ja = 2 * ja - nv1;
+      const Ib = 2 * ib - nu1;
+      const Jb = 2 * jb - nv1;
+      return Math.atan2(Ja, Ia) - Math.atan2(Jb, Ib);
+    });
+    for (let k = 0; k < count; k++) {
+      const p = slice[k]!;
+      const i = p & 0xffff;
+      const j = p >>> 16;
+      const u = i * stride;
+      const v = j * stride;
+      out[w++] = u | (v << 16);
+    }
+  }
+  return w;
+}
+
 /** Max main-thread time per `tick()` for CPU ray mode (ms). */
 export const DEFAULT_RAY_TICK_BUDGET_MS = 12;
 /** Check wall clock every N primary-ray blocks to stay within budget. */
@@ -801,9 +871,13 @@ export class VoxelRayProgressive {
   private bufH = 1;
   private strideIdx = 0;
   private converged = false;
-  /** Next block origin (u,v) within current stride pass; multiples of stride. */
-  private resumeU = 0;
-  private resumeV = 0;
+  /** Cached spiral traversal: packed `u | (v << 16)` per block (same `stride` as `spiralOrderKey`). */
+  private spiralPacked: Uint32Array | null = null;
+  private spiralPackedCap = 0;
+  private spiralBlockCount = 0;
+  private spiralOrderKey = '';
+  /** Next index into `spiralPacked` within the current stride / temporal pass. */
+  private resumeBlockIndex = 0;
   /** Blocks finished in the current stride pass (for progress + resume). */
   private completedBlocksThisStride = 0;
   /** Total primary-ray blocks in current stride pass (bufW/s × bufH/s). */
@@ -961,8 +1035,8 @@ export class VoxelRayProgressive {
       this.bloomTexture.needsUpdate = true;
       this.strideIdx = 0;
       this.converged = false;
-      this.resumeU = 0;
-      this.resumeV = 0;
+      this.resumeBlockIndex = 0;
+      this.spiralOrderKey = '';
       this.completedBlocksThisStride = 0;
       this.temporalSampleCount = 0;
       this.temporalBlendTarget = 0;
@@ -971,8 +1045,8 @@ export class VoxelRayProgressive {
     if (fullInvalidated) {
       this.strideIdx = 0;
       this.converged = false;
-      this.resumeU = 0;
-      this.resumeV = 0;
+      this.resumeBlockIndex = 0;
+      this.spiralOrderKey = '';
       this.completedBlocksThisStride = 0;
       this.temporalSampleCount = 0;
       this.temporalBlendTarget = 0;
@@ -1001,114 +1075,122 @@ export class VoxelRayProgressive {
     const deadline = performance.now() + effectiveBudget;
     let blocksSinceCheck = 0;
 
-    for (let v = this.resumeV; v < bufH; v += stride) {
-      const uStart = v === this.resumeV ? this.resumeU : 0;
-      for (let u = uStart; u < bufW; u += stride) {
-        let jitterX = 0;
-        let jitterY = 0;
-        if (temporalPhase) {
-          [jitterX, jitterY] = temporalJitter(u, v, this.temporalBlendTarget);
-        }
-        this.setRayFromPixel(camera, u, v, jitterX, jitterY);
-        const ox = this.rayOrigin.x;
-        const oy = this.rayOrigin.y;
-        const oz = this.rayOrigin.z;
-        const dx = this.rayDir.x;
-        const dy = this.rayDir.y;
-        const dz = this.rayDir.z;
-        const coarsePass = !temporalPhase && stride > 1;
-        const shadeParams = coarsePass ? { ...params, shadowRaySamples: 1 } : params;
-        const { rgb, bloom } = traceAndShade(
-          ox,
-          oy,
-          oz,
-          dx,
-          dy,
-          dz,
-          voxels,
-          maxDist,
-          maxShadowDist,
-          shadeParams,
-          v,
-          bufH,
-          accel
-        );
-        const [lr, lg, lb] = rgb;
-        const [br, bg, bb] = bloom;
-        if (temporalPhase) {
-          const o = (v * bufW + u) * 4;
-          const n = this.temporalBlendTarget;
-          this.accumData[o] += (lr - this.accumData[o]) / n;
-          this.accumData[o + 1] += (lg - this.accumData[o + 1]) / n;
-          this.accumData[o + 2] += (lb - this.accumData[o + 2]) / n;
-          this.accumData[o + 3] = 1;
-          this.accumBloomData[o] += (br - this.accumBloomData[o]) / n;
-          this.accumBloomData[o + 1] += (bg - this.accumBloomData[o + 1]) / n;
-          this.accumBloomData[o + 2] += (bb - this.accumBloomData[o + 2]) / n;
-          this.accumBloomData[o + 3] = 1;
-          this.linearData[o] = this.accumData[o];
-          this.linearData[o + 1] = this.accumData[o + 1];
-          this.linearData[o + 2] = this.accumData[o + 2];
-          this.linearData[o + 3] = 1;
-          this.linearBloomData[o] = this.accumBloomData[o];
-          this.linearBloomData[o + 1] = this.accumBloomData[o + 1];
-          this.linearBloomData[o + 2] = this.accumBloomData[o + 2];
-          this.linearBloomData[o + 3] = 1;
-          this.data[o] = linearToSrgbByte(this.accumData[o]);
-          this.data[o + 1] = linearToSrgbByte(this.accumData[o + 1]);
-          this.data[o + 2] = linearToSrgbByte(this.accumData[o + 2]);
-          this.data[o + 3] = 255;
-          this.bloomData[o] = this.accumBloomData[o];
-          this.bloomData[o + 1] = this.accumBloomData[o + 1];
-          this.bloomData[o + 2] = this.accumBloomData[o + 2];
-          this.bloomData[o + 3] = 1;
-        } else {
-          const bw = Math.min(stride, bufW - u);
-          const bh = Math.min(stride, bufH - v);
-          setBlock(this.data, bufW, bufH, u, v, bw, bh, lr, lg, lb);
-          setBloomBlock(this.bloomData, bufW, bufH, u, v, bw, bh, br, bg, bb);
-          for (let vv = v; vv < Math.min(v + bh, bufH); vv++) {
-            let o = (vv * bufW + u) * 4;
-            for (let uu = u; uu < Math.min(u + bw, bufW); uu++) {
-              this.linearData[o] = lr;
-              this.linearData[o + 1] = lg;
-              this.linearData[o + 2] = lb;
-              this.linearData[o + 3] = 1;
-              this.linearBloomData[o] = br;
-              this.linearBloomData[o + 1] = bg;
-              this.linearBloomData[o + 2] = bb;
-              this.linearBloomData[o + 3] = 1;
-              o += 4;
-            }
+    const orderKey = `${bufW}\0${bufH}\0${stride}`;
+    if (this.spiralOrderKey !== orderKey) {
+      const nu = Math.ceil(bufW / stride);
+      const nv = Math.ceil(bufH / stride);
+      const need = Math.max(1, nu * nv);
+      if (!this.spiralPacked || this.spiralPackedCap < need) {
+        this.spiralPackedCap = need;
+        this.spiralPacked = new Uint32Array(need);
+      }
+      this.spiralBlockCount = fillSpiralBlockOrder(bufW, bufH, stride, this.spiralPacked);
+      this.spiralOrderKey = orderKey;
+    }
+
+    const packedOrder = this.spiralPacked!;
+    const blockTotal = this.spiralBlockCount;
+
+    for (let bi = this.resumeBlockIndex; bi < blockTotal; bi++) {
+      const packed = packedOrder[bi]!;
+      const u = packed & 0xffff;
+      const v = packed >>> 16;
+      let jitterX = 0;
+      let jitterY = 0;
+      if (temporalPhase) {
+        [jitterX, jitterY] = temporalJitter(u, v, this.temporalBlendTarget);
+      }
+      this.setRayFromPixel(camera, u, v, jitterX, jitterY);
+      const ox = this.rayOrigin.x;
+      const oy = this.rayOrigin.y;
+      const oz = this.rayOrigin.z;
+      const dx = this.rayDir.x;
+      const dy = this.rayDir.y;
+      const dz = this.rayDir.z;
+      const coarsePass = !temporalPhase && stride > 1;
+      const shadeParams = coarsePass ? { ...params, shadowRaySamples: 1 } : params;
+      const { rgb, bloom } = traceAndShade(
+        ox,
+        oy,
+        oz,
+        dx,
+        dy,
+        dz,
+        voxels,
+        maxDist,
+        maxShadowDist,
+        shadeParams,
+        v,
+        bufH,
+        accel
+      );
+      const [lr, lg, lb] = rgb;
+      const [br, bg, bb] = bloom;
+      if (temporalPhase) {
+        const o = (v * bufW + u) * 4;
+        const n = this.temporalBlendTarget;
+        this.accumData[o] += (lr - this.accumData[o]) / n;
+        this.accumData[o + 1] += (lg - this.accumData[o + 1]) / n;
+        this.accumData[o + 2] += (lb - this.accumData[o + 2]) / n;
+        this.accumData[o + 3] = 1;
+        this.accumBloomData[o] += (br - this.accumBloomData[o]) / n;
+        this.accumBloomData[o + 1] += (bg - this.accumBloomData[o + 1]) / n;
+        this.accumBloomData[o + 2] += (bb - this.accumBloomData[o + 2]) / n;
+        this.accumBloomData[o + 3] = 1;
+        this.linearData[o] = this.accumData[o];
+        this.linearData[o + 1] = this.accumData[o + 1];
+        this.linearData[o + 2] = this.accumData[o + 2];
+        this.linearData[o + 3] = 1;
+        this.linearBloomData[o] = this.accumBloomData[o];
+        this.linearBloomData[o + 1] = this.accumBloomData[o + 1];
+        this.linearBloomData[o + 2] = this.accumBloomData[o + 2];
+        this.linearBloomData[o + 3] = 1;
+        this.data[o] = linearToSrgbByte(this.accumData[o]);
+        this.data[o + 1] = linearToSrgbByte(this.accumData[o + 1]);
+        this.data[o + 2] = linearToSrgbByte(this.accumData[o + 2]);
+        this.data[o + 3] = 255;
+        this.bloomData[o] = this.accumBloomData[o];
+        this.bloomData[o + 1] = this.accumBloomData[o + 1];
+        this.bloomData[o + 2] = this.accumBloomData[o + 2];
+        this.bloomData[o + 3] = 1;
+      } else {
+        const bw = Math.min(stride, bufW - u);
+        const bh = Math.min(stride, bufH - v);
+        setBlock(this.data, bufW, bufH, u, v, bw, bh, lr, lg, lb);
+        setBloomBlock(this.bloomData, bufW, bufH, u, v, bw, bh, br, bg, bb);
+        for (let vv = v; vv < Math.min(v + bh, bufH); vv++) {
+          let o = (vv * bufW + u) * 4;
+          for (let uu = u; uu < Math.min(u + bw, bufW); uu++) {
+            this.linearData[o] = lr;
+            this.linearData[o + 1] = lg;
+            this.linearData[o + 2] = lb;
+            this.linearData[o + 3] = 1;
+            this.linearBloomData[o] = br;
+            this.linearBloomData[o + 1] = bg;
+            this.linearBloomData[o + 2] = bb;
+            this.linearBloomData[o + 3] = 1;
+            o += 4;
           }
         }
+      }
 
-        this.completedBlocksThisStride++;
+      this.completedBlocksThisStride++;
 
-        let uNext = u + stride;
-        let vNext = v;
-        if (uNext >= bufW) {
-          uNext = 0;
-          vNext = v + stride;
-        }
+      const nextBi = bi + 1;
 
-        blocksSinceCheck++;
-        if (blocksSinceCheck >= BUDGET_CHECK_INTERVAL_BLOCKS) {
-          blocksSinceCheck = 0;
-          const moreWork = vNext < bufH;
-          if (moreWork && performance.now() >= deadline) {
-            this.resumeU = uNext;
-            this.resumeV = vNext;
-            this.texture.needsUpdate = true;
-            this.bloomTexture.needsUpdate = true;
-            return;
-          }
+      blocksSinceCheck++;
+      if (blocksSinceCheck >= BUDGET_CHECK_INTERVAL_BLOCKS) {
+        blocksSinceCheck = 0;
+        if (nextBi < blockTotal && performance.now() >= deadline) {
+          this.resumeBlockIndex = nextBi;
+          this.texture.needsUpdate = true;
+          this.bloomTexture.needsUpdate = true;
+          return;
         }
       }
     }
 
-    this.resumeU = 0;
-    this.resumeV = 0;
+    this.resumeBlockIndex = 0;
     this.completedBlocksThisStride = 0;
 
     if (temporalPhase) {

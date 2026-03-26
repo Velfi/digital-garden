@@ -14,6 +14,7 @@ import {
 import type { Voxel } from '../voxelMaterial';
 import type { VoxelRayTraceParams } from './voxelRayShared';
 import { GLOW_BLOOM_LINEAR_SCALE } from './voxelRayShared';
+import { clampShadowSamples, GOLDEN_ANGLE, shadowConeTanFromRadians } from './gpuSoftShadow';
 
 export type VoxelRayGpuTracePipeline = {
   beautyTexture: import('three').Texture;
@@ -86,6 +87,10 @@ export async function createVoxelRayGpuTracePipeline(
     select,
     mix,
     floor,
+    sin,
+    cos,
+    sqrt,
+    fract,
     bitAnd,
     shiftRight,
     ivec3,
@@ -137,9 +142,16 @@ export async function createVoxelRayGpuTracePipeline(
   const uEnableSky = uniform(0);
   const uEnableShadows = uniform(0);
   const uMaxDist = uniform(4000);
+  /** Soft shadow stratified samples (1–8); must match `clampShadowSamples` / CPU progressive. */
+  const uShadowSamples = uniform(8);
+  /** tan(cone half-angle) toward the light; from `shadowConeTanFromRadians(params.shadowSoftnessRadians)`. */
+  const uShadowTanHalf = uniform(0);
   const uPassBloom = uniform(0);
   const uBufH = uniform(h);
   const uVolTex = uniform(makePlaceholderVolumeTexture());
+
+  const TSL_TWO_PI = float(2 * Math.PI);
+  const TSL_GOLDEN = float(GOLDEN_ANGLE);
 
   const volAcc = texture3D(uVolTex);
 
@@ -256,6 +268,65 @@ export async function createVoxelRayGpuTracePipeline(
     return hit;
   };
 
+  /** Averages `traceOpaqueShadow` over Vogel-disk jittered light directions (see `gpuSoftShadow.ts`). */
+  const averagedOpaqueShadow = (
+    sx: ReturnType<typeof float>,
+    sy: ReturnType<typeof float>,
+    sz: ReturnType<typeof float>,
+    lx: ReturnType<typeof float>,
+    ly: ReturnType<typeof float>,
+    lz: ReturnType<typeof float>,
+    maxT: ReturnType<typeof float>
+  ) => {
+    const acc = float(0).toVar();
+    Loop({ start: int(0), end: int(8), type: 'int', condition: '<' }, ({ i }) => {
+      If(float(i).greaterThanEqual(uShadowSamples), () => Break());
+      const fi = float(i);
+      const fn = max(uShadowSamples, float(1));
+      const r = sqrt(fi.div(fn.sub(float(0.5))));
+      const angle = fract(fi.mul(TSL_GOLDEN).div(TSL_TWO_PI)).mul(TSL_TWO_PI);
+      const scale = uShadowTanHalf.mul(r);
+      const upHx = float(0).toVar();
+      const upHy = float(0).toVar();
+      const upHz = float(1).toVar();
+      If(abs(lz).greaterThan(float(0.95)), () => {
+        upHx.assign(float(1));
+        upHy.assign(float(0));
+        upHz.assign(float(0));
+      });
+      const tx = upHy.mul(lz).sub(upHz.mul(ly)).toVar();
+      const ty = upHz.mul(lx).sub(upHx.mul(lz)).toVar();
+      const tz = upHx.mul(ly).sub(upHy.mul(lx)).toVar();
+      const tLen = sqrt(tx.mul(tx).add(ty.mul(ty)).add(tz.mul(tz))).toVar();
+      If(tLen.lessThan(float(1e-8)), () => {
+        upHx.assign(float(0));
+        upHy.assign(float(1));
+        upHz.assign(float(0));
+        tx.assign(upHy.mul(lz).sub(upHz.mul(ly)));
+        ty.assign(upHz.mul(lx).sub(upHx.mul(lz)));
+        tz.assign(upHx.mul(ly).sub(upHy.mul(lx)));
+        tLen.assign(sqrt(tx.mul(tx).add(ty.mul(ty)).add(tz.mul(tz))).max(float(1e-9)));
+      });
+      tx.assign(tx.div(tLen));
+      ty.assign(ty.div(tLen));
+      tz.assign(tz.div(tLen));
+      const bx = ly.mul(tz).sub(lz.mul(ty));
+      const by = lz.mul(tx).sub(lx.mul(tz));
+      const bz = lx.mul(ty).sub(ly.mul(tx));
+      const ca = cos(angle);
+      const sa = sin(angle);
+      const oxj = scale.mul(ca.mul(tx).add(sa.mul(bx)));
+      const oyj = scale.mul(ca.mul(ty).add(sa.mul(by)));
+      const ozj = scale.mul(ca.mul(tz).add(sa.mul(bz)));
+      const jx = lx.add(oxj).toVar();
+      const jy = ly.add(oyj).toVar();
+      const jz = lz.add(ozj).toVar();
+      const jLen = sqrt(jx.mul(jx).add(jy.mul(jy)).add(jz.mul(jz))).max(float(1e-12));
+      acc.addAssign(traceOpaqueShadow(sx, sy, sz, jx.div(jLen), jy.div(jLen), jz.div(jLen), maxT));
+    });
+    return acc.div(max(uShadowSamples, float(1)));
+  };
+
   const shadeOutput = Fn(() => {
     const suv = uv();
     const ndcX = suv.x.mul(float(2)).sub(float(1));
@@ -346,7 +417,7 @@ export async function createVoxelRayGpuTracePipeline(
         const hx = float(x).add(nx.mul(float(2e-4)));
         const hy = float(y).add(ny.mul(float(2e-4)));
         const hz = float(z).add(nz.mul(float(2e-4)));
-        sh.assign(traceOpaqueShadow(hx, hy, hz, lx, ly, lz, maxT));
+        sh.assign(averagedOpaqueShadow(hx, hy, hz, lx, ly, lz, maxT));
       });
       const cr = rgb.x;
       const cg = rgb.y;
@@ -429,7 +500,7 @@ export async function createVoxelRayGpuTracePipeline(
             const hx = float(x).add(nx.mul(float(2e-4)));
             const hy = float(y).add(ny.mul(float(2e-4)));
             const hz = float(z).add(nz.mul(float(2e-4)));
-            sh.assign(traceOpaqueShadow(hx, hy, hz, lx, ly, lz, maxT));
+            sh.assign(averagedOpaqueShadow(hx, hy, hz, lx, ly, lz, maxT));
           });
           const cr = rgb.x;
           const cg = rgb.y;
@@ -528,6 +599,8 @@ export async function createVoxelRayGpuTracePipeline(
       uEnableSky.value = params.enableSky ? 1 : 0;
       uEnableShadows.value = params.enableShadows ? 1 : 0;
       uMaxDist.value = maxDist;
+      uShadowSamples.value = clampShadowSamples(params.shadowRaySamples);
+      uShadowTanHalf.value = shadowConeTanFromRadians(params.shadowSoftnessRadians);
       const sky = 0x9ec8f0;
       const grnd = 0x4a5568;
       const tr = ((sky >> 16) & 255) / 255;

@@ -48,7 +48,8 @@ export function softShadowDiskPolar(
   return { radius: Math.sqrt(h0), angle: h1 * (Math.PI * 2) };
 }
 
-const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+/** Vogel / golden-spiral disk sampling; shared by CPU tracer and GPU TSL shadow pass. */
+export const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
 /**
  * Quasi-uniform disk samples (Vogel / golden spiral). Same pattern for every pixel so soft
@@ -62,6 +63,6 @@ export function softShadowDiskStratified(
   if (n === 1) return { radius: 0, angle: 0 };
   const i = Math.min(Math.max(0, sampleIdx), n - 1);
   const r = Math.sqrt(i / (n - 0.5));
-  const angle = (i * GOLDEN_ANGLE) % (Math.PI * 2);
+  const angle = (i * GOLDEN_ANGLE) % (2 * Math.PI);
   return { radius: r, angle };
 }
