@@ -11,11 +11,7 @@ import {
 import { buildVoxelRayGpuResources, type VoxelRayGpuResources } from './voxelRayGpuResources';
 import type { VoxelRayTraceParams } from './voxelRayShared';
 import { perfLog, perfNow, voxellePerfEnabled } from './voxellePerf';
-import {
-  createVoxelRayGpuTracePipeline,
-  voxelMapHasTransmissiveMaterial,
-  type VoxelRayGpuTracePipeline
-} from './voxelRayGpuTslTrace';
+import { createVoxelRayGpuTracePipeline, type VoxelRayGpuTracePipeline } from './voxelRayGpuTslTrace';
 import { maxDistanceForGpuAccel } from './gpuVoxelAccel';
 import type { RayTraceBackendPreference } from '../store/preferences';
 
@@ -116,8 +112,7 @@ export class VoxelRayTsl {
       isWebGPURenderer(tickContext.webgpuRenderer) &&
       this.resources &&
       this.resources.mode === 1 &&
-      this.resources.denseTexture !== null &&
-      !voxelMapHasTransmissiveMaterial(voxels);
+      this.resources.denseTexture !== null;
 
     const wantGpu = wantGpuTry && (backend === 'gpu' || backend === 'auto');
 

@@ -32,7 +32,7 @@ The store exposes `renderingMode`:
 |------|------------------|--------|
 | `greedy` | Merged quads per color/material bucket | Default; Minecraft-style face culling + greedy merging; vertex AO. |
 | `marchingCubes` | Same pipeline, different mesher in worker | Smoother surfaces; AO bias for glass shadows differs slightly. |
-| `ray` | **No** greedy meshes in the scene for voxels | `voxelGroup` meshes are disposed. Beauty + bloom come from **CPU progressive** ray trace (`VoxelRayProgressive`) with GPU resource staging in [`canvas/voxelRayTsl.ts`](../canvas/voxelRayTsl.ts). Scene `background` is set to the beauty texture. Tools still raycast: CPU DDA in [`canvas/voxelRayDda.ts`](../canvas/voxelRayDda.ts) with a synthetic pick proxy. |
+| `ray` | **No** greedy meshes in the scene for voxels | `voxelGroup` meshes are disposed. Beauty + bloom come from [`canvas/voxelRayTsl.ts`](../canvas/voxelRayTsl.ts): **WebGPU TSL** full-screen trace when dense accel + eligible backend; otherwise **CPU progressive** (`VoxelRayProgressive`). Scene `background` is the beauty texture. Picking: CPU DDA in [`canvas/voxelRayDda.ts`](../canvas/voxelRayDda.ts) with a synthetic pick proxy. |
 
 Mode switches trigger pipeline rebuilds (mesh path clears worker output; ray path invalidates GPU voxel resources).
 
@@ -70,11 +70,12 @@ Environment maps come from a small procedural cube map in scene setup; `scene.en
 
 When `renderingMode === 'ray'`:
 
-1. **`VoxelRayTsl.tick`** – On content or camera change, **rebuilds GPU voxel acceleration** ([`canvas/voxelRayGpuResources.ts`](../canvas/voxelRayGpuResources.ts) – dense 3D texture vs hash table, see [`canvas/gpuVoxelAccel.ts`](../canvas/gpuVoxelAccel.ts) budgets). Actual shading is still driven by the shared **CPU progressive** tracer for parity (`VoxelRayProgressive` in [`canvas/voxelRayProgressive.ts`](../canvas/voxelRayProgressive.ts)).
-2. **Outputs** – `beautyTexture` (HDR-ish linear work) and `bloomTexture` (glow-only contribution) are `DataTexture`s updated incrementally within a **time budget** per frame.
-3. **Scene composition** – The main scene renders **without** voxel meshes; `scene.background` is the beauty texture so orbit controls and non-voxel helpers still render on top. Picking uses the same voxel `Map` + DDA as the tracer.
+1. **`VoxelRayTsl.tick`** – On invalidate, **rebuilds voxel acceleration** in [`canvas/voxelRayGpuResources.ts`](../canvas/voxelRayGpuResources.ts): **dense** `Data3DTexture` when the model fits [`gpuVoxelAccel.ts`](../canvas/gpuVoxelAccel.ts) budgets, otherwise a **hash** structure used by the CPU tracer.
+2. **GPU vs CPU shading** – Controlled by `rayTraceBackend` in preferences (`auto` \| `gpu` \| `cpu`) plus runtime checks. **GPU path:** [`canvas/voxelRayGpuTslTrace.ts`](../canvas/voxelRayGpuTslTrace.ts) runs a TSL full-screen pass (DDA in the volume, half-float beauty + bloom targets). It uses the same [`buildVoxelRayTraceParams`](../canvas/voxelRayShared.ts) as CPU. **Shadows:** per-pixel **RGB transmission** along shadow rays (tint + absorption through transmissive voxels, opaque blocks), averaged over a **Vogel / golden-angle** disk ([`gpuSoftShadow.ts`](../canvas/gpuSoftShadow.ts)), consistent with the CPU `traceShadowRayDda` model. **Glass / water:** Fresnel at entry/exit, Beer–Lambert-style absorption and color tint inside slabs, multi-step **outer loop** so the ray can exit transmissive stacks and continue; intent is parity with `VoxelRayProgressive` (GPU omits some CPU-only water surface details). **CPU path:** [`canvas/voxelRayProgressive.ts`](../canvas/voxelRayProgressive.ts) refines within a **time budget** (`DataTexture` ping-pong, `refinementProgress` stays below 1 until the frame converges).
+3. **Outputs** – GPU: render-target textures from the pipeline (full frame each frame). CPU: `beautyTexture` + `bloomTexture` advanced incrementally under the budget.
+4. **Scene composition** – The main scene renders **without** voxel meshes; `scene.background` is the beauty texture so orbit controls and non-voxel helpers still render on top. Picking uses the voxel `Map` + DDA (CPU).
 
-Parameters (sun, ambient, sky, exposure, shadows) are packed each frame via [`buildVoxelRayTraceParams`](../canvas/voxelRayShared.ts).
+Parameters (sun, ambient, sky, shadows, `lightStrength01`, `timeSeconds`, etc.) are packed each frame via [`buildVoxelRayTraceParams`](../canvas/voxelRayShared.ts).
 
 ## 5. Post-processing and bloom
 
@@ -115,7 +116,7 @@ WebGL sets `renderer.transmissionResolutionScale` (see scene setup). WebGPU reli
 | Frame loop / batching | `VoxelCanvas.svelte`, `canvas/voxelCanvasAnimate.ts` |
 | Meshes, grid, overlays | `canvas/meshManager.ts`, `greedyMesh.ts`, `greedyMeshCore.ts` |
 | Worker | `voxelMeshWorker.ts`, `voxelMeshWorkerLogic.ts` |
-| Ray trace | `canvas/voxelRayProgressive.ts`, `canvas/voxelRayTsl.ts`, `canvas/voxelRayDda.ts` |
+| Ray trace | `canvas/voxelRayProgressive.ts`, `canvas/voxelRayTsl.ts`, `canvas/voxelRayGpuTslTrace.ts`, `canvas/voxelRayGpuResources.ts`, `canvas/gpuSoftShadow.ts`, `canvas/voxelRayDda.ts` |
 | Bloom | `canvas/voxelCanvasBloomRender.ts`, `canvas/webgpuBloom.ts` |
 | Materials | `voxelMaterial.ts` |
 | State | `store/core.ts`, `store/index.ts` |
