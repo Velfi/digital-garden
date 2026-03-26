@@ -3,6 +3,7 @@
  */
 import type { Intersection } from 'three';
 import type { FaceNormal } from '../../store/core';
+import { isMoodFaceClickTool } from '../../store/mood/registry';
 import { setAtmospherePlaneFromWorldPointAndNormal } from '../../store/atmosphere';
 
 export interface MoodPointerUpDeps {
@@ -19,7 +20,7 @@ export function applyMoodFaceClickPointerUp(
   event: PointerEvent
 ): void {
   if (event.button !== 0 || ctx.addPanelOpen) return;
-  if (ctx.tool !== 'atmosphere') return;
+  if (!isMoodFaceClickTool(ctx.tool)) return;
 
   ctx.updatePointerFromEvent(event);
   const hit = ctx.getIntersection();
@@ -27,6 +28,8 @@ export function applyMoodFaceClickPointerUp(
   const normal = ctx.getFaceNormalFromHit(hit);
   if (!normal) return;
   const p = hit.point;
-  setAtmospherePlaneFromWorldPointAndNormal(p.x, p.y, p.z, normal[0], normal[1], normal[2]);
+  if (ctx.tool === 'atmosphere') {
+    setAtmospherePlaneFromWorldPointAndNormal(p.x, p.y, p.z, normal[0], normal[1], normal[2]);
+  }
   ctx.scheduleRender();
 }

@@ -802,6 +802,54 @@ function traceAndShade(
   }
 }
 
+function applyRayPostMood(
+  rgb: [number, number, number],
+  travelDist: number,
+  params: VoxelRayTraceParams,
+  u: number,
+  v: number
+): [number, number, number] {
+  let [r, g, b] = rgb;
+  if (params.distanceTintEnabled) {
+    const nearT = Math.max(0, Math.min(1, travelDist / Math.max(0.001, params.distanceTintNearDist)));
+    const farSpan = Math.max(1, params.distanceTintFarDist - params.distanceTintNearDist);
+    const farT = Math.max(
+      0,
+      Math.min(1, (travelDist - params.distanceTintNearDist) / farSpan)
+    );
+    const tintA: [number, number, number] = [
+      params.distanceTintNearColor[0] * (1 - nearT) + params.distanceTintMidColor[0] * nearT,
+      params.distanceTintNearColor[1] * (1 - nearT) + params.distanceTintMidColor[1] * nearT,
+      params.distanceTintNearColor[2] * (1 - nearT) + params.distanceTintMidColor[2] * nearT
+    ];
+    const tint: [number, number, number] = [
+      tintA[0] * (1 - farT) + params.distanceTintFarColor[0] * farT,
+      tintA[1] * (1 - farT) + params.distanceTintFarColor[1] * farT,
+      tintA[2] * (1 - farT) + params.distanceTintFarColor[2] * farT
+    ];
+    const s = Math.max(0, Math.min(1, params.distanceTintStrength));
+    r = r * (1 - s) + tint[0] * s;
+    g = g * (1 - s) + tint[1] * s;
+    b = b * (1 - s) + tint[2] * s;
+  }
+  if (params.sunShaftsEnabled) {
+    const dy = 1 - v;
+    const shaft = Math.max(0, Math.min(1, dy * dy)) * params.sunShaftsStrength * 0.08;
+    r += params.lightColorR * shaft;
+    g += params.lightColorG * shaft;
+    b += params.lightColorB * shaft;
+  }
+  if (params.grainEnabled && params.grainStrength > 0) {
+    const t = params.grainAnimated ? params.timeSeconds * params.grainSpeed : 0;
+    const n = (Math.sin((u + t * 0.37) * 12.9898 + (v + t * 0.19) * 78.233) * 43758.5453) % 1;
+    const gN = (n - Math.floor(n) - 0.5) * params.grainStrength;
+    r += gN;
+    g += gN;
+    b += gN;
+  }
+  return [r, g, b];
+}
+
 function setBlock(
   data: Uint8ClampedArray,
   bufW: number,
@@ -1124,7 +1172,7 @@ export class VoxelRayProgressive {
         bufH,
         accel
       );
-      const [lr, lg, lb] = rgb;
+      const [lr, lg, lb] = applyRayPostMood(rgb, maxDist * 0.5, shadeParams, u / bufW, v / bufH);
       const [br, bg, bb] = bloom;
       if (temporalPhase) {
         const o = (v * bufW + u) * 4;

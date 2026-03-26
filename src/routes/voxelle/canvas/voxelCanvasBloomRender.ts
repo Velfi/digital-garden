@@ -96,6 +96,9 @@ export type VoxelPrimaryRenderParams = {
   atmosphereOnlyComposer: EffectComposer | null;
   atmosphereOnlyScenePass: VoxelleSceneRenderPass | null;
   atmosphereOnlyFogPass: ShaderPass | null;
+  atmosphereOnlyDistanceTintPass: ShaderPass | null;
+  atmosphereOnlySunShaftsPass: ShaderPass | null;
+  atmosphereOnlyGrainPass: ShaderPass | null;
   prepareWebGPUBloomAtmosphere?: () => boolean;
 };
 
@@ -120,6 +123,9 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
     atmosphereOnlyComposer,
     atmosphereOnlyScenePass,
     atmosphereOnlyFogPass,
+    atmosphereOnlyDistanceTintPass,
+    atmosphereOnlySunShaftsPass,
+    atmosphereOnlyGrainPass,
     prepareWebGPUBloomAtmosphere
   } = p;
 
@@ -196,7 +202,13 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
         atmosphereOnlyComposer &&
         atmosphereOnlyScenePass &&
         atmosphereOnlyFogPass &&
-        atmosphereOnlyFogPass.enabled;
+        atmosphereOnlyDistanceTintPass &&
+        atmosphereOnlySunShaftsPass &&
+        atmosphereOnlyGrainPass &&
+        (atmosphereOnlyFogPass.enabled ||
+          atmosphereOnlyDistanceTintPass.enabled ||
+          atmosphereOnlySunShaftsPass.enabled ||
+          atmosphereOnlyGrainPass.enabled);
 
       if (!hasGlow && useAtmosphereOnly) {
         atmosphereOnlyScenePass.camera = camera;
@@ -204,6 +216,9 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
       } else if (!hasGlow) {
         if (planarAtmospherePassGL) planarAtmospherePassGL.enabled = false;
         if (atmosphereOnlyFogPass) atmosphereOnlyFogPass.enabled = false;
+        if (atmosphereOnlyDistanceTintPass) atmosphereOnlyDistanceTintPass.enabled = false;
+        if (atmosphereOnlySunShaftsPass) atmosphereOnlySunShaftsPass.enabled = false;
+        if (atmosphereOnlyGrainPass) atmosphereOnlyGrainPass.enabled = false;
         renderer.render(scene, camera);
       } else {
         withBloomMaterialStash(scene, bloomDarkMaterial, bloomMaterialStash, () => {

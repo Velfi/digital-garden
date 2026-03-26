@@ -52,6 +52,19 @@ export type VoxelRayTraceParams = {
   shadowSoftnessRadians: number;
   /** Monotonic wall-clock time (seconds) for animated ray shading effects. */
   timeSeconds: number;
+  distanceTintEnabled: boolean;
+  distanceTintNearColor: [number, number, number];
+  distanceTintMidColor: [number, number, number];
+  distanceTintFarColor: [number, number, number];
+  distanceTintNearDist: number;
+  distanceTintFarDist: number;
+  distanceTintStrength: number;
+  grainEnabled: boolean;
+  grainStrength: number;
+  grainAnimated: boolean;
+  grainSpeed: number;
+  sunShaftsEnabled: boolean;
+  sunShaftsStrength: number;
 };
 
 export function hexToLinearRgb(hex: number): [number, number, number] {
@@ -74,6 +87,19 @@ export function buildVoxelRayTraceParams(
     timeSeconds?: number;
     /** Override soft shadow sample count (1–8); default from `gpuSoftShadow`. */
     shadowRaySamples?: number;
+    distanceTintEnabled?: boolean;
+    distanceTintNearHex?: number;
+    distanceTintMidHex?: number;
+    distanceTintFarHex?: number;
+    distanceTintNearDist?: number;
+    distanceTintFarDist?: number;
+    distanceTintStrength?: number;
+    grainEnabled?: boolean;
+    grainStrength?: number;
+    grainAnimated?: boolean;
+    grainSpeed?: number;
+    sunShaftsEnabled?: boolean;
+    sunShaftsStrength?: number;
   }
 ): VoxelRayTraceParams {
   const lightPos = new THREE.Vector3();
@@ -96,6 +122,9 @@ export function buildVoxelRayTraceParams(
   const ambientB = (ambSky.b + ambGr.b) * 0.5 * ambI * env;
 
   const [br, bg, bb] = hexToLinearRgb(opts.backgroundHex & 0xffffff);
+  const [dtnr, dtng, dtnb] = hexToLinearRgb((opts.distanceTintNearHex ?? 0xffffff) & 0xffffff);
+  const [dtmr, dtmg, dtmb] = hexToLinearRgb((opts.distanceTintMidHex ?? 0xc8d4e0) & 0xffffff);
+  const [dtfr, dtfg, dtfb] = hexToLinearRgb((opts.distanceTintFarHex ?? 0x8fa3bf) & 0xffffff);
 
   return {
     toLightWorld,
@@ -116,6 +145,19 @@ export function buildVoxelRayTraceParams(
     enableShadows: opts.enableShadows,
     shadowRaySamples: clampShadowSamples(opts.shadowRaySamples ?? DEFAULT_SHADOW_RAY_SAMPLES),
     shadowSoftnessRadians: DEFAULT_SHADOW_SOFTNESS_RADIANS,
-    timeSeconds: opts.timeSeconds ?? 0
+    timeSeconds: opts.timeSeconds ?? 0,
+    distanceTintEnabled: opts.distanceTintEnabled ?? false,
+    distanceTintNearColor: [dtnr, dtng, dtnb],
+    distanceTintMidColor: [dtmr, dtmg, dtmb],
+    distanceTintFarColor: [dtfr, dtfg, dtfb],
+    distanceTintNearDist: opts.distanceTintNearDist ?? 16,
+    distanceTintFarDist: opts.distanceTintFarDist ?? 140,
+    distanceTintStrength: opts.distanceTintStrength ?? 0.35,
+    grainEnabled: opts.grainEnabled ?? false,
+    grainStrength: opts.grainStrength ?? 0.06,
+    grainAnimated: opts.grainAnimated ?? true,
+    grainSpeed: opts.grainSpeed ?? 1,
+    sunShaftsEnabled: opts.sunShaftsEnabled ?? false,
+    sunShaftsStrength: opts.sunShaftsStrength ?? 0.35
   };
 }

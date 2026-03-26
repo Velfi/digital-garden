@@ -14,6 +14,7 @@ After decompression (if gzipped), the payload is BSON. The logical structure is:
 | `scene`              | object  | no       | Optional camera/view settings.                                                                                                                                    |
 | `scene.focalLength`  | number  | no       | Camera focal length (typically 15–200).                                                                                                                           |
 | `scene.orthographic` | boolean | no       | Whether the camera is orthographic.                                                                                                                               |
+| `scene.atmosphere`   | object  | no       | Optional mood/post settings (fog, distance tint, grain, sun shafts).                                                                                             |
 
 ### Voxel rows
 

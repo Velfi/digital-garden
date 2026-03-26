@@ -170,6 +170,27 @@ const DESCRIPTORS: ToolDescriptor[] = [
     label: 'Atmosphere',
     title: 'Planar fog: click a voxel face to set the fog plane',
     defaultPane: 'mood'
+  },
+  {
+    id: 'sunShafts',
+    category: 'mood',
+    label: 'Sun shafts',
+    title: 'Add stylized light shafts from sun direction',
+    defaultPane: 'mood'
+  },
+  {
+    id: 'distanceTint',
+    category: 'mood',
+    label: 'Distance tint',
+    title: 'Tint near/mid/far distances for cinematic depth',
+    defaultPane: 'mood'
+  },
+  {
+    id: 'grain',
+    category: 'mood',
+    label: 'Grain',
+    title: 'Apply subtle film grain and shimmer',
+    defaultPane: 'mood'
   }
 ];
 

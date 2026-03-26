@@ -8,8 +8,31 @@ import {
   atmosphereDensity,
   atmosphereMode,
   atmosphereSpatialMode,
+  atmosphereHeightBias,
+  atmosphereHeightFalloff,
+  atmosphereDriftEnabled,
+  atmosphereDriftAmount,
+  atmosphereDriftScale,
+  atmosphereDriftSpeed,
   atmospherePlane,
-  atmospherePlaneValid
+  atmospherePlaneValid,
+  distanceTintEnabled,
+  distanceTintNearColor,
+  distanceTintMidColor,
+  distanceTintFarColor,
+  distanceTintNearDistance,
+  distanceTintFarDistance,
+  distanceTintStrength,
+  grainEnabled,
+  grainStrength,
+  grainAnimated,
+  grainSpeed,
+  sunShaftsEnabled,
+  sunShaftsStrength,
+  sunShaftsDecay,
+  sunShaftsDensity,
+  sunShaftsWeight,
+  sunShaftsSamples
 } from './atmosphere';
 import { recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 import type { GridSize } from './core';
@@ -132,8 +155,31 @@ export function serializeToVoxelleFormat(): VoxelleFileFormat {
         density: get(atmosphereDensity),
         mode: get(atmosphereMode),
         spatial: get(atmosphereSpatialMode),
+        heightBias: get(atmosphereHeightBias),
+        heightFalloff: get(atmosphereHeightFalloff),
+        driftEnabled: get(atmosphereDriftEnabled),
+        driftAmount: get(atmosphereDriftAmount),
+        driftScale: get(atmosphereDriftScale),
+        driftSpeed: get(atmosphereDriftSpeed),
         plane: { ...get(atmospherePlane) },
-        planeValid: get(atmospherePlaneValid)
+        planeValid: get(atmospherePlaneValid),
+        distanceTintEnabled: get(distanceTintEnabled),
+        distanceTintNearColor: get(distanceTintNearColor),
+        distanceTintMidColor: get(distanceTintMidColor),
+        distanceTintFarColor: get(distanceTintFarColor),
+        distanceTintNearDistance: get(distanceTintNearDistance),
+        distanceTintFarDistance: get(distanceTintFarDistance),
+        distanceTintStrength: get(distanceTintStrength),
+        grainEnabled: get(grainEnabled),
+        grainStrength: get(grainStrength),
+        grainAnimated: get(grainAnimated),
+        grainSpeed: get(grainSpeed),
+        sunShaftsEnabled: get(sunShaftsEnabled),
+        sunShaftsStrength: get(sunShaftsStrength),
+        sunShaftsDecay: get(sunShaftsDecay),
+        sunShaftsDensity: get(sunShaftsDensity),
+        sunShaftsWeight: get(sunShaftsWeight),
+        sunShaftsSamples: get(sunShaftsSamples)
       }
     }
   };
@@ -233,6 +279,22 @@ function applyModelData(data: VoxelleFileFormat): void {
       if (atm.spatial === 'plane' || atm.spatial === 'aerial') {
         atmosphereSpatialMode.set(atm.spatial);
       }
+      if (typeof atm.heightBias === 'number' && Number.isFinite(atm.heightBias)) {
+        atmosphereHeightBias.set(Math.max(-1000, Math.min(1000, atm.heightBias)));
+      }
+      if (typeof atm.heightFalloff === 'number' && Number.isFinite(atm.heightFalloff)) {
+        atmosphereHeightFalloff.set(Math.max(1, Math.min(2000, atm.heightFalloff)));
+      }
+      if (typeof atm.driftEnabled === 'boolean') atmosphereDriftEnabled.set(atm.driftEnabled);
+      if (typeof atm.driftAmount === 'number' && Number.isFinite(atm.driftAmount)) {
+        atmosphereDriftAmount.set(Math.max(0, Math.min(1, atm.driftAmount)));
+      }
+      if (typeof atm.driftScale === 'number' && Number.isFinite(atm.driftScale)) {
+        atmosphereDriftScale.set(Math.max(0.0001, Math.min(1, atm.driftScale)));
+      }
+      if (typeof atm.driftSpeed === 'number' && Number.isFinite(atm.driftSpeed)) {
+        atmosphereDriftSpeed.set(Math.max(0, Math.min(10, atm.driftSpeed)));
+      }
       const pl = atm.plane;
       if (
         pl &&
@@ -253,6 +315,61 @@ function applyModelData(data: VoxelleFileFormat): void {
         typeof pl.nz === 'number'
       ) {
         atmospherePlaneValid.set(Math.hypot(pl.nx, pl.ny, pl.nz) > 1e-6);
+      }
+      if (typeof atm.distanceTintEnabled === 'boolean') distanceTintEnabled.set(atm.distanceTintEnabled);
+      if (typeof atm.distanceTintNearColor === 'string' && /^#?[0-9a-fA-F]{6}$/.test(atm.distanceTintNearColor)) {
+        distanceTintNearColor.set(
+          atm.distanceTintNearColor.startsWith('#')
+            ? atm.distanceTintNearColor
+            : `#${atm.distanceTintNearColor}`
+        );
+      }
+      if (typeof atm.distanceTintMidColor === 'string' && /^#?[0-9a-fA-F]{6}$/.test(atm.distanceTintMidColor)) {
+        distanceTintMidColor.set(
+          atm.distanceTintMidColor.startsWith('#')
+            ? atm.distanceTintMidColor
+            : `#${atm.distanceTintMidColor}`
+        );
+      }
+      if (typeof atm.distanceTintFarColor === 'string' && /^#?[0-9a-fA-F]{6}$/.test(atm.distanceTintFarColor)) {
+        distanceTintFarColor.set(
+          atm.distanceTintFarColor.startsWith('#')
+            ? atm.distanceTintFarColor
+            : `#${atm.distanceTintFarColor}`
+        );
+      }
+      if (typeof atm.distanceTintNearDistance === 'number' && Number.isFinite(atm.distanceTintNearDistance)) {
+        distanceTintNearDistance.set(Math.max(1, Math.min(4096, atm.distanceTintNearDistance)));
+      }
+      if (typeof atm.distanceTintFarDistance === 'number' && Number.isFinite(atm.distanceTintFarDistance)) {
+        distanceTintFarDistance.set(Math.max(1, Math.min(8192, atm.distanceTintFarDistance)));
+      }
+      if (typeof atm.distanceTintStrength === 'number' && Number.isFinite(atm.distanceTintStrength)) {
+        distanceTintStrength.set(Math.max(0, Math.min(1, atm.distanceTintStrength)));
+      }
+      if (typeof atm.grainEnabled === 'boolean') grainEnabled.set(atm.grainEnabled);
+      if (typeof atm.grainStrength === 'number' && Number.isFinite(atm.grainStrength)) {
+        grainStrength.set(Math.max(0, Math.min(1, atm.grainStrength)));
+      }
+      if (typeof atm.grainAnimated === 'boolean') grainAnimated.set(atm.grainAnimated);
+      if (typeof atm.grainSpeed === 'number' && Number.isFinite(atm.grainSpeed)) {
+        grainSpeed.set(Math.max(0, Math.min(20, atm.grainSpeed)));
+      }
+      if (typeof atm.sunShaftsEnabled === 'boolean') sunShaftsEnabled.set(atm.sunShaftsEnabled);
+      if (typeof atm.sunShaftsStrength === 'number' && Number.isFinite(atm.sunShaftsStrength)) {
+        sunShaftsStrength.set(Math.max(0, Math.min(4, atm.sunShaftsStrength)));
+      }
+      if (typeof atm.sunShaftsDecay === 'number' && Number.isFinite(atm.sunShaftsDecay)) {
+        sunShaftsDecay.set(Math.max(0, Math.min(1, atm.sunShaftsDecay)));
+      }
+      if (typeof atm.sunShaftsDensity === 'number' && Number.isFinite(atm.sunShaftsDensity)) {
+        sunShaftsDensity.set(Math.max(0, Math.min(4, atm.sunShaftsDensity)));
+      }
+      if (typeof atm.sunShaftsWeight === 'number' && Number.isFinite(atm.sunShaftsWeight)) {
+        sunShaftsWeight.set(Math.max(0, Math.min(4, atm.sunShaftsWeight)));
+      }
+      if (typeof atm.sunShaftsSamples === 'number' && Number.isFinite(atm.sunShaftsSamples)) {
+        sunShaftsSamples.set(Math.max(1, Math.min(64, Math.round(atm.sunShaftsSamples))));
       }
     }
   }

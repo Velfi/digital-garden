@@ -1,5 +1,5 @@
-/** Mood tools (sidebar Mood tab): atmosphere, future mood effects. */
-export const MOOD_TOOLS = ['atmosphere'] as const;
+/** Mood tools (sidebar Mood tab). */
+export const MOOD_TOOLS = ['atmosphere', 'sunShafts', 'distanceTint', 'grain'] as const;
 
 export type MoodToolId = (typeof MOOD_TOOLS)[number];
 

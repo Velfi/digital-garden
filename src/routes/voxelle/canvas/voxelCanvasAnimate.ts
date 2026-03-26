@@ -46,6 +46,19 @@ export type VoxelCanvasAnimateContext = {
   getAmbientIntensity: () => number;
   getSceneEnvironmentIntensity: () => number;
   getEnableShadows: () => boolean;
+  getDistanceTintEnabled: () => boolean;
+  getDistanceTintNearColor: () => string;
+  getDistanceTintMidColor: () => string;
+  getDistanceTintFarColor: () => string;
+  getDistanceTintNearDistance: () => number;
+  getDistanceTintFarDistance: () => number;
+  getDistanceTintStrength: () => number;
+  getGrainEnabled: () => boolean;
+  getGrainStrength: () => number;
+  getGrainAnimated: () => boolean;
+  getGrainSpeed: () => number;
+  getSunShaftsEnabled: () => boolean;
+  getSunShaftsStrength: () => number;
   getRayTraceContentDirty: () => boolean;
   setRayTraceContentDirty: (v: boolean) => void;
   getPrevRayCamInitialized: () => boolean;
@@ -64,6 +77,8 @@ export type VoxelCanvasAnimateContext = {
   getPipelineAppliedThisFrame: () => boolean;
   /** Greedy/marching: presentation (lights, materials, prefs) changed since last draw. */
   getCanvasPresentationDirty: () => boolean;
+  /** Non-ray post FX that require continuous redraw (for time animation). */
+  getShouldAnimatePostFx: () => boolean;
   getVoxellePreferences: () => VoxellePreferences;
   render: () => void;
 };
@@ -149,12 +164,27 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
       sceneEnvironmentIntensity: ctx.getSceneEnvironmentIntensity(),
       enableShadows: ctx.getEnableShadows(),
       timeSeconds: performance.now() * 0.001,
-      shadowRaySamples: prefs.rayShadowSamples
+      shadowRaySamples: prefs.rayShadowSamples,
+      distanceTintEnabled: ctx.getDistanceTintEnabled(),
+      distanceTintNearHex: hexToInt(ctx.getDistanceTintNearColor()),
+      distanceTintMidHex: hexToInt(ctx.getDistanceTintMidColor()),
+      distanceTintFarHex: hexToInt(ctx.getDistanceTintFarColor()),
+      distanceTintNearDist: ctx.getDistanceTintNearDistance(),
+      distanceTintFarDist: ctx.getDistanceTintFarDistance(),
+      distanceTintStrength: ctx.getDistanceTintStrength(),
+      grainEnabled: ctx.getGrainEnabled(),
+      grainStrength: ctx.getGrainStrength(),
+      grainAnimated: ctx.getGrainAnimated(),
+      grainSpeed: ctx.getGrainSpeed(),
+      sunShaftsEnabled: ctx.getSunShaftsEnabled(),
+      sunShaftsStrength: ctx.getSunShaftsStrength()
     });
 
     if (ctx.rayRenderer) {
       const texBefore = ctx.rayRenderer.output.beautyTexture;
-      const webgpuRenderer = isWebGPURenderer(ctx.renderer) ? ctx.renderer : null;
+      const webgpuRenderer = isWebGPURenderer(ctx.renderer)
+        ? (ctx.renderer as Parameters<VoxelRayTsl['tick']>[10]['webgpuRenderer'])
+        : null;
       ctx.rayRenderer.tick(
         delta,
         ctx.container.clientWidth,
@@ -198,7 +228,8 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
     hasActiveInteraction ||
     ctx.getFlyControlsEnabled() ||
     ctx.getPipelineAppliedThisFrame() ||
-    ctx.getCanvasPresentationDirty()
+    ctx.getCanvasPresentationDirty() ||
+    ctx.getShouldAnimatePostFx()
   ) {
     ctx.render();
   }

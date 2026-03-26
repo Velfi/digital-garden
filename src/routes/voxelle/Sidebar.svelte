@@ -8,7 +8,9 @@
     tool,
     toolPane,
     lastDrawTool,
-    encodeModelForUrl
+    encodeModelForUrl,
+    MOOD_TOOLS,
+    isMoodTool
   } from './store/index';
   import { nanoid } from 'nanoid';
   import { storeShareInIndexedDB } from './shareStorage';
@@ -163,7 +165,7 @@
               $lastDrawTool === 'flora' ||
               $lastDrawTool === 'piscina' ||
               $lastDrawTool === 'insecta' ||
-              $lastDrawTool === 'atmosphere'
+              isMoodTool($lastDrawTool)
               ? 'remove'
               : $lastDrawTool
           );
@@ -202,7 +204,7 @@
         aria-selected={$toolPane === 'mood'}
         onclick={() => {
           toolPane.set('mood');
-          tool.set('atmosphere');
+          tool.set(MOOD_TOOLS[0]);
         }}
       >
         Mood

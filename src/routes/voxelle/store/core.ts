@@ -57,7 +57,10 @@ export type Tool =
   | 'flora'
   | 'piscina'
   | 'insecta'
-  | 'atmosphere';
+  | 'atmosphere'
+  | 'sunShafts'
+  | 'distanceTint'
+  | 'grain';
 
 export type ClayMode =
   | 'bulk'

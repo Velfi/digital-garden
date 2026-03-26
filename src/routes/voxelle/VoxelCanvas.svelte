@@ -228,6 +228,29 @@
     atmosphereMode,
     atmosphereSpatialMode,
     atmospherePlane,
+    atmosphereHeightBias,
+    atmosphereHeightFalloff,
+    atmosphereDriftEnabled,
+    atmosphereDriftAmount,
+    atmosphereDriftScale,
+    atmosphereDriftSpeed,
+    distanceTintEnabled,
+    distanceTintNearColor,
+    distanceTintMidColor,
+    distanceTintFarColor,
+    distanceTintNearDistance,
+    distanceTintFarDistance,
+    distanceTintStrength,
+    grainEnabled,
+    grainStrength,
+    grainAnimated,
+    grainSpeed,
+    sunShaftsEnabled,
+    sunShaftsStrength,
+    sunShaftsDecay,
+    sunShaftsDensity,
+    sunShaftsWeight,
+    sunShaftsSamples,
     type Tool,
     type FaceNormal,
     voxellePreferences,
@@ -364,7 +387,13 @@
   import {
     VoxelleSceneRenderPass,
     StashingPlanarAtmospherePass,
+    StashingDistanceTintPass,
+    SunShaftsPass,
+    GrainPass,
     updatePlanarAtmosphereShaderUniforms,
+    updateDistanceTintPassUniforms,
+    updateSunShaftsPassUniforms,
+    updateGrainPassUniforms,
     type WebGLDepthStash
   } from './canvas/planarAtmospherePass';
   import { runVoxelCanvasAnimateStep } from './canvas/voxelCanvasAnimate';
@@ -555,9 +584,15 @@
   const bloomMaterialStash: Record<string, THREE.Material | THREE.Material[]> = {};
   const webglDepthStash: WebGLDepthStash = { texture: null };
   let planarAtmospherePassGL: ShaderPass | null = null;
+  let distanceTintPassGL: ShaderPass | null = null;
+  let sunShaftsPassGL: ShaderPass | null = null;
+  let grainPassGL: ShaderPass | null = null;
   let atmosphereOnlyComposer: EffectComposer | null = null;
   let atmosphereOnlyScenePass: VoxelleSceneRenderPass | null = null;
   let atmosphereOnlyFogPass: ShaderPass | null = null;
+  let atmosphereOnlyDistanceTintPass: ShaderPass | null = null;
+  let atmosphereOnlySunShaftsPass: ShaderPass | null = null;
+  let atmosphereOnlyGrainPass: ShaderPass | null = null;
   let atmosphereOnlyOutputPass: OutputPass | null = null;
 
   let orbitControls = $state<OrbitControls>();
@@ -4495,8 +4530,20 @@
     bloomOutputPass = null;
     planarAtmospherePassGL?.dispose();
     planarAtmospherePassGL = null;
+    distanceTintPassGL?.dispose();
+    distanceTintPassGL = null;
+    sunShaftsPassGL?.dispose();
+    sunShaftsPassGL = null;
+    grainPassGL?.dispose();
+    grainPassGL = null;
     atmosphereOnlyFogPass?.dispose();
     atmosphereOnlyFogPass = null;
+    atmosphereOnlyDistanceTintPass?.dispose();
+    atmosphereOnlyDistanceTintPass = null;
+    atmosphereOnlySunShaftsPass?.dispose();
+    atmosphereOnlySunShaftsPass = null;
+    atmosphereOnlyGrainPass?.dispose();
+    atmosphereOnlyGrainPass = null;
     atmosphereOnlyOutputPass?.dispose();
     atmosphereOnlyOutputPass = null;
     atmosphereOnlyComposer?.dispose();
@@ -4571,13 +4618,22 @@
     bloomMixPass.needsSwap = true;
 
     planarAtmospherePassGL = new StashingPlanarAtmospherePass(webglDepthStash);
+    distanceTintPassGL = new StashingDistanceTintPass(webglDepthStash);
+    sunShaftsPassGL = new SunShaftsPass();
+    grainPassGL = new GrainPass();
     planarAtmospherePassGL.enabled = false;
+    distanceTintPassGL.enabled = false;
+    sunShaftsPassGL.enabled = false;
+    grainPassGL.enabled = false;
 
     bloomOutputPass = new OutputPass();
     finalComposer = new EffectComposer(renderer, finalRenderTarget);
     finalComposer.addPass(sharedSceneRenderPass);
     finalComposer.addPass(bloomMixPass);
     finalComposer.addPass(planarAtmospherePassGL);
+    finalComposer.addPass(distanceTintPassGL);
+    finalComposer.addPass(sunShaftsPassGL);
+    finalComposer.addPass(grainPassGL);
     finalComposer.addPass(bloomOutputPass);
 
     const atmosphereOnlyDepthTexture = new THREE.DepthTexture(1, 1);
@@ -4590,10 +4646,19 @@
     atmosphereOnlyComposer = new EffectComposer(renderer, atmosphereOnlyRT);
     atmosphereOnlyScenePass = new VoxelleSceneRenderPass(scene, camera, webglDepthStash);
     atmosphereOnlyFogPass = new StashingPlanarAtmospherePass(webglDepthStash);
+    atmosphereOnlyDistanceTintPass = new StashingDistanceTintPass(webglDepthStash);
+    atmosphereOnlySunShaftsPass = new SunShaftsPass();
+    atmosphereOnlyGrainPass = new GrainPass();
     atmosphereOnlyFogPass.enabled = false;
+    atmosphereOnlyDistanceTintPass.enabled = false;
+    atmosphereOnlySunShaftsPass.enabled = false;
+    atmosphereOnlyGrainPass.enabled = false;
     atmosphereOnlyOutputPass = new OutputPass();
     atmosphereOnlyComposer.addPass(atmosphereOnlyScenePass);
     atmosphereOnlyComposer.addPass(atmosphereOnlyFogPass);
+    atmosphereOnlyComposer.addPass(atmosphereOnlyDistanceTintPass);
+    atmosphereOnlyComposer.addPass(atmosphereOnlySunShaftsPass);
+    atmosphereOnlyComposer.addPass(atmosphereOnlyGrainPass);
     atmosphereOnlyComposer.addPass(atmosphereOnlyOutputPass);
 
     bloomComposer.setSize(w, h);
@@ -4603,24 +4668,82 @@
   }
 
   function prepareWebGLAtmosphere(): void {
-    if (!planarAtmospherePassGL || !atmosphereOnlyFogPass || !camera || !renderer) return;
-    const wanted = get(atmosphereActiveForRender) && get(renderingMode) !== 'ray';
+    if (
+      !planarAtmospherePassGL ||
+      !distanceTintPassGL ||
+      !sunShaftsPassGL ||
+      !grainPassGL ||
+      !atmosphereOnlyFogPass ||
+      !atmosphereOnlyDistanceTintPass ||
+      !atmosphereOnlySunShaftsPass ||
+      !atmosphereOnlyGrainPass ||
+      !camera ||
+      !renderer
+    )
+      return;
+    const wantsAtmosphere = get(atmosphereActiveForRender);
+    const wantsDistanceTint = get(distanceTintEnabled);
+    const wantsGrain = get(grainEnabled);
+    const wantsSunShafts = get(sunShaftsEnabled);
+    const wantsPostFx =
+      wantsDistanceTint || wantsGrain || wantsSunShafts || wantsAtmosphere;
+    const wanted = wantsPostFx && get(renderingMode) !== 'ray';
     const hasGlow = sceneHasGlowMesh || hasGlowInVoxelGroup(voxelGroup);
     if (!wanted) {
       planarAtmospherePassGL.enabled = false;
+      distanceTintPassGL.enabled = false;
+      sunShaftsPassGL.enabled = false;
+      grainPassGL.enabled = false;
       atmosphereOnlyFogPass.enabled = false;
+      atmosphereOnlyDistanceTintPass.enabled = false;
+      atmosphereOnlySunShaftsPass.enabled = false;
+      atmosphereOnlyGrainPass.enabled = false;
       return;
     }
     planarAtmospherePassGL.enabled = hasGlow;
+    distanceTintPassGL.enabled = hasGlow;
+    sunShaftsPassGL.enabled = hasGlow;
+    grainPassGL.enabled = hasGlow;
     atmosphereOnlyFogPass.enabled = !hasGlow;
+    atmosphereOnlyDistanceTintPass.enabled = !hasGlow;
+    atmosphereOnlySunShaftsPass.enabled = !hasGlow;
+    atmosphereOnlyGrainPass.enabled = !hasGlow;
+    if (bloomMixPass) bloomMixPass.enabled = hasGlow;
     const el = renderer.domElement;
+    const sunUv = getSunScreenUv(camera as THREE.Camera);
     const opts = {
       fogColorHex: get(atmosphereColor),
       fogDensity: get(atmosphereDensity),
+      fogEnabled: wantsAtmosphere,
       fogThickness: get(atmosphereThickness),
       mode: get(atmosphereMode),
       spatialMode: get(atmosphereSpatialMode),
       plane: get(atmospherePlane),
+      fogHeightBias: get(atmosphereHeightBias),
+      fogHeightFalloff: get(atmosphereHeightFalloff),
+      fogDriftEnabled: get(atmosphereDriftEnabled),
+      fogDriftAmount: get(atmosphereDriftAmount),
+      fogDriftScale: get(atmosphereDriftScale),
+      fogDriftSpeed: get(atmosphereDriftSpeed),
+      timeSeconds: performance.now() * 0.001,
+      distanceTintEnabled: false,
+      distanceTintNearColorHex: '#ffffff',
+      distanceTintMidColorHex: '#ffffff',
+      distanceTintFarColorHex: '#ffffff',
+      distanceTintNearDist: 1,
+      distanceTintFarDist: 2,
+      distanceTintStrength: 0,
+      grainEnabled: false,
+      grainStrength: 0,
+      grainAnimated: false,
+      grainSpeed: 0,
+      sunShaftsEnabled: false,
+      sunScreenUv: sunUv,
+      sunShaftsStrength: 0,
+      sunShaftsDecay: 0,
+      sunShaftsDensity: 0,
+      sunShaftsWeight: 0,
+      sunShaftsSamples: 1,
       width: el.width,
       height: el.height
     };
@@ -4630,28 +4753,114 @@
     if (atmosphereOnlyFogPass.enabled) {
       updatePlanarAtmosphereShaderUniforms(atmosphereOnlyFogPass, camera, opts);
     }
+    const tintOpts = {
+      enabled: wantsDistanceTint,
+      nearColorHex: get(distanceTintNearColor),
+      midColorHex: get(distanceTintMidColor),
+      farColorHex: get(distanceTintFarColor),
+      nearDist: get(distanceTintNearDistance),
+      farDist: get(distanceTintFarDistance),
+      strength: get(distanceTintStrength),
+      width: el.width,
+      height: el.height
+    };
+    const shaftsOpts = {
+      enabled: wantsSunShafts,
+      colorHex: get(atmosphereColor),
+      sunScreenUv: sunUv,
+      strength: get(sunShaftsStrength),
+      decay: get(sunShaftsDecay),
+      density: get(sunShaftsDensity),
+      weight: get(sunShaftsWeight),
+      width: el.width,
+      height: el.height
+    };
+    const grainOpts = {
+      enabled: wantsGrain,
+      strength: get(grainStrength),
+      animated: get(grainAnimated),
+      speed: get(grainSpeed),
+      timeSeconds: performance.now() * 0.001,
+      width: el.width,
+      height: el.height
+    };
+    if (distanceTintPassGL.enabled) updateDistanceTintPassUniforms(distanceTintPassGL, camera, tintOpts);
+    if (atmosphereOnlyDistanceTintPass.enabled)
+      updateDistanceTintPassUniforms(atmosphereOnlyDistanceTintPass, camera, tintOpts);
+    if (sunShaftsPassGL.enabled) updateSunShaftsPassUniforms(sunShaftsPassGL, shaftsOpts);
+    if (atmosphereOnlySunShaftsPass.enabled)
+      updateSunShaftsPassUniforms(atmosphereOnlySunShaftsPass, shaftsOpts);
+    if (grainPassGL.enabled) updateGrainPassUniforms(grainPassGL, grainOpts);
+    if (atmosphereOnlyGrainPass.enabled) updateGrainPassUniforms(atmosphereOnlyGrainPass, grainOpts);
   }
 
   function prepareWebGPUBloomAtmosphere(): boolean {
     if (!webgpuBloomPipeline || !camera) return false;
+    const wantsAtmosphere = get(atmosphereActiveForRender);
+    const wanted =
+      wantsAtmosphere || get(distanceTintEnabled) || get(grainEnabled) || get(sunShaftsEnabled);
     if (get(renderingMode) === 'ray') {
       webgpuBloomPipeline.setPlanarAtmosphereEnabled(false);
       return false;
     }
-    const wanted = get(atmosphereActiveForRender);
     webgpuBloomPipeline.setPlanarAtmosphereEnabled(wanted);
     if (wanted) {
+      const sunUv = getSunScreenUv(camera as THREE.Camera);
       webgpuBloomPipeline.updatePlanarAtmosphereUniforms({
         camera,
         fogColorHex: get(atmosphereColor),
         fogDensity: get(atmosphereDensity),
+        fogEnabled: wantsAtmosphere,
         fogThickness: get(atmosphereThickness),
         mode: get(atmosphereMode),
         spatialMode: get(atmosphereSpatialMode),
-        plane: get(atmospherePlane)
+        plane: get(atmospherePlane),
+        fogHeightBias: get(atmosphereHeightBias),
+        fogHeightFalloff: get(atmosphereHeightFalloff),
+        fogDriftEnabled: get(atmosphereDriftEnabled),
+        fogDriftAmount: get(atmosphereDriftAmount),
+        fogDriftScale: get(atmosphereDriftScale),
+        fogDriftSpeed: get(atmosphereDriftSpeed),
+        timeSeconds: performance.now() * 0.001,
+        distanceTintEnabled: get(distanceTintEnabled),
+        distanceTintNearColorHex: get(distanceTintNearColor),
+        distanceTintMidColorHex: get(distanceTintMidColor),
+        distanceTintFarColorHex: get(distanceTintFarColor),
+        distanceTintNearDist: get(distanceTintNearDistance),
+        distanceTintFarDist: get(distanceTintFarDistance),
+        distanceTintStrength: get(distanceTintStrength),
+        grainEnabled: get(grainEnabled),
+        grainStrength: get(grainStrength),
+        grainAnimated: get(grainAnimated),
+        grainSpeed: get(grainSpeed),
+        sunShaftsEnabled: get(sunShaftsEnabled),
+        sunScreenUv: sunUv,
+        sunShaftsStrength: get(sunShaftsStrength),
+        sunShaftsDecay: get(sunShaftsDecay),
+        sunShaftsDensity: get(sunShaftsDensity),
+        sunShaftsWeight: get(sunShaftsWeight),
+        sunShaftsSamples: get(sunShaftsSamples)
       });
     }
     return wanted;
+  }
+
+  function getSunScreenUv(cam: THREE.Camera): { x: number; y: number } {
+    if (!dirLight) return { x: 0.5, y: 0.2 };
+    const lightPos = new THREE.Vector3();
+    const targetPos = new THREE.Vector3();
+    dirLight.getWorldPosition(lightPos);
+    dirLight.target.getWorldPosition(targetPos);
+    const toLight = lightPos.sub(targetPos);
+    if (toLight.lengthSq() < 1e-10) return { x: 0.5, y: 0.2 };
+    toLight.normalize();
+    // Directional light "sun" is directional; project a far probe point along light dir.
+    const probe = cam.position.clone().add(toLight.multiplyScalar(2048));
+    const sunNdc = probe.project(cam);
+    // Allow slight offscreen values so shafts still appear near frame edges.
+    const x = Math.min(1.25, Math.max(-0.25, sunNdc.x * 0.5 + 0.5));
+    const y = Math.min(1.25, Math.max(-0.25, sunNdc.y * 0.5 + 0.5));
+    return { x, y };
   }
 
   async function setupWebGPUBloomPipeline() {
@@ -4765,6 +4974,9 @@
         atmosphereOnlyComposer,
         atmosphereOnlyScenePass,
         atmosphereOnlyFogPass,
+        atmosphereOnlyDistanceTintPass,
+        atmosphereOnlySunShaftsPass,
+        atmosphereOnlyGrainPass,
         prepareWebGPUBloomAtmosphere
       });
       lightingFlushPendingWebGpuShadowInvalidate(renderer, get(enableShadows), dirLight);
@@ -4820,6 +5032,19 @@
       getAmbientIntensity: () => get(ambientIntensity),
       getSceneEnvironmentIntensity: () => get(sceneEnvironmentIntensity),
       getEnableShadows: () => get(enableShadows),
+      getDistanceTintEnabled: () => get(distanceTintEnabled),
+      getDistanceTintNearColor: () => get(distanceTintNearColor),
+      getDistanceTintMidColor: () => get(distanceTintMidColor),
+      getDistanceTintFarColor: () => get(distanceTintFarColor),
+      getDistanceTintNearDistance: () => get(distanceTintNearDistance),
+      getDistanceTintFarDistance: () => get(distanceTintFarDistance),
+      getDistanceTintStrength: () => get(distanceTintStrength),
+      getGrainEnabled: () => get(grainEnabled),
+      getGrainStrength: () => get(grainStrength),
+      getGrainAnimated: () => get(grainAnimated),
+      getGrainSpeed: () => get(grainSpeed),
+      getSunShaftsEnabled: () => get(sunShaftsEnabled),
+      getSunShaftsStrength: () => get(sunShaftsStrength),
       getRayTraceContentDirty: () => {
         const p = pendingRayContentInvalidate;
         pendingRayContentInvalidate = false;
@@ -4844,6 +5069,10 @@
       getFlyControlsEnabled: () => !!flyControls?.enabled,
       getPipelineAppliedThisFrame: () => pipelineApplied,
       getCanvasPresentationDirty: () => canvasPresentationDirty,
+      getShouldAnimatePostFx: () =>
+        get(renderingMode) !== 'ray' &&
+        ((get(grainEnabled) && get(grainAnimated)) ||
+          (get(atmosphereActiveForRender) && get(atmosphereDriftEnabled))),
       getVoxellePreferences: () => get(voxellePreferences),
       render
     });

@@ -27,8 +27,12 @@
     gap: 0.35rem;
   }
   .tool-buttons button {
+    flex: 1 1 calc(50% - 0.35rem);
     padding: 0.4rem 0.6rem;
     font-size: 0.9rem;
+    line-height: 1.15;
+    min-height: 2.6rem;
+    white-space: normal;
     border: 1px solid var(--border-color);
     border-radius: 4px;
     background: var(--bg-color);
