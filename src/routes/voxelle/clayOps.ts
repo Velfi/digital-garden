@@ -123,10 +123,13 @@ export function applySmooth(
 
   const toAdd = new Map<string, Voxel>();
   const toRemove = new Set<string>();
+  const seenBrush = new Set<string>();
 
   for (const [x, y, z] of brushPositions) {
     if (!withinBounds(x, y, z, gridSizeOrBounds)) continue;
     const key = coordKey(x, y, z);
+    if (seenBrush.has(key)) continue;
+    seenBrush.add(key);
     const filled = v.has(key);
     const { filledCount, neighborVoxels, neighborSlotCount } = collectNeighborStats(
       v,

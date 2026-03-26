@@ -36,6 +36,11 @@ import {
   smoothAggressiveness,
   meltMaxPasses,
   meltStyle,
+  terrainClayOp,
+  terrainBaseY,
+  terrainStrength,
+  terrainSmoothRadius,
+  clayBrushRadius,
   ensureGridFitsPositions,
   generateRockVoxels,
   generateAshlarVoxels,
@@ -144,6 +149,7 @@ import {
   type InsectaSpeciesId
 } from '../store/index';
 import { applySmooth, applyLevel, applyMelt, applyInflate } from '../clayOps';
+import { applyTerrainStroke } from '../terrainClayOps';
 
 function getStampTargetForPlaceOnFace(
   place: [number, number, number],
@@ -409,14 +415,32 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
       | 'melt'
       | 'rope'
       | 'wall'
-      | 'inflate',
-    levelY: number
+      | 'inflate'
+      | 'terrain',
+    levelY: number,
+    /** Pre-thicken clay path; used for terrain raise/lower radial falloff. */
+    terrainFalloffPath?: [number, number, number][]
   ) {
     ensureGridFitsPositions(positions);
     const clayBoundsOrSize = getEffectiveBounds(ctx.getLiveVoxels(), 512);
     const boundSize: number | undefined = undefined;
     const getCol = getPaintColorResolver();
     const v = ctx.getLiveVoxels();
+    if (clayModeVal === 'terrain') {
+      const { toAdd, toRemove } = applyTerrainStroke(v, positions, clayBoundsOrSize, {
+        op: get(terrainClayOp),
+        terrainBaseY: get(terrainBaseY),
+        strength: get(terrainStrength),
+        smoothRadius: get(terrainSmoothRadius),
+        brushRadius: get(clayBrushRadius) * 0.5,
+        falloffPath: terrainFalloffPath
+      }, getCol);
+      updateVoxelsInStroke((next) => {
+        for (const key of toRemove) next.delete(key);
+        for (const [key, c] of toAdd) next.set(key, c);
+      });
+      return;
+    }
     if (clayModeVal === 'melt') {
       const { toAdd, toRemove } = applyMelt(v, positions, clayBoundsOrSize, {
         maxPassesCap: get(meltMaxPasses),

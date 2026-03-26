@@ -68,7 +68,11 @@ export type ClayMode =
   | 'melt'
   | 'rope'
   | 'wall'
-  | 'inflate';
+  | 'inflate'
+  | 'terrain';
+
+/** Terrain clay: heightfield raise / lower / smooth (Y-up columns). */
+export type TerrainClayOp = 'raise' | 'lower' | 'smooth';
 
 export type RopeBrushShape = 'sphere' | 'cube';
 /** Rope mode: direction of gravity (sag). */
@@ -80,7 +84,7 @@ const DEFAULT_COLOR = 0x888888;
 /** Maximum grid size when not unbounded. Unbounded projects have no placement limit. */
 export const MAX_GRID_SIZE = 65536;
 /** Max brush/stamp size in voxels (index 0..MAX_BRUSH_SIZE-1 => 1..MAX_BRUSH_SIZE). */
-export const MAX_BRUSH_SIZE = 25;
+export const MAX_BRUSH_SIZE = 64;
 
 export type StrokeMode =
   | 'line'
@@ -227,6 +231,14 @@ export const smoothAggressiveness = writable<number>(100);
 export const meltMaxPasses = writable<number>(0);
 /** Melt: fried-egg flatten vs legacy gravity flow inside brush. */
 export const meltStyle = writable<'friedEgg' | 'gravity'>('friedEgg');
+/** Terrain clay: raise, lower, or smooth column tops (heightfield). */
+export const terrainClayOp = writable<TerrainClayOp>('raise');
+/** Terrain: fill floor Y per column uses min(this, column min Y). */
+export const terrainBaseY = writable<number>(0);
+/** Terrain raise/lower: max voxels delta at brush center (falloff toward edge). */
+export const terrainStrength = writable<number>(4);
+/** Terrain smooth: Chebyshev neighbor radius for averaging column tops. */
+export const terrainSmoothRadius = writable<number>(1);
 /** Rope mode: tension 0–1 (0=max sag, 1=taut). */
 export const ropeTension = writable<number>(0.5);
 /** Rope mode: brush shape (sphere or cube). */

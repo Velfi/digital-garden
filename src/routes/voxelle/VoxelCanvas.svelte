@@ -2536,7 +2536,7 @@
       return;
     }
 
-    // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/melt/wall)
+    // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/melt/wall/terrain)
     if (
       $tool === 'clay' &&
       (mode === 'bulk' ||
@@ -2545,7 +2545,8 @@
         mode === 'gouge' ||
         mode === 'melt' ||
         mode === 'wall' ||
-        mode === 'inflate')
+        mode === 'inflate' ||
+        mode === 'terrain')
     ) {
       // Start on voxel (grab surface) or face of voxel (extend outward)
       const pos = getVoxelPosition(hit) ?? getAddPosition(hit);
@@ -3054,7 +3055,8 @@
         clayModeVal === 'gouge' ||
         clayModeVal === 'melt' ||
         clayModeVal === 'wall' ||
-        clayModeVal === 'inflate');
+        clayModeVal === 'inflate' ||
+        clayModeVal === 'terrain');
     if (isClayPathFollow) {
       lastBulkPos = startPos;
     } else if (get(effectiveStrokeMode) === 'airbrush') {
@@ -3305,7 +3307,8 @@
               clayPathMode === 'gouge' ||
               clayPathMode === 'melt' ||
               clayPathMode === 'wall' ||
-              clayPathMode === 'inflate') &&
+              clayPathMode === 'inflate' ||
+              clayPathMode === 'terrain') &&
             lastBulkPos;
           // Wall + lock start height: when cursor is in empty space, intersect ray with locked plane so path extends into thin air
           if (
@@ -4122,7 +4125,8 @@
           clayModeVal === 'branch' ||
           clayModeVal === 'melt' ||
           clayModeVal === 'wall' ||
-          clayModeVal === 'inflate');
+          clayModeVal === 'inflate' ||
+          clayModeVal === 'terrain');
       const normal = getEffectivePlaneNormal();
       if (mode === 'precise' && dragStartPos && preciseNormal && !isClayPath) {
         const toApply = pendingStrokePositions.length > 0 ? pendingStrokePositions : [dragStartPos];
@@ -4174,7 +4178,8 @@
               clayModeVal === 'branch' ||
               clayModeVal === 'melt' ||
               clayModeVal === 'wall' ||
-              clayModeVal === 'inflate');
+              clayModeVal === 'inflate' ||
+              clayModeVal === 'terrain');
           const toApply = thickenPathForStroke(pendingStrokePositions, {
             strokeMode: mode ?? get(strokeMode),
             clayMode: isClayPath ? clayModeVal : undefined,
@@ -4209,7 +4214,14 @@
           if ($tool === 'select') {
             applySelectStroke(toApply, selectionModeForCurrentGesture ?? get(selectionMode));
           } else if (isClayPath) {
-            runVoxelStroke(() => applyClayStroke(toApply, clayModeVal, dragStartPos?.[1] ?? 0));
+            runVoxelStroke(() =>
+              applyClayStroke(
+                toApply,
+                clayModeVal,
+                dragStartPos?.[1] ?? 0,
+                clayModeVal === 'terrain' ? pendingStrokePositions : undefined
+              )
+            );
           } else {
             runVoxelStroke(() => applyLineStroke(toApply));
           }

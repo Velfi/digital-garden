@@ -617,7 +617,8 @@ const CLAY_PATH_THICKEN_MODES = new Set<ClayMode>([
   'branch',
   'melt',
   'wall',
-  'inflate'
+  'inflate',
+  'terrain'
 ]);
 
 /**
@@ -671,6 +672,15 @@ export function thickenPathForStroke(
     const startR = params.branchTaperStartRadius ?? params.clayBrushRadius;
     const endR = params.branchTaperEndRadius ?? 0;
     return thickenPathTapered(positions, startR, endR);
+  }
+  // Terrain: columns are (x,z) only; expand brush in the horizontal plane (world Y up).
+  if (isClayPath && params.clayMode === 'terrain' && params.clayBrushRadius > 0) {
+    const shape = params.clayBrushShape ?? 'square';
+    const r = params.clayBrushRadius;
+    if (shape === 'circle' || shape === 'sphere') {
+      return diskPathInPlane(positions, r, 1);
+    }
+    return thickenPathInPlane(positions, r, 1);
   }
   // Bulk, smooth, melt: four brush shapes (2D in tangent plane vs 3D volumetric).
   if (

@@ -19,9 +19,13 @@
     wallWidth,
     wallHeight,
     wallLockStartHeight,
-    wallAxisAlign,
-    MAX_BRUSH_SIZE
-  } from '../store/index';
+  wallAxisAlign,
+  MAX_BRUSH_SIZE,
+  terrainClayOp,
+  terrainBaseY,
+  terrainStrength,
+  terrainSmoothRadius
+} from '../store/index';
   import type { SprayDirection } from '../store/index';
   import { SMOOTH_NEIGHBOR_RADIUS_MAX } from '../clayOps';
 
@@ -31,7 +35,9 @@
 
 {#if clayVisible}
   <section class="tool-panel-section tool-panel-clay" aria-label="Clay">
-    {#if ['bulk', 'smooth', 'level', 'gouge', 'branch', 'melt', 'inflate'].includes($clayMode)}
+    {#if ['bulk', 'smooth', 'level', 'gouge', 'branch', 'melt', 'inflate', 'terrain'].includes(
+      $clayMode
+    )}
       <div class="tool-panel-row">
         <span class="tool-panel-label">Brush</span>
         <input
@@ -87,6 +93,105 @@
             </div>
           </div>
         </div>
+      {/if}
+      {#if $clayMode === 'terrain'}
+        <div class="tool-panel-row tool-panel-row--brush-shape">
+          <span class="tool-panel-label">Brush shape</span>
+          <div class="stroke-buttons" role="group" aria-label="Terrain brush shape (horizontal XZ)">
+            <button
+              type="button"
+              class:active={$clayBrushShape === 'square' || $clayBrushShape === 'cube'}
+              onclick={() => clayBrushShape.set('square')}
+              title="Square footprint in XZ (world horizontal)"
+            >
+              Square
+            </button>
+            <button
+              type="button"
+              class:active={$clayBrushShape === 'circle' || $clayBrushShape === 'sphere'}
+              onclick={() => clayBrushShape.set('circle')}
+              title="Circular footprint in XZ (cube/sphere also use this for terrain)"
+            >
+              Circle
+            </button>
+          </div>
+        </div>
+        <div class="tool-panel-row">
+          <span class="tool-panel-label">Terrain</span>
+          <div class="stroke-buttons" role="group" aria-label="Terrain operation">
+            <button
+              type="button"
+              class:active={$terrainClayOp === 'raise'}
+              onclick={() => terrainClayOp.set('raise')}
+              title="Raise surface height under the brush"
+            >
+              Raise
+            </button>
+            <button
+              type="button"
+              class:active={$terrainClayOp === 'lower'}
+              onclick={() => terrainClayOp.set('lower')}
+              title="Lower surface height (valleys)"
+            >
+              Lower
+            </button>
+            <button
+              type="button"
+              class:active={$terrainClayOp === 'smooth'}
+              onclick={() => terrainClayOp.set('smooth')}
+              title="Blur heights in XZ (rolling hills)"
+            >
+              Smooth
+            </button>
+          </div>
+        </div>
+        <div class="tool-panel-row">
+          <span class="tool-panel-label">Base Y</span>
+          <input
+            type="number"
+            value={$terrainBaseY}
+            min={-512}
+            max={512}
+            step="1"
+            title="Fill floor when building columns (deep voxels below this are preserved)"
+            oninput={(e) =>
+              terrainBaseY.set(
+                Math.max(-512, Math.min(512, Number((e.target as HTMLInputElement).value) || 0))
+              )}
+          />
+        </div>
+        {#if $terrainClayOp === 'raise' || $terrainClayOp === 'lower'}
+          <div class="tool-panel-row">
+            <span class="tool-panel-label">Strength</span>
+            <input
+              type="range"
+              min="1"
+              max="32"
+              step="1"
+              value={$terrainStrength}
+              oninput={(e) =>
+                terrainStrength.set(Number((e.target as HTMLInputElement).value))}
+              title="Max voxels of raise/lower at brush center (falls off toward edge)"
+            />
+            <span class="tool-panel-value">{$terrainStrength}</span>
+          </div>
+        {/if}
+        {#if $terrainClayOp === 'smooth'}
+          <div class="tool-panel-row">
+            <span class="tool-panel-label">Smooth reach</span>
+            <input
+              type="range"
+              min="0"
+              max="8"
+              step="1"
+              value={$terrainSmoothRadius}
+              oninput={(e) =>
+                terrainSmoothRadius.set(Number((e.target as HTMLInputElement).value))}
+              title="XZ box radius (in columns) for averaging neighbor heights"
+            />
+            <span class="tool-panel-value">{$terrainSmoothRadius}</span>
+          </div>
+        {/if}
       {/if}
       {#if $clayMode === 'melt'}
         <div class="tool-panel-row">

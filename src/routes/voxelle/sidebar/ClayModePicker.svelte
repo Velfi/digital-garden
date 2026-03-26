@@ -39,6 +39,14 @@
     </button>
     <button
       type="button"
+      class:active={$clayMode === 'terrain'}
+      onclick={() => clayMode.set('terrain')}
+      title="Terrain: heightfield sculpt (raise, lower, smooth). Each column becomes a solid stack; caves collapse when edited."
+    >
+      Terrain
+    </button>
+    <button
+      type="button"
       class:active={$clayMode === 'gouge'}
       onclick={() => clayMode.set('gouge')}
       title="Gouge: carve trench along path"
