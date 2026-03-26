@@ -443,9 +443,15 @@ export {
   savePreferences,
   voxellePreferences,
   isRendererBackendPreference,
-  DEFAULT_RENDERER_BACKEND
+  isRayTraceBackendPreference,
+  DEFAULT_RENDERER_BACKEND,
+  DEFAULT_RAY_TRACE_BACKEND
 } from './preferences';
-export type { VoxellePreferences, RendererBackendPreference } from './preferences';
+export type {
+  VoxellePreferences,
+  RendererBackendPreference,
+  RayTraceBackendPreference
+} from './preferences';
 
 export {
   DEFAULT_TONE_MAPPING_PREFERENCE,

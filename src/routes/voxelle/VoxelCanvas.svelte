@@ -4844,6 +4844,7 @@
       getFlyControlsEnabled: () => !!flyControls?.enabled,
       getPipelineAppliedThisFrame: () => pipelineApplied,
       getCanvasPresentationDirty: () => canvasPresentationDirty,
+      getVoxellePreferences: () => get(voxellePreferences),
       render
     });
   }

@@ -17,6 +17,15 @@ export function isRendererBackendPreference(v: unknown): v is RendererBackendPre
 
 export const DEFAULT_RENDERER_BACKEND: RendererBackendPreference = 'auto';
 
+/** Ray trace: GPU TSL when eligible, else CPU progressive. */
+export type RayTraceBackendPreference = 'auto' | 'gpu' | 'cpu';
+
+export function isRayTraceBackendPreference(v: unknown): v is RayTraceBackendPreference {
+  return v === 'auto' || v === 'gpu' || v === 'cpu';
+}
+
+export const DEFAULT_RAY_TRACE_BACKEND: RayTraceBackendPreference = 'auto';
+
 export type VoxellePreferences = {
   /** Δx,Δy,Δz tooltip following the pointer during sculpt strokes (branch, depth adjust, etc.). */
   showMovementDeltaHint: boolean;
@@ -35,6 +44,19 @@ export type VoxellePreferences = {
   showFpsCounter: boolean;
   /** Optional cap for internal render pixel ratio. 0 uses full device pixel ratio. */
   maxPixelRatio: number;
+  /**
+   * Ray mode: `gpu` uses WebGPU TSL when the model is dense-only and has no glass/water; `cpu` always
+   * uses progressive CPU trace; `auto` picks GPU when eligible.
+   */
+  rayTraceBackend: RayTraceBackendPreference;
+  /** Ray mode: max main-thread ms per frame for CPU progressive (4–32). */
+  rayTickBudgetMs: number;
+  /** Ray mode: max internal trace buffer dimension (512–1920). */
+  rayMaxBufferDim: number;
+  /** Ray mode: temporal AA sample cap for CPU progressive (1–64). */
+  rayMaxTemporalSamples: number;
+  /** Ray mode: soft shadow rays per shaded point when not in coarse CPU pass (1–8). */
+  rayShadowSamples: number;
 };
 
 const DEFAULTS: VoxellePreferences = {
@@ -44,7 +66,12 @@ const DEFAULTS: VoxellePreferences = {
   toneMapping: DEFAULT_TONE_MAPPING_PREFERENCE,
   rendererBackend: DEFAULT_RENDERER_BACKEND,
   showFpsCounter: false,
-  maxPixelRatio: 0
+  maxPixelRatio: 0,
+  rayTraceBackend: DEFAULT_RAY_TRACE_BACKEND,
+  rayTickBudgetMs: 12,
+  rayMaxBufferDim: 1920,
+  rayMaxTemporalSamples: 64,
+  rayShadowSamples: 8
 };
 
 export function loadPreferences(): VoxellePreferences {
@@ -75,7 +102,38 @@ export function loadPreferences(): VoxellePreferences {
         Number.isFinite(o.maxPixelRatio) &&
         o.maxPixelRatio >= 0
           ? o.maxPixelRatio
-          : DEFAULTS.maxPixelRatio
+          : DEFAULTS.maxPixelRatio,
+      rayTraceBackend: isRayTraceBackendPreference(o.rayTraceBackend)
+        ? o.rayTraceBackend
+        : DEFAULTS.rayTraceBackend,
+      rayTickBudgetMs:
+        typeof o.rayTickBudgetMs === 'number' &&
+        Number.isFinite(o.rayTickBudgetMs) &&
+        o.rayTickBudgetMs >= 4 &&
+        o.rayTickBudgetMs <= 32
+          ? Math.round(o.rayTickBudgetMs)
+          : DEFAULTS.rayTickBudgetMs,
+      rayMaxBufferDim:
+        typeof o.rayMaxBufferDim === 'number' &&
+        Number.isFinite(o.rayMaxBufferDim) &&
+        o.rayMaxBufferDim >= 512 &&
+        o.rayMaxBufferDim <= 1920
+          ? Math.round(o.rayMaxBufferDim)
+          : DEFAULTS.rayMaxBufferDim,
+      rayMaxTemporalSamples:
+        typeof o.rayMaxTemporalSamples === 'number' &&
+        Number.isFinite(o.rayMaxTemporalSamples) &&
+        o.rayMaxTemporalSamples >= 1 &&
+        o.rayMaxTemporalSamples <= 64
+          ? Math.round(o.rayMaxTemporalSamples)
+          : DEFAULTS.rayMaxTemporalSamples,
+      rayShadowSamples:
+        typeof o.rayShadowSamples === 'number' &&
+        Number.isFinite(o.rayShadowSamples) &&
+        o.rayShadowSamples >= 1 &&
+        o.rayShadowSamples <= 8
+          ? Math.round(o.rayShadowSamples)
+          : DEFAULTS.rayShadowSamples
     };
   } catch {
     return { ...DEFAULTS };

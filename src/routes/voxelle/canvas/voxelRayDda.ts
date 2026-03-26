@@ -3,7 +3,14 @@
  * Voxel (i,j,k) occupies [i,i+1)×[j,j+1)×[k,k+1) in world space.
  */
 import { coordKey } from '../coordUtils';
+import {
+  lookupDense,
+  lookupHashTable,
+  unpackVoxelPayload,
+  type GpuVoxelAccel
+} from './gpuVoxelAccel';
 import type { Voxel } from '../voxelMaterial';
+import { VOXEL_MATERIAL_IDS } from '../voxelMaterial';
 
 const EPS = 1e-9;
 
@@ -69,6 +76,24 @@ export function lookupVoxel(
   return voxels.get(coordKey(x, y, z)) ?? null;
 }
 
+/** Dense/hash GPU accel or Map fallback (string keys). */
+export function lookupVoxelAccel(
+  accel: GpuVoxelAccel | null | undefined,
+  voxels: Map<string, Voxel>,
+  x: number,
+  y: number,
+  z: number
+): Voxel | null {
+  if (!accel || accel.kind === 'empty') {
+    return lookupVoxel(voxels, x, y, z);
+  }
+  const packed = accel.kind === 'dense' ? lookupDense(accel, x, y, z) : lookupHashTable(accel, x, y, z);
+  const u = unpackVoxelPayload(packed);
+  if (!u) return null;
+  const material = VOXEL_MATERIAL_IDS[u.materialIndex] ?? 'plastic';
+  return { color: u.color, material };
+}
+
 function dominantAxisFromDir(dx: number, dy: number, dz: number): [number, number, number] {
   const ax = Math.abs(dx);
   const ay = Math.abs(dy);
@@ -90,8 +115,10 @@ export function traceRayDda(
   dy: number,
   dz: number,
   voxels: Map<string, Voxel>,
-  maxDistance: number
+  maxDistance: number,
+  accel?: GpuVoxelAccel | null
 ): DdaHit | null {
+  const V = (xi: number, yi: number, zi: number) => lookupVoxelAccel(accel, voxels, xi, yi, zi);
   const len = Math.hypot(dx, dy, dz);
   if (len < EPS) return null;
   const rdx = dx / len;
@@ -133,7 +160,7 @@ export function traceRayDda(
   if (tMaxY < 0) tMaxY = 0;
   if (tMaxZ < 0) tMaxZ = 0;
 
-  const hitStart = lookupVoxel(voxels, x, y, z);
+  const hitStart = V(x, y, z);
   if (hitStart) {
     const [nx, ny, nz] = dominantAxisFromDir(-rdx, -rdy, -rdz);
     return {
@@ -168,7 +195,7 @@ export function traceRayDda(
 
     if (t > maxT) break;
 
-    const v = lookupVoxel(voxels, x, y, z);
+    const v = V(x, y, z);
     if (v) {
       let nx = 0;
       let ny = 0;
@@ -201,8 +228,10 @@ export function traceShadowRayDda(
   dy: number,
   dz: number,
   voxels: Map<string, Voxel>,
-  maxDistance: number
+  maxDistance: number,
+  accel?: GpuVoxelAccel | null
 ): [number, number, number] {
+  const W = (xi: number, yi: number, zi: number) => lookupVoxelAccel(accel, voxels, xi, yi, zi);
   const len = Math.hypot(dx, dy, dz);
   if (len < EPS) return [1, 1, 1];
   const rdx = dx / len;
@@ -268,7 +297,7 @@ export function traceShadowRayDda(
     }
   };
 
-  const hitStart = lookupVoxel(voxels, x, y, z);
+  const hitStart = W(x, y, z);
   if (hitStart) {
     if (!isTransmissiveMaterial(hitStart.material)) {
       return [0, 0, 0];
@@ -319,7 +348,7 @@ export function traceShadowRayDda(
     const z0 = z;
     const seg = Math.min(t, maxT) - tPrev;
     if (seg > 0) {
-      applySegment(lookupVoxel(voxels, x0, y0, z0), seg);
+      applySegment(W(x0, y0, z0), seg);
       if (fr <= 0 && fg <= 0 && fb <= 0) return [0, 0, 0];
     }
 
@@ -369,7 +398,8 @@ export function traceRayThroughGlass(
   dz: number,
   voxels: Map<string, Voxel>,
   maxDistance: number,
-  maxGlassLayers: number
+  maxGlassLayers: number,
+  accel?: GpuVoxelAccel | null
 ): DdaHit | null {
   const len = Math.hypot(dx, dy, dz);
   if (len < EPS) return null;
@@ -384,7 +414,7 @@ export function traceRayThroughGlass(
   let glassUsed = 0;
 
   while (glassUsed <= maxGlassLayers) {
-    const hit = traceRayDda(gx, gy, gz, dx, dy, dz, voxels, remaining);
+    const hit = traceRayDda(gx, gy, gz, dx, dy, dz, voxels, remaining, accel);
     if (!hit) return null;
     if (!isTransmissiveMaterial(hit.voxel.material)) return hit;
     if (glassUsed >= maxGlassLayers) return hit;
@@ -414,9 +444,10 @@ export function ddaPickVoxel(
   dy: number,
   dz: number,
   voxels: Map<string, Voxel>,
-  maxDistance: number
+  maxDistance: number,
+  accel?: GpuVoxelAccel | null
 ): DdaPickHit | null {
-  const hit = traceRayDda(ox, oy, oz, dx, dy, dz, voxels, maxDistance);
+  const hit = traceRayDda(ox, oy, oz, dx, dy, dz, voxels, maxDistance, accel);
   if (!hit) return null;
   const len = Math.hypot(dx, dy, dz) || 1;
   const ux = dx / len;

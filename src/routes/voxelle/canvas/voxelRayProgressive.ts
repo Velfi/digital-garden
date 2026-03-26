@@ -5,10 +5,11 @@
  */
 import * as THREE from 'three';
 import type { Voxel } from '../voxelMaterial';
+import type { GpuVoxelAccel } from './gpuVoxelAccel';
 import {
   distToExitUnitCell,
   GLASS_ABSORPTION_PER_UNIT,
-  lookupVoxel,
+  lookupVoxelAccel,
   maxRayDistanceForVoxels,
   traceRayDda,
   traceShadowRayDda
@@ -33,7 +34,16 @@ import {
 
 /** Shared cap for internal ray trace resolution (CPU progressive). */
 export const RAY_TRACE_MAX_BUFFER_DIM = 1920;
-const MAX_BUFFER_DIM = RAY_TRACE_MAX_BUFFER_DIM;
+
+/** Optional CPU progressive tuning (preferences). */
+export type VoxelRayProgressiveTickOptions = {
+  /** When set, DDA uses dense/hash lookups instead of string map keys. */
+  accel?: GpuVoxelAccel | null;
+  /** Upper bound for trace buffer dimension (default `RAY_TRACE_MAX_BUFFER_DIM`). */
+  maxBufferDim?: number;
+  /** Temporal accumulation cap (clamped to `MAX_TEMPORAL_SAMPLES`). */
+  maxTemporalSamples?: number;
+};
 const STRIDES = [8, 4, 2, 1] as const;
 
 /** Max main-thread time per `tick()` for CPU ray mode (ms). */
@@ -175,10 +185,12 @@ function mediumIorAtRayOrigin(
   rdx: number,
   rdy: number,
   rdz: number,
-  voxels: Map<string, Voxel>
+  voxels: Map<string, Voxel>,
+  accel: GpuVoxelAccel | null | undefined
 ): number {
   const eps = 1e-9;
-  const v = lookupVoxel(
+  const v = lookupVoxelAccel(
+    accel,
     voxels,
     Math.floor(ox + eps * rdx),
     Math.floor(oy + eps * rdy),
@@ -209,11 +221,12 @@ function absorptionRgbPerUnit(material: Voxel['material']): [number, number, num
 function isExposedWaterFace(
   voxels: Map<string, Voxel>,
   cell: [number, number, number],
-  faceNormal: [number, number, number]
+  faceNormal: [number, number, number],
+  accel: GpuVoxelAccel | null | undefined
 ): boolean {
   const [ix, iy, iz] = cell;
   const [nx, ny, nz] = faceNormal;
-  const neighbor = lookupVoxel(voxels, ix + nx, iy + ny, iz + nz);
+  const neighbor = lookupVoxelAccel(accel, voxels, ix + nx, iy + ny, iz + nz);
   return !neighbor || neighbor.material !== 'water';
 }
 
@@ -248,12 +261,13 @@ function transmissiveShadingNormal(
   cell: [number, number, number],
   hitPoint: [number, number, number],
   params: VoxelRayTraceParams,
-  voxels: Map<string, Voxel>
+  voxels: Map<string, Voxel>,
+  accel: GpuVoxelAccel | null | undefined
 ): [number, number, number] {
   if (voxel.material !== 'water') return faceNormal;
   const [nx, ny, nz] = faceNormal;
   if (Math.abs(ny) < 0.8 || nx !== 0 || nz !== 0) return faceNormal;
-  if (!isExposedWaterFace(voxels, cell, faceNormal)) return faceNormal;
+  if (!isExposedWaterFace(voxels, cell, faceNormal, accel)) return faceNormal;
   const [px, , pz] = hitPoint;
   return waterWaveNormal(px, pz, params.timeSeconds, ny > 0 ? 1 : -1);
 }
@@ -341,11 +355,12 @@ function traceSoftShadowTransmission(
   baseLz: number,
   params: VoxelRayTraceParams,
   voxels: Map<string, Voxel>,
-  maxShadowDist: number
+  maxShadowDist: number,
+  accel: GpuVoxelAccel | null | undefined
 ): [number, number, number] {
   const n = clampShadowSamples(params.shadowRaySamples);
   if (n <= 1) {
-    return traceShadowRayDda(ox, oy, oz, baseLx, baseLy, baseLz, voxels, maxShadowDist);
+    return traceShadowRayDda(ox, oy, oz, baseLx, baseLy, baseLz, voxels, maxShadowDist, accel);
   }
   let sr = 0;
   let sg = 0;
@@ -359,7 +374,7 @@ function traceSoftShadowTransmission(
       n,
       params.shadowSoftnessRadians
     );
-    const [a, b, c] = traceShadowRayDda(ox, oy, oz, jx, jy, jz, voxels, maxShadowDist);
+    const [a, b, c] = traceShadowRayDda(ox, oy, oz, jx, jy, jz, voxels, maxShadowDist, accel);
     sr += a;
     sg += b;
     sb += c;
@@ -375,7 +390,8 @@ function shadeOpaqueSurface(
   hitPoint: [number, number, number],
   params: VoxelRayTraceParams,
   voxels: Map<string, Voxel>,
-  maxShadowDist: number
+  maxShadowDist: number,
+  accel: GpuVoxelAccel | null | undefined
 ): { rgb: [number, number, number]; bloom: [number, number, number] } {
   const [nx, ny, nz] = faceNormal;
   const [vx, vy, vz] = rayDir;
@@ -400,7 +416,8 @@ function shadeOpaqueSurface(
       lz,
       params,
       voxels,
-      maxShadowDist
+      maxShadowDist,
+      accel
     );
   }
 
@@ -448,7 +465,8 @@ function shadeTransmissiveFallback(
   hitPoint: [number, number, number],
   voxels: Map<string, Voxel>,
   maxShadowDist: number,
-  etaIncident: number
+  etaIncident: number,
+  accel: GpuVoxelAccel | null | undefined
 ): { rgb: [number, number, number]; bloom: [number, number, number] } {
   const [nx, ny, nz] = faceNormal;
   const [rdx, rdy, rdz] = rayDir;
@@ -489,7 +507,8 @@ function shadeTransmissiveFallback(
       lz,
       params,
       voxels,
-      maxShadowDist
+      maxShadowDist,
+      accel
     );
   }
 
@@ -518,7 +537,8 @@ function traceAndShade(
   maxShadowDist: number,
   params: VoxelRayTraceParams,
   screenV: number,
-  bufH: number
+  bufH: number,
+  accel: GpuVoxelAccel | null | undefined
 ): { rgb: [number, number, number]; bloom: [number, number, number] } {
   let oox = ox;
   let ooy = oy;
@@ -533,10 +553,10 @@ function traceAndShade(
   let tg = 1;
   let tb = 1;
 
-  let mediumIor = mediumIorAtRayOrigin(oox, ooy, ooz, rdx, rdy, rdz, voxels);
+  let mediumIor = mediumIorAtRayOrigin(oox, ooy, ooz, rdx, rdy, rdz, voxels, accel);
 
   while (glassDepth < MAX_GLASS_DEPTH) {
-    const hit = traceRayDda(oox, ooy, ooz, rdx, rdy, rdz, voxels, rem);
+    const hit = traceRayDda(oox, ooy, ooz, rdx, rdy, rdz, voxels, rem, accel);
     if (!hit) {
       const miss = shadeMiss(params, screenV, bufH);
       return {
@@ -558,7 +578,8 @@ function traceAndShade(
         [px, py, pz],
         params,
         voxels,
-        maxShadowDist
+        maxShadowDist,
+        accel
       );
       return {
         rgb: [accR + tr * surf.rgb[0], accG + tg * surf.rgb[1], accB + tb * surf.rgb[2]],
@@ -572,7 +593,8 @@ function traceAndShade(
       hit.cell,
       [px, py, pz],
       params,
-      voxels
+      voxels,
+      accel
     );
 
     /** Last transmissive interface: no deeper transmission in this stack. */
@@ -585,7 +607,8 @@ function traceAndShade(
         [px, py, pz],
         voxels,
         maxShadowDist,
-        mediumIor
+        mediumIor,
+        accel
       );
       return {
         rgb: [accR + tr * fb.rgb[0], accG + tg * fb.rgb[1], accB + tb * fb.rgb[2]],
@@ -659,7 +682,7 @@ function traceAndShade(
       const ncx = Math.floor(npx);
       const ncy = Math.floor(npy);
       const ncz = Math.floor(npz);
-      const next = lookupVoxel(voxels, ncx, ncy, ncz);
+      const next = lookupVoxelAccel(accel, voxels, ncx, ncy, ncz);
       if (!next || !isTransmissiveMaterial(next.material) || next.material !== curGlass.material) {
         nextAfter = next;
         break;
@@ -689,7 +712,7 @@ function traceAndShade(
     ooy += rdy * step;
     ooz += rdz * step;
     rem -= step;
-    mediumIor = mediumIorAtRayOrigin(oox, ooy, ooz, rdx, rdy, rdz, voxels);
+    mediumIor = mediumIorAtRayOrigin(oox, ooy, ooz, rdx, rdy, rdz, voxels, accel);
     glassDepth++;
     if (rem < 1e-6) {
       const miss = shadeMiss(params, screenV, bufH);
@@ -789,6 +812,8 @@ export class VoxelRayProgressive {
   private temporalSampleCount = 0;
   /** Target sample count while an in-progress temporal pass is being blended. */
   private temporalBlendTarget = 0;
+  /** Effective temporal cap (from preferences, ≤ MAX_TEMPORAL_SAMPLES). */
+  private temporalCap = MAX_TEMPORAL_SAMPLES;
   private readonly rayOrigin = new THREE.Vector3();
   private readonly rayFar = new THREE.Vector3();
   private readonly rayDir = new THREE.Vector3();
@@ -841,7 +866,7 @@ export class VoxelRayProgressive {
       : 0;
     const temporalProgress = Math.min(
       1,
-      (this.temporalSampleCount + temporalBlockFrac) / Math.max(1, MAX_TEMPORAL_SAMPLES)
+      (this.temporalSampleCount + temporalBlockFrac) / Math.max(1, this.temporalCap)
     );
     return 0.5 + temporalProgress * 0.5;
   }
@@ -879,13 +904,24 @@ export class VoxelRayProgressive {
     params: VoxelRayTraceParams,
     fullInvalidated: boolean,
     camera: THREE.Camera,
-    budgetMs: number = DEFAULT_RAY_TICK_BUDGET_MS
+    budgetMs: number = DEFAULT_RAY_TICK_BUDGET_MS,
+    tickOptions?: VoxelRayProgressiveTickOptions
   ): void {
+    const bufferDimCap = Math.min(
+      RAY_TRACE_MAX_BUFFER_DIM,
+      Math.max(64, Math.floor(tickOptions?.maxBufferDim ?? RAY_TRACE_MAX_BUFFER_DIM))
+    );
+    this.temporalCap = Math.min(
+      MAX_TEMPORAL_SAMPLES,
+      Math.max(1, Math.floor(tickOptions?.maxTemporalSamples ?? MAX_TEMPORAL_SAMPLES))
+    );
+    const accel = tickOptions?.accel ?? null;
+
     let bufW = Math.max(1, Math.round(width * dpr));
     let bufH = Math.max(1, Math.round(height * dpr));
     const m = Math.max(bufW, bufH);
-    if (m > MAX_BUFFER_DIM) {
-      const s = MAX_BUFFER_DIM / m;
+    if (m > bufferDimCap) {
+      const s = bufferDimCap / m;
       bufW = Math.max(1, Math.round(bufW * s));
       bufH = Math.max(1, Math.round(bufH * s));
     }
@@ -980,6 +1016,8 @@ export class VoxelRayProgressive {
         const dx = this.rayDir.x;
         const dy = this.rayDir.y;
         const dz = this.rayDir.z;
+        const coarsePass = !temporalPhase && stride > 1;
+        const shadeParams = coarsePass ? { ...params, shadowRaySamples: 1 } : params;
         const { rgb, bloom } = traceAndShade(
           ox,
           oy,
@@ -990,9 +1028,10 @@ export class VoxelRayProgressive {
           voxels,
           maxDist,
           maxShadowDist,
-          params,
+          shadeParams,
           v,
-          bufH
+          bufH,
+          accel
         );
         const [lr, lg, lb] = rgb;
         const [br, bg, bb] = bloom;
@@ -1075,7 +1114,7 @@ export class VoxelRayProgressive {
     if (temporalPhase) {
       this.temporalSampleCount = this.temporalBlendTarget;
       this.temporalBlendTarget = 0;
-      this.converged = this.temporalSampleCount >= MAX_TEMPORAL_SAMPLES;
+      this.converged = this.temporalSampleCount >= this.temporalCap;
     } else if (this.strideIdx < STRIDES.length - 1) {
       this.strideIdx++;
     } else {
@@ -1084,7 +1123,7 @@ export class VoxelRayProgressive {
       this.temporalBlendTarget = 0;
       this.accumData.set(this.linearData);
       this.accumBloomData.set(this.linearBloomData);
-      this.converged = this.temporalSampleCount >= MAX_TEMPORAL_SAMPLES;
+      this.converged = this.temporalSampleCount >= this.temporalCap;
     }
 
     this.texture.needsUpdate = true;

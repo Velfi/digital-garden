@@ -1,6 +1,6 @@
 /**
  * CPU-side voxel acceleration structures (dense grid or open-addressed i32 hash table).
- * Intended for future WebGPU / tooling; ray mode uses CPU DDA on the voxel map directly.
+ * Used for WebGPU voxel textures and CPU ray DDA via `lookupVoxelAccel` in `voxelRayDda.ts`.
  */
 import { coordKey, getVoxelBounds, parseCoordKey } from '../coordUtils';
 import type { Voxel } from '../voxelMaterial';

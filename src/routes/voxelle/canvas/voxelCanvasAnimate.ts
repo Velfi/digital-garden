@@ -6,11 +6,12 @@ import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { applyFlyMovement, FLY_MOVE_SPEED, type FlyMoveState } from '../flyControls';
 import { hexToInt } from '../store/index';
-import type { Voxel } from '../store/index';
+import type { Voxel, VoxellePreferences } from '../store/index';
 import { buildVoxelRayTraceParams } from './voxelRayShared';
 import { DEFAULT_RAY_TICK_BUDGET_MS } from './voxelRayProgressive';
 import type { VoxelRayTsl } from './voxelRayTsl';
 import type { VoxelleRenderer } from './sceneSetup';
+import { isWebGPURenderer } from './rendererUtils';
 
 export type VoxelCanvasAnimateContext = {
   nowMs: number;
@@ -63,6 +64,7 @@ export type VoxelCanvasAnimateContext = {
   getPipelineAppliedThisFrame: () => boolean;
   /** Greedy/marching: presentation (lights, materials, prefs) changed since last draw. */
   getCanvasPresentationDirty: () => boolean;
+  getVoxellePreferences: () => VoxellePreferences;
   render: () => void;
 };
 
@@ -139,17 +141,20 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
 
     const contentDirty = ctx.getRayTraceContentDirty();
     ctx.setRayTraceContentDirty(false);
+    const prefs = ctx.getVoxellePreferences();
     const params = buildVoxelRayTraceParams(ctx.dirLight, ctx.hemisphereLight, {
       enableSky: ctx.getEnableSky(),
       backgroundHex: hexToInt(ctx.getBackgroundColor()),
       ambientIntensity: ctx.getAmbientIntensity(),
       sceneEnvironmentIntensity: ctx.getSceneEnvironmentIntensity(),
       enableShadows: ctx.getEnableShadows(),
-      timeSeconds: performance.now() * 0.001
+      timeSeconds: performance.now() * 0.001,
+      shadowRaySamples: prefs.rayShadowSamples
     });
 
     if (ctx.rayRenderer) {
       const texBefore = ctx.rayRenderer.output.beautyTexture;
+      const webgpuRenderer = isWebGPURenderer(ctx.renderer) ? ctx.renderer : null;
       ctx.rayRenderer.tick(
         delta,
         ctx.container.clientWidth,
@@ -159,7 +164,14 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
         params,
         contentDirty || camDirty,
         ctx.camera,
-        DEFAULT_RAY_TICK_BUDGET_MS
+        prefs.rayTickBudgetMs ?? DEFAULT_RAY_TICK_BUDGET_MS,
+        {
+          webgpuRenderer,
+          rayTraceBackend: prefs.rayTraceBackend,
+          rayTickBudgetMs: prefs.rayTickBudgetMs,
+          rayMaxBufferDim: prefs.rayMaxBufferDim,
+          rayMaxTemporalSamples: prefs.rayMaxTemporalSamples
+        }
       );
       const texAfter = ctx.rayRenderer.output.beautyTexture;
       if (texBefore !== texAfter) {

@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { DEFAULT_SHADOW_RAY_SAMPLES, DEFAULT_SHADOW_SOFTNESS_RADIANS } from './gpuSoftShadow';
+import {
+  clampShadowSamples,
+  DEFAULT_SHADOW_RAY_SAMPLES,
+  DEFAULT_SHADOW_SOFTNESS_RADIANS
+} from './gpuSoftShadow';
 
 export const MAX_GLASS_DEPTH = 4;
 export const MAX_TEMPORAL_SAMPLES = 64;
@@ -68,6 +72,8 @@ export function buildVoxelRayTraceParams(
     sceneEnvironmentIntensity: number;
     enableShadows: boolean;
     timeSeconds?: number;
+    /** Override soft shadow sample count (1–8); default from `gpuSoftShadow`. */
+    shadowRaySamples?: number;
   }
 ): VoxelRayTraceParams {
   const lightPos = new THREE.Vector3();
@@ -108,7 +114,7 @@ export function buildVoxelRayTraceParams(
     backgroundB: bb,
     enableSky: opts.enableSky,
     enableShadows: opts.enableShadows,
-    shadowRaySamples: DEFAULT_SHADOW_RAY_SAMPLES,
+    shadowRaySamples: clampShadowSamples(opts.shadowRaySamples ?? DEFAULT_SHADOW_RAY_SAMPLES),
     shadowSoftnessRadians: DEFAULT_SHADOW_SOFTNESS_RADIANS,
     timeSeconds: opts.timeSeconds ?? 0
   };
