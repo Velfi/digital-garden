@@ -56,7 +56,8 @@ export type Tool =
   | 'roof'
   | 'flora'
   | 'piscina'
-  | 'insecta';
+  | 'insecta'
+  | 'atmosphere';
 
 export type ClayMode =
   | 'bulk'
@@ -159,8 +160,8 @@ export function closeAddPanel(): void {
   addPanelStore.set({ ...defaultAddPanel });
 }
 
-/** Draw vs Clay vs Hand vs Fly vs Generators tab pane. Generators = procedural tools (e.g. rocks). */
-export type ToolPane = 'draw' | 'clay' | 'hand' | 'fly' | 'generators';
+/** Draw vs Clay vs Hand vs Fly vs Generators vs Mood tab pane. */
+export type ToolPane = 'draw' | 'clay' | 'hand' | 'fly' | 'generators' | 'mood';
 
 // Stores
 export const gridSize = writable<GridSize>(32);

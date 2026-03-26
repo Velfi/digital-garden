@@ -5,6 +5,7 @@
 import type { StrokeMode, Tool, ToolPane } from '../store/core';
 import { STROKE_TOOLS } from '../store/core';
 import { isGeneratorTool } from '../store/generators/registry';
+import { isMoodTool } from '../store/mood/registry';
 
 export function isStrokeTool(t: string): boolean {
   return STROKE_TOOLS.includes(t as (typeof STROKE_TOOLS)[number]);
@@ -70,6 +71,10 @@ export function generatorOptionsVisible(tool: string): boolean {
   return isGeneratorTool(tool);
 }
 
+export function moodOptionsVisible(tool: string): boolean {
+  return isMoodTool(tool);
+}
+
 /** Wide tool panel layout for multi-card generator UIs. */
 export function piscinaWide(tool: Tool): boolean {
   return tool === 'piscina' || tool === 'insecta';
@@ -102,6 +107,7 @@ export function toolPanelShellVisible(opts: {
     polygonVisible(strokeMode, tool) ||
     stampVisible(tool) ||
     clayVisible(tool) ||
-    generatorOptionsVisible(tool)
+    generatorOptionsVisible(tool) ||
+    moodOptionsVisible(tool)
   );
 }

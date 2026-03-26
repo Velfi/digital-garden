@@ -4,6 +4,7 @@
   import ClayToolOptions from './toolPanel/ClayToolOptions.svelte';
   import StampToolOptions from './toolPanel/StampToolOptions.svelte';
   import GeneratorToolOptions from './toolPanel/GeneratorToolOptions.svelte';
+  import MoodToolOptions from './toolPanel/MoodToolOptions.svelte';
   import SelectionGizmoTabs from './toolPanel/SelectionGizmoTabs.svelte';
   import {
     gizmoTabsVisible as gizmoTabsVisibleFn,
@@ -49,6 +50,7 @@
       <StampToolOptions />
       <GeneratorToolOptions />
       <ClayToolOptions />
+      <MoodToolOptions />
     </div>
   </div>
 {/if}

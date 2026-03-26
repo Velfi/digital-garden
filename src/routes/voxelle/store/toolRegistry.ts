@@ -11,7 +11,8 @@ export type ToolCategory =
   | 'navigation'
   | 'utility'
   | 'clay'
-  | 'generator';
+  | 'generator'
+  | 'mood';
 
 export type ToolDescriptor = {
   id: Tool;
@@ -162,6 +163,13 @@ const DESCRIPTORS: ToolDescriptor[] = [
     label: 'Insecta',
     title: 'Place procedural insects on a face; use sliders to shape',
     defaultPane: 'generators'
+  },
+  {
+    id: 'atmosphere',
+    category: 'mood',
+    label: 'Atmosphere',
+    title: 'Planar fog: click a voxel face to set the fog plane',
+    defaultPane: 'mood'
   }
 ];
 

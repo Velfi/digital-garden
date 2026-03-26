@@ -281,6 +281,30 @@ export {
 } from './generators/registry';
 
 export {
+  MOOD_TOOLS,
+  MOOD_FACE_CLICK_TOOLS,
+  isMoodTool,
+  isMoodFaceClickTool,
+  type MoodToolId
+} from './mood/registry';
+
+export {
+  atmosphereEnabled,
+  atmosphereColor,
+  atmosphereThickness,
+  atmosphereDensity,
+  atmosphereMode,
+  atmosphereSpatialMode,
+  atmospherePlane,
+  atmospherePlaneValid,
+  atmosphereActiveForRender,
+  setAtmospherePlaneFromWorldPointAndNormal,
+  clearAtmospherePlane
+} from './atmosphere';
+
+export type { AtmosphereMode, AtmospherePlane, AtmosphereSpatialMode } from './atmosphere';
+
+export {
   getToolDescriptor,
   listToolDescriptors,
   listToolsInCategory,

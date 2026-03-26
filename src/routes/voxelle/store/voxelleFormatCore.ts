@@ -22,6 +22,16 @@ export type VoxelleFileFormat = {
   scene?: {
     focalLength?: number;
     orthographic?: boolean;
+    atmosphere?: {
+      enabled?: boolean;
+      color?: string;
+      thickness?: number;
+      density?: number;
+      mode?: 'slab' | 'positiveSide';
+      spatial?: 'plane' | 'aerial';
+      plane?: { nx: number; ny: number; nz: number; c: number };
+      planeValid?: boolean;
+    };
   };
 };
 

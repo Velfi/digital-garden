@@ -4,6 +4,7 @@
 import type { Intersection } from 'three';
 import type { FaceNormal } from '../../store/core';
 import type { GeneratorPrimaryPointerUpDeps, GeneratorRmbDeps } from './generatorPointer';
+import type { MoodPointerUpDeps } from './moodPointer';
 
 export interface VoxelGeneratorRmbBridge {
   getTool: () => string;
@@ -113,6 +114,27 @@ export function buildVoxelGeneratorPrimaryPointerUpDeps(
     getNextInsectaSeed: b.getNextInsectaSeed,
     setNextInsectaSeed: b.setNextInsectaSeed,
     commitInsectaSurfacePick: b.commitInsectaSurfacePick,
+    scheduleRender: b.scheduleRender
+  };
+}
+
+export function buildVoxelMoodPointerUpDeps(
+  b: Pick<
+    VoxelGeneratorPrimaryPointerUpBridge,
+    | 'getTool'
+    | 'getAddPanelOpen'
+    | 'getIntersection'
+    | 'updatePointerFromEvent'
+    | 'getFaceNormalFromHit'
+    | 'scheduleRender'
+  >
+): MoodPointerUpDeps {
+  return {
+    tool: b.getTool(),
+    addPanelOpen: b.getAddPanelOpen(),
+    getIntersection: b.getIntersection,
+    updatePointerFromEvent: b.updatePointerFromEvent,
+    getFaceNormalFromHit: b.getFaceNormalFromHit,
     scheduleRender: b.scheduleRender
   };
 }

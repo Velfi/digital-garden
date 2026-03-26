@@ -17,6 +17,7 @@
   import StrokeModePicker from './sidebar/StrokeModePicker.svelte';
   import ClayModePicker from './sidebar/ClayModePicker.svelte';
   import GeneratorPicker from './sidebar/GeneratorPicker.svelte';
+  import MoodPicker from './sidebar/MoodPicker.svelte';
   import SymmetrySection from './sidebar/SymmetrySection.svelte';
   import ColorSection from './sidebar/ColorSection.svelte';
   import CameraSection from './sidebar/CameraSection.svelte';
@@ -161,7 +162,8 @@
               $lastDrawTool === 'roof' ||
               $lastDrawTool === 'flora' ||
               $lastDrawTool === 'piscina' ||
-              $lastDrawTool === 'insecta'
+              $lastDrawTool === 'insecta' ||
+              $lastDrawTool === 'atmosphere'
               ? 'remove'
               : $lastDrawTool
           );
@@ -196,6 +198,18 @@
       <button
         type="button"
         role="tab"
+        class:active={$toolPane === 'mood'}
+        aria-selected={$toolPane === 'mood'}
+        onclick={() => {
+          toolPane.set('mood');
+          tool.set('atmosphere');
+        }}
+      >
+        Mood
+      </button>
+      <button
+        type="button"
+        role="tab"
         class:active={$toolPane === 'fly'}
         aria-selected={$toolPane === 'fly'}
         onclick={() => {
@@ -220,6 +234,11 @@
     {:else if $toolPane === 'generators'}
       <div role="tabpanel">
         <GeneratorPicker />
+        <SymmetrySection />
+      </div>
+    {:else if $toolPane === 'mood'}
+      <div role="tabpanel">
+        <MoodPicker />
         <SymmetrySection />
       </div>
     {:else if $toolPane === 'hand'}
@@ -274,12 +293,14 @@
 
   .tab-bar {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.25rem;
     margin-bottom: 0.5rem;
   }
 
   .tab-bar button {
-    flex: 1;
+    flex: 1 1 auto;
+    min-width: 4rem;
     padding: 0.4rem 0.5rem;
     font-size: 0.85rem;
     font-weight: 600;

@@ -5,7 +5,6 @@
   import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
   import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
   import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-  import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
   import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
   import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
   import { onMount, onDestroy } from 'svelte';
@@ -222,6 +221,13 @@
     roofSaltSkew,
     roofWindingFlipTick,
     roofHollow,
+    atmosphereActiveForRender,
+    atmosphereColor,
+    atmosphereThickness,
+    atmosphereDensity,
+    atmosphereMode,
+    atmosphereSpatialMode,
+    atmospherePlane,
     type Tool,
     type FaceNormal,
     voxellePreferences,
@@ -314,9 +320,11 @@
   import { runPointerDownPrelude, runPointerMovePrelude } from './canvas/pointerOrchestrator';
   import { isSegmentedStrokeGestureActive } from './canvas/toolPhaseState';
   import { applyGeneratorFaceClickPointerUp } from './canvas/handlers/generatorPointer';
+  import { applyMoodFaceClickPointerUp } from './canvas/handlers/moodPointer';
   import {
     buildVoxelGeneratorPrimaryPointerUpDeps,
     buildVoxelGeneratorRmbDeps,
+    buildVoxelMoodPointerUpDeps,
     type VoxelGeneratorPrimaryPointerUpBridge,
     type VoxelGeneratorRmbBridge
   } from './canvas/handlers/voxelPointerCore';
@@ -326,6 +334,7 @@
     PRECISE_GUIDE_TEX_SIZE
   } from './canvas/voxelCanvasInit';
   import { isGeneratorFaceClickTool } from './store/generators/registry';
+  import { isMoodFaceClickTool } from './store/mood/registry';
   import { shouldEnableOrbitControls } from './store/interactionMode';
   import {
     getRaycastTargetsFrom,
@@ -348,7 +357,16 @@
     invalidateDirectionalShadowMap as lightingInvalidateDirectionalShadowMap,
     flushPendingWebGpuDirectionalShadowInvalidate as lightingFlushPendingWebGpuShadowInvalidate
   } from './canvas/voxelCanvasLighting';
-  import { renderVoxelCanvasPrimaryScene } from './canvas/voxelCanvasBloomRender';
+  import {
+    renderVoxelCanvasPrimaryScene,
+    hasGlowInVoxelGroup
+  } from './canvas/voxelCanvasBloomRender';
+  import {
+    VoxelleSceneRenderPass,
+    StashingPlanarAtmospherePass,
+    updatePlanarAtmosphereShaderUniforms,
+    type WebGLDepthStash
+  } from './canvas/planarAtmospherePass';
   import { runVoxelCanvasAnimateStep } from './canvas/voxelCanvasAnimate';
   import {
     PRECISE_PREVIEW_RENDER_ORDER,
@@ -525,7 +543,7 @@
   /** Selective glow bloom (glow voxels only); null if init failed. */
   let bloomComposer: EffectComposer | null = null;
   let finalComposer: EffectComposer | null = null;
-  let sharedSceneRenderPass: RenderPass | null = null;
+  let sharedSceneRenderPass: VoxelleSceneRenderPass | null = null;
   let unrealBloomPass: UnrealBloomPass | null = null;
   let bloomMixPass: ShaderPass | null = null;
   let bloomOutputPass: OutputPass | null = null;
@@ -535,6 +553,12 @@
   /** Track glow buckets so selective bloom passes can be skipped when empty. */
   let sceneHasGlowMesh = false;
   const bloomMaterialStash: Record<string, THREE.Material | THREE.Material[]> = {};
+  const webglDepthStash: WebGLDepthStash = { texture: null };
+  let planarAtmospherePassGL: ShaderPass | null = null;
+  let atmosphereOnlyComposer: EffectComposer | null = null;
+  let atmosphereOnlyScenePass: VoxelleSceneRenderPass | null = null;
+  let atmosphereOnlyFogPass: ShaderPass | null = null;
+  let atmosphereOnlyOutputPass: OutputPass | null = null;
 
   let orbitControls = $state<OrbitControls>();
   let flyControls: InstanceType<typeof PointerLockControls> | null = null;
@@ -2983,8 +3007,8 @@
       return;
     }
 
-    // Face-click generators: placement runs on pointerup; do not start stroke drag
-    if (isGeneratorFaceClickTool(get(tool))) {
+    // Face-click generators / mood: placement runs on pointerup; do not start stroke drag
+    if (isGeneratorFaceClickTool(get(tool)) || isMoodFaceClickTool(get(tool))) {
       requestAnimationFrame(() => render());
       return;
     }
@@ -4081,6 +4105,10 @@
       buildVoxelGeneratorPrimaryPointerUpDeps(voxelGeneratorPrimaryPointerUpBridge),
       event
     );
+    applyMoodFaceClickPointerUp(
+      buildVoxelMoodPointerUpDeps(voxelGeneratorPrimaryPointerUpBridge),
+      event
+    );
     if (event.button === 0 && isVoxelDrag) {
       updatePointerFromEvent(event);
       const mode = get(effectiveStrokeMode);
@@ -4453,11 +4481,21 @@
     bloomMixPass = null;
     bloomOutputPass?.dispose();
     bloomOutputPass = null;
+    planarAtmospherePassGL?.dispose();
+    planarAtmospherePassGL = null;
+    atmosphereOnlyFogPass?.dispose();
+    atmosphereOnlyFogPass = null;
+    atmosphereOnlyOutputPass?.dispose();
+    atmosphereOnlyOutputPass = null;
+    atmosphereOnlyComposer?.dispose();
+    atmosphereOnlyComposer = null;
+    atmosphereOnlyScenePass = null;
     bloomComposer?.dispose();
     bloomComposer = null;
     finalComposer?.dispose();
     finalComposer = null;
     sharedSceneRenderPass = null;
+    webglDepthStash.texture = null;
     if (bloomDarkMaterial) {
       bloomDarkMaterial.dispose();
       bloomDarkMaterial = null;
@@ -4491,12 +4529,15 @@
       type: THREE.UnsignedByteType,
       colorSpace: THREE.NoColorSpace
     });
+    const finalDepthTexture = new THREE.DepthTexture(1, 1);
     const finalRenderTarget = new THREE.WebGLRenderTarget(1, 1, {
       type: THREE.UnsignedByteType,
-      colorSpace: THREE.NoColorSpace
+      colorSpace: THREE.NoColorSpace,
+      depthBuffer: true,
+      depthTexture: finalDepthTexture
     });
 
-    sharedSceneRenderPass = new RenderPass(scene, camera);
+    sharedSceneRenderPass = new VoxelleSceneRenderPass(scene, camera, webglDepthStash);
     unrealBloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.58, 0.42, 0.15);
 
     bloomComposer = new EffectComposer(renderer, bloomRenderTarget);
@@ -4517,14 +4558,88 @@
     bloomMixPass = new ShaderPass(mixMaterial, 'baseTexture');
     bloomMixPass.needsSwap = true;
 
+    planarAtmospherePassGL = new StashingPlanarAtmospherePass(webglDepthStash);
+    planarAtmospherePassGL.enabled = false;
+
     bloomOutputPass = new OutputPass();
     finalComposer = new EffectComposer(renderer, finalRenderTarget);
     finalComposer.addPass(sharedSceneRenderPass);
     finalComposer.addPass(bloomMixPass);
+    finalComposer.addPass(planarAtmospherePassGL);
     finalComposer.addPass(bloomOutputPass);
+
+    const atmosphereOnlyDepthTexture = new THREE.DepthTexture(1, 1);
+    const atmosphereOnlyRT = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.UnsignedByteType,
+      colorSpace: THREE.NoColorSpace,
+      depthBuffer: true,
+      depthTexture: atmosphereOnlyDepthTexture
+    });
+    atmosphereOnlyComposer = new EffectComposer(renderer, atmosphereOnlyRT);
+    atmosphereOnlyScenePass = new VoxelleSceneRenderPass(scene, camera, webglDepthStash);
+    atmosphereOnlyFogPass = new StashingPlanarAtmospherePass(webglDepthStash);
+    atmosphereOnlyFogPass.enabled = false;
+    atmosphereOnlyOutputPass = new OutputPass();
+    atmosphereOnlyComposer.addPass(atmosphereOnlyScenePass);
+    atmosphereOnlyComposer.addPass(atmosphereOnlyFogPass);
+    atmosphereOnlyComposer.addPass(atmosphereOnlyOutputPass);
 
     bloomComposer.setSize(w, h);
     finalComposer.setSize(w, h);
+    atmosphereOnlyComposer.setSize(w, h);
+    atmosphereOnlyComposer.setPixelRatio(renderer.getPixelRatio());
+  }
+
+  function prepareWebGLAtmosphere(): void {
+    if (!planarAtmospherePassGL || !atmosphereOnlyFogPass || !camera || !renderer) return;
+    const wanted = get(atmosphereActiveForRender) && get(renderingMode) !== 'ray';
+    const hasGlow = sceneHasGlowMesh || hasGlowInVoxelGroup(voxelGroup);
+    if (!wanted) {
+      planarAtmospherePassGL.enabled = false;
+      atmosphereOnlyFogPass.enabled = false;
+      return;
+    }
+    planarAtmospherePassGL.enabled = hasGlow;
+    atmosphereOnlyFogPass.enabled = !hasGlow;
+    const el = renderer.domElement;
+    const opts = {
+      fogColorHex: get(atmosphereColor),
+      fogDensity: get(atmosphereDensity),
+      fogThickness: get(atmosphereThickness),
+      mode: get(atmosphereMode),
+      spatialMode: get(atmosphereSpatialMode),
+      plane: get(atmospherePlane),
+      width: el.width,
+      height: el.height
+    };
+    if (planarAtmospherePassGL.enabled) {
+      updatePlanarAtmosphereShaderUniforms(planarAtmospherePassGL, camera, opts);
+    }
+    if (atmosphereOnlyFogPass.enabled) {
+      updatePlanarAtmosphereShaderUniforms(atmosphereOnlyFogPass, camera, opts);
+    }
+  }
+
+  function prepareWebGPUBloomAtmosphere(): boolean {
+    if (!webgpuBloomPipeline || !camera) return false;
+    if (get(renderingMode) === 'ray') {
+      webgpuBloomPipeline.setPlanarAtmosphereEnabled(false);
+      return false;
+    }
+    const wanted = get(atmosphereActiveForRender);
+    webgpuBloomPipeline.setPlanarAtmosphereEnabled(wanted);
+    if (wanted) {
+      webgpuBloomPipeline.updatePlanarAtmosphereUniforms({
+        camera,
+        fogColorHex: get(atmosphereColor),
+        fogDensity: get(atmosphereDensity),
+        fogThickness: get(atmosphereThickness),
+        mode: get(atmosphereMode),
+        spatialMode: get(atmosphereSpatialMode),
+        plane: get(atmospherePlane)
+      });
+    }
+    return wanted;
   }
 
   async function setupWebGPUBloomPipeline() {
@@ -4567,6 +4682,8 @@
     bloomComposer?.setSize(w, h);
     finalComposer?.setPixelRatio(pr);
     finalComposer?.setSize(w, h);
+    atmosphereOnlyComposer?.setPixelRatio(pr);
+    atmosphereOnlyComposer?.setSize(w, h);
     if (webgpuBloomPipeline && container) {
       webgpuBloomPipeline.setSize(container.clientWidth, container.clientHeight, pr);
     }
@@ -4630,7 +4747,13 @@
         voxelGroup,
         bloomPassBackground,
         bloomDarkMaterial,
-        bloomMaterialStash
+        bloomMaterialStash,
+        prepareWebGLAtmosphere,
+        planarAtmospherePassGL,
+        atmosphereOnlyComposer,
+        atmosphereOnlyScenePass,
+        atmosphereOnlyFogPass,
+        prepareWebGPUBloomAtmosphere
       });
       lightingFlushPendingWebGpuShadowInvalidate(renderer, get(enableShadows), dirLight);
     }

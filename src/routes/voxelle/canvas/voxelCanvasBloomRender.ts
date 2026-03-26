@@ -5,6 +5,8 @@ import { dev } from '$app/environment';
 import * as THREE from 'three';
 import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import type { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import type { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import type { VoxelleSceneRenderPass } from './planarAtmospherePass';
 import { VOXELLE_GLOW_BLOOM_USERDATA_KEY } from '../voxelMaterial';
 import { isWebGPURenderer } from './rendererUtils';
 import type { VoxelleRenderer } from './sceneSetup';
@@ -88,6 +90,13 @@ export type VoxelPrimaryRenderParams = {
   bloomPassBackground: THREE.Color | null;
   bloomDarkMaterial: THREE.MeshBasicMaterial | null;
   bloomMaterialStash: Record<string, THREE.Material | THREE.Material[]>;
+  /** WebGL planar atmosphere (greedy / marchingCubes only). */
+  prepareWebGLAtmosphere?: () => void;
+  planarAtmospherePassGL: ShaderPass | null;
+  atmosphereOnlyComposer: EffectComposer | null;
+  atmosphereOnlyScenePass: VoxelleSceneRenderPass | null;
+  atmosphereOnlyFogPass: ShaderPass | null;
+  prepareWebGPUBloomAtmosphere?: () => boolean;
 };
 
 export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void {
@@ -105,7 +114,13 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
     voxelGroup,
     bloomPassBackground,
     bloomDarkMaterial,
-    bloomMaterialStash
+    bloomMaterialStash,
+    prepareWebGLAtmosphere,
+    planarAtmospherePassGL,
+    atmosphereOnlyComposer,
+    atmosphereOnlyScenePass,
+    atmosphereOnlyFogPass,
+    prepareWebGPUBloomAtmosphere
   } = p;
 
   if (dev && Object.keys(bloomMaterialStash).length > 0) {
@@ -117,6 +132,7 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
   const rayOut = rayRenderer?.output;
 
   if (webgpuBloomPipeline && isWebGPURenderer(renderer)) {
+    const webgpuAtm = prepareWebGPUBloomAtmosphere?.() ?? false;
     if (rayBloomEligible && rayOut) {
       scene.background = rayOut.beautyTexture;
       webgpuBloomPipeline.renderSceneToTarget(
@@ -139,10 +155,13 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
     } else if (renderingMode !== 'ray') {
       const rw = renderer as Parameters<WebGPUBloomPipeline['renderSceneToTarget']>[0];
       const hasGlow = sceneHasGlowMesh || hasGlowInVoxelGroup(voxelGroup);
-      if (!hasGlow) {
+      if (!hasGlow && !webgpuAtm) {
         rw.setMRT(null);
         rw.setRenderTarget(null);
         rw.render(scene, camera);
+      } else if (!hasGlow && webgpuAtm) {
+        webgpuBloomPipeline.renderSceneToTarget(rw, scene, camera);
+        webgpuBloomPipeline.renderPipeline.render();
       } else {
         webgpuBloomPipeline.renderSceneToTarget(rw, scene, camera);
         const savedWebGpuBloomBg = scene.background;
@@ -171,8 +190,20 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
       scene.background = rayOut.beautyTexture;
       finalComposer.render();
     } else if (renderingMode !== 'ray') {
+      prepareWebGLAtmosphere?.();
       const hasGlow = sceneHasGlowMesh || hasGlowInVoxelGroup(voxelGroup);
-      if (!hasGlow) {
+      const useAtmosphereOnly =
+        atmosphereOnlyComposer &&
+        atmosphereOnlyScenePass &&
+        atmosphereOnlyFogPass &&
+        atmosphereOnlyFogPass.enabled;
+
+      if (!hasGlow && useAtmosphereOnly) {
+        atmosphereOnlyScenePass.camera = camera;
+        atmosphereOnlyComposer.render();
+      } else if (!hasGlow) {
+        if (planarAtmospherePassGL) planarAtmospherePassGL.enabled = false;
+        if (atmosphereOnlyFogPass) atmosphereOnlyFogPass.enabled = false;
         renderer.render(scene, camera);
       } else {
         withBloomMaterialStash(scene, bloomDarkMaterial, bloomMaterialStash, () => {

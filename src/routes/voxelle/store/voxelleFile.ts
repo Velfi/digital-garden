@@ -1,6 +1,16 @@
 import { get } from 'svelte/store';
 import { coordKey, parseCoordKey } from '../coordUtils';
 import { voxels, hiddenVoxels, gridSize, focalLength, orthographic, resetUndo } from './core';
+import {
+  atmosphereEnabled,
+  atmosphereColor,
+  atmosphereThickness,
+  atmosphereDensity,
+  atmosphereMode,
+  atmosphereSpatialMode,
+  atmospherePlane,
+  atmospherePlaneValid
+} from './atmosphere';
 import { recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 import type { GridSize } from './core';
 import { VOXELLE_FORMAT_VERSION, type VoxelleFileFormat } from './voxelleFormatCore';
@@ -114,7 +124,17 @@ export function serializeToVoxelleFormat(): VoxelleFileFormat {
     }),
     scene: {
       focalLength: get(focalLength),
-      orthographic: get(orthographic)
+      orthographic: get(orthographic),
+      atmosphere: {
+        enabled: get(atmosphereEnabled),
+        color: get(atmosphereColor),
+        thickness: get(atmosphereThickness),
+        density: get(atmosphereDensity),
+        mode: get(atmosphereMode),
+        spatial: get(atmosphereSpatialMode),
+        plane: { ...get(atmospherePlane) },
+        planeValid: get(atmospherePlaneValid)
+      }
     }
   };
 }
@@ -189,6 +209,51 @@ function applyModelData(data: VoxelleFileFormat): void {
     }
     if (typeof data.scene.orthographic === 'boolean') {
       orthographic.set(data.scene.orthographic);
+    }
+    const atm = data.scene.atmosphere;
+    if (atm && typeof atm === 'object') {
+      if (typeof atm.enabled === 'boolean') atmosphereEnabled.set(atm.enabled);
+      if (typeof atm.color === 'string' && /^#?[0-9a-fA-F]{6}$/.test(atm.color)) {
+        atmosphereColor.set(atm.color.startsWith('#') ? atm.color : `#${atm.color}`);
+      }
+      if (typeof atm.thickness === 'number' && Number.isFinite(atm.thickness) && atm.thickness > 0) {
+        atmosphereThickness.set(Math.min(200, atm.thickness));
+      }
+      if (
+        typeof atm.density === 'number' &&
+        Number.isFinite(atm.density) &&
+        atm.density >= 0 &&
+        atm.density <= 1
+      ) {
+        atmosphereDensity.set(atm.density);
+      }
+      if (atm.mode === 'slab' || atm.mode === 'positiveSide') {
+        atmosphereMode.set(atm.mode);
+      }
+      if (atm.spatial === 'plane' || atm.spatial === 'aerial') {
+        atmosphereSpatialMode.set(atm.spatial);
+      }
+      const pl = atm.plane;
+      if (
+        pl &&
+        typeof pl.nx === 'number' &&
+        typeof pl.ny === 'number' &&
+        typeof pl.nz === 'number' &&
+        typeof pl.c === 'number' &&
+        [pl.nx, pl.ny, pl.nz, pl.c].every(Number.isFinite)
+      ) {
+        atmospherePlane.set({ nx: pl.nx, ny: pl.ny, nz: pl.nz, c: pl.c });
+      }
+      if (typeof atm.planeValid === 'boolean') {
+        atmospherePlaneValid.set(atm.planeValid);
+      } else if (
+        pl &&
+        typeof pl.nx === 'number' &&
+        typeof pl.ny === 'number' &&
+        typeof pl.nz === 'number'
+      ) {
+        atmospherePlaneValid.set(Math.hypot(pl.nx, pl.ny, pl.nz) > 1e-6);
+      }
     }
   }
 }
