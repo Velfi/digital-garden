@@ -28,11 +28,11 @@ Returned **refs** (cameras, `voxelGroup`, lights, controls, raycaster, etc.) are
 
 The store exposes `renderingMode`:
 
-| Mode | Visible geometry | Notes |
-|------|------------------|--------|
-| `greedy` | Merged quads per color/material bucket | Default; Minecraft-style face culling + greedy merging; vertex AO. |
-| `marchingCubes` | Same pipeline, different mesher in worker | Smoother surfaces; AO bias for glass shadows differs slightly. |
-| `ray` | **No** greedy meshes in the scene for voxels | `voxelGroup` meshes are disposed. Beauty + bloom come from [`canvas/voxelRayTsl.ts`](../canvas/voxelRayTsl.ts): **WebGPU TSL** full-screen trace when dense accel + eligible backend; otherwise **CPU progressive** (`VoxelRayProgressive`). Scene `background` is the beauty texture. Picking: CPU DDA in [`canvas/voxelRayDda.ts`](../canvas/voxelRayDda.ts) with a synthetic pick proxy. |
+| Mode            | Visible geometry                             | Notes                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `greedy`        | Merged quads per color/material bucket       | Default; Minecraft-style face culling + greedy merging; vertex AO.                                                                                                                                                                                                                                                                                                                          |
+| `marchingCubes` | Same pipeline, different mesher in worker    | Smoother surfaces; AO bias for glass shadows differs slightly.                                                                                                                                                                                                                                                                                                                              |
+| `ray`           | **No** greedy meshes in the scene for voxels | `voxelGroup` meshes are disposed. Beauty + bloom come from [`canvas/voxelRayTsl.ts`](../canvas/voxelRayTsl.ts): **WebGPU TSL** full-screen trace when dense accel + eligible backend; otherwise **CPU progressive** (`VoxelRayProgressive`). Scene `background` is the beauty texture. Picking: CPU DDA in [`canvas/voxelRayDda.ts`](../canvas/voxelRayDda.ts) with a synthetic pick proxy. |
 
 Mode switches trigger pipeline rebuilds (mesh path clears worker output; ray path invalidates GPU voxel resources).
 
@@ -110,15 +110,15 @@ WebGL sets `renderer.transmissionResolutionScale` (see scene setup). WebGPU reli
 
 ## 8. File map (quick reference)
 
-| Concern | Files |
-|--------|--------|
-| Scene + renderer | `canvas/sceneSetup.ts` |
-| Frame loop / batching | `VoxelCanvas.svelte`, `canvas/voxelCanvasAnimate.ts` |
-| Meshes, grid, overlays | `canvas/meshManager.ts`, `greedyMesh.ts`, `greedyMeshCore.ts` |
-| Worker | `voxelMeshWorker.ts`, `voxelMeshWorkerLogic.ts` |
-| Ray trace | `canvas/voxelRayProgressive.ts`, `canvas/voxelRayTsl.ts`, `canvas/voxelRayGpuTslTrace.ts`, `canvas/voxelRayGpuResources.ts`, `canvas/gpuSoftShadow.ts`, `canvas/voxelRayDda.ts` |
-| Bloom | `canvas/voxelCanvasBloomRender.ts`, `canvas/webgpuBloom.ts` |
-| Materials | `voxelMaterial.ts` |
-| State | `store/core.ts`, `store/index.ts` |
+| Concern                | Files                                                                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scene + renderer       | `canvas/sceneSetup.ts`                                                                                                                                                          |
+| Frame loop / batching  | `VoxelCanvas.svelte`, `canvas/voxelCanvasAnimate.ts`                                                                                                                            |
+| Meshes, grid, overlays | `canvas/meshManager.ts`, `greedyMesh.ts`, `greedyMeshCore.ts`                                                                                                                   |
+| Worker                 | `voxelMeshWorker.ts`, `voxelMeshWorkerLogic.ts`                                                                                                                                 |
+| Ray trace              | `canvas/voxelRayProgressive.ts`, `canvas/voxelRayTsl.ts`, `canvas/voxelRayGpuTslTrace.ts`, `canvas/voxelRayGpuResources.ts`, `canvas/gpuSoftShadow.ts`, `canvas/voxelRayDda.ts` |
+| Bloom                  | `canvas/voxelCanvasBloomRender.ts`, `canvas/webgpuBloom.ts`                                                                                                                     |
+| Materials              | `voxelMaterial.ts`                                                                                                                                                              |
+| State                  | `store/core.ts`, `store/index.ts`                                                                                                                                               |
 
 For agent-oriented upkeep, [`AGENTS.md`](../AGENTS.md) stays the source of truth for conventions and folder roles.

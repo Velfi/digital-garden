@@ -52,15 +52,15 @@
   border-color: var(--link-color);
 }
 
-:global(body:not(.light-mode)) .tool-buttons button.active,
-:global(body:not(.light-mode)) .stroke-buttons button.active {
+body:not(.light-mode) .tool-buttons button.active,
+body:not(.light-mode) .stroke-buttons button.active {
   color: #fff;
   background: color-mix(in srgb, var(--link-color) 40%, black);
   border-color: color-mix(in srgb, var(--link-color) 40%, black);
 }
 
-:global(body.light-mode) .tool-buttons button.active,
-:global(body.light-mode) .stroke-buttons button.active {
+body.light-mode .tool-buttons button.active,
+body.light-mode .stroke-buttons button.active {
   color: var(--text-color);
   background: color-mix(in srgb, var(--link-color) 20%, var(--bg-color));
   border-color: var(--link-color);

@@ -427,14 +427,20 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     const getCol = getPaintColorResolver();
     const v = ctx.getLiveVoxels();
     if (clayModeVal === 'terrain') {
-      const { toAdd, toRemove } = applyTerrainStroke(v, positions, clayBoundsOrSize, {
-        op: get(terrainClayOp),
-        terrainBaseY: get(terrainBaseY),
-        strength: get(terrainStrength),
-        smoothRadius: get(terrainSmoothRadius),
-        brushRadius: get(clayBrushRadius) * 0.5,
-        falloffPath: terrainFalloffPath
-      }, getCol);
+      const { toAdd, toRemove } = applyTerrainStroke(
+        v,
+        positions,
+        clayBoundsOrSize,
+        {
+          op: get(terrainClayOp),
+          terrainBaseY: get(terrainBaseY),
+          strength: get(terrainStrength),
+          smoothRadius: get(terrainSmoothRadius),
+          brushRadius: get(clayBrushRadius) * 0.5,
+          falloffPath: terrainFalloffPath
+        },
+        getCol
+      );
       updateVoxelsInStroke((next) => {
         for (const key of toRemove) next.delete(key);
         for (const [key, c] of toAdd) next.set(key, c);

@@ -229,7 +229,9 @@ function computeChunkGeometry(
   return results;
 }
 
-function isPackedSparseChunkInput(input: VoxelMeshWorkerInput['voxels']): input is PackedSparseChunkInput {
+function isPackedSparseChunkInput(
+  input: VoxelMeshWorkerInput['voxels']
+): input is PackedSparseChunkInput {
   return !Array.isArray(input) && 'dirtyChunks' in input && 'haloChunks' in input;
 }
 

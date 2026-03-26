@@ -37,7 +37,6 @@
       return { ...l, ...(allZero ? { tarsus: undefined } : { tarsus: t }) };
     });
   }
-
 </script>
 
 <div class="insecta-leg-block">
@@ -49,8 +48,12 @@
       onchange={(e) => patch({ enabled: (e.target as HTMLInputElement).checked })}
     />On</label
   >
-  <p class="insecta-leg-hint" title="Body frame: f = head→abdomen, s = lateral (mirrored), u = off face">
-    Hip U/V · knee = femur · foot = tibia · tar = optional segment on the ground (+f along substrate)
+  <p
+    class="insecta-leg-hint"
+    title="Body frame: f = head→abdomen, s = lateral (mirrored), u = off face"
+  >
+    Hip U/V · knee = femur · foot = tibia · tar = optional segment on the ground (+f along
+    substrate)
   </p>
   <div class="tool-panel-row">
     <span class="tool-panel-label">Hip U</span>

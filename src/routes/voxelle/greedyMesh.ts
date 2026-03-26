@@ -17,17 +17,14 @@ const OVERLAP_DARKEN = 0.5;
 export type PreviewOverlapShading = 'darken' | 'invert';
 
 function invertRgb24(hex: number): number {
-  const r = (~(hex >> 16)) & 0xff;
-  const g = (~(hex >> 8)) & 0xff;
+  const r = ~(hex >> 16) & 0xff;
+  const g = ~(hex >> 8) & 0xff;
   const b = ~hex & 0xff;
   return (r << 16) | (g << 8) | b;
 }
 
 /** Per-cell overlap tint for stroke / placement previews. */
-export function previewOverlapColor(
-  voxelColor: number,
-  shading: PreviewOverlapShading
-): number {
+export function previewOverlapColor(voxelColor: number, shading: PreviewOverlapShading): number {
   const c = voxelColor & 0xffffff;
   if (shading === 'darken') return darkenHex(c, OVERLAP_DARKEN);
   return invertRgb24(c);
@@ -104,9 +101,7 @@ export function buildPreviewGeometryFromVoxelMap(
     map = new Map();
     for (const [key, vx] of voxelMap) {
       map.set(key, {
-        color: existingVoxels.has(key)
-          ? previewOverlapColor(vx.color, overlapShading)
-          : vx.color,
+        color: existingVoxels.has(key) ? previewOverlapColor(vx.color, overlapShading) : vx.color,
         material: vx.material
       });
     }

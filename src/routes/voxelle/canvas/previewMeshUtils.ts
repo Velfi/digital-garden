@@ -7,10 +7,7 @@ import * as THREE from 'three';
  * WebGPU workaround: remove geometry dispose listeners before `dispose()` to avoid a
  * Three.js `attribute.id` crash after geometry/material swaps on preview meshes.
  */
-export function safeDisposeBufferGeometry(
-  geo: THREE.BufferGeometry,
-  isWebGPU: boolean
-): void {
+export function safeDisposeBufferGeometry(geo: THREE.BufferGeometry, isWebGPU: boolean): void {
   if (isWebGPU) {
     const listeners = (geo as unknown as { _listeners?: Record<string, unknown[]> })._listeners;
     if (listeners) delete listeners['dispose'];

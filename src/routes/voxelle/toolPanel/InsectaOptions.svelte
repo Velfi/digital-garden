@@ -120,8 +120,7 @@
             max="72"
             step="1"
             value={$insectaTotalLength}
-            oninput={(e) =>
-              insectaTotalLength.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaTotalLength.set(Number((e.target as HTMLInputElement).value))}
             title="Total body length"
           />
           <span class="tool-panel-value">{$insectaTotalLength}</span>
@@ -158,8 +157,7 @@
             max="75"
             step="1"
             value={$insectaAbdomenRatio}
-            oninput={(e) =>
-              insectaAbdomenRatio.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaAbdomenRatio.set(Number((e.target as HTMLInputElement).value))}
           />
           <span class="tool-panel-value">{$insectaAbdomenRatio}</span>
         </div>
@@ -171,8 +169,7 @@
             max="12"
             step="1"
             value={$insectaBodyHalfWidth}
-            oninput={(e) =>
-              insectaBodyHalfWidth.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaBodyHalfWidth.set(Number((e.target as HTMLInputElement).value))}
             title="Half-width (lateral)"
           />
           <span class="tool-panel-value">{$insectaBodyHalfWidth}</span>
@@ -185,8 +182,7 @@
             max="10"
             step="1"
             value={$insectaBodyHalfHeight}
-            oninput={(e) =>
-              insectaBodyHalfHeight.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaBodyHalfHeight.set(Number((e.target as HTMLInputElement).value))}
             title="Half-height (dorsal)"
           />
           <span class="tool-panel-value">{$insectaBodyHalfHeight}</span>
@@ -213,8 +209,7 @@
             max="100"
             step="1"
             value={$insectaHeadShape}
-            oninput={(e) =>
-              insectaHeadShape.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaHeadShape.set(Number((e.target as HTMLInputElement).value))}
             title="0 = squarish, 100 = narrow snout / triangular"
           />
           <span class="tool-panel-value">{$insectaHeadShape}</span>
@@ -231,8 +226,7 @@
             max="24"
             step="1"
             value={$insectaAnchorOffsetU}
-            oninput={(e) =>
-              insectaAnchorOffsetU.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaAnchorOffsetU.set(Number((e.target as HTMLInputElement).value))}
           />
           <span class="tool-panel-value">{$insectaAnchorOffsetU}</span>
         </div>
@@ -244,8 +238,7 @@
             max="24"
             step="1"
             value={$insectaAnchorOffsetV}
-            oninput={(e) =>
-              insectaAnchorOffsetV.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaAnchorOffsetV.set(Number((e.target as HTMLInputElement).value))}
           />
           <span class="tool-panel-value">{$insectaAnchorOffsetV}</span>
         </div>
@@ -269,8 +262,7 @@
             max="100"
             step="1"
             value={Math.round($insectaBodyArch * 100)}
-            oninput={(e) =>
-              insectaBodyArch.set(Number((e.target as HTMLInputElement).value) / 100)}
+            oninput={(e) => insectaBodyArch.set(Number((e.target as HTMLInputElement).value) / 100)}
           />
           <span class="tool-panel-value">{Math.round($insectaBodyArch * 100)}</span>
         </div>
@@ -300,8 +292,7 @@
             max="32"
             step="1"
             value={$insectaAntennaLength}
-            oninput={(e) =>
-              insectaAntennaLength.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaAntennaLength.set(Number((e.target as HTMLInputElement).value))}
           />
           <span class="tool-panel-value">{$insectaAntennaLength}</span>
         </div>
@@ -313,8 +304,7 @@
             max="45"
             step="1"
             value={$insectaAntennaSpread}
-            oninput={(e) =>
-              insectaAntennaSpread.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaAntennaSpread.set(Number((e.target as HTMLInputElement).value))}
           />
           <span class="tool-panel-value">{$insectaAntennaSpread}°</span>
         </div>
@@ -326,8 +316,7 @@
             max="80"
             step="1"
             value={$insectaAntennaPitch}
-            oninput={(e) =>
-              insectaAntennaPitch.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaAntennaPitch.set(Number((e.target as HTMLInputElement).value))}
           />
           <span class="tool-panel-value">{$insectaAntennaPitch}°</span>
         </div>
@@ -351,8 +340,7 @@
             max="8"
             step="1"
             value={$insectaMandibleLength}
-            oninput={(e) =>
-              insectaMandibleLength.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaMandibleLength.set(Number((e.target as HTMLInputElement).value))}
           />
           <span class="tool-panel-value">{$insectaMandibleLength}</span>
         </div>
@@ -364,8 +352,7 @@
             max="25"
             step="1"
             value={$insectaMandibleSpread}
-            oninput={(e) =>
-              insectaMandibleSpread.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaMandibleSpread.set(Number((e.target as HTMLInputElement).value))}
           />
           <span class="tool-panel-value">{$insectaMandibleSpread}</span>
         </div>
@@ -386,7 +373,10 @@
 
       <div class="insecta-card insecta-card--wings">
         <h4>Wings</h4>
-        <div class="tool-panel-row tool-panel-row--wide-label" title="0 = rectangular outline, 100 = tapered ellipse toward wing tip (both pairs)">
+        <div
+          class="tool-panel-row tool-panel-row--wide-label"
+          title="0 = rectangular outline, 100 = tapered ellipse toward wing tip (both pairs)"
+        >
           <span class="tool-panel-label">Shape</span>
           <input
             type="range"
@@ -394,8 +384,7 @@
             max="100"
             step="1"
             value={$insectaWingShape}
-            oninput={(e) =>
-              insectaWingShape.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => insectaWingShape.set(Number((e.target as HTMLInputElement).value))}
           />
           <span class="tool-panel-value">{$insectaWingShape}</span>
         </div>

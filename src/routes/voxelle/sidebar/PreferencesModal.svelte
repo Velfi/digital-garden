@@ -154,7 +154,8 @@
       </label>
       <h4 class="prefs-section-title">Ray mode</h4>
       <p class="field-hint prefs-section-hint">
-        Applies in Scene → Ray (WebGPU). GPU path is used for dense models without glass/water when set to Auto or GPU.
+        Applies in Scene → Ray (WebGPU). GPU path is used for dense models without glass/water when
+        set to Auto or GPU.
       </p>
       <label class="select-label">
         <span class="select-label-text">Ray trace backend</span>

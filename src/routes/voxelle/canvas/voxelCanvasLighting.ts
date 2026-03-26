@@ -150,7 +150,12 @@ export function flushPendingWebGpuDirectionalShadowInvalidate(
   dirLight: THREE.DirectionalLight | undefined
 ): void {
   if (!pendingWebGpuDirectionalShadowInvalidate) return;
-  if (!isWebGPURenderer(renderer) || !enableShadows || !dirLight?.shadow || !renderer?.shadowMap?.enabled) {
+  if (
+    !isWebGPURenderer(renderer) ||
+    !enableShadows ||
+    !dirLight?.shadow ||
+    !renderer?.shadowMap?.enabled
+  ) {
     pendingWebGpuDirectionalShadowInvalidate = false;
     return;
   }

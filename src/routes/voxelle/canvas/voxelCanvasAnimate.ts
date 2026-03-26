@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import type { WebGPURenderer } from 'three/webgpu';
 import { applyFlyMovement, FLY_MOVE_SPEED, type FlyMoveState } from '../flyControls';
 import { hexToInt } from '../store/index';
 import type { Voxel, VoxellePreferences } from '../store/index';
@@ -183,7 +184,7 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
     if (ctx.rayRenderer) {
       const texBefore = ctx.rayRenderer.output.beautyTexture;
       const webgpuRenderer = isWebGPURenderer(ctx.renderer)
-        ? (ctx.renderer as Parameters<VoxelRayTsl['tick']>[10]['webgpuRenderer'])
+        ? (ctx.renderer as WebGPURenderer)
         : null;
       ctx.rayRenderer.tick(
         delta,

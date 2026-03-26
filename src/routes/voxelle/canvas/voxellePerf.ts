@@ -29,6 +29,5 @@ export function perfNow(): number {
 
 export function perfLog(label: string, ms: number): void {
   if (!voxellePerfEnabled()) return;
-  // eslint-disable-next-line no-console
   console.log(`[voxelle perf] ${label}: ${ms.toFixed(2)}ms`);
 }

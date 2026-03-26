@@ -165,9 +165,7 @@ export function applyTerrainStroke(
 
   if (options.op === 'raise' || options.op === 'lower') {
     const falloffSamples =
-      options.falloffPath && options.falloffPath.length > 0
-        ? options.falloffPath
-        : brushPositions;
+      options.falloffPath && options.falloffPath.length > 0 ? options.falloffPath : brushPositions;
     for (const [k, meta] of colMeta) {
       const { x, z, yFill, oldMax } = meta;
       const t = brushFalloff(x, z, falloffSamples, options.brushRadius);
@@ -206,8 +204,7 @@ export function applyTerrainStroke(
           cnt++;
         }
       }
-      const avg =
-        cnt > 0 ? sum / cnt : surfaceH(x, z);
+      const avg = cnt > 0 ? sum / cnt : surfaceH(x, z);
       newH.set(k, Math.round(avg));
     }
     for (const [k, meta] of colMeta) {

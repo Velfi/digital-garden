@@ -584,9 +584,7 @@ export function createMeshManager(
     }, SPINNER_DELAY_MS);
     const chunkSize = v.size >= CHUNK_THRESHOLD ? 32 : 0;
     const useIncrementalDirty =
-      chunkSize >= 16 &&
-      dirtyKeys.size > 0 &&
-      dirtyKeys.size <= INCREMENTAL_REBUILD_MAX_DIRTY_KEYS;
+      chunkSize >= 16 && dirtyKeys.size > 0 && dirtyKeys.size <= INCREMENTAL_REBUILD_MAX_DIRTY_KEYS;
     const postToWorker = () => {
       if (!meshWorker || gen !== meshRebuildGen) return;
       const tPack = voxellePerfEnabled() ? perfNow() : 0;

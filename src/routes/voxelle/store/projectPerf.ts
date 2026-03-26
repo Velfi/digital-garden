@@ -196,7 +196,11 @@ export function measureUndoDuration<T>(fn: () => T): T {
   if (pendingUndoRedoE2E === null) {
     pendingEditStartMs = null;
     pendingUndoRedoE2E = { kind: 'undo', startMs: t0 };
-    projectPerfMetrics.update((m) => ({ ...m, lastUndoDurationMs: null, lastUndoSyncDurationMs: null }));
+    projectPerfMetrics.update((m) => ({
+      ...m,
+      lastUndoDurationMs: null,
+      lastUndoSyncDurationMs: null
+    }));
   }
   try {
     return fn();
@@ -211,7 +215,11 @@ export function measureRedoDuration<T>(fn: () => T): T {
   if (pendingUndoRedoE2E === null) {
     pendingEditStartMs = null;
     pendingUndoRedoE2E = { kind: 'redo', startMs: t0 };
-    projectPerfMetrics.update((m) => ({ ...m, lastRedoDurationMs: null, lastRedoSyncDurationMs: null }));
+    projectPerfMetrics.update((m) => ({
+      ...m,
+      lastRedoDurationMs: null,
+      lastRedoSyncDurationMs: null
+    }));
   }
   try {
     return fn();
@@ -220,4 +228,3 @@ export function measureRedoDuration<T>(fn: () => T): T {
     projectPerfMetrics.update((m) => ({ ...m, lastRedoSyncDurationMs: dt }));
   }
 }
-

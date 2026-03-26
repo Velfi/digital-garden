@@ -685,9 +685,7 @@ export function thickenPathForStroke(
   // Bulk, smooth, melt: four brush shapes (2D in tangent plane vs 3D volumetric).
   if (
     isClayPath &&
-    (params.clayMode === 'bulk' ||
-      params.clayMode === 'smooth' ||
-      params.clayMode === 'melt') &&
+    (params.clayMode === 'bulk' || params.clayMode === 'smooth' || params.clayMode === 'melt') &&
     params.clayBrushRadius > 0
   ) {
     const shape = params.clayBrushShape ?? 'square';

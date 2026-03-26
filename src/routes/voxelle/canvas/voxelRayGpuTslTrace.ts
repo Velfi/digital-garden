@@ -9,6 +9,7 @@ import {
   UnsignedIntType,
   Vector3,
   NearestFilter,
+  type ColorSpace,
   type Camera
 } from 'three';
 import type { VoxelRayTraceParams } from './voxelRayShared';
@@ -16,7 +17,6 @@ import {
   GLOW_BLOOM_LINEAR_SCALE,
   GLASS_IOR,
   GLASS_MIN_TRANSMITTANCE,
-  MAX_GLASS_DEPTH,
   WATER_IOR
 } from './voxelRayShared';
 import { GLASS_ABSORPTION_PER_UNIT } from './voxelRayDda';
@@ -86,7 +86,6 @@ export async function createVoxelRayGpuTracePipeline(
     Loop,
     Break,
     If,
-    Return,
     texture3D,
     abs,
     min,
@@ -112,8 +111,6 @@ export async function createVoxelRayGpuTracePipeline(
     equal,
     exp
   } = tslMod;
-
-  type ColorSpace = (typeof ColorManagement)['workingColorSpace'];
 
   const w = Math.max(1, Math.floor(width * dpr));
   const h = Math.max(1, Math.floor(height * dpr));
@@ -163,7 +160,7 @@ export async function createVoxelRayGpuTracePipeline(
   const uShadowTanHalf = uniform(0);
   const uPassBloom = uniform(0);
   const uBufH = uniform(h);
-  const uVolTex = uniform(makePlaceholderVolumeTexture());
+  const volTex = makePlaceholderVolumeTexture();
 
   const TSL_TWO_PI = float(2 * Math.PI);
   const TSL_GOLDEN = float(GOLDEN_ANGLE);
@@ -174,9 +171,8 @@ export async function createVoxelRayGpuTracePipeline(
   const DDA_HIT_EPS = float(1e-5);
   const GLASS_CELL_NUDGE = float(1e-6);
   const SHADOW_SURFACE_EPS = float(2e-4);
-  const MAX_GLASS_U = int(MAX_GLASS_DEPTH);
 
-  const volAcc = texture3D(uVolTex);
+  const volAcc = texture3D(volTex);
 
   const srgbChannel = (c: ReturnType<typeof float>) => {
     const x = clamp(c, float(0), float(1));
@@ -192,10 +188,18 @@ export async function createVoxelRayGpuTracePipeline(
     const r8 = bitAnd(shiftRight(c24, uint(16)), uint(255));
     const g8 = bitAnd(shiftRight(c24, uint(8)), uint(255));
     const b8 = bitAnd(c24, uint(255));
-    return vec3(srgbChannel(float(r8).div(float(255))), srgbChannel(float(g8).div(float(255))), srgbChannel(float(b8).div(float(255))));
+    return vec3(
+      srgbChannel(float(r8).div(float(255))),
+      srgbChannel(float(g8).div(float(255))),
+      srgbChannel(float(b8).div(float(255)))
+    );
   };
 
-  const fetchPacked = (ix: ReturnType<typeof int>, iy: ReturnType<typeof int>, iz: ReturnType<typeof int>) => {
+  const fetchPacked = (
+    ix: ReturnType<typeof int>,
+    iy: ReturnType<typeof int>,
+    iz: ReturnType<typeof int>
+  ) => {
     const ox = int(floor(uOrigin.x));
     const oy = int(floor(uOrigin.y));
     const oz = int(floor(uOrigin.z));
@@ -209,16 +213,22 @@ export async function createVoxelRayGpuTracePipeline(
       or(or(lx.lessThan(int(0)), ly.lessThan(int(0))), lz.lessThan(int(0))),
       or(or(lx.greaterThanEqual(dx), ly.greaterThanEqual(dy)), lz.greaterThanEqual(dz))
     );
-    const coord = ivec3(lx, ly, lz);
+    // TSL's `ivec3` constructor expects a single argument (a `vec3`).
+    const coord = ivec3(vec3(lx, ly, lz));
     const sample = volAcc.load(coord).r;
-    return select(oob, uint(0), sample);
+    // Ensure we always return a uint node (not a float|uint union) for downstream bit ops.
+    return select(oob, uint(0), uint(sample));
   };
 
   const isTransmissiveIdx = (matIdx: ReturnType<typeof uint>) =>
     or(matIdx.equal(uint(GLASS_MAT)), matIdx.equal(uint(WATER_MAT)));
 
   const iorFromMatIdx = (matIdx: ReturnType<typeof uint>) =>
-    select(matIdx.equal(uint(WATER_MAT)), WATER_IOR_F, select(matIdx.equal(uint(GLASS_MAT)), GLASS_IOR_F, float(1)));
+    select(
+      matIdx.equal(uint(WATER_MAT)),
+      WATER_IOR_F,
+      select(matIdx.equal(uint(GLASS_MAT)), GLASS_IOR_F, float(1))
+    );
 
   const fresnelSchlick = (
     cosI: ReturnType<typeof float>,
@@ -227,7 +237,11 @@ export async function createVoxelRayGpuTracePipeline(
   ) => {
     const c = clamp(cosI, float(0), float(1));
     const r0 = pow(etaI.sub(etaT).div(etaI.add(etaT)), float(2));
-    return r0.add(float(1).sub(r0).mul(pow(float(1).sub(c), float(5))));
+    return r0.add(
+      float(1)
+        .sub(r0)
+        .mul(pow(float(1).sub(c), float(5)))
+    );
   };
 
   const applyShadowSegment = (
@@ -239,7 +253,7 @@ export async function createVoxelRayGpuTracePipeline(
   ) => {
     const me = shiftRight(pk, uint(24));
     If(and(segLen.greaterThan(float(0)), greaterThan(me, uint(0))), () => {
-      const mid = me.sub(uint(1));
+      const mid = uint(me.sub(uint(1)));
       const isW = mid.equal(uint(WATER_MAT));
       const absR = select(isW, float(0.03), GLASS_ABS);
       const absG = select(isW, float(0.012), GLASS_ABS);
@@ -324,7 +338,7 @@ export async function createVoxelRayGpuTracePipeline(
     const me0 = shiftRight(pkStart, uint(24));
 
     If(greaterThan(me0, uint(0)), () => {
-      const mid0 = me0.sub(uint(1));
+      const mid0 = uint(me0.sub(uint(1)));
       If(isTransmissiveIdx(mid0), () => {
         const tFirst = min(tMaxX, min(tMaxY, tMaxZ));
         const seg0 = min(max(float(0), tFirst), maxDist);
@@ -334,7 +348,10 @@ export async function createVoxelRayGpuTracePipeline(
           and(
             tFirst.lessThan(maxDist),
             skipShadowMarch.lessThan(float(0.5)),
-            or(fr.greaterThan(float(1e-8)), or(fg.greaterThan(float(1e-8)), fb.greaterThan(float(1e-8))))
+            or(
+              fr.greaterThan(float(1e-8)),
+              or(fg.greaterThan(float(1e-8)), fb.greaterThan(float(1e-8)))
+            )
           ),
           () => {
             If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
@@ -364,8 +381,13 @@ export async function createVoxelRayGpuTracePipeline(
 
     Loop({ start: int(0), end: int(512), type: 'int', condition: '<' }, () => {
       If(skipShadowMarch.greaterThan(float(0.5)), () => Break());
-      If(and(fr.lessThanEqual(float(1e-8)), fg.lessThanEqual(float(1e-8)), fb.lessThanEqual(float(1e-8))), () =>
-        Break()
+      If(
+        and(
+          fr.lessThanEqual(float(1e-8)),
+          fg.lessThanEqual(float(1e-8)),
+          fb.lessThanEqual(float(1e-8))
+        ),
+        () => Break()
       );
       const tHit = float(0).toVar();
       const axis = int(0).toVar();
@@ -391,8 +413,13 @@ export async function createVoxelRayGpuTracePipeline(
       If(seg.greaterThan(float(0)), () => {
         applyShadowSegment(fr, fg, fb, fetchPacked(x0, y0, z0), seg);
       });
-      If(and(fr.lessThanEqual(float(1e-8)), fg.lessThanEqual(float(1e-8)), fb.lessThanEqual(float(1e-8))), () =>
-        Break()
+      If(
+        and(
+          fr.lessThanEqual(float(1e-8)),
+          fg.lessThanEqual(float(1e-8)),
+          fb.lessThanEqual(float(1e-8))
+        ),
+        () => Break()
       );
       If(tHit.greaterThan(maxDist), () => Break());
       If(axis.equal(int(0)), () => x.addAssign(stepX))
@@ -493,7 +520,11 @@ export async function createVoxelRayGpuTracePipeline(
     const lz = uToLight.z;
     const sunAlign = max(float(0), reflX.mul(lx).add(reflY.mul(ly)).add(reflZ.mul(lz)));
     const sunExp = select(matIdx.equal(uint(WATER_MAT)), float(12), float(48));
-    const sunMul = select(matIdx.equal(uint(WATER_MAT)), float(3.5), select(matIdx.equal(uint(GLASS_MAT)), float(1.38), float(1.2)));
+    const sunMul = select(
+      matIdx.equal(uint(WATER_MAT)),
+      float(3.5),
+      select(matIdx.equal(uint(GLASS_MAT)), float(1.38), float(1.2))
+    );
     const envW = select(matIdx.equal(uint(GLASS_MAT)), float(0.78), float(0.72));
     const ambW = select(matIdx.equal(uint(GLASS_MAT)), float(0.22), float(0.28));
     const sunLobe = pow(sunAlign, sunExp).mul(sunMul);
@@ -530,11 +561,19 @@ export async function createVoxelRayGpuTracePipeline(
     const tight = pow(rv, float(32)).mul(float(0.9));
     const ndotlSoft = float(0.3).add(max(float(0), ndotl).mul(float(0.7)));
     const sWater = broad.add(tight).mul(ndotlSoft);
-    const waterRgb = vec3(sWater.mul(uSunDiffuse.x), sWater.mul(uSunDiffuse.y), sWater.mul(uSunDiffuse.z));
+    const waterRgb = vec3(
+      sWater.mul(uSunDiffuse.x),
+      sWater.mul(uSunDiffuse.y),
+      sWater.mul(uSunDiffuse.z)
+    );
     const shin = float(96);
     const intens = select(matIdx.equal(uint(GLASS_MAT)), float(0.34), float(0.28));
     const sGlass = pow(rv, shin).mul(intens);
-    const glassRgb = vec3(sGlass.mul(uSunDiffuse.x), sGlass.mul(uSunDiffuse.y), sGlass.mul(uSunDiffuse.z));
+    const glassRgb = vec3(
+      sGlass.mul(uSunDiffuse.x),
+      sGlass.mul(uSunDiffuse.y),
+      sGlass.mul(uSunDiffuse.z)
+    );
     const picked = select(matIdx.equal(uint(WATER_MAT)), waterRgb, glassRgb);
     const zero = vec3(float(0), float(0), float(0));
     return select(ndotlValid, picked, zero);
@@ -553,11 +592,38 @@ export async function createVoxelRayGpuTracePipeline(
     iz: ReturnType<typeof int>
   ) => {
     const tM = float(1e30).toVar();
-    If(rdx.greaterThan(float(1e-9)), () => tM.assign(min(tM, float(ix.add(int(1))).sub(px).div(rdx))));
+    If(rdx.greaterThan(float(1e-9)), () =>
+      tM.assign(
+        min(
+          tM,
+          float(ix.add(int(1)))
+            .sub(px)
+            .div(rdx)
+        )
+      )
+    );
     If(rdx.lessThan(float(-1e-9)), () => tM.assign(min(tM, float(ix).sub(px).div(rdx))));
-    If(rdy.greaterThan(float(1e-9)), () => tM.assign(min(tM, float(iy.add(int(1))).sub(py).div(rdy))));
+    If(rdy.greaterThan(float(1e-9)), () =>
+      tM.assign(
+        min(
+          tM,
+          float(iy.add(int(1)))
+            .sub(py)
+            .div(rdy)
+        )
+      )
+    );
     If(rdy.lessThan(float(-1e-9)), () => tM.assign(min(tM, float(iy).sub(py).div(rdy))));
-    If(rdz.greaterThan(float(1e-9)), () => tM.assign(min(tM, float(iz.add(int(1))).sub(pz).div(rdz))));
+    If(rdz.greaterThan(float(1e-9)), () =>
+      tM.assign(
+        min(
+          tM,
+          float(iz.add(int(1)))
+            .sub(pz)
+            .div(rdz)
+        )
+      )
+    );
     If(rdz.lessThan(float(-1e-9)), () => tM.assign(min(tM, float(iz).sub(pz).div(rdz))));
     return select(tM.greaterThanEqual(float(1e20)), float(4e-9), tM);
   };
@@ -663,7 +729,7 @@ export async function createVoxelRayGpuTracePipeline(
       const ncz = int(floor(nzp));
       const pkN = fetchPacked(ncx, ncy, ncz);
       const meN = shiftRight(pkN, uint(24));
-      If(and(greaterThan(meN, uint(0)), curMid.equal(meN.sub(uint(1)))), () => {
+      If(and(greaterThan(meN, uint(0)), curMid.equal(uint(meN.sub(uint(1))))), () => {
         cx.assign(ncx);
         cy.assign(ncy);
         cz.assign(ncz);
@@ -673,8 +739,9 @@ export async function createVoxelRayGpuTracePipeline(
         curPk.assign(pkN);
         stepAcc.assign(stepAcc.add(GLASS_CELL_NUDGE));
       }).Else(() => {
-        If(and(greaterThan(meN, uint(0)), isTransmissiveIdx(meN.sub(uint(1)))), () =>
-          etaOutVar.assign(iorFromMatIdx(meN.sub(uint(1))))
+        const midN = uint(meN.sub(uint(1)));
+        If(and(greaterThan(meN, uint(0)), isTransmissiveIdx(midN)), () =>
+          etaOutVar.assign(iorFromMatIdx(midN))
         );
         Break();
       });
@@ -696,8 +763,9 @@ export async function createVoxelRayGpuTracePipeline(
       int(floor(ooz.add(rdz.mul(float(1e-9)))))
     );
     const meMed = shiftRight(pkMedN, uint(24));
-    If(and(greaterThan(meMed, uint(0)), isTransmissiveIdx(meMed.sub(uint(1)))), () =>
-      mediumIor.assign(iorFromMatIdx(meMed.sub(uint(1))))
+    const midMed = uint(meMed.sub(uint(1)));
+    If(and(greaterThan(meMed, uint(0)), isTransmissiveIdx(midMed)), () =>
+      mediumIor.assign(iorFromMatIdx(midMed))
     );
   };
 
@@ -733,7 +801,7 @@ export async function createVoxelRayGpuTracePipeline(
     );
     const mei0 = shiftRight(pki0, uint(24));
     If(greaterThan(mei0, uint(0)), () => {
-      const midI = mei0.sub(uint(1));
+      const midI = uint(mei0.sub(uint(1)));
       If(isTransmissiveIdx(midI), () => mediumIor.assign(iorFromMatIdx(midI)));
     });
     const outR = float(0).toVar();
@@ -766,157 +834,157 @@ export async function createVoxelRayGpuTracePipeline(
       const oxp = oox.add(rdx.mul(eps));
       const oyp = ooy.add(rdy.mul(eps));
       const ozp = ooz.add(rdz.mul(eps));
-    const x = int(floor(oxp)).toVar();
-    const y = int(floor(oyp)).toVar();
-    const z = int(floor(ozp)).toVar();
+      const x = int(floor(oxp)).toVar();
+      const y = int(floor(oyp)).toVar();
+      const z = int(floor(ozp)).toVar();
 
-    const stepX = int(0).toVar();
-    const stepY = int(0).toVar();
-    const stepZ = int(0).toVar();
-    If(greaterThan(rdx, float(1e-9)), () => stepX.assign(int(1)));
-    If(lessThan(rdx, float(-1e-9)), () => stepX.assign(int(-1)));
-    If(greaterThan(rdy, float(1e-9)), () => stepY.assign(int(1)));
-    If(lessThan(rdy, float(-1e-9)), () => stepY.assign(int(-1)));
-    If(greaterThan(rdz, float(1e-9)), () => stepZ.assign(int(1)));
-    If(lessThan(rdz, float(-1e-9)), () => stepZ.assign(int(-1)));
+      const stepX = int(0).toVar();
+      const stepY = int(0).toVar();
+      const stepZ = int(0).toVar();
+      If(greaterThan(rdx, float(1e-9)), () => stepX.assign(int(1)));
+      If(lessThan(rdx, float(-1e-9)), () => stepX.assign(int(-1)));
+      If(greaterThan(rdy, float(1e-9)), () => stepY.assign(int(1)));
+      If(lessThan(rdy, float(-1e-9)), () => stepY.assign(int(-1)));
+      If(greaterThan(rdz, float(1e-9)), () => stepZ.assign(int(1)));
+      If(lessThan(rdz, float(-1e-9)), () => stepZ.assign(int(-1)));
 
-    const big = float(1e30);
-    const tDeltaX = select(equal(stepX, int(0)), big, float(1).div(abs(rdx)));
-    const tDeltaY = select(equal(stepY, int(0)), big, float(1).div(abs(rdy)));
-    const tDeltaZ = select(equal(stepZ, int(0)), big, float(1).div(abs(rdz)));
-    const tMaxX = float(0).toVar();
-    const tMaxY = float(0).toVar();
-    const tMaxZ = float(0).toVar();
-    If(greaterThan(stepX, int(0)), () => tMaxX.assign(float(x.add(int(1)).sub(oxp)).div(rdx)));
-    If(lessThan(stepX, int(0)), () => tMaxX.assign(float(x.sub(oxp)).div(rdx)));
-    If(equal(stepX, int(0)), () => tMaxX.assign(big));
-    If(greaterThan(stepY, int(0)), () => tMaxY.assign(float(y.add(int(1)).sub(oyp)).div(rdy)));
-    If(lessThan(stepY, int(0)), () => tMaxY.assign(float(y.sub(oyp)).div(rdy)));
-    If(equal(stepY, int(0)), () => tMaxY.assign(big));
-    If(greaterThan(stepZ, int(0)), () => tMaxZ.assign(float(z.add(int(1)).sub(ozp)).div(rdz)));
-    If(lessThan(stepZ, int(0)), () => tMaxZ.assign(float(z.sub(ozp)).div(rdz)));
-    If(equal(stepZ, int(0)), () => tMaxZ.assign(big));
+      const big = float(1e30);
+      const tDeltaX = select(equal(stepX, int(0)), big, float(1).div(abs(rdx)));
+      const tDeltaY = select(equal(stepY, int(0)), big, float(1).div(abs(rdy)));
+      const tDeltaZ = select(equal(stepZ, int(0)), big, float(1).div(abs(rdz)));
+      const tMaxX = float(0).toVar();
+      const tMaxY = float(0).toVar();
+      const tMaxZ = float(0).toVar();
+      If(greaterThan(stepX, int(0)), () => tMaxX.assign(float(x.add(int(1)).sub(oxp)).div(rdx)));
+      If(lessThan(stepX, int(0)), () => tMaxX.assign(float(x.sub(oxp)).div(rdx)));
+      If(equal(stepX, int(0)), () => tMaxX.assign(big));
+      If(greaterThan(stepY, int(0)), () => tMaxY.assign(float(y.add(int(1)).sub(oyp)).div(rdy)));
+      If(lessThan(stepY, int(0)), () => tMaxY.assign(float(y.sub(oyp)).div(rdy)));
+      If(equal(stepY, int(0)), () => tMaxY.assign(big));
+      If(greaterThan(stepZ, int(0)), () => tMaxZ.assign(float(z.add(int(1)).sub(ozp)).div(rdz)));
+      If(lessThan(stepZ, int(0)), () => tMaxZ.assign(float(z.sub(ozp)).div(rdz)));
+      If(equal(stepZ, int(0)), () => tMaxZ.assign(big));
 
-    const maxT = remDist;
+      const maxT = remDist;
 
-    const pkStart = fetchPacked(x, y, z);
-    const matStart = shiftRight(pkStart, uint(24));
-    If(greaterThan(matStart, uint(0)), () => {
-      const matIdx = matStart.sub(uint(1));
-      If(isTransmissiveIdx(matIdx), () => {
-        const ax0 = abs(rdx);
-        const ay0 = abs(rdy);
-        const az0 = abs(rdz);
-        const nx0 = float(0).toVar();
-        const ny0 = float(0).toVar();
-        const nz0 = float(0).toVar();
-        If(and(ax0.greaterThanEqual(ay0), ax0.greaterThanEqual(az0)), () => {
-          nx0.assign(select(greaterThan(rdx.negate(), float(0)), float(1), float(-1)));
-        })
-          .ElseIf(ay0.greaterThanEqual(az0), () => {
-            ny0.assign(select(greaterThan(rdy.negate(), float(0)), float(1), float(-1)));
+      const pkStart = fetchPacked(x, y, z);
+      const matStart = shiftRight(pkStart, uint(24));
+      If(greaterThan(matStart, uint(0)), () => {
+        const matIdx = uint(matStart.sub(uint(1)));
+        If(isTransmissiveIdx(matIdx), () => {
+          const ax0 = abs(rdx);
+          const ay0 = abs(rdy);
+          const az0 = abs(rdz);
+          const nx0 = float(0).toVar();
+          const ny0 = float(0).toVar();
+          const nz0 = float(0).toVar();
+          If(and(ax0.greaterThanEqual(ay0), ax0.greaterThanEqual(az0)), () => {
+            nx0.assign(select(greaterThan(rdx.negate(), float(0)), float(1), float(-1)));
           })
-          .Else(() => {
-            nz0.assign(select(greaterThan(rdz.negate(), float(0)), float(1), float(-1)));
-          });
-        accumulateGlassInterface(
-          matIdx,
-          pkStart,
-          x,
-          y,
-          z,
-          nx0,
-          ny0,
-          nz0,
-          float(0),
-          oox,
-          ooy,
-          ooz,
-          oox,
-          ooy,
-          ooz,
-          remDist,
-          mediumIor,
-          accR,
-          accG,
-          accB,
-          tr,
-          tg,
-          tb,
-          rdx,
-          rdy,
-          rdz
-        );
-      }).Else(() => {
-        const rgb = unpackLinearRgb(pkStart);
-        const ax = abs(rdx);
-        const ay = abs(rdy);
-        const az = abs(rdz);
-        const nx = float(0).toVar();
-        const ny = float(0).toVar();
-        const nz = float(0).toVar();
-        If(and(ax.greaterThanEqual(ay), ax.greaterThanEqual(az)), () => {
-          nx.assign(select(greaterThan(rdx, float(0)), float(1), float(-1)));
-        })
-          .ElseIf(ay.greaterThanEqual(az), () => {
-            ny.assign(select(greaterThan(rdy, float(0)), float(1), float(-1)));
+            .ElseIf(ay0.greaterThanEqual(az0), () => {
+              ny0.assign(select(greaterThan(rdy.negate(), float(0)), float(1), float(-1)));
+            })
+            .Else(() => {
+              nz0.assign(select(greaterThan(rdz.negate(), float(0)), float(1), float(-1)));
+            });
+          accumulateGlassInterface(
+            matIdx,
+            pkStart,
+            x,
+            y,
+            z,
+            nx0,
+            ny0,
+            nz0,
+            float(0),
+            oox,
+            ooy,
+            ooz,
+            oox,
+            ooy,
+            ooz,
+            remDist,
+            mediumIor,
+            accR,
+            accG,
+            accB,
+            tr,
+            tg,
+            tb,
+            rdx,
+            rdy,
+            rdz
+          );
+        }).Else(() => {
+          const rgb = unpackLinearRgb(pkStart);
+          const ax = abs(rdx);
+          const ay = abs(rdy);
+          const az = abs(rdz);
+          const nx = float(0).toVar();
+          const ny = float(0).toVar();
+          const nz = float(0).toVar();
+          If(and(ax.greaterThanEqual(ay), ax.greaterThanEqual(az)), () => {
+            nx.assign(select(greaterThan(rdx, float(0)), float(1), float(-1)));
           })
-          .Else(() => {
-            nz.assign(select(greaterThan(rdz, float(0)), float(1), float(-1)));
+            .ElseIf(ay.greaterThanEqual(az), () => {
+              ny.assign(select(greaterThan(rdy, float(0)), float(1), float(-1)));
+            })
+            .Else(() => {
+              nz.assign(select(greaterThan(rdz, float(0)), float(1), float(-1)));
+            });
+          const lx = uToLight.x;
+          const ly = uToLight.y;
+          const lz = uToLight.z;
+          const ndotl = max(float(0), nx.mul(lx).add(ny.mul(ly)).add(nz.mul(lz)));
+          const shR = float(1).toVar();
+          const shG = float(1).toVar();
+          const shB = float(1).toVar();
+          If(uEnableShadows.greaterThan(float(0.5)), () => {
+            const hx = float(x).add(nx.mul(SHADOW_SURFACE_EPS));
+            const hy = float(y).add(ny.mul(SHADOW_SURFACE_EPS));
+            const hz = float(z).add(nz.mul(SHADOW_SURFACE_EPS));
+            const st = averagedShadowTransmission(hx, hy, hz, lx, ly, lz, maxT);
+            shR.assign(st.x);
+            shG.assign(st.y);
+            shB.assign(st.z);
           });
-        const lx = uToLight.x;
-        const ly = uToLight.y;
-        const lz = uToLight.z;
-        const ndotl = max(float(0), nx.mul(lx).add(ny.mul(ly)).add(nz.mul(lz)));
-        const shR = float(1).toVar();
-        const shG = float(1).toVar();
-        const shB = float(1).toVar();
-        If(uEnableShadows.greaterThan(float(0.5)), () => {
-          const hx = float(x).add(nx.mul(SHADOW_SURFACE_EPS));
-          const hy = float(y).add(ny.mul(SHADOW_SURFACE_EPS));
-          const hz = float(z).add(nz.mul(SHADOW_SURFACE_EPS));
-          const st = averagedShadowTransmission(hx, hy, hz, lx, ly, lz, maxT);
-          shR.assign(st.x);
-          shG.assign(st.y);
-          shB.assign(st.z);
+          const cr = rgb.x;
+          const cg = rgb.y;
+          const cb = rgb.z;
+          const dr = cr.mul(uAmbient.x).add(cr.mul(uSunDiffuse.x).mul(ndotl).mul(shR));
+          const dg = cg.mul(uAmbient.y).add(cg.mul(uSunDiffuse.y).mul(ndotl).mul(shG));
+          const db = cb.mul(uAmbient.z).add(cb.mul(uSunDiffuse.z).mul(ndotl).mul(shB));
+          const isMetal = matIdx.equal(uint(METAL_MAT));
+          const isGlow = matIdx.equal(uint(GLOW_MAT));
+          const vx = rdx.negate();
+          const vy = rdy.negate();
+          const vz = rdz.negate();
+          const reflL = ndotl.mul(float(2)).mul(nx).sub(lx);
+          const reflM = ndotl.mul(float(2)).mul(ny).sub(ly);
+          const reflN = ndotl.mul(float(2)).mul(nz).sub(lz);
+          const spec = max(float(0), vx.mul(reflL).add(vy.mul(reflM)).add(vz.mul(reflN)));
+          const sp = pow(spec, float(48)).mul(float(0.45));
+          const dMetalR = dr.add(sp.mul(uSunDiffuse.x).mul(shR));
+          const dMetalG = dg.add(sp.mul(uSunDiffuse.y).mul(shG));
+          const dMetalB = db.add(sp.mul(uSunDiffuse.z).mul(shB));
+          const dFinalR = select(isMetal, dMetalR, dr);
+          const dFinalG = select(isMetal, dMetalG, dg);
+          const dFinalB = select(isMetal, dMetalB, db);
+          const addR = cr.mul(float(0.85));
+          const addG = cg.mul(float(0.85));
+          const addB = cb.mul(float(0.85));
+          const surfR = dFinalR.add(select(isGlow, addR, float(0)));
+          const surfG = dFinalG.add(select(isGlow, addG, float(0)));
+          const surfB = dFinalB.add(select(isGlow, addB, float(0)));
+          outR.assign(accR.add(tr.mul(surfR)));
+          outG.assign(accG.add(tg.mul(surfG)));
+          outB.assign(accB.add(tb.mul(surfB)));
+          bloomR.assign(tr.mul(select(isGlow, addR.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
+          bloomG.assign(tg.mul(select(isGlow, addG.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
+          bloomB.assign(tb.mul(select(isGlow, addB.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
+          hitFound.assign(float(1));
         });
-        const cr = rgb.x;
-        const cg = rgb.y;
-        const cb = rgb.z;
-        const dr = cr.mul(uAmbient.x).add(cr.mul(uSunDiffuse.x).mul(ndotl).mul(shR));
-        const dg = cg.mul(uAmbient.y).add(cg.mul(uSunDiffuse.y).mul(ndotl).mul(shG));
-        const db = cb.mul(uAmbient.z).add(cb.mul(uSunDiffuse.z).mul(ndotl).mul(shB));
-        const isMetal = matIdx.equal(uint(METAL_MAT));
-        const isGlow = matIdx.equal(uint(GLOW_MAT));
-        const vx = rdx.negate();
-        const vy = rdy.negate();
-        const vz = rdz.negate();
-        const reflL = ndotl.mul(float(2)).mul(nx).sub(lx);
-        const reflM = ndotl.mul(float(2)).mul(ny).sub(ly);
-        const reflN = ndotl.mul(float(2)).mul(nz).sub(lz);
-        const spec = max(float(0), vx.mul(reflL).add(vy.mul(reflM)).add(vz.mul(reflN)));
-        const sp = pow(spec, float(48)).mul(float(0.45));
-        const dMetalR = dr.add(sp.mul(uSunDiffuse.x).mul(shR));
-        const dMetalG = dg.add(sp.mul(uSunDiffuse.y).mul(shG));
-        const dMetalB = db.add(sp.mul(uSunDiffuse.z).mul(shB));
-        const dFinalR = select(isMetal, dMetalR, dr);
-        const dFinalG = select(isMetal, dMetalG, dg);
-        const dFinalB = select(isMetal, dMetalB, db);
-        const addR = cr.mul(float(0.85));
-        const addG = cg.mul(float(0.85));
-        const addB = cb.mul(float(0.85));
-        const surfR = dFinalR.add(select(isGlow, addR, float(0)));
-        const surfG = dFinalG.add(select(isGlow, addG, float(0)));
-        const surfB = dFinalB.add(select(isGlow, addB, float(0)));
-        outR.assign(accR.add(tr.mul(surfR)));
-        outG.assign(accG.add(tg.mul(surfG)));
-        outB.assign(accB.add(tb.mul(surfB)));
-        bloomR.assign(tr.mul(select(isGlow, addR.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
-        bloomG.assign(tg.mul(select(isGlow, addG.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
-        bloomB.assign(tb.mul(select(isGlow, addB.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
-        hitFound.assign(float(1));
       });
-    });
 
       If(hitFound.lessThan(float(0.5)), () => {
         Loop({ start: int(0), end: int(768), type: 'int', condition: '<' }, () => {
@@ -947,17 +1015,19 @@ export async function createVoxelRayGpuTracePipeline(
           const pk = fetchPacked(x, y, z);
           const matEnc = shiftRight(pk, uint(24));
           If(greaterThan(matEnc, uint(0)), () => {
-            const matIdx = matEnc.sub(uint(1));
+            const matIdx = uint(matEnc.sub(uint(1)));
             const nx = float(0).toVar();
             const ny = float(0).toVar();
             const nz = float(0).toVar();
             If(axis.equal(int(0)), () => {
               nx.assign(select(greaterThan(stepX, int(0)), float(-1), float(1)));
-            }).ElseIf(axis.equal(int(1)), () => {
-              ny.assign(select(greaterThan(stepY, int(0)), float(-1), float(1)));
-            }).Else(() => {
-              nz.assign(select(greaterThan(stepZ, int(0)), float(-1), float(1)));
-            });
+            })
+              .ElseIf(axis.equal(int(1)), () => {
+                ny.assign(select(greaterThan(stepY, int(0)), float(-1), float(1)));
+              })
+              .Else(() => {
+                nz.assign(select(greaterThan(stepZ, int(0)), float(-1), float(1)));
+              });
             If(isTransmissiveIdx(matIdx), () => {
               accumulateGlassInterface(
                 matIdx,
@@ -1038,9 +1108,15 @@ export async function createVoxelRayGpuTracePipeline(
               outR.assign(accR.add(tr.mul(surfR)));
               outG.assign(accG.add(tg.mul(surfG)));
               outB.assign(accB.add(tb.mul(surfB)));
-              bloomR.assign(tr.mul(select(isGlow, addR.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
-              bloomG.assign(tg.mul(select(isGlow, addG.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
-              bloomB.assign(tb.mul(select(isGlow, addB.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
+              bloomR.assign(
+                tr.mul(select(isGlow, addR.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0)))
+              );
+              bloomG.assign(
+                tg.mul(select(isGlow, addG.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0)))
+              );
+              bloomB.assign(
+                tb.mul(select(isGlow, addB.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0)))
+              );
               hitFound.assign(float(1));
               Break();
             });
@@ -1109,8 +1185,11 @@ export async function createVoxelRayGpuTracePipeline(
       params: VoxelRayTraceParams,
       maxDist: number
     ) {
-      uVolTex.value = volTex;
-      const clipToWorld = new Matrix4().multiplyMatrices(camera.matrixWorld, camera.projectionMatrixInverse);
+      volAcc.value = volTex;
+      const clipToWorld = new Matrix4().multiplyMatrices(
+        camera.matrixWorld,
+        camera.projectionMatrixInverse
+      );
       uClipToWorld.value.copy(clipToWorld);
       uCamPos.value.setFromMatrixPosition(camera.matrixWorld);
       uOrigin.value.set(origin[0], origin[1], origin[2]);
@@ -1130,25 +1209,31 @@ export async function createVoxelRayGpuTracePipeline(
       const tg = ((sky >> 8) & 255) / 255;
       const tb = (sky & 255) / 255;
       const lr =
-        (tr <= 0.04045 ? tr / 12.92 : Math.pow((tr + 0.055) / 1.055, 2.4)) * (1 - 0.3 * params.lightStrength01) +
+        (tr <= 0.04045 ? tr / 12.92 : Math.pow((tr + 0.055) / 1.055, 2.4)) *
+          (1 - 0.3 * params.lightStrength01) +
         params.lightColorR * 0.3 * params.lightStrength01;
       const lg =
-        (tg <= 0.04045 ? tg / 12.92 : Math.pow((tg + 0.055) / 1.055, 2.4)) * (1 - 0.3 * params.lightStrength01) +
+        (tg <= 0.04045 ? tg / 12.92 : Math.pow((tg + 0.055) / 1.055, 2.4)) *
+          (1 - 0.3 * params.lightStrength01) +
         params.lightColorG * 0.3 * params.lightStrength01;
       const lb =
-        (tb <= 0.04045 ? tb / 12.92 : Math.pow((tb + 0.055) / 1.055, 2.4)) * (1 - 0.3 * params.lightStrength01) +
+        (tb <= 0.04045 ? tb / 12.92 : Math.pow((tb + 0.055) / 1.055, 2.4)) *
+          (1 - 0.3 * params.lightStrength01) +
         params.lightColorB * 0.3 * params.lightStrength01;
       const br = ((grnd >> 16) & 255) / 255;
       const bg = ((grnd >> 8) & 255) / 255;
       const bb = (grnd & 255) / 255;
       const gr =
-        (br <= 0.04045 ? br / 12.92 : Math.pow((br + 0.055) / 1.055, 2.4)) * (1 - 0.12 * params.lightStrength01) +
+        (br <= 0.04045 ? br / 12.92 : Math.pow((br + 0.055) / 1.055, 2.4)) *
+          (1 - 0.12 * params.lightStrength01) +
         params.lightColorR * 0.12 * params.lightStrength01;
       const gg =
-        (bg <= 0.04045 ? bg / 12.92 : Math.pow((bg + 0.055) / 1.055, 2.4)) * (1 - 0.12 * params.lightStrength01) +
+        (bg <= 0.04045 ? bg / 12.92 : Math.pow((bg + 0.055) / 1.055, 2.4)) *
+          (1 - 0.12 * params.lightStrength01) +
         params.lightColorG * 0.12 * params.lightStrength01;
       const gb =
-        (bb <= 0.04045 ? bb / 12.92 : Math.pow((bb + 0.055) / 1.055, 2.4)) * (1 - 0.12 * params.lightStrength01) +
+        (bb <= 0.04045 ? bb / 12.92 : Math.pow((bb + 0.055) / 1.055, 2.4)) *
+          (1 - 0.12 * params.lightStrength01) +
         params.lightColorB * 0.12 * params.lightStrength01;
       uSkyTop.value.set(lr, lg, lb);
       uSkyBottom.value.set(gr, gg, gb);
@@ -1178,7 +1263,7 @@ export async function createVoxelRayGpuTracePipeline(
       beautyTarget.dispose();
       bloomTarget.dispose();
       material.dispose();
-      uVolTex.value.dispose();
+      volAcc.value.dispose();
     }
   };
 }

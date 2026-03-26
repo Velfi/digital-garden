@@ -11,7 +11,10 @@ import {
 import { buildVoxelRayGpuResources, type VoxelRayGpuResources } from './voxelRayGpuResources';
 import type { VoxelRayTraceParams } from './voxelRayShared';
 import { perfLog, perfNow, voxellePerfEnabled } from './voxellePerf';
-import { createVoxelRayGpuTracePipeline, type VoxelRayGpuTracePipeline } from './voxelRayGpuTslTrace';
+import {
+  createVoxelRayGpuTracePipeline,
+  type VoxelRayGpuTracePipeline
+} from './voxelRayGpuTslTrace';
 import { maxDistanceForGpuAccel } from './gpuVoxelAccel';
 import type { RayTraceBackendPreference } from '../store/preferences';
 
@@ -120,23 +123,27 @@ export class VoxelRayTsl {
       this.scheduleGpuPipelineInit(width, height, rayDpr);
     }
 
-    const canRenderGpu =
-      wantGpu &&
-      this.gpuPipeline &&
-      this.resources &&
-      this.resources.denseTexture &&
-      this.resources.accel.kind === 'dense';
+    const res = this.resources;
+    const pipeline = this.gpuPipeline;
+    const webgpuRenderer = tickContext?.webgpuRenderer ?? null;
 
-    if (canRenderGpu) {
-      const maxDist = maxDistanceForGpuAccel(this.resources.accel, voxels);
-      this.gpuPipeline!.setSize(width, height, rayDpr);
+    if (
+      wantGpu &&
+      pipeline &&
+      res &&
+      webgpuRenderer &&
+      res.denseTexture !== null &&
+      res.accel.kind === 'dense'
+    ) {
+      const maxDist = maxDistanceForGpuAccel(res.accel, voxels);
+      pipeline.setSize(width, height, rayDpr);
       const t0 = voxellePerfEnabled() ? perfNow() : 0;
-      this.gpuPipeline!.render(
-        tickContext!.webgpuRenderer as WebGPURenderer,
+      pipeline.render(
+        webgpuRenderer,
         camera,
-        this.resources.denseTexture,
-        this.resources.origin,
-        this.resources.dims,
+        res.denseTexture,
+        res.origin,
+        res.dims,
         params,
         maxDist
       );

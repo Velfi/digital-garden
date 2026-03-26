@@ -15,10 +15,7 @@ export interface MoodPointerUpDeps {
   scheduleRender: () => void;
 }
 
-export function applyMoodFaceClickPointerUp(
-  ctx: MoodPointerUpDeps,
-  event: PointerEvent
-): void {
+export function applyMoodFaceClickPointerUp(ctx: MoodPointerUpDeps, event: PointerEvent): void {
   if (event.button !== 0 || ctx.addPanelOpen) return;
   if (!isMoodFaceClickTool(ctx.tool)) return;
 

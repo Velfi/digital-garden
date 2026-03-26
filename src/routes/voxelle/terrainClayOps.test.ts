@@ -30,13 +30,19 @@ describe('applyTerrainStroke', () => {
   it('raise adds contiguous stack from base on empty column', () => {
     const v = new Map<string, Voxel>();
     const brush: [number, number, number][] = [[0, 5, 0]];
-    const { toAdd, toRemove } = applyTerrainStroke(v, brush, bounds, {
-      op: 'raise',
-      terrainBaseY: 0,
-      strength: 3,
-      smoothRadius: 1,
-      brushRadius: 1
-    }, getVoxel);
+    const { toAdd, toRemove } = applyTerrainStroke(
+      v,
+      brush,
+      bounds,
+      {
+        op: 'raise',
+        terrainBaseY: 0,
+        strength: 3,
+        smoothRadius: 1,
+        brushRadius: 1
+      },
+      getVoxel
+    );
     expect(toRemove.size).toBe(0);
     expect(toAdd.size).toBeGreaterThan(0);
     const next = new Map(v);
@@ -50,13 +56,19 @@ describe('applyTerrainStroke', () => {
     const v = new Map<string, Voxel>();
     for (let y = 0; y <= 4; y++) v.set(coordKey(0, y, 0), gray);
     const brush: [number, number, number][] = [[0, 4, 0]];
-    const { toAdd, toRemove } = applyTerrainStroke(v, brush, bounds, {
-      op: 'lower',
-      terrainBaseY: 0,
-      strength: 2,
-      smoothRadius: 1,
-      brushRadius: 2
-    }, getVoxel);
+    const { toAdd, toRemove } = applyTerrainStroke(
+      v,
+      brush,
+      bounds,
+      {
+        op: 'lower',
+        terrainBaseY: 0,
+        strength: 2,
+        smoothRadius: 1,
+        brushRadius: 2
+      },
+      getVoxel
+    );
     const next = new Map(v);
     for (const k of toRemove) next.delete(k);
     for (const [k, val] of toAdd) next.set(k, val);
@@ -76,14 +88,20 @@ describe('applyTerrainStroke', () => {
       [3, 0, 0],
       [4, 0, 0]
     ];
-    const { toAdd, toRemove } = applyTerrainStroke(v, footprint, bounds, {
-      op: 'raise',
-      terrainBaseY: 0,
-      strength: 10,
-      smoothRadius: 1,
-      brushRadius: 2,
-      falloffPath: [[0, 0, 0]]
-    }, getVoxel);
+    const { toAdd, toRemove } = applyTerrainStroke(
+      v,
+      footprint,
+      bounds,
+      {
+        op: 'raise',
+        terrainBaseY: 0,
+        strength: 10,
+        smoothRadius: 1,
+        brushRadius: 2,
+        falloffPath: [[0, 0, 0]]
+      },
+      getVoxel
+    );
     const next = new Map(v);
     for (const k of toRemove) next.delete(k);
     for (const [k, val] of toAdd) next.set(k, val);
@@ -106,13 +124,19 @@ describe('applyTerrainStroke', () => {
     }
     for (let y = 0; y <= 6; y++) v.set(coordKey(0, y, 0), gray);
     const brush: [number, number, number][] = [[0, 6, 0]];
-    const { toAdd, toRemove } = applyTerrainStroke(v, brush, bounds, {
-      op: 'smooth',
-      terrainBaseY: 0,
-      strength: 1,
-      smoothRadius: 1,
-      brushRadius: 1
-    }, getVoxel);
+    const { toAdd, toRemove } = applyTerrainStroke(
+      v,
+      brush,
+      bounds,
+      {
+        op: 'smooth',
+        terrainBaseY: 0,
+        strength: 1,
+        smoothRadius: 1,
+        brushRadius: 1
+      },
+      getVoxel
+    );
     const next = new Map(v);
     for (const k of toRemove) next.delete(k);
     for (const [k, val] of toAdd) next.set(k, val);

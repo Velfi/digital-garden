@@ -53,22 +53,22 @@
     {/if}
     {#if $tool === 'atmosphere'}
       <label class="row">
-      <input
-        type="checkbox"
-        checked={$atmosphereEnabled}
-        disabled={$renderingMode === 'ray'}
-        onchange={(e) => atmosphereEnabled.set((e.target as HTMLInputElement).checked)}
-      />
-      Enable fog
+        <input
+          type="checkbox"
+          checked={$atmosphereEnabled}
+          disabled={$renderingMode === 'ray'}
+          onchange={(e) => atmosphereEnabled.set((e.target as HTMLInputElement).checked)}
+        />
+        Enable fog
       </label>
       <label class="row">
-      <span>Fog color</span>
-      <input
-        type="color"
-        value={$atmosphereColor}
-        disabled={$renderingMode === 'ray'}
-        oninput={(e) => atmosphereColor.set((e.target as HTMLInputElement).value)}
-      />
+        <span>Fog color</span>
+        <input
+          type="color"
+          value={$atmosphereColor}
+          disabled={$renderingMode === 'ray'}
+          oninput={(e) => atmosphereColor.set((e.target as HTMLInputElement).value)}
+        />
       </label>
       <label class="row">
         <span>Height bias</span>
@@ -146,103 +146,101 @@
           <span class="val">{$atmosphereDriftSpeed.toFixed(2)}</span>
         </label>
       {/if}
-    <div class="row mode-row">
-      <span class="mode-label">Coverage</span>
-      <label>
-        <input
-          type="radio"
-          name="atmosphereSpatial"
-          checked={$atmosphereSpatialMode === 'plane'}
-          disabled={$renderingMode === 'ray'}
-          onchange={() => atmosphereSpatialMode.set('plane')}
-        />
-        Ground / plane (click a face)
-      </label>
-      <label>
-        <input
-          type="radio"
-          name="atmosphereSpatial"
-          checked={$atmosphereSpatialMode === 'aerial'}
-          disabled={$renderingMode === 'ray'}
-          onchange={() => atmosphereSpatialMode.set('aerial')}
-        />
-        Whole scene (camera depth)
-      </label>
-    </div>
-    <label class="row">
-      <span>{$atmosphereSpatialMode === 'aerial' ? 'Depth scale' : 'Falloff'}</span>
-      <input
-        type="range"
-        min="1"
-        max="200"
-        step="1"
-        value={$atmosphereThickness}
-        disabled={$renderingMode === 'ray'}
-        oninput={(e) =>
-          atmosphereThickness.set(Number((e.target as HTMLInputElement).value))}
-      />
-      <span class="val">{$atmosphereThickness}</span>
-    </label>
-    <label class="row">
-      <span>Density</span>
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.05"
-        value={$atmosphereDensity}
-        disabled={$renderingMode === 'ray'}
-        oninput={(e) =>
-          atmosphereDensity.set(Number((e.target as HTMLInputElement).value))}
-      />
-      <span class="val">{$atmosphereDensity.toFixed(2)}</span>
-    </label>
-    {#if $atmosphereSpatialMode === 'plane'}
       <div class="row mode-row">
-        <span class="mode-label">Plane shape</span>
+        <span class="mode-label">Coverage</span>
         <label>
           <input
             type="radio"
-            name="atmosphereMode"
-            checked={$atmosphereMode === 'slab'}
+            name="atmosphereSpatial"
+            checked={$atmosphereSpatialMode === 'plane'}
             disabled={$renderingMode === 'ray'}
-            onchange={() => atmosphereMode.set('slab')}
+            onchange={() => atmosphereSpatialMode.set('plane')}
           />
-          Layer (both sides, soft belt)
+          Ground / plane (click a face)
         </label>
         <label>
           <input
             type="radio"
-            name="atmosphereMode"
-            checked={$atmosphereMode === 'positiveSide'}
+            name="atmosphereSpatial"
+            checked={$atmosphereSpatialMode === 'aerial'}
             disabled={$renderingMode === 'ray'}
-            onchange={() => atmosphereMode.set('positiveSide')}
+            onchange={() => atmosphereSpatialMode.set('aerial')}
           />
-          Above face (+normal, haze into the sky)
+          Whole scene (camera depth)
         </label>
       </div>
-    {/if}
-    <p class="hint">
-      {#if $atmosphereSpatialMode === 'aerial'}
-        No face needed — fog increases along view depth. Higher Depth scale = thinner air; Density sets
-        peak strength at distance.
-      {:else}
-        Click a voxel face to anchor the fog plane. Larger Falloff = a wide soft layer instead of a thin
-        ribbon.
+      <label class="row">
+        <span>{$atmosphereSpatialMode === 'aerial' ? 'Depth scale' : 'Falloff'}</span>
+        <input
+          type="range"
+          min="1"
+          max="200"
+          step="1"
+          value={$atmosphereThickness}
+          disabled={$renderingMode === 'ray'}
+          oninput={(e) => atmosphereThickness.set(Number((e.target as HTMLInputElement).value))}
+        />
+        <span class="val">{$atmosphereThickness}</span>
+      </label>
+      <label class="row">
+        <span>Density</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={$atmosphereDensity}
+          disabled={$renderingMode === 'ray'}
+          oninput={(e) => atmosphereDensity.set(Number((e.target as HTMLInputElement).value))}
+        />
+        <span class="val">{$atmosphereDensity.toFixed(2)}</span>
+      </label>
+      {#if $atmosphereSpatialMode === 'plane'}
+        <div class="row mode-row">
+          <span class="mode-label">Plane shape</span>
+          <label>
+            <input
+              type="radio"
+              name="atmosphereMode"
+              checked={$atmosphereMode === 'slab'}
+              disabled={$renderingMode === 'ray'}
+              onchange={() => atmosphereMode.set('slab')}
+            />
+            Layer (both sides, soft belt)
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="atmosphereMode"
+              checked={$atmosphereMode === 'positiveSide'}
+              disabled={$renderingMode === 'ray'}
+              onchange={() => atmosphereMode.set('positiveSide')}
+            />
+            Above face (+normal, haze into the sky)
+          </label>
+        </div>
       {/if}
-    </p>
-    {#if $atmosphereSpatialMode === 'plane' && $atmospherePlaneValid}
-      <p class="hint dimmed">Plane is set.</p>
-    {:else if $atmosphereSpatialMode === 'plane'}
-      <p class="hint dimmed">No plane yet — click a face while this tool is active.</p>
-    {/if}
+      <p class="hint">
+        {#if $atmosphereSpatialMode === 'aerial'}
+          No face needed — fog increases along view depth. Higher Depth scale = thinner air; Density
+          sets peak strength at distance.
+        {:else}
+          Click a voxel face to anchor the fog plane. Larger Falloff = a wide soft layer instead of
+          a thin ribbon.
+        {/if}
+      </p>
+      {#if $atmosphereSpatialMode === 'plane' && $atmospherePlaneValid}
+        <p class="hint dimmed">Plane is set.</p>
+      {:else if $atmosphereSpatialMode === 'plane'}
+        <p class="hint dimmed">No plane yet — click a face while this tool is active.</p>
+      {/if}
       <button
-      type="button"
-      class="clear-btn"
-      disabled={$renderingMode === 'ray'}
-      onclick={() => clearAtmospherePlane()}
-    >
-      Clear plane
+        type="button"
+        class="clear-btn"
+        disabled={$renderingMode === 'ray'}
+        onclick={() => clearAtmospherePlane()}
+      >
+        Clear plane
       </button>
     {:else if $tool === 'distanceTint'}
       <label class="row">
@@ -253,12 +251,58 @@
         />
         Enable distance tint
       </label>
-      <label class="row"><span>Near</span><input type="color" value={$distanceTintNearColor} oninput={(e) => distanceTintNearColor.set((e.target as HTMLInputElement).value)} /></label>
-      <label class="row"><span>Mid</span><input type="color" value={$distanceTintMidColor} oninput={(e) => distanceTintMidColor.set((e.target as HTMLInputElement).value)} /></label>
-      <label class="row"><span>Far</span><input type="color" value={$distanceTintFarColor} oninput={(e) => distanceTintFarColor.set((e.target as HTMLInputElement).value)} /></label>
-      <label class="row"><span>Near dist</span><input type="range" min="1" max="256" step="1" value={$distanceTintNearDistance} oninput={(e) => distanceTintNearDistance.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$distanceTintNearDistance}</span></label>
-      <label class="row"><span>Far dist</span><input type="range" min="8" max="512" step="1" value={$distanceTintFarDistance} oninput={(e) => distanceTintFarDistance.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$distanceTintFarDistance}</span></label>
-      <label class="row"><span>Strength</span><input type="range" min="0" max="1" step="0.01" value={$distanceTintStrength} oninput={(e) => distanceTintStrength.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$distanceTintStrength.toFixed(2)}</span></label>
+      <label class="row"
+        ><span>Near</span><input
+          type="color"
+          value={$distanceTintNearColor}
+          oninput={(e) => distanceTintNearColor.set((e.target as HTMLInputElement).value)}
+        /></label
+      >
+      <label class="row"
+        ><span>Mid</span><input
+          type="color"
+          value={$distanceTintMidColor}
+          oninput={(e) => distanceTintMidColor.set((e.target as HTMLInputElement).value)}
+        /></label
+      >
+      <label class="row"
+        ><span>Far</span><input
+          type="color"
+          value={$distanceTintFarColor}
+          oninput={(e) => distanceTintFarColor.set((e.target as HTMLInputElement).value)}
+        /></label
+      >
+      <label class="row"
+        ><span>Near dist</span><input
+          type="range"
+          min="1"
+          max="256"
+          step="1"
+          value={$distanceTintNearDistance}
+          oninput={(e) =>
+            distanceTintNearDistance.set(Number((e.target as HTMLInputElement).value))}
+        /><span class="val">{$distanceTintNearDistance}</span></label
+      >
+      <label class="row"
+        ><span>Far dist</span><input
+          type="range"
+          min="8"
+          max="512"
+          step="1"
+          value={$distanceTintFarDistance}
+          oninput={(e) => distanceTintFarDistance.set(Number((e.target as HTMLInputElement).value))}
+        /><span class="val">{$distanceTintFarDistance}</span></label
+      >
+      <label class="row"
+        ><span>Strength</span><input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={$distanceTintStrength}
+          oninput={(e) => distanceTintStrength.set(Number((e.target as HTMLInputElement).value))}
+        /><span class="val">{$distanceTintStrength.toFixed(2)}</span></label
+      >
     {:else if $tool === 'sunShafts'}
       <label class="row">
         <input
@@ -268,11 +312,56 @@
         />
         Enable sun shafts
       </label>
-      <label class="row"><span>Strength</span><input type="range" min="0" max="1.5" step="0.01" value={$sunShaftsStrength} oninput={(e) => sunShaftsStrength.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$sunShaftsStrength.toFixed(2)}</span></label>
-      <label class="row"><span>Decay</span><input type="range" min="0.5" max="0.99" step="0.01" value={$sunShaftsDecay} oninput={(e) => sunShaftsDecay.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$sunShaftsDecay.toFixed(2)}</span></label>
-      <label class="row"><span>Density</span><input type="range" min="0.1" max="1.5" step="0.01" value={$sunShaftsDensity} oninput={(e) => sunShaftsDensity.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$sunShaftsDensity.toFixed(2)}</span></label>
-      <label class="row"><span>Weight</span><input type="range" min="0" max="1.5" step="0.01" value={$sunShaftsWeight} oninput={(e) => sunShaftsWeight.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$sunShaftsWeight.toFixed(2)}</span></label>
-      <label class="row"><span>Samples</span><input type="range" min="6" max="32" step="1" value={$sunShaftsSamples} oninput={(e) => sunShaftsSamples.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$sunShaftsSamples}</span></label>
+      <label class="row"
+        ><span>Strength</span><input
+          type="range"
+          min="0"
+          max="1.5"
+          step="0.01"
+          value={$sunShaftsStrength}
+          oninput={(e) => sunShaftsStrength.set(Number((e.target as HTMLInputElement).value))}
+        /><span class="val">{$sunShaftsStrength.toFixed(2)}</span></label
+      >
+      <label class="row"
+        ><span>Decay</span><input
+          type="range"
+          min="0.5"
+          max="0.99"
+          step="0.01"
+          value={$sunShaftsDecay}
+          oninput={(e) => sunShaftsDecay.set(Number((e.target as HTMLInputElement).value))}
+        /><span class="val">{$sunShaftsDecay.toFixed(2)}</span></label
+      >
+      <label class="row"
+        ><span>Density</span><input
+          type="range"
+          min="0.1"
+          max="1.5"
+          step="0.01"
+          value={$sunShaftsDensity}
+          oninput={(e) => sunShaftsDensity.set(Number((e.target as HTMLInputElement).value))}
+        /><span class="val">{$sunShaftsDensity.toFixed(2)}</span></label
+      >
+      <label class="row"
+        ><span>Weight</span><input
+          type="range"
+          min="0"
+          max="1.5"
+          step="0.01"
+          value={$sunShaftsWeight}
+          oninput={(e) => sunShaftsWeight.set(Number((e.target as HTMLInputElement).value))}
+        /><span class="val">{$sunShaftsWeight.toFixed(2)}</span></label
+      >
+      <label class="row"
+        ><span>Samples</span><input
+          type="range"
+          min="6"
+          max="32"
+          step="1"
+          value={$sunShaftsSamples}
+          oninput={(e) => sunShaftsSamples.set(Number((e.target as HTMLInputElement).value))}
+        /><span class="val">{$sunShaftsSamples}</span></label
+      >
     {:else}
       <label class="row">
         <input
@@ -282,7 +371,16 @@
         />
         Enable grain
       </label>
-      <label class="row"><span>Strength</span><input type="range" min="0" max="0.5" step="0.01" value={$grainStrength} oninput={(e) => grainStrength.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$grainStrength.toFixed(2)}</span></label>
+      <label class="row"
+        ><span>Strength</span><input
+          type="range"
+          min="0"
+          max="0.5"
+          step="0.01"
+          value={$grainStrength}
+          oninput={(e) => grainStrength.set(Number((e.target as HTMLInputElement).value))}
+        /><span class="val">{$grainStrength.toFixed(2)}</span></label
+      >
       <label class="row">
         <input
           type="checkbox"
@@ -291,7 +389,16 @@
         />
         Animated
       </label>
-      <label class="row"><span>Speed</span><input type="range" min="0" max="4" step="0.05" value={$grainSpeed} oninput={(e) => grainSpeed.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$grainSpeed.toFixed(2)}</span></label>
+      <label class="row"
+        ><span>Speed</span><input
+          type="range"
+          min="0"
+          max="4"
+          step="0.05"
+          value={$grainSpeed}
+          oninput={(e) => grainSpeed.set(Number((e.target as HTMLInputElement).value))}
+        /><span class="val">{$grainSpeed.toFixed(2)}</span></label
+      >
     {/if}
   </div>
 {/if}

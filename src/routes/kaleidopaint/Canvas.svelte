@@ -1118,7 +1118,7 @@
   on:pointerleave={handlePointerLeave}
   on:pointercancel={handlePointerUp}
   on:contextmenu|preventDefault
-  tabindex="0"
+  tabindex="-1"
   style="touch-action: none;"
 >
   <div

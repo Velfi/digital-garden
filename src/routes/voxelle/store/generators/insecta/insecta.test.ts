@@ -17,7 +17,9 @@ function baseOpts(over: Partial<GenerateInsectaOptions> = {}): GenerateInsectaOp
 
 describe('insecta generator', () => {
   it('returns non-empty voxels for each species preset', () => {
-    for (const species of Object.keys(INSECTA_SPECIES_DEFAULTS) as (keyof typeof INSECTA_SPECIES_DEFAULTS)[]) {
+    for (const species of Object.keys(
+      INSECTA_SPECIES_DEFAULTS
+    ) as (keyof typeof INSECTA_SPECIES_DEFAULTS)[]) {
       const opts = INSECTA_SPECIES_DEFAULTS[species];
       const map = generateInsectaVoxels(1, place, normal, opts, () => ({
         color: 0xff00,

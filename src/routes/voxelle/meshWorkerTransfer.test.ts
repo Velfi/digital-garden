@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseCoordKey, parseCoordKeyInts } from './coordUtils';
-import { packSparseChunksForWorker, packVoxelsForWorker } from './meshWorkerTransfer';
+import { packSparseChunksForWorker } from './meshWorkerTransfer';
 import { plasticVoxel } from './voxelMaterial';
 import { coordKey } from './coordUtils';
 
@@ -34,7 +34,6 @@ describe('meshWorkerTransfer', () => {
     }
     voxels.set(coordKey(99, 99, 99), plasticVoxel(0x00ff00));
     const a = packSparseChunksForWorker(voxels, ['0,0,0'], ['1,0,0'], 4);
-    const packedFull = packVoxelsForWorker(voxels);
     const fromFull = (chunkId: string) => {
       const out: Array<[string, ReturnType<typeof plasticVoxel>]> = [];
       const cs = 4;

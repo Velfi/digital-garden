@@ -87,7 +87,8 @@ export function lookupVoxelAccel(
   if (!accel || accel.kind === 'empty') {
     return lookupVoxel(voxels, x, y, z);
   }
-  const packed = accel.kind === 'dense' ? lookupDense(accel, x, y, z) : lookupHashTable(accel, x, y, z);
+  const packed =
+    accel.kind === 'dense' ? lookupDense(accel, x, y, z) : lookupHashTable(accel, x, y, z);
   const u = unpackVoxelPayload(packed);
   if (!u) return null;
   const material = VOXEL_MATERIAL_IDS[u.materialIndex] ?? 'plastic';

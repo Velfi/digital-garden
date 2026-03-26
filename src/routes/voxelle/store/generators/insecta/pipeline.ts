@@ -39,7 +39,11 @@ function getTangentVectors(normal: FaceNormal): [FaceNormal, FaceNormal] {
 /** Match piscina: second tangent = head→abdomen axis. */
 function forwardSideUp(normal: FaceNormal): { f: Vec3; s: Vec3; u: Vec3 } {
   const [t1, t2] = getTangentVectors(normal);
-  return { f: [t2[0], t2[1], t2[2]], s: [t1[0], t1[1], t1[2]], u: [normal[0], normal[1], normal[2]] };
+  return {
+    f: [t2[0], t2[1], t2[2]],
+    s: [t1[0], t1[1], t1[2]],
+    u: [normal[0], normal[1], normal[2]]
+  };
 }
 
 function add3(a: Vec3, b: Vec3): Vec3 {
@@ -60,11 +64,7 @@ function normalize3(a: Vec3): Vec3 {
 }
 
 function cross3(a: Vec3, b: Vec3): Vec3 {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0]
-  ];
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 }
 
 function rotateYawInPlane(f: Vec3, s: Vec3, yawDeg: number): { f: Vec3; s: Vec3 } {
@@ -134,24 +134,14 @@ export function clampInsectaOptions(o: GenerateInsectaOptions): GenerateInsectaO
   };
 }
 
-function tryAdd(
-  set: Set<string>,
-  x: number,
-  y: number,
-  z: number,
-  cap: number
-): boolean {
+function tryAdd(set: Set<string>, x: number, y: number, z: number, cap: number): boolean {
   if (set.size >= cap) return false;
   set.add(coordKey(x, y, z));
   return true;
 }
 
 /** Move every voxel along +u so min(p·u) ≥ place·u — keeps the insect in the air cell from getAddPositionFromHit. */
-function shiftInsectaKeysAlongOutwardNormal(
-  set: Set<string>,
-  place: Vec3,
-  u: Vec3
-): number {
+function shiftInsectaKeysAlongOutwardNormal(set: Set<string>, place: Vec3, u: Vec3): number {
   let minDot = Infinity;
   for (const k of set) {
     const p = parseCoordKey(k) as [number, number, number];
@@ -165,9 +155,7 @@ function shiftInsectaKeysAlongOutwardNormal(
   const next = new Set<string>();
   for (const k of set) {
     const p = parseCoordKey(k) as [number, number, number];
-    next.add(
-      coordKey(p[0] + u[0] * delta, p[1] + u[1] * delta, p[2] + u[2] * delta)
-    );
+    next.add(coordKey(p[0] + u[0] * delta, p[1] + u[1] * delta, p[2] + u[2] * delta));
   }
   set.clear();
   for (const k of next) set.add(k);
@@ -198,8 +186,7 @@ function segmentRadii(
     const nosePt = 0.48 + 0.52 * Math.sin((Math.PI / 2) * u);
     const crownPt = 1 + 0.16 * Math.sin(Math.PI * u);
     const wPt = nosePt * (0.88 + 0.12 * u) * crownPt;
-    const hPt =
-      Math.max(0.92, nosePt * 1.08) * crownPt * (1.04 + 0.1 * Math.sin(Math.PI * u));
+    const hPt = Math.max(0.92, nosePt * 1.08) * crownPt * (1.04 + 0.1 * Math.sin(Math.PI * u));
 
     const wScale = wSq * (1 - k) + wPt * k;
     const hScale = hSq * (1 - k) + hPt * k;
@@ -291,10 +278,7 @@ function frameOffsetToWorld(
   off: readonly [number, number, number],
   sideSign: number
 ): Vec3 {
-  return add3(
-    add3(scale3(f, off[0]), scale3(s, off[1] * sideSign)),
-    scale3(u, off[2])
-  );
+  return add3(add3(scale3(f, off[0]), scale3(s, off[1] * sideSign)), scale3(u, off[2]));
 }
 
 /** Final chain tip (float) per mirrored leg; used to equalize ground contact after rest shift. */
@@ -407,9 +391,7 @@ function addWingSheet(
   /* Spread tilts the sheet from lateral (0°) toward +f (abdomen/tail). Do NOT fold sideSign into
    * the angle — that flipped one wing along −f and the other along +f (tiny opposing stubs). */
   const sr = (spreadDeg * Math.PI) / 180;
-  let wf = normalize3(
-    add3(scale3(f, Math.sin(sr)), scale3(s, Math.cos(sr) * sideSign))
-  );
+  let wf = normalize3(add3(scale3(f, Math.sin(sr)), scale3(s, Math.cos(sr) * sideSign)));
   /* Extra rotation in the tangent plane toward −f (head): dragonfly-like leading-edge sweep. */
   if (forwardCantDeg > 0) {
     const cr = (forwardCantDeg * Math.PI) / 180;
@@ -443,11 +425,13 @@ function collectInsectaPositionKeys(
 
   const sumR = o.headRatio + o.thoraxRatio + o.abdomenRatio;
   const L = o.totalLength;
-  let headLen = Math.max(2, Math.round((L * o.headRatio) / sumR));
-  let thoraxLen = Math.max(2, Math.round((L * o.thoraxRatio) / sumR));
-  let abdomenLen = Math.max(2, L - headLen - thoraxLen);
+  const headLen = Math.max(2, Math.round((L * o.headRatio) / sumR));
+  const thoraxLen = Math.max(2, Math.round((L * o.thoraxRatio) / sumR));
+  const abdomenLen = Math.max(2, L - headLen - thoraxLen);
 
-  let { f, s, u } = forwardSideUp(normal);
+  const fsu = forwardSideUp(normal);
+  let { f, s } = fsu;
+  const u = fsu.u;
   ({ f, s } = rotateYawInPlane(f, s, o.bodyYaw));
 
   const anchor = add3(

@@ -156,14 +156,17 @@ export function computeStrokeVoxelUndoDelta(
   const voxelRemoved: [string, Voxel][] = [];
   for (const k of touchedKeys) {
     const beforeRec = beforeSnapshot.get(k);
-    const before: Voxel | null =
-      beforeRec !== undefined ? beforeRec : null;
+    const before: Voxel | null = beforeRec !== undefined ? beforeRec : null;
     const after = newV.get(k);
     if (before === null && after) {
       voxelAdded.push([k, after]);
     } else if (before !== null && !after) {
       voxelRemoved.push([k, before]);
-    } else if (before !== null && after && (before.color !== after.color || before.material !== after.material)) {
+    } else if (
+      before !== null &&
+      after &&
+      (before.color !== after.color || before.material !== after.material)
+    ) {
       voxelRemoved.push([k, before]);
       voxelAdded.push([k, after]);
     }

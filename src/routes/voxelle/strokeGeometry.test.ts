@@ -724,9 +724,7 @@ describe('applyBrushAlongPath', () => {
 });
 
 function sortPositionKeys(pos: [number, number, number][]): string[] {
-  return pos
-    .map(([a, b, c]) => `${a},${b},${c}`)
-    .sort();
+  return pos.map(([a, b, c]) => `${a},${b},${c}`).sort();
 }
 
 describe('airbrush incremental droplet merge', () => {

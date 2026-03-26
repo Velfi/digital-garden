@@ -126,7 +126,14 @@ export function packSparseChunksForWorker(
 
   for (const [key, voxel] of voxels) {
     const [x, y, z] = parseCoordKeyInts(key);
-    if (x < bounds.minX || x > bounds.maxX || y < bounds.minY || y > bounds.maxY || z < bounds.minZ || z > bounds.maxZ) {
+    if (
+      x < bounds.minX ||
+      x > bounds.maxX ||
+      y < bounds.minY ||
+      y > bounds.maxY ||
+      z < bounds.minZ ||
+      z > bounds.maxZ
+    ) {
       continue;
     }
     const chunkId = chunkIdForCoord(x, y, z, chunkSize);

@@ -36,12 +36,12 @@ This document lists the main **performance-oriented mechanisms** in Voxelle, wha
 
 **What we do** ([`canvas/meshManager.ts`](../canvas/meshManager.ts))
 
-| Mechanism | Threshold / rule | Purpose |
-|-----------|------------------|---------|
-| **Spatial chunking** | `v.size >= 50_000` → `chunkSize = 32` | Splits work for the worker; enables dirty-chunk messaging. |
-| **Incremental dirty rebuild** | Chunking on, `dirtyKeys` non-empty, `dirtyKeys.size <= 2048` | Sends only **dirty + halo** chunks ([`packSparseChunksForWorker`](../meshWorkerTransfer.ts)) so small edits touch fewer voxels. |
-| **Transmissive fallback** | If sparse pack has **≥ 256** transmissive voxels in the packed region | **Full** voxel pack to avoid wrong glass/water AO/neighbor behavior across chunk boundaries. |
-| **Large rebuild defer** | `v.size >= 150_000` and **not** incremental | `requestAnimationFrame` before `postMessage` gives the browser a breath frame before heavy transfer/worker start. |
+| Mechanism                     | Threshold / rule                                                      | Purpose                                                                                                                         |
+| ----------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Spatial chunking**          | `v.size >= 50_000` → `chunkSize = 32`                                 | Splits work for the worker; enables dirty-chunk messaging.                                                                      |
+| **Incremental dirty rebuild** | Chunking on, `dirtyKeys` non-empty, `dirtyKeys.size <= 2048`          | Sends only **dirty + halo** chunks ([`packSparseChunksForWorker`](../meshWorkerTransfer.ts)) so small edits touch fewer voxels. |
+| **Transmissive fallback**     | If sparse pack has **≥ 256** transmissive voxels in the packed region | **Full** voxel pack to avoid wrong glass/water AO/neighbor behavior across chunk boundaries.                                    |
+| **Large rebuild defer**       | `v.size >= 150_000` and **not** incremental                           | `requestAnimationFrame` before `postMessage` gives the browser a breath frame before heavy transfer/worker start.               |
 
 **Note:** `chunkSize` is **32** only when `v.size >= 50_000`; otherwise it is **0** and the incremental dirty-chunk path is never used—each rebuild sends a **full** voxel pack. The table’s “chunking / incremental” rows apply only to large models.
 

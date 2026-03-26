@@ -19,13 +19,13 @@
     wallWidth,
     wallHeight,
     wallLockStartHeight,
-  wallAxisAlign,
-  MAX_BRUSH_SIZE,
-  terrainClayOp,
-  terrainBaseY,
-  terrainStrength,
-  terrainSmoothRadius
-} from '../store/index';
+    wallAxisAlign,
+    MAX_BRUSH_SIZE,
+    terrainClayOp,
+    terrainBaseY,
+    terrainStrength,
+    terrainSmoothRadius
+  } from '../store/index';
   import type { SprayDirection } from '../store/index';
   import { SMOOTH_NEIGHBOR_RADIUS_MAX } from '../clayOps';
 
@@ -35,9 +35,7 @@
 
 {#if clayVisible}
   <section class="tool-panel-section tool-panel-clay" aria-label="Clay">
-    {#if ['bulk', 'smooth', 'level', 'gouge', 'branch', 'melt', 'inflate', 'terrain'].includes(
-      $clayMode
-    )}
+    {#if ['bulk', 'smooth', 'level', 'gouge', 'branch', 'melt', 'inflate', 'terrain'].includes($clayMode)}
       <div class="tool-panel-row">
         <span class="tool-panel-label">Brush</span>
         <input
@@ -169,8 +167,7 @@
               max="32"
               step="1"
               value={$terrainStrength}
-              oninput={(e) =>
-                terrainStrength.set(Number((e.target as HTMLInputElement).value))}
+              oninput={(e) => terrainStrength.set(Number((e.target as HTMLInputElement).value))}
               title="Max voxels of raise/lower at brush center (falls off toward edge)"
             />
             <span class="tool-panel-value">{$terrainStrength}</span>
@@ -185,8 +182,7 @@
               max="8"
               step="1"
               value={$terrainSmoothRadius}
-              oninput={(e) =>
-                terrainSmoothRadius.set(Number((e.target as HTMLInputElement).value))}
+              oninput={(e) => terrainSmoothRadius.set(Number((e.target as HTMLInputElement).value))}
               title="XZ box radius (in columns) for averaging neighbor heights"
             />
             <span class="tool-panel-value">{$terrainSmoothRadius}</span>
@@ -282,8 +278,7 @@
             max={SMOOTH_NEIGHBOR_RADIUS_MAX}
             step="1"
             value={$smoothNeighborRadius}
-            oninput={(e) =>
-              smoothNeighborRadius.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => smoothNeighborRadius.set(Number((e.target as HTMLInputElement).value))}
             title="Neighborhood size: 0 = face-adjacent only; higher = wider smoothing for large models"
           />
           <span class="tool-panel-value">{$smoothNeighborRadius}</span>
@@ -296,8 +291,7 @@
             max="100"
             step="1"
             value={$smoothAggressiveness}
-            oninput={(e) =>
-              smoothAggressiveness.set(Number((e.target as HTMLInputElement).value))}
+            oninput={(e) => smoothAggressiveness.set(Number((e.target as HTMLInputElement).value))}
             title="0 = gentle; 100 = strongest fill/remove (legacy behavior at reach 0)"
           />
           <span class="tool-panel-value">{$smoothAggressiveness}</span>

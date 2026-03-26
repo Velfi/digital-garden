@@ -53,7 +53,12 @@ const STRIDES = [8, 4, 2, 1] as const;
  * Shell index `I² + J²` with `I = 2i - (nu-1)`, `J = 2j - (nv-1)` matches true squared
  * distance from the grid center in cell units (avoids fractional half-steps).
  */
-function fillSpiralBlockOrder(bufW: number, bufH: number, stride: number, out: Uint32Array): number {
+function fillSpiralBlockOrder(
+  bufW: number,
+  bufH: number,
+  stride: number,
+  out: Uint32Array
+): number {
   const nu = Math.ceil(bufW / stride);
   const nv = Math.ceil(bufH / stride);
   if (nu === 0 || nv === 0) return 0;
@@ -811,12 +816,12 @@ function applyRayPostMood(
 ): [number, number, number] {
   let [r, g, b] = rgb;
   if (params.distanceTintEnabled) {
-    const nearT = Math.max(0, Math.min(1, travelDist / Math.max(0.001, params.distanceTintNearDist)));
-    const farSpan = Math.max(1, params.distanceTintFarDist - params.distanceTintNearDist);
-    const farT = Math.max(
+    const nearT = Math.max(
       0,
-      Math.min(1, (travelDist - params.distanceTintNearDist) / farSpan)
+      Math.min(1, travelDist / Math.max(0.001, params.distanceTintNearDist))
     );
+    const farSpan = Math.max(1, params.distanceTintFarDist - params.distanceTintNearDist);
+    const farT = Math.max(0, Math.min(1, (travelDist - params.distanceTintNearDist) / farSpan));
     const tintA: [number, number, number] = [
       params.distanceTintNearColor[0] * (1 - nearT) + params.distanceTintMidColor[0] * nearT,
       params.distanceTintNearColor[1] * (1 - nearT) + params.distanceTintMidColor[1] * nearT,

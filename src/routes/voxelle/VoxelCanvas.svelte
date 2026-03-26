@@ -653,7 +653,11 @@
     return did;
   }
 
-  function queueVoxelPipelineRebuild(opts: { mesh?: boolean; grid?: boolean; ray?: boolean }): void {
+  function queueVoxelPipelineRebuild(opts: {
+    mesh?: boolean;
+    grid?: boolean;
+    ray?: boolean;
+  }): void {
     if (opts.mesh) pendingPipelineMesh = true;
     if (opts.grid) pendingPipelineGrid = true;
     if (opts.ray) pendingPipelineRay = true;
@@ -1030,10 +1034,6 @@
   /** Camera look direction (view plane normal) for airbrush constrain to camera plane. */
   function getCameraPlaneNormal(): { x: number; y: number; z: number } | undefined {
     return raycastCameraPlaneNormal(camera ?? null);
-  }
-
-  function buildGrid(sz: number, v: Map<string, Voxel>) {
-    meshManager?.buildGrid(sz, v);
   }
 
   function getCameraDistance(): number {
@@ -1790,21 +1790,14 @@
         ? expanded.filter(([x, y, z]) => sel.has(coordKey(x, y, z)))
         : expanded;
     const previewVoxel = previewVoxelFor(filtered.length);
-    const previewOverlapShading: PreviewOverlapShading =
-      $tool === 'remove' ? 'darken' : 'invert';
+    const previewOverlapShading: PreviewOverlapShading = $tool === 'remove' ? 'darken' : 'invert';
     const existingForPreview = filtered.length > 0 ? $voxels : undefined;
     const stride =
-      filtered.length > PREVIEW_LOD_COARSE_TARGET
-        ? computePreviewLodStride(filtered.length)
-        : 1;
+      filtered.length > PREVIEW_LOD_COARSE_TARGET ? computePreviewLodStride(filtered.length) : 1;
     const lodBounds = getBoundsFromPositions(filtered);
     if (stride > 1 && lodBounds) {
       strokePreviewLodPendingFull = filtered;
-      const min: [number, number, number] = [
-        lodBounds.minX,
-        lodBounds.minY,
-        lodBounds.minZ
-      ];
+      const min: [number, number, number] = [lodBounds.minX, lodBounds.minY, lodBounds.minZ];
       const coarseMap = downsamplePositionsToPreviewMap(
         filtered,
         previewVoxel,
@@ -3528,11 +3521,7 @@
                 : undefined,
               seed: currentStrokeSeed
             };
-            if (
-              isAirbrushPath &&
-              !isClayPathFollow &&
-              canUseAirbrushIncrementalPuff()
-            ) {
+            if (isAirbrushPath && !isClayPathFollow && canUseAirbrushIncrementalPuff()) {
               extendAirbrushIncrementalPuff(pendingStrokePositions, moveStrokeParams);
               updatePreviewMesh(airbrushIncrementalOut!, strokeBboxHint);
             } else {
@@ -3762,9 +3751,7 @@
           const place = insectaLockedPlace;
           const normal = insectaLockedNormal;
           const opts = buildInsectaOptionsFromStores();
-          updatePreviewMesh(
-            getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts)
-          );
+          updatePreviewMesh(getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts));
           rollOverMesh.visible = false;
         } else if (insectaPhase === 'pick') {
           const hit = getIntersection();
@@ -3778,9 +3765,7 @@
               insectaHoverPlace = place;
               insectaHoverNormal = normal;
               const opts = buildInsectaOptionsFromStores();
-              updatePreviewMesh(
-                getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts)
-              );
+              updatePreviewMesh(getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts));
             } else {
               insectaHoverPlace = null;
               insectaHoverNormal = null;
@@ -4006,11 +3991,11 @@
         $tool === 'selectCoplanar' ||
         $tool === 'selectCoplanarEmpty'
       ) {
-        const previewPos =
-          $tool === 'selectCoplanarEmpty' ? getAddPosition(hit) : getVoxelPosition(hit);
+        const isSelectCoplanarEmpty = ($tool as unknown as string) === 'selectCoplanarEmpty';
+        const previewPos = isSelectCoplanarEmpty ? getAddPosition(hit) : getVoxelPosition(hit);
         const isValidPreview =
           previewPos &&
-          ($tool === 'selectCoplanarEmpty'
+          (isSelectCoplanarEmpty
             ? !$voxels.has(coordKey(previewPos[0], previewPos[1], previewPos[2]))
             : $voxels.has(coordKey(previewPos[0], previewPos[1], previewPos[2])));
         if (previewPos && isValidPreview) {
@@ -4018,11 +4003,7 @@
             paintHoverMesh.position.set(previewPos[0], previewPos[1], previewPos[2]);
             paintHoverMesh.visible = true;
             if (paintHoverOccludedMesh) {
-              paintHoverOccludedMesh.position.set(
-                previewPos[0],
-                previewPos[1],
-                previewPos[2]
-              );
+              paintHoverOccludedMesh.position.set(previewPos[0], previewPos[1], previewPos[2]);
               paintHoverOccludedMesh.visible = true;
             }
             rollOverMesh.visible = false;
@@ -4366,10 +4347,7 @@
 
   function onWheel(event: WheelEvent) {
     const wheelTarget = event.target;
-    if (
-      wheelTarget instanceof Element &&
-      wheelTarget.closest('[data-voxelle-no-passthrough]')
-    ) {
+    if (wheelTarget instanceof Element && wheelTarget.closest('[data-voxelle-no-passthrough]')) {
       return;
     }
     if ($addPanelStore.open) {
@@ -4685,8 +4663,7 @@
     const wantsDistanceTint = get(distanceTintEnabled);
     const wantsGrain = get(grainEnabled);
     const wantsSunShafts = get(sunShaftsEnabled);
-    const wantsPostFx =
-      wantsDistanceTint || wantsGrain || wantsSunShafts || wantsAtmosphere;
+    const wantsPostFx = wantsDistanceTint || wantsGrain || wantsSunShafts || wantsAtmosphere;
     const wanted = wantsPostFx && get(renderingMode) !== 'ray';
     const hasGlow = sceneHasGlowMesh || hasGlowInVoxelGroup(voxelGroup);
     if (!wanted) {
@@ -4784,14 +4761,16 @@
       width: el.width,
       height: el.height
     };
-    if (distanceTintPassGL.enabled) updateDistanceTintPassUniforms(distanceTintPassGL, camera, tintOpts);
+    if (distanceTintPassGL.enabled)
+      updateDistanceTintPassUniforms(distanceTintPassGL, camera, tintOpts);
     if (atmosphereOnlyDistanceTintPass.enabled)
       updateDistanceTintPassUniforms(atmosphereOnlyDistanceTintPass, camera, tintOpts);
     if (sunShaftsPassGL.enabled) updateSunShaftsPassUniforms(sunShaftsPassGL, shaftsOpts);
     if (atmosphereOnlySunShaftsPass.enabled)
       updateSunShaftsPassUniforms(atmosphereOnlySunShaftsPass, shaftsOpts);
     if (grainPassGL.enabled) updateGrainPassUniforms(grainPassGL, grainOpts);
-    if (atmosphereOnlyGrainPass.enabled) updateGrainPassUniforms(atmosphereOnlyGrainPass, grainOpts);
+    if (atmosphereOnlyGrainPass.enabled)
+      updateGrainPassUniforms(atmosphereOnlyGrainPass, grainOpts);
   }
 
   function prepareWebGPUBloomAtmosphere(): boolean {
@@ -5608,7 +5587,8 @@
       else if ($tool === 'paint' || $tool === 'punch') baseHex = hexToInt($color);
       else baseHex = 0x33aaff;
       paintHoverMaterial.color.setHex(baseHex);
-      if (paintHoverOccludedMaterial) applyAddShapeOccludedPreviewTint(baseHex, paintHoverOccludedMaterial);
+      if (paintHoverOccludedMaterial)
+        applyAddShapeOccludedPreviewTint(baseHex, paintHoverOccludedMaterial);
     }
     if (isRemoveHover) {
       if (polygonPointsMaterial) polygonPointsMaterial.color.setHex(0xff4444);
@@ -5828,7 +5808,9 @@
       resetPreviewMeshTransform(addPreviewMesh);
       resetPreviewMeshTransform(addPreviewOccludedMesh);
       const geo = buildPreviewGeometryFromVoxelMap(voxelMap, $voxels);
-      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
+      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo, (g) =>
+        safeDisposeBufferGeometry(g, canvasIsWebGPU)
+      );
       markCanvasDirty();
       return;
     }
@@ -5875,7 +5857,9 @@
                 geos.forEach((g) => g.dispose());
                 return m;
               })();
-      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, coarseGeo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
+      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, coarseGeo, (g) =>
+        safeDisposeBufferGeometry(g, canvasIsWebGPU)
+      );
       if (coarseGeo) {
         alignPreviewMeshToLod(addPreviewMesh, stride, min);
         alignPreviewMeshToLod(addPreviewOccludedMesh, stride, min);
@@ -5884,7 +5868,9 @@
         addPanelRefinementScheduler.schedule(() => {
           const fullGeo = buildPreviewGeometry(capturedPositions, capturedVoxel, $voxels);
           if (!fullGeo || !addPreviewMesh || !addPreviewOccludedMesh) return;
-          assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, fullGeo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
+          assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, fullGeo, (g) =>
+            safeDisposeBufferGeometry(g, canvasIsWebGPU)
+          );
           resetPreviewMeshTransform(addPreviewMesh);
           resetPreviewMeshTransform(addPreviewOccludedMesh);
           markCanvasDirty();
@@ -5894,7 +5880,9 @@
       resetPreviewMeshTransform(addPreviewMesh);
       resetPreviewMeshTransform(addPreviewOccludedMesh);
       const geo = buildPreviewGeometry(positions, addVx, $voxels);
-      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
+      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo, (g) =>
+        safeDisposeBufferGeometry(g, canvasIsWebGPU)
+      );
     }
     markCanvasDirty();
   });
@@ -6017,9 +6005,9 @@
     {piscinaPhase}
     {commitPiscinaFish}
     {pickAgainPiscina}
-    insectaPhase={insectaPhase}
-    commitInsectaPlacement={commitInsectaPlacement}
-    pickAgainInsecta={pickAgainInsecta}
+    {insectaPhase}
+    {commitInsectaPlacement}
+    {pickAgainInsecta}
     {ropePhase}
     {commitRope}
     {cancelRope}
