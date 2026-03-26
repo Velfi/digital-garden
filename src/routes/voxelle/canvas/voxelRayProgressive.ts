@@ -53,12 +53,7 @@ const STRIDES = [8, 4, 2, 1] as const;
  * Shell index `I² + J²` with `I = 2i - (nu-1)`, `J = 2j - (nv-1)` matches true squared
  * distance from the grid center in cell units (avoids fractional half-steps).
  */
-function fillSpiralBlockOrder(
-  bufW: number,
-  bufH: number,
-  stride: number,
-  out: Uint32Array
-): number {
+function fillSpiralBlockOrder(bufW: number, bufH: number, stride: number, out: Uint32Array): number {
   const nu = Math.ceil(bufW / stride);
   const nv = Math.ceil(bufH / stride);
   if (nu === 0 || nv === 0) return 0;
@@ -816,12 +811,12 @@ function applyRayPostMood(
 ): [number, number, number] {
   let [r, g, b] = rgb;
   if (params.distanceTintEnabled) {
-    const nearT = Math.max(
-      0,
-      Math.min(1, travelDist / Math.max(0.001, params.distanceTintNearDist))
-    );
+    const nearT = Math.max(0, Math.min(1, travelDist / Math.max(0.001, params.distanceTintNearDist)));
     const farSpan = Math.max(1, params.distanceTintFarDist - params.distanceTintNearDist);
-    const farT = Math.max(0, Math.min(1, (travelDist - params.distanceTintNearDist) / farSpan));
+    const farT = Math.max(
+      0,
+      Math.min(1, (travelDist - params.distanceTintNearDist) / farSpan)
+    );
     const tintA: [number, number, number] = [
       params.distanceTintNearColor[0] * (1 - nearT) + params.distanceTintMidColor[0] * nearT,
       params.distanceTintNearColor[1] * (1 - nearT) + params.distanceTintMidColor[1] * nearT,
@@ -837,13 +832,7 @@ function applyRayPostMood(
     g = g * (1 - s) + tint[1] * s;
     b = b * (1 - s) + tint[2] * s;
   }
-  if (params.sunShaftsEnabled) {
-    const dy = 1 - v;
-    const shaft = Math.max(0, Math.min(1, dy * dy)) * params.sunShaftsStrength * 0.08;
-    r += params.lightColorR * shaft;
-    g += params.lightColorG * shaft;
-    b += params.lightColorB * shaft;
-  }
+  // Sun shafts: applied in WebGL/WebGPU post (same as blocky) so strength matches sunScreenUv sampling.
   if (params.grainEnabled && params.grainStrength > 0) {
     const t = params.grainAnimated ? params.timeSeconds * params.grainSpeed : 0;
     const n = (Math.sin((u + t * 0.37) * 12.9898 + (v + t * 0.19) * 78.233) * 43758.5453) % 1;

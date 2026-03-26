@@ -90,7 +90,7 @@ export type VoxelPrimaryRenderParams = {
   bloomPassBackground: THREE.Color | null;
   bloomDarkMaterial: THREE.MeshBasicMaterial | null;
   bloomMaterialStash: Record<string, THREE.Material | THREE.Material[]>;
-  /** WebGL planar atmosphere (greedy / marchingCubes only). */
+  /** WebGL planar fog + screen mood passes (blocky modes; ray uses mood-only, no planar fog). */
   prepareWebGLAtmosphere?: () => void;
   planarAtmospherePassGL: ShaderPass | null;
   atmosphereOnlyComposer: EffectComposer | null;
@@ -191,6 +191,7 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
   } else if (bloomComposer && finalComposer && sharedSceneRenderPass) {
     sharedSceneRenderPass.camera = camera;
     if (rayBloomEligible && rayOut) {
+      prepareWebGLAtmosphere?.();
       scene.background = rayOut.bloomTexture;
       bloomComposer.render();
       scene.background = rayOut.beautyTexture;

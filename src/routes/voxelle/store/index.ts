@@ -42,6 +42,7 @@ export {
   planeCuboidHollow,
   PLANE_CUBOID_HOLLOW_WALL_MAX,
   planeCuboidHollowWallThickness,
+  planeCylindroidCone,
   clayMode,
   clayBrushRadius,
   clayBrushShape,

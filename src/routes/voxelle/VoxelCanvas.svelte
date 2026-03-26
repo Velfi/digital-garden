@@ -28,6 +28,7 @@
     planeCuboidHollow,
     PLANE_CUBOID_HOLLOW_WALL_MAX,
     planeCuboidHollowWallThickness,
+    planeCylindroidCone,
     clayMode,
     clayBrushRadius,
     clayBrushShape,
@@ -275,6 +276,7 @@
     getAxisAlignedLine,
     getAxisAlignedPlaneFromNormal,
     getAxisAlignedCircleFromNormal,
+    getAxisAlignedCylindroid,
     getAxisAlignedCuboid,
     getPolygonVoxels,
     getBresenham3DLine,
@@ -291,8 +293,13 @@
   import {
     PREVIEW_BBOX_VOXEL_THRESHOLD,
     planeStrokeBounds,
+    diskStrokeBounds,
     cuboidStrokeBounds,
     cuboidSolidVoxelCount,
+    cylindroidStrokeBounds,
+    cylindroidSolidVoxelCount,
+    buildCylindroidPreviewVolume,
+    type CylindroidPreviewVolume,
     lineStrokeBounds,
     inflateStrokePreviewBoundsForDrawBrush,
     expandStrokePreviewBoundsOriginMirror,
@@ -357,7 +364,7 @@
     PRECISE_GUIDE_TEX_SIZE
   } from './canvas/voxelCanvasInit';
   import { isGeneratorFaceClickTool } from './store/generators/registry';
-  import { isMoodFaceClickTool } from './store/mood/registry';
+  import { isMoodTool } from './store/mood/registry';
   import { shouldEnableOrbitControls } from './store/interactionMode';
   import {
     getRaycastTargetsFrom,
@@ -653,11 +660,7 @@
     return did;
   }
 
-  function queueVoxelPipelineRebuild(opts: {
-    mesh?: boolean;
-    grid?: boolean;
-    ray?: boolean;
-  }): void {
+  function queueVoxelPipelineRebuild(opts: { mesh?: boolean; grid?: boolean; ray?: boolean }): void {
     if (opts.mesh) pendingPipelineMesh = true;
     if (opts.grid) pendingPipelineGrid = true;
     if (opts.ray) pendingPipelineRay = true;
@@ -746,6 +749,13 @@
     normal: THREE.Vector3;
   } | null = null;
   let cuboidDepth = $state(1); // voxel layers; pointer drag or slider to adjust
+  let cylindroidPhase = $state<'plane' | 'depth' | null>(null);
+  let cylindroidPlane: {
+    center: [number, number, number];
+    edge: [number, number, number];
+    normal: THREE.Vector3;
+  } | null = null;
+  let cylindroidDepth = $state(1);
   let depthAdjustPointerId: number | null = null;
   let lastDepthPhaseClientY = 0;
   let depthPhaseAccumulator = 0; // fractional pixels, accumulate to avoid jerky rounding
@@ -1034,6 +1044,10 @@
   /** Camera look direction (view plane normal) for airbrush constrain to camera plane. */
   function getCameraPlaneNormal(): { x: number; y: number; z: number } | undefined {
     return raycastCameraPlaneNormal(camera ?? null);
+  }
+
+  function buildGrid(sz: number, v: Map<string, Voxel>) {
+    meshManager?.buildGrid(sz, v);
   }
 
   function getCameraDistance(): number {
@@ -1674,6 +1688,8 @@
     drawBrushInflate?: Pick<PathThickenParams, 'drawBrushShape' | 'drawBrushSize'>;
     /** When true, use bbox preview without building voxel arrays (e.g. large cuboid depth). */
     forceUseBbox?: boolean;
+    /** Large cylindroid preview: oriented cylinder/cone instead of selection AABB box. */
+    cylindroidVolume?: CylindroidPreviewVolume;
   };
 
   function clearAirbrushIncrementalPuff(): void {
@@ -1736,6 +1752,7 @@
       !isVoxelDrag &&
       !isStampDrag &&
       cuboidPhase !== 'depth' &&
+      cylindroidPhase !== 'depth' &&
       ropePhase !== 'tension';
 
     const previewVoxelFor = (count: number): Voxel => {
@@ -1780,7 +1797,13 @@
       const pv = previewVoxelFor(positions.length > 0 ? positions.length : 1);
       strokePreviewLodScheduler.cancel();
       strokePreviewLodPendingFull = null;
-      meshManager.updatePreviewBoundingBox(b, pv);
+      let cylVol = bboxGated.cylindroidVolume;
+      if (bboxGated.drawBrushInflate) cylVol = undefined;
+      const sym = getCurrentSymmetryAxes();
+      if (cylVol && (isShiftPlaneSymmetryActive() || sym.x || sym.y || sym.z)) {
+        cylVol = undefined;
+      }
+      meshManager.updatePreviewBoundingBox(b, pv, cylVol ?? null);
       return;
     }
 
@@ -1790,14 +1813,21 @@
         ? expanded.filter(([x, y, z]) => sel.has(coordKey(x, y, z)))
         : expanded;
     const previewVoxel = previewVoxelFor(filtered.length);
-    const previewOverlapShading: PreviewOverlapShading = $tool === 'remove' ? 'darken' : 'invert';
+    const previewOverlapShading: PreviewOverlapShading =
+      $tool === 'remove' ? 'darken' : 'invert';
     const existingForPreview = filtered.length > 0 ? $voxels : undefined;
     const stride =
-      filtered.length > PREVIEW_LOD_COARSE_TARGET ? computePreviewLodStride(filtered.length) : 1;
+      filtered.length > PREVIEW_LOD_COARSE_TARGET
+        ? computePreviewLodStride(filtered.length)
+        : 1;
     const lodBounds = getBoundsFromPositions(filtered);
     if (stride > 1 && lodBounds) {
       strokePreviewLodPendingFull = filtered;
-      const min: [number, number, number] = [lodBounds.minX, lodBounds.minY, lodBounds.minZ];
+      const min: [number, number, number] = [
+        lodBounds.minX,
+        lodBounds.minY,
+        lodBounds.minZ
+      ];
       const coarseMap = downsamplePositionsToPreviewMap(
         filtered,
         previewVoxel,
@@ -1875,6 +1905,83 @@
       );
       updatePreviewMesh(pendingStrokePositions, bboxHintBase);
     }
+    render();
+  }
+
+  function updateCylindroidFromDepth() {
+    if (!cylindroidPlane) return;
+    const ax = Math.abs(cylindroidPlane.normal.x);
+    const ay = Math.abs(cylindroidPlane.normal.y);
+    const az = Math.abs(cylindroidPlane.normal.z);
+    const axis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+    const d: [number, number, number] = [0, 0, 0];
+    d[axis] = cylindroidDepth;
+    deltaDisplay = { dx: d[0], dy: d[1], dz: d[2] };
+    const cb = cylindroidStrokeBounds(
+      cylindroidPlane.center,
+      cylindroidPlane.edge,
+      cylindroidPlane.normal,
+      cylindroidDepth
+    );
+    const bboxHintBase: StrokePreviewBboxHint = {
+      primaryBounds: cb,
+      cylindroidVolume: buildCylindroidPreviewVolume(
+        cylindroidPlane.center,
+        cylindroidPlane.edge,
+        cylindroidPlane.normal,
+        cb,
+        cylindroidDepth,
+        get(planeCylindroidCone)
+      )
+    };
+    const solidEst =
+      cylindroidSolidVoxelCount(
+        cylindroidPlane.center,
+        cylindroidPlane.edge,
+        cylindroidPlane.normal,
+        cylindroidDepth
+      ) * strokePreviewSymmetryExpansionFactor();
+    if (solidEst >= PREVIEW_BBOX_VOXEL_THRESHOLD) {
+      pendingStrokePositions = [];
+      updatePreviewMesh([], { ...bboxHintBase, forceUseBbox: true });
+    } else {
+      pendingStrokePositions = getAxisAlignedCylindroid(
+        cylindroidPlane.center,
+        cylindroidPlane.edge,
+        cylindroidPlane.normal,
+        cylindroidDepth,
+        get(planeCylindroidCone),
+        get(planeCuboidHollow),
+        clampPlaneCuboidHollowWallThickness()
+      );
+      updatePreviewMesh(pendingStrokePositions, bboxHintBase);
+    }
+    render();
+  }
+
+  function commitCylindroid() {
+    if (!cylindroidPlane) return;
+    const positions = getAxisAlignedCylindroid(
+      cylindroidPlane.center,
+      cylindroidPlane.edge,
+      cylindroidPlane.normal,
+      cylindroidDepth,
+      get(planeCylindroidCone),
+      get(planeCuboidHollow),
+      clampPlaneCuboidHollowWallThickness()
+    );
+    if (positions.length > 0) {
+      if ($tool === 'select') {
+        applySelectStroke(positions, selectionModeForCurrentGesture ?? get(selectionMode));
+      } else {
+        runVoxelStroke(() => applyLineStroke(positions));
+      }
+    }
+    deltaDisplay = null;
+    cylindroidPhase = null;
+    cylindroidPlane = null;
+    pendingStrokePositions = [];
+    updatePreviewMesh([]);
     render();
   }
 
@@ -2137,7 +2244,7 @@
     if (ropePhase) {
       cancelRope();
     }
-    if (cuboidPhase) {
+    if (cuboidPhase || cylindroidPhase) {
       if (depthAdjustPointerId !== null) {
         try {
           container.releasePointerCapture(depthAdjustPointerId);
@@ -2148,6 +2255,8 @@
       }
       cuboidPhase = null;
       cuboidPlane = null;
+      cylindroidPhase = null;
+      cylindroidPlane = null;
       pendingStrokePositions = [];
       updatePreviewMesh([]);
     }
@@ -2225,6 +2334,7 @@
         selectionGizmo?.isGizmoDrag ||
         isSegmentedStrokeGestureActive({
           cuboidPhase,
+          cylindroidPhase,
           polygonPhase,
           roofPhase,
           ropePhase
@@ -2303,6 +2413,7 @@
         selectionGizmo?.isGizmoDrag ||
         isSegmentedStrokeGestureActive({
           cuboidPhase,
+          cylindroidPhase,
           polygonPhase,
           roofPhase,
           ropePhase
@@ -2315,13 +2426,28 @@
       return;
     }
     if (event.button !== 0) return;
-    if ($tool === 'hand') return;
+    if ($tool === 'hand' || isMoodTool($tool)) return;
 
     // Cuboid depth phase: pointer down starts drag-to-adjust-depth (anywhere on canvas)
     if (
       get(effectiveStrokeMode) === 'cuboid' &&
       cuboidPhase === 'depth' &&
       cuboidPlane &&
+      !$addPanelStore.open
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      depthAdjustPointerId = event.pointerId;
+      lastDepthPhaseClientY = event.clientY;
+      depthPhaseAccumulator = 0;
+      container.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    if (
+      get(effectiveStrokeMode) === 'cylindroid' &&
+      cylindroidPhase === 'depth' &&
+      cylindroidPlane &&
       !$addPanelStore.open
     ) {
       event.preventDefault();
@@ -3036,8 +3162,8 @@
       return;
     }
 
-    // Face-click generators / mood: placement runs on pointerup; do not start stroke drag
-    if (isGeneratorFaceClickTool(get(tool)) || isMoodFaceClickTool(get(tool))) {
+    // Face-click generators: placement runs on pointerup; do not start stroke drag
+    if (isGeneratorFaceClickTool(get(tool))) {
       requestAnimationFrame(() => render());
       return;
     }
@@ -3149,7 +3275,7 @@
       return;
     }
     try {
-      if ($tool === 'hand') {
+      if ($tool === 'hand' || isMoodTool($tool)) {
         resetPiscinaPlacementFlow();
         resetInsectaPlacementFlow();
         selectionGizmo?.clearGizmoHoverCursor();
@@ -3185,7 +3311,7 @@
         render();
         return;
       }
-      // Cuboid depth phase: depth from pointer drag (up/down movement) or slider
+      // Cuboid / cylindroid depth phase: depth from pointer drag (up/down movement) or slider
       if (
         cuboidPhase === 'depth' &&
         cuboidPlane &&
@@ -3199,6 +3325,21 @@
         depthPhaseAccumulator -= step;
         cuboidDepth = Math.max(-256, Math.min(256, cuboidDepth + step));
         updateCuboidFromDepth();
+        return;
+      }
+      if (
+        cylindroidPhase === 'depth' &&
+        cylindroidPlane &&
+        event &&
+        depthAdjustPointerId === event.pointerId
+      ) {
+        const dy = lastDepthPhaseClientY - event.clientY;
+        lastDepthPhaseClientY = event.clientY;
+        depthPhaseAccumulator += dy / 12;
+        const step = Math.trunc(depthPhaseAccumulator);
+        depthPhaseAccumulator -= step;
+        cylindroidDepth = Math.max(-256, Math.min(256, cylindroidDepth + step));
+        updateCylindroidFromDepth();
         return;
       }
       if (isVoxelDrag && dragStartPos) {
@@ -3353,12 +3494,13 @@
             }
           }
           const isAxisAlignedLine = strokeModeVal === 'line' && get(lineAxisAlign);
-          // Plane/circle/cuboid and axis-aligned line: prefer drag-plane intersection so shape
+          // Plane/circle/cuboid/cylindroid and axis-aligned line: prefer drag-plane intersection so shape
           // extends into empty space. If ray is parallel to the plane, keep voxel-hit fallback.
           if (
             (strokeModeVal === 'plane' ||
               strokeModeVal === 'circle' ||
               strokeModeVal === 'cuboid' ||
+              strokeModeVal === 'cylindroid' ||
               isAxisAlignedLine) &&
             dragStartPos
           ) {
@@ -3429,14 +3571,15 @@
               if (
                 (strokeModeVal === 'plane' ||
                   strokeModeVal === 'circle' ||
-                  strokeModeVal === 'cuboid') &&
+                  strokeModeVal === 'cuboid' ||
+                  strokeModeVal === 'cylindroid') &&
                 normal
               ) {
                 const hollow = get(planeCuboidHollow);
                 const hollowWall =
                   strokeModeVal === 'circle' ? 1 : clampPlaneCuboidHollowWallThickness();
                 pendingStrokePositions =
-                  strokeModeVal === 'circle'
+                  strokeModeVal === 'circle' || strokeModeVal === 'cylindroid'
                     ? getAxisAlignedCircleFromNormal(
                         dragStartPos,
                         currentPos,
@@ -3467,13 +3610,30 @@
               !isClayPathFollow &&
               !isAirbrushPath &&
               dragStartPos &&
-              (strokeModeVal === 'plane' || strokeModeVal === 'cuboid' || strokeModeVal === 'line')
+              (strokeModeVal === 'plane' ||
+                strokeModeVal === 'cuboid' ||
+                strokeModeVal === 'cylindroid' ||
+                strokeModeVal === 'line')
             ) {
               const nPlane = getEffectivePlaneNormal();
               if ((strokeModeVal === 'plane' || strokeModeVal === 'cuboid') && nPlane) {
                 strokeBboxHint = {
                   primaryBounds: planeStrokeBounds(dragStartPos, currentPos, nPlane),
                   drawBrushInflate: drawBrushInflateParams()
+                };
+              } else if (strokeModeVal === 'cylindroid' && nPlane) {
+                const db = diskStrokeBounds(dragStartPos, currentPos, nPlane);
+                strokeBboxHint = {
+                  primaryBounds: db,
+                  drawBrushInflate: drawBrushInflateParams(),
+                  cylindroidVolume: buildCylindroidPreviewVolume(
+                    dragStartPos,
+                    currentPos,
+                    nPlane,
+                    db,
+                    0,
+                    get(planeCylindroidCone)
+                  )
                 };
               } else if (strokeModeVal === 'line') {
                 strokeBboxHint = {
@@ -3521,7 +3681,11 @@
                 : undefined,
               seed: currentStrokeSeed
             };
-            if (isAirbrushPath && !isClayPathFollow && canUseAirbrushIncrementalPuff()) {
+            if (
+              isAirbrushPath &&
+              !isClayPathFollow &&
+              canUseAirbrushIncrementalPuff()
+            ) {
               extendAirbrushIncrementalPuff(pendingStrokePositions, moveStrokeParams);
               updatePreviewMesh(airbrushIncrementalOut!, strokeBboxHint);
             } else {
@@ -3544,8 +3708,12 @@
         return;
       }
       deltaDisplay = null;
-      // Cuboid depth phase: preserve preview when idle (not dragging)
+      // Cuboid / cylindroid depth phase: preserve preview when idle (not dragging)
       if (cuboidPhase === 'depth' && cuboidPlane) {
+        render();
+        return;
+      }
+      if (cylindroidPhase === 'depth' && cylindroidPlane) {
         render();
         return;
       }
@@ -3751,7 +3919,9 @@
           const place = insectaLockedPlace;
           const normal = insectaLockedNormal;
           const opts = buildInsectaOptionsFromStores();
-          updatePreviewMesh(getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts));
+          updatePreviewMesh(
+            getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts)
+          );
           rollOverMesh.visible = false;
         } else if (insectaPhase === 'pick') {
           const hit = getIntersection();
@@ -3765,7 +3935,9 @@
               insectaHoverPlace = place;
               insectaHoverNormal = normal;
               const opts = buildInsectaOptionsFromStores();
-              updatePreviewMesh(getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts));
+              updatePreviewMesh(
+                getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts)
+              );
             } else {
               insectaHoverPlace = null;
               insectaHoverNormal = null;
@@ -3991,11 +4163,11 @@
         $tool === 'selectCoplanar' ||
         $tool === 'selectCoplanarEmpty'
       ) {
-        const isSelectCoplanarEmpty = ($tool as unknown as string) === 'selectCoplanarEmpty';
-        const previewPos = isSelectCoplanarEmpty ? getAddPosition(hit) : getVoxelPosition(hit);
+        const previewPos =
+          $tool === 'selectCoplanarEmpty' ? getAddPosition(hit) : getVoxelPosition(hit);
         const isValidPreview =
           previewPos &&
-          (isSelectCoplanarEmpty
+          ($tool === 'selectCoplanarEmpty'
             ? !$voxels.has(coordKey(previewPos[0], previewPos[1], previewPos[2]))
             : $voxels.has(coordKey(previewPos[0], previewPos[1], previewPos[2])));
         if (previewPos && isValidPreview) {
@@ -4003,7 +4175,11 @@
             paintHoverMesh.position.set(previewPos[0], previewPos[1], previewPos[2]);
             paintHoverMesh.visible = true;
             if (paintHoverOccludedMesh) {
-              paintHoverOccludedMesh.position.set(previewPos[0], previewPos[1], previewPos[2]);
+              paintHoverOccludedMesh.position.set(
+                previewPos[0],
+                previewPos[1],
+                previewPos[2]
+              );
               paintHoverOccludedMesh.visible = true;
             }
             rollOverMesh.visible = false;
@@ -4071,7 +4247,10 @@
       }
       depthAdjustPointerId = null;
     }
-    if (event.button === 2 && (isVoxelDrag || selectionGizmo?.isGizmoDrag || cuboidPhase)) {
+    if (
+      event.button === 2 &&
+      (isVoxelDrag || selectionGizmo?.isGizmoDrag || cuboidPhase || cylindroidPhase)
+    ) {
       cancelDrag();
     }
     const gizmoCommit = selectionGizmo?.tryPrimaryPointerUp(event);
@@ -4182,6 +4361,31 @@
         };
         cuboidDepth = 1;
         updateCuboidFromDepth();
+      } else if (mode === 'cylindroid' && dragStartPos && normal && !isClayPath) {
+        let edgePos = dragStartPos;
+        const planePoint = new THREE.Vector3(
+          dragStartPos[0] + 0.5,
+          dragStartPos[1] + 0.5,
+          dragStartPos[2] + 0.5
+        );
+        const planePos = getIntersectionWithPlane(planePoint, normal);
+        if (planePos) {
+          edgePos = planePos;
+        } else {
+          const hit = getIntersection();
+          if (hit) {
+            const pos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
+            if (pos) edgePos = pos;
+          }
+        }
+        cylindroidPhase = 'depth';
+        cylindroidPlane = {
+          center: dragStartPos,
+          edge: edgePos,
+          normal
+        };
+        cylindroidDepth = 1;
+        updateCylindroidFromDepth();
       } else {
         // Apply the stroke on release (line/plane / clay modes)
         if (pendingStrokePositions.length > 0) {
@@ -4347,7 +4551,10 @@
 
   function onWheel(event: WheelEvent) {
     const wheelTarget = event.target;
-    if (wheelTarget instanceof Element && wheelTarget.closest('[data-voxelle-no-passthrough]')) {
+    if (
+      wheelTarget instanceof Element &&
+      wheelTarget.closest('[data-voxelle-no-passthrough]')
+    ) {
       return;
     }
     if ($addPanelStore.open) {
@@ -4399,12 +4606,12 @@
         return;
       }
     }
-    // Alt+scroll during plane/cuboid drag: cycle plane orientation (X/Y/Z)
+    // Alt+scroll during plane/cuboid/cylindroid drag: cycle plane orientation (X/Y/Z)
     const mode = get(effectiveStrokeMode);
     if (
       event.altKey &&
       isVoxelDrag &&
-      (mode === 'plane' || mode === 'circle' || mode === 'cuboid') &&
+      (mode === 'plane' || mode === 'circle' || mode === 'cuboid' || mode === 'cylindroid') &&
       dragStartPos &&
       getEffectivePlaneNormal()
     ) {
@@ -4431,16 +4638,31 @@
       let altScrollBbox: StrokePreviewBboxHint | null = null;
       if (currentPos) {
         const hollow = get(planeCuboidHollow);
-        const hollowWall = mode === 'circle' ? 1 : clampPlaneCuboidHollowWallThickness();
+        const hollowWall =
+          mode === 'circle' ? 1 : clampPlaneCuboidHollowWallThickness();
         const n = axisVector(next);
         pendingStrokePositions =
-          mode === 'circle'
+          mode === 'circle' || mode === 'cylindroid'
             ? getAxisAlignedCircleFromNormal(dragStartPos, currentPos, n, hollow, hollowWall)
             : getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, n, hollow, hollowWall);
         if (mode === 'plane' || mode === 'cuboid') {
           altScrollBbox = {
             primaryBounds: planeStrokeBounds(dragStartPos, currentPos, n),
             drawBrushInflate: drawBrushInflateParams()
+          };
+        } else if (mode === 'cylindroid') {
+          const db = diskStrokeBounds(dragStartPos, currentPos, n);
+          altScrollBbox = {
+            primaryBounds: db,
+            drawBrushInflate: drawBrushInflateParams(),
+            cylindroidVolume: buildCylindroidPreviewVolume(
+              dragStartPos,
+              currentPos,
+              n,
+              db,
+              0,
+              get(planeCylindroidCone)
+            )
           };
         }
       }
@@ -4663,8 +4885,12 @@
     const wantsDistanceTint = get(distanceTintEnabled);
     const wantsGrain = get(grainEnabled);
     const wantsSunShafts = get(sunShaftsEnabled);
-    const wantsPostFx = wantsDistanceTint || wantsGrain || wantsSunShafts || wantsAtmosphere;
-    const wanted = wantsPostFx && get(renderingMode) !== 'ray';
+    const isRay = get(renderingMode) === 'ray';
+    const wantsFog = wantsAtmosphere && !isRay;
+    /** Ray: tint/grain stay in `applyRayPostMood`; post only adds sun shafts (screen-space, matches blocky). */
+    const postDistanceTint = wantsDistanceTint && !isRay;
+    const postGrain = wantsGrain && !isRay;
+    const wanted = wantsFog || postDistanceTint || postGrain || wantsSunShafts;
     const hasGlow = sceneHasGlowMesh || hasGlowInVoxelGroup(voxelGroup);
     if (!wanted) {
       planarAtmospherePassGL.enabled = false;
@@ -4677,21 +4903,21 @@
       atmosphereOnlyGrainPass.enabled = false;
       return;
     }
-    planarAtmospherePassGL.enabled = hasGlow;
-    distanceTintPassGL.enabled = hasGlow;
-    sunShaftsPassGL.enabled = hasGlow;
-    grainPassGL.enabled = hasGlow;
-    atmosphereOnlyFogPass.enabled = !hasGlow;
-    atmosphereOnlyDistanceTintPass.enabled = !hasGlow;
-    atmosphereOnlySunShaftsPass.enabled = !hasGlow;
-    atmosphereOnlyGrainPass.enabled = !hasGlow;
+    planarAtmospherePassGL.enabled = hasGlow && wantsFog;
+    distanceTintPassGL.enabled = hasGlow && postDistanceTint;
+    sunShaftsPassGL.enabled = hasGlow && wantsSunShafts;
+    grainPassGL.enabled = hasGlow && postGrain;
+    atmosphereOnlyFogPass.enabled = !hasGlow && wantsFog;
+    atmosphereOnlyDistanceTintPass.enabled = !hasGlow && postDistanceTint;
+    atmosphereOnlySunShaftsPass.enabled = !hasGlow && wantsSunShafts;
+    atmosphereOnlyGrainPass.enabled = !hasGlow && postGrain;
     if (bloomMixPass) bloomMixPass.enabled = hasGlow;
     const el = renderer.domElement;
     const sunUv = getSunScreenUv(camera as THREE.Camera);
     const opts = {
       fogColorHex: get(atmosphereColor),
       fogDensity: get(atmosphereDensity),
-      fogEnabled: wantsAtmosphere,
+      fogEnabled: wantsFog,
       fogThickness: get(atmosphereThickness),
       mode: get(atmosphereMode),
       spatialMode: get(atmosphereSpatialMode),
@@ -4731,7 +4957,7 @@
       updatePlanarAtmosphereShaderUniforms(atmosphereOnlyFogPass, camera, opts);
     }
     const tintOpts = {
-      enabled: wantsDistanceTint,
+      enabled: postDistanceTint,
       nearColorHex: get(distanceTintNearColor),
       midColorHex: get(distanceTintMidColor),
       farColorHex: get(distanceTintFarColor),
@@ -4753,7 +4979,7 @@
       height: el.height
     };
     const grainOpts = {
-      enabled: wantsGrain,
+      enabled: postGrain,
       strength: get(grainStrength),
       animated: get(grainAnimated),
       speed: get(grainSpeed),
@@ -4761,27 +4987,27 @@
       width: el.width,
       height: el.height
     };
-    if (distanceTintPassGL.enabled)
-      updateDistanceTintPassUniforms(distanceTintPassGL, camera, tintOpts);
+    if (distanceTintPassGL.enabled) updateDistanceTintPassUniforms(distanceTintPassGL, camera, tintOpts);
     if (atmosphereOnlyDistanceTintPass.enabled)
       updateDistanceTintPassUniforms(atmosphereOnlyDistanceTintPass, camera, tintOpts);
     if (sunShaftsPassGL.enabled) updateSunShaftsPassUniforms(sunShaftsPassGL, shaftsOpts);
     if (atmosphereOnlySunShaftsPass.enabled)
       updateSunShaftsPassUniforms(atmosphereOnlySunShaftsPass, shaftsOpts);
     if (grainPassGL.enabled) updateGrainPassUniforms(grainPassGL, grainOpts);
-    if (atmosphereOnlyGrainPass.enabled)
-      updateGrainPassUniforms(atmosphereOnlyGrainPass, grainOpts);
+    if (atmosphereOnlyGrainPass.enabled) updateGrainPassUniforms(atmosphereOnlyGrainPass, grainOpts);
   }
 
   function prepareWebGPUBloomAtmosphere(): boolean {
     if (!webgpuBloomPipeline || !camera) return false;
     const wantsAtmosphere = get(atmosphereActiveForRender);
-    const wanted =
-      wantsAtmosphere || get(distanceTintEnabled) || get(grainEnabled) || get(sunShaftsEnabled);
-    if (get(renderingMode) === 'ray') {
-      webgpuBloomPipeline.setPlanarAtmosphereEnabled(false);
-      return false;
-    }
+    const isRay = get(renderingMode) === 'ray';
+    const wantsFog = wantsAtmosphere && !isRay;
+    const wantsDistanceTint = get(distanceTintEnabled);
+    const wantsGrain = get(grainEnabled);
+    const wantsSunShafts = get(sunShaftsEnabled);
+    const postDistanceTint = wantsDistanceTint && !isRay;
+    const postGrain = wantsGrain && !isRay;
+    const wanted = wantsFog || postDistanceTint || postGrain || wantsSunShafts;
     webgpuBloomPipeline.setPlanarAtmosphereEnabled(wanted);
     if (wanted) {
       const sunUv = getSunScreenUv(camera as THREE.Camera);
@@ -4789,7 +5015,7 @@
         camera,
         fogColorHex: get(atmosphereColor),
         fogDensity: get(atmosphereDensity),
-        fogEnabled: wantsAtmosphere,
+        fogEnabled: wantsFog,
         fogThickness: get(atmosphereThickness),
         mode: get(atmosphereMode),
         spatialMode: get(atmosphereSpatialMode),
@@ -4801,14 +5027,14 @@
         fogDriftScale: get(atmosphereDriftScale),
         fogDriftSpeed: get(atmosphereDriftSpeed),
         timeSeconds: performance.now() * 0.001,
-        distanceTintEnabled: get(distanceTintEnabled),
+        distanceTintEnabled: postDistanceTint,
         distanceTintNearColorHex: get(distanceTintNearColor),
         distanceTintMidColorHex: get(distanceTintMidColor),
         distanceTintFarColorHex: get(distanceTintFarColor),
         distanceTintNearDist: get(distanceTintNearDistance),
         distanceTintFarDist: get(distanceTintFarDistance),
         distanceTintStrength: get(distanceTintStrength),
-        grainEnabled: get(grainEnabled),
+        grainEnabled: postGrain,
         grainStrength: get(grainStrength),
         grainAnimated: get(grainAnimated),
         grainSpeed: get(grainSpeed),
@@ -5042,6 +5268,7 @@
       isStampDrag,
       selectionGizmoDragging: !!selectionGizmo?.isGizmoDrag,
       getCuboidPhase: () => cuboidPhase,
+      getCylindroidPhase: () => cylindroidPhase,
       getPolygonPhase: () => polygonPhase,
       getRoofPhase: () => roofPhase,
       getRopePhase: () => ropePhase,
@@ -5065,8 +5292,21 @@
       pendingStrokePositions = [];
       updatePreviewMesh([]);
     }
+    if (mode !== 'cylindroid' && cylindroidPhase) {
+      cylindroidPhase = null;
+      cylindroidPlane = null;
+      pendingStrokePositions = [];
+      updatePreviewMesh([]);
+    }
     if (mode !== 'polygon' && polygonPhase) {
       cancelPolygon();
+    }
+  });
+
+  $effect(() => {
+    void $planeCylindroidCone;
+    if (cylindroidPhase === 'depth' && cylindroidPlane) {
+      updateCylindroidFromDepth();
     }
   });
 
@@ -5514,6 +5754,7 @@
         isVoxelDrag ||
         isStampDrag ||
         cuboidPhase !== null ||
+        cylindroidPhase !== null ||
         polygonPhase !== null ||
         roofPhase !== null ||
         ropePhase !== null ||
@@ -5587,8 +5828,7 @@
       else if ($tool === 'paint' || $tool === 'punch') baseHex = hexToInt($color);
       else baseHex = 0x33aaff;
       paintHoverMaterial.color.setHex(baseHex);
-      if (paintHoverOccludedMaterial)
-        applyAddShapeOccludedPreviewTint(baseHex, paintHoverOccludedMaterial);
+      if (paintHoverOccludedMaterial) applyAddShapeOccludedPreviewTint(baseHex, paintHoverOccludedMaterial);
     }
     if (isRemoveHover) {
       if (polygonPointsMaterial) polygonPointsMaterial.color.setHex(0xff4444);
@@ -5659,7 +5899,7 @@
       resetPreciseState(true);
     }
     const isFly = t === 'fly';
-    const isHand = t === 'hand';
+    const isHand = t === 'hand' || isMoodTool(t);
     if (prevTool === 'piscina' && t !== 'piscina') {
       resetPiscinaPlacementFlow();
     }
@@ -5692,7 +5932,13 @@
     }
     if (
       isFly &&
-      (isSegmentedStrokeGestureActive({ cuboidPhase, polygonPhase, roofPhase, ropePhase }) ||
+      (isSegmentedStrokeGestureActive({
+        cuboidPhase,
+        cylindroidPhase,
+        polygonPhase,
+        roofPhase,
+        ropePhase
+      }) ||
         selectionGizmo?.isGizmoDrag)
     ) {
       flyControls.unlock();
@@ -5709,6 +5955,7 @@
       if (
         isSegmentedStrokeGestureActive({
           cuboidPhase,
+          cylindroidPhase,
           polygonPhase,
           roofPhase,
           ropePhase
@@ -5808,9 +6055,7 @@
       resetPreviewMeshTransform(addPreviewMesh);
       resetPreviewMeshTransform(addPreviewOccludedMesh);
       const geo = buildPreviewGeometryFromVoxelMap(voxelMap, $voxels);
-      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo, (g) =>
-        safeDisposeBufferGeometry(g, canvasIsWebGPU)
-      );
+      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
       markCanvasDirty();
       return;
     }
@@ -5857,9 +6102,7 @@
                 geos.forEach((g) => g.dispose());
                 return m;
               })();
-      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, coarseGeo, (g) =>
-        safeDisposeBufferGeometry(g, canvasIsWebGPU)
-      );
+      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, coarseGeo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
       if (coarseGeo) {
         alignPreviewMeshToLod(addPreviewMesh, stride, min);
         alignPreviewMeshToLod(addPreviewOccludedMesh, stride, min);
@@ -5868,9 +6111,7 @@
         addPanelRefinementScheduler.schedule(() => {
           const fullGeo = buildPreviewGeometry(capturedPositions, capturedVoxel, $voxels);
           if (!fullGeo || !addPreviewMesh || !addPreviewOccludedMesh) return;
-          assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, fullGeo, (g) =>
-            safeDisposeBufferGeometry(g, canvasIsWebGPU)
-          );
+          assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, fullGeo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
           resetPreviewMeshTransform(addPreviewMesh);
           resetPreviewMeshTransform(addPreviewOccludedMesh);
           markCanvasDirty();
@@ -5880,9 +6121,7 @@
       resetPreviewMeshTransform(addPreviewMesh);
       resetPreviewMeshTransform(addPreviewOccludedMesh);
       const geo = buildPreviewGeometry(positions, addVx, $voxels);
-      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo, (g) =>
-        safeDisposeBufferGeometry(g, canvasIsWebGPU)
-      );
+      assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
     }
     markCanvasDirty();
   });
@@ -5994,6 +6233,10 @@
     bind:cuboidDepth
     {updateCuboidFromDepth}
     {commitCuboid}
+    {cylindroidPhase}
+    bind:cylindroidDepth
+    {updateCylindroidFromDepth}
+    {commitCylindroid}
     {polygonPhase}
     polygonPointCount={polygonPoints.length}
     {commitPolygon}
@@ -6005,9 +6248,9 @@
     {piscinaPhase}
     {commitPiscinaFish}
     {pickAgainPiscina}
-    {insectaPhase}
-    {commitInsectaPlacement}
-    {pickAgainInsecta}
+    insectaPhase={insectaPhase}
+    commitInsectaPlacement={commitInsectaPlacement}
+    pickAgainInsecta={pickAgainInsecta}
     {ropePhase}
     {commitRope}
     {cancelRope}

@@ -54,10 +54,7 @@ export const grainEnabled = writable<boolean>(false);
 export const grainStrength = writable<number>(0.12);
 export const grainAnimated = writable<boolean>(true);
 export const grainSpeed = writable<number>(1);
-export const grainActiveForRender = derived(
-  [grainEnabled, grainStrength],
-  ([on, s]) => on && s > 0
-);
+export const grainActiveForRender = derived([grainEnabled, grainStrength], ([on, s]) => on && s > 0);
 
 export const sunShaftsEnabled = writable<boolean>(false);
 export const sunShaftsStrength = writable<number>(0.7);

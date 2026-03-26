@@ -95,6 +95,7 @@ export type StrokeMode =
   | 'circle'
   | 'precise'
   | 'cuboid'
+  | 'cylindroid'
   | 'polygon'
   | 'fill'
   | 'airbrush';
@@ -207,11 +208,13 @@ export const effectiveStrokeMode = derived([tool, strokeMode], ([t, sm]) =>
 /** When true (default), line stroke is axis-aligned; when false, line is drawn on the plane through the start voxel. */
 export const lineAxisAlign = writable<boolean>(true);
 export const planeAxis = writable<PlaneAxis>(1);
-/** When true, plane/cuboid stroke selects only perimeter (plane) or 6-face shell (cuboid). */
+/** When true, plane/cuboid/cylindroid stroke selects only perimeter (plane) or volumetric shell. */
 export const planeCuboidHollow = writable<boolean>(false);
-/** Voxel layers kept from the outer surface when hollow (plane/cuboid); 1 = thinnest shell. */
+/** Voxel layers kept from the outer surface when hollow (plane/cuboid/cylindroid); 1 = thinnest shell. */
 export const PLANE_CUBOID_HOLLOW_WALL_MAX = 32;
 export const planeCuboidHollowWallThickness = writable<number>(1);
+/** Cylindroid extrusion: constant-radius cylinder vs linear taper to a tip (cone). */
+export const planeCylindroidCone = writable<boolean>(false);
 export const clayMode = writable<ClayMode>('bulk');
 /** Clay brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
 export const clayBrushRadius = writable<number>(2);

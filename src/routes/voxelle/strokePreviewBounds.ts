@@ -102,6 +102,197 @@ export function cuboidSolidVoxelCount(
   return wx * wy * wz;
 }
 
+/** Conservative AABB for a disk in the plane normal to `faceNormal` (matches circle stroke extent). */
+export function diskStrokeBounds(
+  center: [number, number, number],
+  edge: [number, number, number],
+  faceNormal: Vec3Like
+): SelectionBounds {
+  const fixedAxis = fixedAxisFromNormal(faceNormal);
+  let cu: number;
+  let cv: number;
+  let eu: number;
+  let ev: number;
+  if (fixedAxis === 0) {
+    cu = center[1];
+    cv = center[2];
+    eu = edge[1];
+    ev = edge[2];
+  } else if (fixedAxis === 1) {
+    cu = center[0];
+    cv = center[2];
+    eu = edge[0];
+    ev = edge[2];
+  } else {
+    cu = center[0];
+    cv = center[1];
+    eu = edge[0];
+    ev = edge[1];
+  }
+  const du = eu - cu;
+  const dv = ev - cv;
+  const rSq = du * du + dv * dv;
+  const R = Math.ceil(Math.sqrt(rSq));
+  if (fixedAxis === 0) {
+    const x = center[0];
+    return {
+      minX: x,
+      maxX: x,
+      minY: cu - R,
+      maxY: cu + R,
+      minZ: cv - R,
+      maxZ: cv + R
+    };
+  }
+  if (fixedAxis === 1) {
+    const y = center[1];
+    return {
+      minX: cu - R,
+      maxX: cu + R,
+      minY: y,
+      maxY: y,
+      minZ: cv - R,
+      maxZ: cv + R
+    };
+  }
+  const z = center[2];
+  return {
+    minX: cu - R,
+    maxX: cu + R,
+    minY: cv - R,
+    maxY: cv + R,
+    minZ: z,
+    maxZ: z
+  };
+}
+
+/** Outer AABB of cylindroid extrusion (cone fits inside the same box as a cylinder with the base radius). */
+export function cylindroidStrokeBounds(
+  center: [number, number, number],
+  edge: [number, number, number],
+  faceNormal: Vec3Like,
+  depth: number
+): SelectionBounds {
+  const plane = diskStrokeBounds(center, edge, faceNormal);
+  const fixedAxis = fixedAxisFromNormal(faceNormal);
+  const comp = [faceNormal.x, faceNormal.y, faceNormal.z][fixedAxis];
+  const step = comp > 0 ? 1 : -1;
+  const layers = Math.abs(depth);
+  const dir = depth > 0 ? step : -step;
+  const axisCoord = center[fixedAxis];
+  const endCoord = axisCoord + dir * layers;
+  const lo = Math.min(axisCoord, endCoord);
+  const hi = Math.max(axisCoord, endCoord);
+  const out = { ...plane };
+  if (fixedAxis === 0) {
+    out.minX = lo;
+    out.maxX = hi;
+  } else if (fixedAxis === 1) {
+    out.minY = lo;
+    out.maxY = hi;
+  } else {
+    out.minZ = lo;
+    out.maxZ = hi;
+  }
+  return out;
+}
+
+/** Upper-bound voxel count inside `cylindroidStrokeBounds` (preview LOD threshold; not exact fill count). */
+export function cylindroidSolidVoxelCount(
+  center: [number, number, number],
+  edge: [number, number, number],
+  faceNormal: Vec3Like,
+  depth: number
+): number {
+  const box = cylindroidStrokeBounds(center, edge, faceNormal, depth);
+  const wx = box.maxX - box.minX + 1;
+  const wy = box.maxY - box.minY + 1;
+  const wz = box.maxZ - box.minZ + 1;
+  return wx * wy * wz;
+}
+
+/**
+ * Oriented cylinder/cone proxy for large cylindroid stroke preview (meshManager).
+ * Local +Y is the axis from base (radiusBottom at −Y) toward tip (radiusTop at +Y).
+ */
+export type CylindroidPreviewVolume = {
+  center: [number, number, number];
+  height: number;
+  radiusBottom: number;
+  radiusTop: number;
+  axisX: number;
+  axisY: number;
+  axisZ: number;
+};
+
+const MIN_PREVIEW_CYLINDER_RADIUS = 0.25;
+
+/** Build a right cylinder or cone matching `cylindroidStrokeBounds` extent and base disk. */
+export function buildCylindroidPreviewVolume(
+  center: [number, number, number],
+  edge: [number, number, number],
+  faceNormal: Vec3Like,
+  bounds: SelectionBounds,
+  depth: number,
+  cone: boolean
+): CylindroidPreviewVolume {
+  const ax = Math.abs(faceNormal.x);
+  const ay = Math.abs(faceNormal.y);
+  const az = Math.abs(faceNormal.z);
+  const fixedAxis = (ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2) as 0 | 1 | 2;
+
+  let cu: number;
+  let cv: number;
+  let eu: number;
+  let ev: number;
+  if (fixedAxis === 0) {
+    cu = center[1];
+    cv = center[2];
+    eu = edge[1];
+    ev = edge[2];
+  } else if (fixedAxis === 1) {
+    cu = center[0];
+    cv = center[2];
+    eu = edge[0];
+    ev = edge[2];
+  } else {
+    cu = center[0];
+    cv = center[1];
+    eu = edge[0];
+    ev = edge[1];
+  }
+
+  const baseR = Math.sqrt((eu - cu) ** 2 + (ev - cv) ** 2);
+  const R = Math.max(baseR, MIN_PREVIEW_CYLINDER_RADIUS);
+
+  const comp = [faceNormal.x, faceNormal.y, faceNormal.z][fixedAxis];
+  const step = comp > 0 ? 1 : -1;
+  const layers = Math.abs(depth);
+  const dir = depth > 0 ? step : -step;
+  const taperCone = cone && layers > 0;
+
+  const axis: [number, number, number] = [0, 0, 0];
+  axis[fixedAxis] = dir > 0 ? 1 : -1;
+
+  let height: number;
+  if (fixedAxis === 0) height = bounds.maxX - bounds.minX + 1;
+  else if (fixedAxis === 1) height = bounds.maxY - bounds.minY + 1;
+  else height = bounds.maxZ - bounds.minZ + 1;
+
+  const c: [number, number, number] = [center[0], center[1], center[2]];
+  c[fixedAxis] = center[fixedAxis] + (dir * layers) / 2;
+
+  return {
+    center: c,
+    height: Math.max(height, MIN_PREVIEW_CYLINDER_RADIUS),
+    radiusBottom: R,
+    radiusTop: taperCone ? 0 : R,
+    axisX: axis[0],
+    axisY: axis[1],
+    axisZ: axis[2]
+  };
+}
+
 /** AABB containing axis-aligned or face-plane Bresenham line voxels between a and b. */
 export function lineStrokeBounds(
   a: [number, number, number],

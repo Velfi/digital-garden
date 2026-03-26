@@ -47,6 +47,14 @@
     </button>
     <button
       type="button"
+      class:active={$strokeMode === 'cylindroid'}
+      onclick={() => strokeMode.set('cylindroid')}
+      title="Drag center to edge for base disk (Alt+scroll to cycle plane), scroll for depth, Done to apply — cone option in tool panel"
+    >
+      Cylindroid
+    </button>
+    <button
+      type="button"
       class:active={$strokeMode === 'polygon'}
       onclick={() => strokeMode.set('polygon')}
       title="Click to place points, Done to fill convex hull"

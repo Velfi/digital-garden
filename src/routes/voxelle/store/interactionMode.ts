@@ -1,5 +1,6 @@
 import { derived } from 'svelte/store';
 import { tool, addPanelStore } from './core';
+import { isMoodTool } from './mood/registry';
 
 /**
  * High-level canvas interaction mode for camera vs sculpt vs UI overlays.
@@ -11,7 +12,7 @@ export const canvasInteractionMode = derived(
   [tool, addPanelStore],
   ([t, add]): VoxelleCanvasInteractionMode => {
     if (t === 'fly') return 'fly';
-    if (t === 'hand') return 'hand';
+    if (t === 'hand' || isMoodTool(t)) return 'hand';
     if (add.open) return 'add_panel';
     return 'sculpt';
   }

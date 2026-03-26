@@ -17,7 +17,10 @@ export function drawBrushVisible(toolPane: ToolPane, tool: string): boolean {
 
 export function planeAxisVisible(strokeMode: StrokeMode, tool: string): boolean {
   return (
-    (strokeMode === 'plane' || strokeMode === 'circle' || strokeMode === 'cuboid') &&
+    (strokeMode === 'plane' ||
+      strokeMode === 'circle' ||
+      strokeMode === 'cuboid' ||
+      strokeMode === 'cylindroid') &&
     isStrokeTool(tool)
   );
 }
@@ -39,7 +42,7 @@ export function polygonVisible(strokeMode: StrokeMode, tool: string): boolean {
 }
 
 export function planeOrCuboidStroke(strokeMode: StrokeMode): boolean {
-  return strokeMode === 'plane' || strokeMode === 'cuboid';
+  return strokeMode === 'plane' || strokeMode === 'cuboid' || strokeMode === 'cylindroid';
 }
 
 export function constrainPlaneSectionVisible(strokeMode: StrokeMode, tool: string): boolean {

@@ -15,7 +15,10 @@ import {
   VOXELLE_SELECTION_BBOX_WIREFRAME_KEY,
   VOXELLE_SELECTION_PIVOT_CHILD_KEY
 } from '../coordUtils';
-import { SELECTION_OVERLAY_MESH_THRESHOLD } from '../strokePreviewBounds';
+import {
+  SELECTION_OVERLAY_MESH_THRESHOLD,
+  type CylindroidPreviewVolume
+} from '../strokePreviewBounds';
 import { CUBE_EDGES, EDGE_NEIGHBORS } from '../gridLines';
 import { buildGridPositions } from '../gridLines';
 import {
@@ -87,6 +90,8 @@ const SELECTION_OVERLAY_HEX = 0x3399ff;
 const GRID_SURFACE_LIFT = 0.01;
 const PREVIEW_GRID_HEX = 0x2f3542;
 const PREVIEW_GRID_OPACITY = 0.36;
+const PREVIEW_PROXY_CYLINDER_SEGMENTS = 40;
+const SELECTION_PROXY_MIN_RADIUS = 0.25;
 
 /**
  * Max linear-depth bias in the shadow pass when net transmittance is 1 (non-reversed Z: pushes clip z
@@ -728,8 +733,9 @@ export function createMeshManager(
         selectionGroup.add(selectionOccludedMesh);
       }
     } else {
-      const boxGeoPrimary = selectionBoundsToBoxGeometry(bounds);
-      const boxGeoOccluded = boxGeoPrimary.clone();
+      const proxy = selectionOverlayCylinderFromBounds(bounds);
+      const cylGeoPrimary = proxy.geometry;
+      const cylGeoOccluded = cylGeoPrimary.clone();
       selectionMaterial = new THREE.MeshBasicMaterial({
         color: SELECTION_OVERLAY_HEX,
         vertexColors: false,
@@ -738,11 +744,12 @@ export function createMeshManager(
         depthTest: false,
         depthWrite: false
       });
-      selectionMesh = new THREE.Mesh(boxGeoPrimary, selectionMaterial);
+      selectionMesh = new THREE.Mesh(cylGeoPrimary, selectionMaterial);
       selectionMesh.raycast = () => {};
       selectionMesh.renderOrder = 1001;
       selectionMesh.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
-      positionMeshAtSelectionBounds(selectionMesh, bounds);
+      selectionMesh.position.copy(proxy.position);
+      selectionMesh.quaternion.copy(proxy.quaternion);
       selectionGroup.add(selectionMesh);
 
       const occRgb = new THREE.Color(SELECTION_OVERLAY_HEX);
@@ -760,11 +767,12 @@ export function createMeshManager(
         polygonOffsetFactor: 1,
         polygonOffsetUnits: 1
       });
-      selectionOccludedMesh = new THREE.Mesh(boxGeoOccluded, selectionOccludedMaterial);
+      selectionOccludedMesh = new THREE.Mesh(cylGeoOccluded, selectionOccludedMaterial);
       selectionOccludedMesh.raycast = () => {};
       selectionOccludedMesh.renderOrder = 1000;
       selectionOccludedMesh.userData[VOXELLE_SELECTION_PIVOT_CHILD_KEY] = true;
-      positionMeshAtSelectionBounds(selectionOccludedMesh, bounds);
+      selectionOccludedMesh.position.copy(proxy.position);
+      selectionOccludedMesh.quaternion.copy(proxy.quaternion);
       selectionGroup.add(selectionOccludedMesh);
     }
 
@@ -923,11 +931,52 @@ export function createMeshManager(
     pendingDirtyGridKeys = null;
   }
 
-  function selectionBoundsToBoxGeometry(b: SelectionBounds): THREE.BoxGeometry {
-    const wx = b.maxX - b.minX + 1;
-    const wy = b.maxY - b.minY + 1;
-    const wz = b.maxZ - b.minZ + 1;
-    return new THREE.BoxGeometry(wx, wy, wz);
+  /**
+   * Large selection proxy: right cylinder along the longest AABB axis, radius = circumradius
+   * of the perpendicular cross-section (contains the selection box).
+   */
+  function selectionOverlayCylinderFromBounds(bounds: SelectionBounds): {
+    geometry: THREE.CylinderGeometry;
+    position: THREE.Vector3;
+    quaternion: THREE.Quaternion;
+  } {
+    const wx = bounds.maxX - bounds.minX + 1;
+    const wy = bounds.maxY - bounds.minY + 1;
+    const wz = bounds.maxZ - bounds.minZ + 1;
+    const cx = (bounds.minX + bounds.maxX) / 2;
+    const cy = (bounds.minY + bounds.maxY) / 2;
+    const cz = (bounds.minZ + bounds.maxZ) / 2;
+    const position = new THREE.Vector3(cx, cy, cz);
+    const quaternion = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+
+    let height: number;
+    let radius: number;
+    if (wx >= wy && wx >= wz) {
+      height = wx;
+      radius = Math.hypot(wy / 2, wz / 2);
+      quaternion.setFromUnitVectors(up, new THREE.Vector3(1, 0, 0));
+    } else if (wy >= wx && wy >= wz) {
+      height = wy;
+      radius = Math.hypot(wx / 2, wz / 2);
+      quaternion.identity();
+    } else {
+      height = wz;
+      radius = Math.hypot(wx / 2, wy / 2);
+      quaternion.setFromUnitVectors(up, new THREE.Vector3(0, 0, 1));
+    }
+
+    const r = Math.max(radius, SELECTION_PROXY_MIN_RADIUS);
+    const h = Math.max(height, SELECTION_PROXY_MIN_RADIUS);
+    const geometry = new THREE.CylinderGeometry(
+      r,
+      r,
+      h,
+      PREVIEW_PROXY_CYLINDER_SEGMENTS,
+      1,
+      false
+    );
+    return { geometry, position, quaternion };
   }
 
   /** Voxel index k → world cube [k−0.5, k+0.5] (same as greedy mesh). */
@@ -935,8 +984,12 @@ export function createMeshManager(
     mesh.position.set((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2);
   }
 
-  /** Translucent single box; same voxel-space convention as selection AABB wireframe. */
-  function updatePreviewBoundingBox(bounds: SelectionBounds, voxel: Voxel) {
+  /** Large-stroke proxy: box, or oriented cylinder/cone when `cylVol` is set. */
+  function updatePreviewBoundingBox(
+    bounds: SelectionBounds,
+    voxel: Voxel,
+    cylVol?: CylindroidPreviewVolume | null
+  ) {
     if (!previewMesh || !previewMaterial) return;
     const wx = bounds.maxX - bounds.minX + 1;
     const wy = bounds.maxY - bounds.minY + 1;
@@ -952,10 +1005,30 @@ export function createMeshManager(
     previewMaterial.needsUpdate = true;
     previewMaterial.color.setHex(voxel.color & 0xffffff);
     const prevPreviewGeo = previewMesh.geometry;
-    const nextBoxGeo = new THREE.BoxGeometry(wx, wy, wz);
-    previewMesh.geometry = nextBoxGeo;
+
+    let nextGeo: THREE.BufferGeometry;
+    if (cylVol) {
+      const h = Math.max(cylVol.height, SELECTION_PROXY_MIN_RADIUS);
+      nextGeo = new THREE.CylinderGeometry(
+        cylVol.radiusTop,
+        cylVol.radiusBottom,
+        h,
+        PREVIEW_PROXY_CYLINDER_SEGMENTS,
+        1,
+        false
+      );
+      const axisVec = new THREE.Vector3(cylVol.axisX, cylVol.axisY, cylVol.axisZ);
+      if (axisVec.lengthSq() < 1e-12) axisVec.set(0, 1, 0);
+      else axisVec.normalize();
+      previewMesh.position.set(cylVol.center[0], cylVol.center[1], cylVol.center[2]);
+      previewMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axisVec);
+    } else {
+      nextGeo = new THREE.BoxGeometry(wx, wy, wz);
+      positionMeshAtSelectionBounds(previewMesh, bounds);
+    }
+
+    previewMesh.geometry = nextGeo;
     safeDisposeBufferGeometry(prevPreviewGeo, isWebGPU);
-    positionMeshAtSelectionBounds(previewMesh, bounds);
     previewMesh.visible = true;
     updatePreviewGridFromBounds(bounds);
   }

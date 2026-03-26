@@ -262,11 +262,7 @@ function applyModelData(data: VoxelleFileFormat): void {
       if (typeof atm.color === 'string' && /^#?[0-9a-fA-F]{6}$/.test(atm.color)) {
         atmosphereColor.set(atm.color.startsWith('#') ? atm.color : `#${atm.color}`);
       }
-      if (
-        typeof atm.thickness === 'number' &&
-        Number.isFinite(atm.thickness) &&
-        atm.thickness > 0
-      ) {
+      if (typeof atm.thickness === 'number' && Number.isFinite(atm.thickness) && atm.thickness > 0) {
         atmosphereThickness.set(Math.min(200, atm.thickness));
       }
       if (
@@ -320,54 +316,35 @@ function applyModelData(data: VoxelleFileFormat): void {
       ) {
         atmospherePlaneValid.set(Math.hypot(pl.nx, pl.ny, pl.nz) > 1e-6);
       }
-      if (typeof atm.distanceTintEnabled === 'boolean')
-        distanceTintEnabled.set(atm.distanceTintEnabled);
-      if (
-        typeof atm.distanceTintNearColor === 'string' &&
-        /^#?[0-9a-fA-F]{6}$/.test(atm.distanceTintNearColor)
-      ) {
+      if (typeof atm.distanceTintEnabled === 'boolean') distanceTintEnabled.set(atm.distanceTintEnabled);
+      if (typeof atm.distanceTintNearColor === 'string' && /^#?[0-9a-fA-F]{6}$/.test(atm.distanceTintNearColor)) {
         distanceTintNearColor.set(
           atm.distanceTintNearColor.startsWith('#')
             ? atm.distanceTintNearColor
             : `#${atm.distanceTintNearColor}`
         );
       }
-      if (
-        typeof atm.distanceTintMidColor === 'string' &&
-        /^#?[0-9a-fA-F]{6}$/.test(atm.distanceTintMidColor)
-      ) {
+      if (typeof atm.distanceTintMidColor === 'string' && /^#?[0-9a-fA-F]{6}$/.test(atm.distanceTintMidColor)) {
         distanceTintMidColor.set(
           atm.distanceTintMidColor.startsWith('#')
             ? atm.distanceTintMidColor
             : `#${atm.distanceTintMidColor}`
         );
       }
-      if (
-        typeof atm.distanceTintFarColor === 'string' &&
-        /^#?[0-9a-fA-F]{6}$/.test(atm.distanceTintFarColor)
-      ) {
+      if (typeof atm.distanceTintFarColor === 'string' && /^#?[0-9a-fA-F]{6}$/.test(atm.distanceTintFarColor)) {
         distanceTintFarColor.set(
           atm.distanceTintFarColor.startsWith('#')
             ? atm.distanceTintFarColor
             : `#${atm.distanceTintFarColor}`
         );
       }
-      if (
-        typeof atm.distanceTintNearDistance === 'number' &&
-        Number.isFinite(atm.distanceTintNearDistance)
-      ) {
+      if (typeof atm.distanceTintNearDistance === 'number' && Number.isFinite(atm.distanceTintNearDistance)) {
         distanceTintNearDistance.set(Math.max(1, Math.min(4096, atm.distanceTintNearDistance)));
       }
-      if (
-        typeof atm.distanceTintFarDistance === 'number' &&
-        Number.isFinite(atm.distanceTintFarDistance)
-      ) {
+      if (typeof atm.distanceTintFarDistance === 'number' && Number.isFinite(atm.distanceTintFarDistance)) {
         distanceTintFarDistance.set(Math.max(1, Math.min(8192, atm.distanceTintFarDistance)));
       }
-      if (
-        typeof atm.distanceTintStrength === 'number' &&
-        Number.isFinite(atm.distanceTintStrength)
-      ) {
+      if (typeof atm.distanceTintStrength === 'number' && Number.isFinite(atm.distanceTintStrength)) {
         distanceTintStrength.set(Math.max(0, Math.min(1, atm.distanceTintStrength)));
       }
       if (typeof atm.grainEnabled === 'boolean') grainEnabled.set(atm.grainEnabled);
@@ -380,7 +357,7 @@ function applyModelData(data: VoxelleFileFormat): void {
       }
       if (typeof atm.sunShaftsEnabled === 'boolean') sunShaftsEnabled.set(atm.sunShaftsEnabled);
       if (typeof atm.sunShaftsStrength === 'number' && Number.isFinite(atm.sunShaftsStrength)) {
-        sunShaftsStrength.set(Math.max(0, Math.min(4, atm.sunShaftsStrength)));
+        sunShaftsStrength.set(Math.max(0, Math.min(10, atm.sunShaftsStrength)));
       }
       if (typeof atm.sunShaftsDecay === 'number' && Number.isFinite(atm.sunShaftsDecay)) {
         sunShaftsDecay.set(Math.max(0, Math.min(1, atm.sunShaftsDecay)));

@@ -9,6 +9,7 @@
     planeCuboidHollow,
     PLANE_CUBOID_HOLLOW_WALL_MAX,
     planeCuboidHollowWallThickness,
+    planeCylindroidCone,
     drawBrushShape,
     drawBrushSize,
     drawBrushSnapToSurface,
@@ -143,10 +144,21 @@
         type="checkbox"
         checked={$planeCuboidHollow}
         onchange={(e) => planeCuboidHollow.set((e.target as HTMLInputElement).checked)}
-        title="Only perimeter (plane/circle) or shell (cuboid)"
+        title="Only perimeter (plane/circle) or shell (cuboid/cylindroid)"
       />
       Hollow
     </label>
+    {#if $strokeMode === 'cylindroid'}
+      <label class="tool-panel-check">
+        <input
+          type="checkbox"
+          checked={$planeCylindroidCone}
+          onchange={(e) => planeCylindroidCone.set((e.target as HTMLInputElement).checked)}
+          title="Taper radius to a point along extrusion (cone); off = right cylinder"
+        />
+        Cone (taper to tip)
+      </label>
+    {/if}
     {#if $planeCuboidHollow && planeOrCuboidStroke}
       <div class="tool-panel-row">
         <span class="tool-panel-label">Wall thickness</span>
@@ -161,7 +173,7 @@
           )}
           oninput={(e) =>
             planeCuboidHollowWallThickness.set(Number((e.target as HTMLInputElement).value))}
-          title="Hollow shell depth in voxels (plane and cuboid)"
+          title="Hollow shell depth in voxels (plane, cuboid, cylindroid)"
         />
         <span class="tool-panel-value"
           >{Math.min(

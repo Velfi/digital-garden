@@ -168,7 +168,7 @@ const DESCRIPTORS: ToolDescriptor[] = [
     id: 'atmosphere',
     category: 'mood',
     label: 'Atmosphere',
-    title: 'Planar fog: click a voxel face to set the fog plane',
+    title: 'Planar or aerial fog — adjust in the tool panel while navigating the view',
     defaultPane: 'mood'
   },
   {

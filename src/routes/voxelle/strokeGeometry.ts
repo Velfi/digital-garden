@@ -1094,6 +1094,116 @@ export function getAxisAlignedCircleFromNormal(
   return hollowSolidToShell(filled, hollowWallThickness, neighborsInFixedPlane(fixedAxis));
 }
 
+/**
+ * Right cylinder or cone along the axis through `faceNormal`: base disk from `center` to `edge`
+ * in the plane, then extruded by `depth` voxel steps (same layer count as cuboid: base + |depth| offsets).
+ * Cone mode linearly tapers radius to zero at the far end; cylinder keeps the base radius.
+ */
+export function getAxisAlignedCylindroid(
+  center: [number, number, number],
+  edge: [number, number, number],
+  faceNormal: Vec3Like,
+  depth: number,
+  cone: boolean,
+  hollow = false,
+  hollowWallThickness = 1
+): [number, number, number][] {
+  if (depth === 0) {
+    return getAxisAlignedCircleFromNormal(
+      center,
+      edge,
+      faceNormal,
+      hollow,
+      hollowWallThickness
+    );
+  }
+
+  const ax = Math.abs(faceNormal.x);
+  const ay = Math.abs(faceNormal.y);
+  const az = Math.abs(faceNormal.z);
+  const fixedAxis = (ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2) as 0 | 1 | 2;
+
+  let cu: number;
+  let cv: number;
+  let eu: number;
+  let ev: number;
+  const build = (u: number, v: number, w: number): [number, number, number] => {
+    if (fixedAxis === 0) return [w, u, v];
+    if (fixedAxis === 1) return [u, w, v];
+    return [u, v, w];
+  };
+
+  if (fixedAxis === 0) {
+    cu = center[1];
+    cv = center[2];
+    eu = edge[1];
+    ev = edge[2];
+  } else if (fixedAxis === 1) {
+    cu = center[0];
+    cv = center[2];
+    eu = edge[0];
+    ev = edge[2];
+  } else {
+    cu = center[0];
+    cv = center[1];
+    eu = edge[0];
+    ev = edge[1];
+  }
+
+  const baseW = center[fixedAxis];
+  const du = eu - cu;
+  const dv = ev - cv;
+  const baseRSq = du * du + dv * dv;
+
+  const comp = [faceNormal.x, faceNormal.y, faceNormal.z][fixedAxis];
+  const step = comp > 0 ? 1 : -1;
+  const layers = Math.abs(depth);
+  const dir = depth > 0 ? step : -step;
+
+  const seen = new Set<string>();
+  const positions: [number, number, number][] = [];
+
+  const addDiskAtW = (w: number, rSq: number) => {
+    if (rSq <= 0) {
+      const p = build(cu, cv, w);
+      const key = `${p[0]},${p[1]},${p[2]}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        positions.push(p);
+      }
+      return;
+    }
+    const ru = Math.ceil(Math.sqrt(rSq));
+    for (let u = cu - ru; u <= cu + ru; u++) {
+      for (let v = cv - ru; v <= cv + ru; v++) {
+        const ddu = u - cu;
+        const ddv = v - cv;
+        if (ddu * ddu + ddv * ddv <= rSq) {
+          const p = build(u, v, w);
+          const key = `${p[0]},${p[1]},${p[2]}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            positions.push(p);
+          }
+        }
+      }
+    }
+  };
+
+  for (let k = 0; k <= layers; k++) {
+    const w = baseW + dir * k;
+    let rSq = baseRSq;
+    if (cone && layers > 0) {
+      const t = (layers - k) / layers;
+      rSq = baseRSq * t * t;
+    }
+    addDiskAtW(w, rSq);
+  }
+
+  if (!hollow) return positions;
+  return hollowSolidToShell(positions, hollowWallThickness, NEIGHBORS6);
+}
+
 export function getAxisAlignedCuboid(
   a: [number, number, number],
   b: [number, number, number],

@@ -10,6 +10,7 @@ import {
   projectPointOntoPlane,
   getAxisAlignedPlaneFromNormal,
   getAxisAlignedCircleFromNormal,
+  getAxisAlignedCylindroid,
   getAxisAlignedCuboid,
   getPolygonVoxels,
   getRayDirectionPath,
@@ -592,6 +593,39 @@ describe('getAxisAlignedCuboid', () => {
     const plane = getAxisAlignedPlaneFromNormal([0, 0, 0], [2, 2, 0], { x: 0, y: 0, z: 1 }, true);
     const cuboid = getAxisAlignedCuboid([0, 0, 0], [2, 2, 0], { x: 0, y: 0, z: 1 }, 0, true);
     expect(cuboid).toEqual(plane);
+  });
+});
+
+describe('getAxisAlignedCylindroid', () => {
+  const nZ = { x: 0, y: 0, z: 1 };
+  const center: [number, number, number] = [0, 0, 0];
+  const edge: [number, number, number] = [2, 0, 0];
+
+  it('depth 0 matches circle in plane', () => {
+    const circle = getAxisAlignedCircleFromNormal(center, edge, nZ);
+    const cyl = getAxisAlignedCylindroid(center, edge, nZ, 0, false);
+    expect(cyl).toEqual(circle);
+  });
+
+  it('cylinder depth 1 is two full disks along Z', () => {
+    const d0 = getAxisAlignedCircleFromNormal(center, edge, nZ);
+    const d1 = d0.map(([x, y, z]) => [x, y, z + 1] as [number, number, number]);
+    const merged = [...d0, ...d1];
+    const seen = new Set(merged.map((p) => `${p[0]},${p[1]},${p[2]}`));
+    const cyl = getAxisAlignedCylindroid(center, edge, nZ, 1, false);
+    expect(cyl.length).toBe(seen.size);
+    for (const p of cyl) {
+      expect(seen.has(`${p[0]},${p[1]},${p[2]}`)).toBe(true);
+    }
+  });
+
+  it('cone depth 1 adds only axis tip on second layer', () => {
+    const cyl = getAxisAlignedCylindroid(center, edge, nZ, 1, true);
+    const onTipZ = cyl.filter((p) => p[2] === 1);
+    expect(onTipZ).toEqual([[0, 0, 1]]);
+    expect(cyl.length).toBeLessThan(
+      getAxisAlignedCylindroid(center, edge, nZ, 1, false).length
+    );
   });
 });
 

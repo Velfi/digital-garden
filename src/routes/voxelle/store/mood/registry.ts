@@ -5,8 +5,8 @@ export type MoodToolId = (typeof MOOD_TOOLS)[number];
 
 const MOOD_SET = new Set<string>(MOOD_TOOLS);
 
-/** Face-click mood tools: primary click applies on pointerup (no stroke drag). */
-export const MOOD_FACE_CLICK_TOOLS = ['atmosphere'] as const;
+/** Face-click mood tools (none — mood tab uses Hand-style camera navigation). */
+export const MOOD_FACE_CLICK_TOOLS = [] as const;
 
 const MOOD_FACE_CLICK_SET = new Set<string>(MOOD_FACE_CLICK_TOOLS);
 

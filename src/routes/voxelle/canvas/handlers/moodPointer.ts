@@ -1,5 +1,5 @@
 /**
- * Mood tools: face-click to set atmosphere plane (pointer up).
+ * Mood tools: reserved for pointer-up hooks (face-click disabled; mood uses Hand navigation).
  */
 import type { Intersection } from 'three';
 import type { FaceNormal } from '../../store/core';
@@ -15,7 +15,10 @@ export interface MoodPointerUpDeps {
   scheduleRender: () => void;
 }
 
-export function applyMoodFaceClickPointerUp(ctx: MoodPointerUpDeps, event: PointerEvent): void {
+export function applyMoodFaceClickPointerUp(
+  ctx: MoodPointerUpDeps,
+  event: PointerEvent
+): void {
   if (event.button !== 0 || ctx.addPanelOpen) return;
   if (!isMoodFaceClickTool(ctx.tool)) return;
 

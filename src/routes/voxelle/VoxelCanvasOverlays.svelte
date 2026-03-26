@@ -23,6 +23,10 @@
     cuboidDepth: number;
     updateCuboidFromDepth: () => void;
     commitCuboid: () => void;
+    cylindroidPhase: 'plane' | 'depth' | null;
+    cylindroidDepth: number;
+    updateCylindroidFromDepth: () => void;
+    commitCylindroid: () => void;
     polygonPhase: 'placing' | null;
     polygonPointCount: number;
     commitPolygon: () => void;
@@ -74,6 +78,10 @@
     cuboidDepth = $bindable(),
     updateCuboidFromDepth,
     commitCuboid,
+    cylindroidPhase,
+    cylindroidDepth = $bindable(),
+    updateCylindroidFromDepth,
+    commitCylindroid,
     polygonPhase,
     polygonPointCount,
     commitPolygon,
@@ -239,6 +247,79 @@
     onclick={() => commitCuboid()}
     title="Tap Done to apply"
     aria-label="Apply cuboid selection"
+  >
+    Done
+  </button>
+{/if}
+{#if cylindroidPhase === 'depth'}
+  <div class="depth-slider-container" data-voxelle-no-passthrough>
+    <div
+      class="depth-slider-track"
+      role="slider"
+      aria-label="Cylindroid depth"
+      aria-valuemin={-256}
+      aria-valuemax={256}
+      aria-valuenow={cylindroidDepth}
+      tabindex="0"
+      onpointerdown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        depthSliderPointerId = e.pointerId;
+        depthSliderStartY = e.clientY;
+        depthSliderStartDepth = cylindroidDepth;
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }}
+      onpointermove={(e) => {
+        e.preventDefault();
+        if (depthSliderPointerId !== e.pointerId) return;
+        const dy = depthSliderStartY - e.clientY;
+        cylindroidDepth = Math.max(-256, Math.min(256, depthSliderStartDepth + Math.round(dy / 10)));
+        updateCylindroidFromDepth();
+      }}
+      onpointerup={(e) => {
+        if (depthSliderPointerId === e.pointerId) depthSliderPointerId = null;
+      }}
+      onpointercancel={(e) => {
+        if (depthSliderPointerId === e.pointerId) depthSliderPointerId = null;
+      }}
+    >
+      <div
+        class="depth-slider-thumb"
+        style="bottom: {Math.min(99, Math.max(1, 50 + (cylindroidDepth / 512) * 98))}%"
+      ></div>
+    </div>
+    <div class="depth-slider-controls">
+      <button
+        type="button"
+        class="depth-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => {
+          cylindroidDepth = Math.max(-256, cylindroidDepth - 1);
+          updateCylindroidFromDepth();
+        }}
+        aria-label="Decrease depth">−</button
+      >
+      <span class="depth-slider-label">Depth: {cylindroidDepth}</span>
+      <button
+        type="button"
+        class="depth-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => {
+          cylindroidDepth = Math.min(256, cylindroidDepth + 1);
+          updateCylindroidFromDepth();
+        }}
+        aria-label="Increase depth">+</button
+      >
+    </div>
+  </div>
+  <button
+    type="button"
+    class="cuboid-done-btn"
+    data-voxelle-no-passthrough
+    onpointerdown={(e) => e.stopPropagation()}
+    onclick={() => commitCylindroid()}
+    title="Tap Done to apply"
+    aria-label="Apply cylindroid selection"
   >
     Done
   </button>

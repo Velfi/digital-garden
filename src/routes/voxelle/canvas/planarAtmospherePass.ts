@@ -142,7 +142,13 @@ export class VoxelleSceneRenderPass extends RenderPass {
     deltaTime?: number,
     maskActive?: boolean
   ): void {
-    super.render(renderer, writeBuffer, readBuffer, deltaTime ?? 0, maskActive ?? false);
+    super.render(
+      renderer,
+      writeBuffer,
+      readBuffer,
+      deltaTime ?? 0,
+      maskActive ?? false
+    );
     /** RenderPass renders into `readBuffer` (three.js postprocessing convention). */
     this.depthStash.texture = readBuffer.depthTexture ?? null;
   }
@@ -214,7 +220,13 @@ export class StashingPlanarAtmospherePass extends ShaderPass {
   ): void {
     const u = this.material.uniforms;
     if (u.tDepth) u.tDepth.value = this.depthStash.texture;
-    super.render(renderer, writeBuffer, readBuffer, deltaTime ?? 0, maskActive ?? false);
+    super.render(
+      renderer,
+      writeBuffer,
+      readBuffer,
+      deltaTime ?? 0,
+      maskActive ?? false
+    );
   }
 }
 
@@ -320,10 +332,7 @@ void main() {
 }
 `;
 
-function createFullScreenMaterial(
-  fragmentShader: string,
-  uniforms: Record<string, { value: unknown }>
-) {
+function createFullScreenMaterial(fragmentShader: string, uniforms: Record<string, { value: unknown }>) {
   const m = new THREE.ShaderMaterial({
     uniforms,
     vertexShader: PLANAR_FOG_VERTEX,

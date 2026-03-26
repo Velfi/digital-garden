@@ -118,7 +118,8 @@ export async function createWebGPUBloomPipeline(
     select,
     step,
     exp,
-    smoothstep
+    smoothstep,
+    greaterThan
   } = tslMod;
   const { bloom } = bloomMod;
 
@@ -266,11 +267,7 @@ export async function createWebGPUBloomPipeline(
       tintRgb,
       clamp(uDistanceTintStrength, float(0), float(1))
     );
-    const withTintRgb = select(
-      uDistanceTintEnabled.greaterThan(float(0.5)),
-      tintAppliedRgb,
-      foggedRgb
-    );
+    const withTintRgb = select(uDistanceTintEnabled.greaterThan(float(0.5)), tintAppliedRgb, foggedRgb);
     const sunDelta = uSunScreenUv.xy.sub(suv);
     const sunRadial = exp(sunDelta.length().mul(-2.4));
     const shafts = sunRadial
