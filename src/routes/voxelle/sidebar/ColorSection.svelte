@@ -2,10 +2,10 @@
   import { get } from 'svelte/store';
   import { color, palette, selectedColors, tool, toolBeforeEyedropper } from '../store/index';
   import {
-    CSS_COLOR4_NAMED_PALETTE_HEX,
+    MATERIAL_BUILTIN_PALETTE_HEX,
     VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX
-  } from '../store/cssColor4NamedPalette';
-  import LospecPalette from '$lib/components/LospecPalette.svelte';
+  } from '../store/materialBuiltinPalette';
+  import PalettePicker from '$lib/components/PalettePicker.svelte';
 </script>
 
 <div>
@@ -46,11 +46,11 @@
       </button>
     </div>
   </div>
-  <LospecPalette
+  <PalettePicker
     {color}
     {palette}
     {selectedColors}
-    builtinPalette={CSS_COLOR4_NAMED_PALETTE_HEX}
+    builtinPalette={MATERIAL_BUILTIN_PALETTE_HEX}
     builtinDefaultHex={VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX}
   />
 </div>

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { color, backgroundColor, palette } from '../store';
   import ParamLabel from '../ParamLabel.svelte';
-  import LospecPalette from '$lib/components/LospecPalette.svelte';
+  import PalettePicker from '$lib/components/PalettePicker.svelte';
 
   function swapColors() {
     const fg = $color;
@@ -31,7 +31,7 @@
   <button type="button" class="swap-btn" onclick={swapColors}>Swap FG/BG</button>
 </div>
 
-<LospecPalette {color} {palette} defaultSlug="resurrect-64" />
+<PalettePicker {color} {palette} defaultSlug="resurrect-64" />
 
 <style>
   input[type='color'] {

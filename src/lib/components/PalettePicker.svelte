@@ -35,7 +35,7 @@
     { name: 'CC-29', slug: 'cc-29' }
   ];
 
-  let lospecSlug = $state('');
+  let slugInput = $state('');
   let loading = $state(false);
   let loadError = $state('');
 
@@ -75,8 +75,8 @@
     }
   }
 
-  function loadLospecPalette() {
-    loadPaletteBySlug(lospecSlug);
+  function loadPaletteFromSlugInput() {
+    loadPaletteBySlug(slugInput);
   }
 
   function applyBuiltinPalette() {
@@ -170,8 +170,8 @@
   }
 </script>
 
-<h2>Lospec palette</h2>
-<p class="lospec-hint">
+<h2>Palette</h2>
+<p class="palette-slug-hint">
   <a href="https://lospec.com/palette-list" target="_blank" rel="noopener">Browse palettes</a> and enter
   a slug (e.g. greyt-bit, apollo)
 </p>
@@ -194,15 +194,15 @@
     </a>
   {/each}
 </div>
-<div class="lospec-loader">
+<div class="palette-slug-row">
   <input
     type="text"
     placeholder="e.g. greyt-bit"
-    bind:value={lospecSlug}
-    onkeydown={(e) => e.key === 'Enter' && loadLospecPalette()}
+    bind:value={slugInput}
+    onkeydown={(e) => e.key === 'Enter' && loadPaletteFromSlugInput()}
     disabled={loading}
   />
-  <button type="button" onclick={loadLospecPalette} disabled={loading}>
+  <button type="button" onclick={loadPaletteFromSlugInput} disabled={loading}>
     {loading ? 'Loading…' : 'Load'}
   </button>
 </div>
@@ -263,12 +263,12 @@
 {/if}
 
 <style>
-  .lospec-hint {
+  .palette-slug-hint {
     font-size: 0.8rem;
     margin: 0;
     color: var(--text-color-muted, #666);
   }
-  .lospec-hint a {
+  .palette-slug-hint a {
     color: var(--link-color);
   }
 
@@ -302,11 +302,11 @@
     text-decoration: underline;
   }
 
-  .lospec-loader {
+  .palette-slug-row {
     display: flex;
     gap: 0.25rem;
   }
-  .lospec-loader input {
+  .palette-slug-row input {
     flex: 1;
     padding: 0.25rem 0.5rem;
     font-size: 0.9rem;
@@ -321,11 +321,13 @@
     color: #c44;
   }
 
+  /* 14 columns: matches Material Design rows (50–900 + A100/A200/A400/A700). */
   .palette-swatches {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(14, 20px);
     gap: 2px;
     margin-top: 0.25rem;
+    justify-content: start;
   }
 
   .palette-hint {

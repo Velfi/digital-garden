@@ -34,7 +34,10 @@ import { createUndo } from './undo';
 import { measureEditDuration } from './projectPerf';
 import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
 import { cloneVoxel } from '../voxelMaterial';
-import { CSS_COLOR4_NAMED_PALETTE_HEX, VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX } from './cssColor4NamedPalette';
+import {
+  MATERIAL_BUILTIN_PALETTE_HEX,
+  VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX
+} from './materialBuiltinPalette';
 
 export type GridSize = number;
 export type Tool =
@@ -303,14 +306,14 @@ export const drawBrushShape = writable<DrawBrushShape>('sphere');
 export const drawBrushSize = writable<number>(0);
 /** When true, offset brush along face normal so it sits on surface instead of through it. */
 export const drawBrushSnapToSurface = writable<boolean>(true);
-/** Default brush color; must appear in DEFAULT_PALETTE (CSS named tomato). */
+/** Default brush color; must appear in DEFAULT_PALETTE (Material Blue 500). */
 export const color = writable<string>(VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX);
 /** Active material for new paint / voxel / clay strokes. */
 export const voxelMaterial = writable<VoxelMaterialId>('plastic');
 /** Palette colors selected for painting (shift+click). Empty = use color. */
 export const selectedColors = writable<string[]>([]);
-/** CSS Color 4 opaque named colors, spec order, unique by sRGB hex. */
-const DEFAULT_PALETTE: string[] = [...CSS_COLOR4_NAMED_PALETTE_HEX];
+/** Material Design builtin palette; see materialBuiltinPalette.ts. */
+const DEFAULT_PALETTE: string[] = [...MATERIAL_BUILTIN_PALETTE_HEX];
 export const palette = writable<string[]>([...DEFAULT_PALETTE]);
 export const sidebarOpen = writable<boolean>(true);
 export const modalRequest = writable<
