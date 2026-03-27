@@ -12,6 +12,8 @@
     branchTaper,
     branchTaperStartSize,
     branchTaperEndSize,
+    branchBrushProfile,
+    branchEndCap,
     ropeBrushShape,
     ropeBrushRadius,
     ropeGravityDirection,
@@ -228,6 +230,58 @@
         {/if}
       {/if}
       {#if $clayMode === 'branch'}
+        <div class="tool-panel-row tool-panel-row--brush-shape">
+          <span class="tool-panel-label">Profile</span>
+          <div class="stroke-buttons" role="group" aria-label="Branch brush profile">
+            <button
+              type="button"
+              class:active={$branchBrushProfile === 'cube'}
+              onclick={() => branchBrushProfile.set('cube')}
+              title="Axis-aligned cube along the stroke (default)"
+            >
+              Cube
+            </button>
+            <button
+              type="button"
+              class:active={$branchBrushProfile === 'cylinder'}
+              onclick={() => branchBrushProfile.set('cylinder')}
+              title="Cylinder aligned to the stroke direction"
+            >
+              Cylinder
+            </button>
+          </div>
+        </div>
+        {#if $branchBrushProfile === 'cylinder'}
+          <div class="tool-panel-row tool-panel-row--brush-shape">
+            <span class="tool-panel-label">Caps</span>
+            <div class="stroke-buttons" role="group" aria-label="Branch cylinder end caps">
+              <button
+                type="button"
+                class:active={$branchEndCap === 'flat'}
+                onclick={() => branchEndCap.set('flat')}
+                title="Flat circular ends"
+              >
+                Flat
+              </button>
+              <button
+                type="button"
+                class:active={$branchEndCap === 'rounded'}
+                onclick={() => branchEndCap.set('rounded')}
+                title="Rounded (capsule-style) ends"
+              >
+                Rounded
+              </button>
+              <button
+                type="button"
+                class:active={$branchEndCap === 'pointed'}
+                onclick={() => branchEndCap.set('pointed')}
+                title="Conical tips past the stroke ends"
+              >
+                Pointed
+              </button>
+            </div>
+          </div>
+        {/if}
         <div class="tool-panel-row">
           <label class="tool-panel-check">
             <input

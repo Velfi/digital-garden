@@ -223,6 +223,12 @@ export const clayBrushRadius = writable<number>(2);
 /** Bulk / smooth / melt: 2D stamp (square, circle) or 3D brush (cube, sphere) along the stroke. */
 export type ClayBrushShape = 'square' | 'circle' | 'cube' | 'sphere';
 export const clayBrushShape = writable<ClayBrushShape>('square');
+/** Branch mode: axis-aligned cube vs cylinder along the stroke polyline. */
+export type BranchBrushProfile = 'cube' | 'cylinder';
+export const branchBrushProfile = writable<BranchBrushProfile>('cube');
+/** Branch cylinder: flat disk ends, domed ends, or conical tips past the polyline ends. */
+export type BranchEndCap = 'flat' | 'rounded' | 'pointed';
+export const branchEndCap = writable<BranchEndCap>('flat');
 /** Branch mode: taper from thick base to thin tip. */
 export const branchTaper = writable<boolean>(false);
 /** Branch taper: start size index 0..(MAX_BRUSH_SIZE-1) (when taper on). */

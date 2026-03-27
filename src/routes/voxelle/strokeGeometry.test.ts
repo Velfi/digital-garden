@@ -421,6 +421,96 @@ describe('thickenPathTapered', () => {
   });
 });
 
+describe('clay branch cylinder brush', () => {
+  const branchBase = {
+    ...defaultParams,
+    clayMode: 'branch' as const,
+    clayBrushRadius: 1,
+    branchTaper: false,
+    branchBrushProfile: 'cylinder' as const,
+    branchEndCap: 'flat' as const
+  };
+
+  it('cylinder flat cross-section is rounder than axis-aligned cube along X', () => {
+    const path: [number, number, number][] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [2, 0, 0]
+    ];
+    const cyl = thickenPathForStroke(path, branchBase);
+    const cube = thickenPathForStroke(path, {
+      ...branchBase,
+      branchBrushProfile: 'cube'
+    });
+    const sliceCyl = cyl.filter(([x, y, z]) => x === 1 && z === 0).map((p) => p[1]);
+    const sliceCube = cube.filter(([x, y, z]) => x === 1 && z === 0).map((p) => p[1]);
+    const spread = (ys: number[]) => new Set(ys).size;
+    expect(spread(sliceCyl)).toBeLessThanOrEqual(spread(sliceCube));
+    expect(cyl.length).toBeLessThan(cube.length);
+  });
+
+  it('pointed caps extend past the last centerline voxel along +X', () => {
+    const path: [number, number, number][] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [2, 0, 0]
+    ];
+    const flat = thickenPathForStroke(path, branchBase);
+    const pointed = thickenPathForStroke(path, { ...branchBase, branchEndCap: 'pointed' });
+    const maxXFlat = Math.max(...flat.map((p) => p[0]));
+    const maxXPointed = Math.max(...pointed.map((p) => p[0]));
+    expect(maxXPointed).toBeGreaterThan(maxXFlat);
+  });
+
+  it('rounded (capsule) volume is at least as large as flat cylinder', () => {
+    const path: [number, number, number][] = [
+      [0, 0, 0],
+      [2, 0, 0]
+    ];
+    const flat = thickenPathForStroke(path, branchBase);
+    const rounded = thickenPathForStroke(path, { ...branchBase, branchEndCap: 'rounded' });
+    expect(rounded.length).toBeGreaterThanOrEqual(flat.length);
+  });
+
+  it('taper cylinder has wider cross-section at base than near tip', () => {
+    const path: [number, number, number][] = [];
+    for (let i = 0; i <= 6; i++) path.push([i, 0, 0]);
+    const result = thickenPathForStroke(path, {
+      ...defaultParams,
+      clayMode: 'branch',
+      clayBrushRadius: 1,
+      branchTaper: true,
+      branchTaperStartRadius: 2,
+      branchTaperEndRadius: 0,
+      branchBrushProfile: 'cylinder',
+      branchEndCap: 'flat'
+    });
+    const spread = (pts: [number, number, number][]) =>
+      new Set(pts.map((p) => `${p[1]},${p[2]}`)).size;
+    const atStart = result.filter(([x]) => x === 0);
+    const atMid = result.filter(([x]) => x === 3);
+    expect(spread(atStart)).toBeGreaterThan(spread(atMid));
+  });
+
+  it('branch taper with cube profile still uses thickenPathTapered', () => {
+    const path: [number, number, number][] = [
+      [0, 0, 0],
+      [1, 0, 0]
+    ];
+    const cube = thickenPathForStroke(path, {
+      ...defaultParams,
+      clayMode: 'branch',
+      clayBrushRadius: 1,
+      branchTaper: true,
+      branchTaperStartRadius: 1,
+      branchTaperEndRadius: 0,
+      branchBrushProfile: 'cube'
+    });
+    const expected = thickenPathTapered(path, 1, 0);
+    expect(cube.length).toBe(expected.length);
+  });
+});
+
 describe('getBresenham3DLine', () => {
   it('returns endpoints for same point', () => {
     const result = getBresenham3DLine([0, 0, 0], [0, 0, 0]);

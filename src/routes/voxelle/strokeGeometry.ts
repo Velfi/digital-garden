@@ -1,5 +1,12 @@
 import * as THREE from 'three';
-import type { ClayBrushShape, ClayMode, DrawBrushShape, StrokeMode } from './store/core';
+import type {
+  BranchEndCap,
+  BranchBrushProfile,
+  ClayBrushShape,
+  ClayMode,
+  DrawBrushShape,
+  StrokeMode
+} from './store/core';
 import { ConvexHull } from 'three/addons/math/ConvexHull.js';
 import { parseCoordKey } from './coordUtils';
 
@@ -182,6 +189,373 @@ export function thickenPathTapered(
     const [px, py, pz] = positions[idx];
     addThickenPoint(px, py, pz, size, seen, result);
   }
+  return result;
+}
+
+const BRANCH_R2_EPS = 1e-8;
+
+function normalize3(v: [number, number, number]): [number, number, number] | null {
+  const len = Math.hypot(v[0], v[1], v[2]);
+  if (len < 1e-9) return null;
+  return [v[0] / len, v[1] / len, v[2] / len];
+}
+
+function branchTangentAt(
+  positions: [number, number, number][],
+  i: number
+): [number, number, number] | null {
+  const n = positions.length;
+  if (n === 1) return [0, 0, 1];
+  if (i === 0) {
+    return normalize3([
+      positions[1][0] - positions[0][0],
+      positions[1][1] - positions[0][1],
+      positions[1][2] - positions[0][2]
+    ]);
+  }
+  if (i === n - 1) {
+    return normalize3([
+      positions[n - 1][0] - positions[n - 2][0],
+      positions[n - 1][1] - positions[n - 2][1],
+      positions[n - 1][2] - positions[n - 2][2]
+    ]);
+  }
+  return normalize3([
+    positions[i + 1][0] - positions[i - 1][0],
+    positions[i + 1][1] - positions[i - 1][1],
+    positions[i + 1][2] - positions[i - 1][2]
+  ]);
+}
+
+function mergeVoxelIntoSeen(
+  x: number,
+  y: number,
+  z: number,
+  seen: Set<string>,
+  result: [number, number, number][]
+): void {
+  const k = `${x},${y},${z}`;
+  if (!seen.has(k)) {
+    seen.add(k);
+    result.push([x, y, z]);
+  }
+}
+
+/** Right circular cylinder (flat caps): axial coordinate in [0, L], perpendicular distance ≤ r. */
+function addFlatCylinderSegmentVoxels(
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  r: number,
+  seen: Set<string>,
+  result: [number, number, number][]
+): void {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const abz = bz - az;
+  const L = Math.hypot(abx, aby, abz);
+  if (L < 1e-9) return;
+  const tx = abx / L;
+  const ty = aby / L;
+  const tz = abz / L;
+  const r2 = r * r + BRANCH_R2_EPS;
+  const pad = Math.ceil(r) + 2;
+  const minX = Math.min(ax, bx) - pad;
+  const maxX = Math.max(ax, bx) + pad;
+  const minY = Math.min(ay, by) - pad;
+  const maxY = Math.max(ay, by) + pad;
+  const minZ = Math.min(az, bz) - pad;
+  const maxZ = Math.max(az, bz) + pad;
+  for (let x = minX; x <= maxX; x++) {
+    for (let y = minY; y <= maxY; y++) {
+      for (let z = minZ; z <= maxZ; z++) {
+        const qax = x - ax;
+        const qay = y - ay;
+        const qaz = z - az;
+        const axial = qax * tx + qay * ty + qaz * tz;
+        if (axial < 0 || axial > L) continue;
+        const wx = qax - tx * axial;
+        const wy = qay - ty * axial;
+        const wz = qaz - tz * axial;
+        const perp2 = wx * wx + wy * wy + wz * wz;
+        if (perp2 <= r2) mergeVoxelIntoSeen(x, y, z, seen, result);
+      }
+    }
+  }
+}
+
+/** Capsule around segment (spherical caps at endpoints). */
+function addCapsuleSegmentVoxels(
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  r: number,
+  seen: Set<string>,
+  result: [number, number, number][]
+): void {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const abz = bz - az;
+  const ab2 = abx * abx + aby * aby + abz * abz;
+  if (ab2 < 1e-18) return;
+  const r2 = r * r + BRANCH_R2_EPS;
+  const pad = Math.ceil(r) + 2;
+  const minX = Math.min(ax, bx) - pad;
+  const maxX = Math.max(ax, bx) + pad;
+  const minY = Math.min(ay, by) - pad;
+  const maxY = Math.max(ay, by) + pad;
+  const minZ = Math.min(az, bz) - pad;
+  const maxZ = Math.max(az, bz) + pad;
+  for (let x = minX; x <= maxX; x++) {
+    for (let y = minY; y <= maxY; y++) {
+      for (let z = minZ; z <= maxZ; z++) {
+        const qax = x - ax;
+        const qay = y - ay;
+        const qaz = z - az;
+        let t = (qax * abx + qay * aby + qaz * abz) / ab2;
+        if (t < 0) t = 0;
+        else if (t > 1) t = 1;
+        const px = ax + t * abx;
+        const py = ay + t * aby;
+        const pz = az + t * abz;
+        const dx = x - px;
+        const dy = y - py;
+        const dz = z - pz;
+        if (dx * dx + dy * dy + dz * dz <= r2) mergeVoxelIntoSeen(x, y, z, seen, result);
+      }
+    }
+  }
+}
+
+/** Slab disk: perpendicular distance ≤ r and |axial along t| ≤ 0.5 (voxel layer). */
+function addDiskSlabVoxels(
+  cx: number,
+  cy: number,
+  cz: number,
+  t: [number, number, number],
+  r: number,
+  seen: Set<string>,
+  result: [number, number, number][]
+): void {
+  if (r <= 0) {
+    mergeVoxelIntoSeen(cx, cy, cz, seen, result);
+    return;
+  }
+  const [tx, ty, tz] = t;
+  const r2 = r * r + BRANCH_R2_EPS;
+  const pad = Math.ceil(r) + 2;
+  for (let x = cx - pad; x <= cx + pad; x++) {
+    for (let y = cy - pad; y <= cy + pad; y++) {
+      for (let z = cz - pad; z <= cz + pad; z++) {
+        const wx = x - cx;
+        const wy = y - cy;
+        const wz = z - cz;
+        const axial = wx * tx + wy * ty + wz * tz;
+        if (Math.abs(axial) > 0.5001) continue;
+        const perpX = wx - tx * axial;
+        const perpY = wy - ty * axial;
+        const perpZ = wz - tz * axial;
+        const perp2 = perpX * perpX + perpY * perpY + perpZ * perpZ;
+        if (perp2 <= r2) mergeVoxelIntoSeen(x, y, z, seen, result);
+      }
+    }
+  }
+}
+
+function addSphereCapVoxels(
+  cx: number,
+  cy: number,
+  cz: number,
+  r: number,
+  t: [number, number, number],
+  outwardDotPositive: boolean,
+  seen: Set<string>,
+  result: [number, number, number][]
+): void {
+  if (r <= 0) return;
+  const [tx, ty, tz] = t;
+  const r2 = r * r + BRANCH_R2_EPS;
+  const pad = Math.ceil(r) + 2;
+  for (let x = cx - pad; x <= cx + pad; x++) {
+    for (let y = cy - pad; y <= cy + pad; y++) {
+      for (let z = cz - pad; z <= cz + pad; z++) {
+        const vx = x - cx;
+        const vy = y - cy;
+        const vz = z - cz;
+        const d2 = vx * vx + vy * vy + vz * vz;
+        if (d2 > r2) continue;
+        const dot = vx * tx + vy * ty + vz * tz;
+        if (outwardDotPositive) {
+          if (dot < -BRANCH_R2_EPS) continue;
+        } else {
+          if (dot > BRANCH_R2_EPS) continue;
+        }
+        mergeVoxelIntoSeen(x, y, z, seen, result);
+      }
+    }
+  }
+}
+
+function addPointedConeCapVoxels(
+  origin: [number, number, number],
+  dirWorld: { x: number; y: number; z: number },
+  baseRadius: number,
+  seen: Set<string>,
+  result: [number, number, number][]
+): void {
+  if (baseRadius <= 0) return;
+  const t =
+    normalize3([dirWorld.x, dirWorld.y, dirWorld.z]) ?? ([0, 1, 0] as [number, number, number]);
+  const K = Math.max(1, Math.ceil(baseRadius));
+  const layers = getRayDirectionPath(origin, dirWorld, K);
+  for (let k = 1; k < layers.length; k++) {
+    const rk = baseRadius * (1 - k / (K + 1));
+    if (rk <= 0) continue;
+    const c = layers[k];
+    addDiskSlabVoxels(c[0], c[1], c[2], t, rk, seen, result);
+  }
+}
+
+/** Uniform-radius branch cylinder (or capsule); optional pointed cones past flat body ends. */
+export function thickenBranchUniformCylinder(
+  positions: [number, number, number][],
+  r: number,
+  cap: BranchEndCap
+): [number, number, number][] {
+  if (positions.length === 0) return [];
+  if (r <= 0) return [...positions];
+  const seen = new Set<string>();
+  const result: [number, number, number][] = [];
+  const n = positions.length;
+
+  if (n === 1) {
+    const p = positions[0];
+    expandPathWithBrushStamps([p], 'sphere', r, 0).forEach(([x, y, z]) =>
+      mergeVoxelIntoSeen(x, y, z, seen, result)
+    );
+    if (cap === 'pointed') {
+      addPointedConeCapVoxels(p, { x: 0, y: 1, z: 0 }, r, seen, result);
+      addPointedConeCapVoxels(p, { x: 0, y: -1, z: 0 }, r, seen, result);
+    }
+    return result;
+  }
+
+  const useCapsule = cap === 'rounded';
+  for (let i = 0; i < n - 1; i++) {
+    const a = positions[i];
+    const b = positions[i + 1];
+    if (useCapsule) {
+      addCapsuleSegmentVoxels(a[0], a[1], a[2], b[0], b[1], b[2], r, seen, result);
+    } else {
+      addFlatCylinderSegmentVoxels(a[0], a[1], a[2], b[0], b[1], b[2], r, seen, result);
+    }
+  }
+
+  if (cap === 'pointed') {
+    const t0 = branchTangentAt(positions, 0);
+    if (t0) {
+      addPointedConeCapVoxels(
+        positions[0],
+        { x: -t0[0], y: -t0[1], z: -t0[2] },
+        r,
+        seen,
+        result
+      );
+    }
+    const t1 = branchTangentAt(positions, n - 1);
+    if (t1) {
+      addPointedConeCapVoxels(positions[n - 1], { x: t1[0], y: t1[1], z: t1[2] }, r, seen, result);
+    }
+  }
+
+  return result;
+}
+
+/** Tapered branch cylinder: disk slab per sample; same radius interpolation as thickenPathTapered. */
+export function thickenBranchTaperedCylinder(
+  positions: [number, number, number][],
+  baseRadius: number,
+  tipRadius: number,
+  cap: BranchEndCap
+): [number, number, number][] {
+  if (positions.length === 0) return [];
+  if (baseRadius <= 0 && tipRadius <= 0) return [...positions];
+  const seen = new Set<string>();
+  const result: [number, number, number][] = [];
+  const n = positions.length;
+
+  const radii: number[] = [];
+  for (let idx = 0; idx < n; idx++) {
+    const t = n === 1 ? 0 : idx / (n - 1);
+    const c = baseRadius + t * (tipRadius - baseRadius);
+    radii.push(taperRadiusToSize(Math.max(0, c)));
+  }
+
+  if (n === 1) {
+    const r0 = radii[0];
+    if (r0 <= 0) return [positions[0]];
+    return thickenBranchUniformCylinder(positions, r0, cap);
+  }
+
+  for (let i = 0; i < n; i++) {
+    const ri = radii[i];
+    const p = positions[i];
+    if (ri <= 0) {
+      mergeVoxelIntoSeen(p[0], p[1], p[2], seen, result);
+      continue;
+    }
+    const ti = branchTangentAt(positions, i);
+    if (!ti) continue;
+    addDiskSlabVoxels(p[0], p[1], p[2], ti, ri, seen, result);
+  }
+
+  if (cap === 'rounded') {
+    const r0 = radii[0];
+    const t0 = branchTangentAt(positions, 0);
+    if (t0 && r0 > 0) {
+      addSphereCapVoxels(positions[0][0], positions[0][1], positions[0][2], r0, t0, false, seen, result);
+    }
+    const r1 = radii[n - 1];
+    const t1 = branchTangentAt(positions, n - 1);
+    if (t1 && r1 > 0) {
+      addSphereCapVoxels(
+        positions[n - 1][0],
+        positions[n - 1][1],
+        positions[n - 1][2],
+        r1,
+        t1,
+        true,
+        seen,
+        result
+      );
+    }
+  }
+
+  if (cap === 'pointed') {
+    const r0 = radii[0];
+    const t0 = branchTangentAt(positions, 0);
+    if (t0 && r0 > 0) {
+      addPointedConeCapVoxels(
+        positions[0],
+        { x: -t0[0], y: -t0[1], z: -t0[2] },
+        r0,
+        seen,
+        result
+      );
+    }
+    const r1 = radii[n - 1];
+    const t1 = branchTangentAt(positions, n - 1);
+    if (t1 && r1 > 0) {
+      addPointedConeCapVoxels(positions[n - 1], { x: t1[0], y: t1[1], z: t1[2] }, r1, seen, result);
+    }
+  }
+
   return result;
 }
 
@@ -605,6 +979,10 @@ export interface PathThickenParams {
   drawBrushFaceNormal?: { x: number; y: number; z: number };
   /** Bulk / smooth / melt: square|circle = tangent plane; cube|sphere = 3D along stroke. */
   clayBrushShape?: ClayBrushShape;
+  /** Clay branch: axis-aligned cube vs cylinder along the stroke polyline. */
+  branchBrushProfile?: BranchBrushProfile;
+  /** Clay branch cylinder: flat ends, capsule-style rounded ends, or conical tips. */
+  branchEndCap?: BranchEndCap;
   /** Optional seed for deterministic scatter/radius in expandPathWithBrushStamps (preview and apply use same seed per stroke). */
   seed?: number;
 }
@@ -669,10 +1047,23 @@ export function thickenPathForStroke(
     directionalStreakFromPath(basePositions, dirVec, height, seen, result);
     return result;
   }
-  if (isClayPath && params.clayMode === 'branch' && params.branchTaper) {
-    const startR = params.branchTaperStartRadius ?? params.clayBrushRadius;
-    const endR = params.branchTaperEndRadius ?? 0;
-    return thickenPathTapered(positions, startR, endR);
+  if (isClayPath && params.clayMode === 'branch') {
+    const profile = params.branchBrushProfile ?? 'cube';
+    const cap = params.branchEndCap ?? 'flat';
+    const r = params.clayBrushRadius;
+    if (params.branchTaper) {
+      const startR = params.branchTaperStartRadius ?? r;
+      const endR = params.branchTaperEndRadius ?? 0;
+      if (profile === 'cube') {
+        return thickenPathTapered(positions, startR, endR);
+      }
+      return thickenBranchTaperedCylinder(positions, startR, endR, cap);
+    }
+    if (r <= 0) return positions;
+    if (profile === 'cube') {
+      return thickenPath(positions, r);
+    }
+    return thickenBranchUniformCylinder(positions, r, cap);
   }
   // Terrain: columns are (x,z) only; expand brush in the horizontal plane (world Y up).
   if (isClayPath && params.clayMode === 'terrain' && params.clayBrushRadius > 0) {

@@ -47,6 +47,8 @@ export {
   clayMode,
   clayBrushRadius,
   clayBrushShape,
+  branchBrushProfile,
+  branchEndCap,
   branchTaper,
   branchTaperStartSize,
   branchTaperEndSize,
