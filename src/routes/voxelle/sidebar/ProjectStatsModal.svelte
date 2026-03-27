@@ -1,23 +1,87 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import { gridSize, voxels, hiddenVoxels, projectPerfMetrics } from '../store/index';
+  import {
+    gridSize,
+    voxels,
+    hiddenVoxels,
+    projectPerfMetrics,
+    voxelleRuntimeMetrics
+  } from '../store/index';
+  import type { ProjectPerfMetrics } from '../store/projectPerf';
+  import type { VoxelleRuntimeMetrics } from '../store/runtimeMetrics';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
   let copyJsonLabel = $state('Copy JSON');
   let copyJsonTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Refreshes "sample age" row while the dialog is open. */
+  let sampleAgeTick = $state(0);
 
   onDestroy(() => {
     if (copyJsonTimer !== null) clearTimeout(copyJsonTimer);
   });
+
+  $effect(() => {
+    if (!open) return;
+    const id = setInterval(() => {
+      sampleAgeTick = performance.now();
+    }, 250);
+    return () => clearInterval(id);
+  });
+
+  function formatBytes(n: number | null): string {
+    if (n === null || !Number.isFinite(n)) return 'n/a';
+    if (n < 1024) return `${Math.round(n)} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KiB`;
+    return `${(n / (1024 * 1024)).toFixed(2)} MiB`;
+  }
+
+  /** Avoid float noise like 26.999999999992724 in exported JSON. */
+  function roundMs(n: number | null): number | null {
+    if (n === null || !Number.isFinite(n)) return n;
+    return Math.round(n * 100) / 100;
+  }
+
+  function projectPerfMetricsForExport(m: ProjectPerfMetrics): ProjectPerfMetrics {
+    return {
+      ...m,
+      lastEditDurationMs: roundMs(m.lastEditDurationMs),
+      lastEditSyncDurationMs: roundMs(m.lastEditSyncDurationMs),
+      lastEditRequestDelayMs: roundMs(m.lastEditRequestDelayMs),
+      lastEditWorkerRoundTripMs: roundMs(m.lastEditWorkerRoundTripMs),
+      lastEditApplyDurationMs: roundMs(m.lastEditApplyDurationMs),
+      lastWorkerParseInputMs: roundMs(m.lastWorkerParseInputMs),
+      lastWorkerMeshComputeMs: roundMs(m.lastWorkerMeshComputeMs),
+      lastUndoDurationMs: roundMs(m.lastUndoDurationMs),
+      lastUndoSyncDurationMs: roundMs(m.lastUndoSyncDurationMs),
+      lastRedoDurationMs: roundMs(m.lastRedoDurationMs),
+      lastRedoSyncDurationMs: roundMs(m.lastRedoSyncDurationMs)
+    };
+  }
+
+  function runtimeMetricsForExport(r: VoxelleRuntimeMetrics): VoxelleRuntimeMetrics {
+    return {
+      ...r,
+      lastSamplePerfMs: Number.isFinite(r.lastSamplePerfMs)
+        ? Math.round(r.lastSamplePerfMs)
+        : r.lastSamplePerfMs,
+      heapUsagePercent: roundMs(r.heapUsagePercent),
+      rendererPixelRatio: Math.round(r.rendererPixelRatio * 1000) / 1000,
+      rayTracePixelRatio:
+        r.rayTracePixelRatio === null
+          ? null
+          : Math.round(r.rayTracePixelRatio * 1000) / 1000
+    };
+  }
 
   async function copyStatsAsJson() {
     if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) return;
     const payload = {
       gridSize: get(gridSize),
       filledVoxelCount: get(voxels).size + get(hiddenVoxels).size,
-      ...get(projectPerfMetrics)
+      ...projectPerfMetricsForExport(get(projectPerfMetrics)),
+      runtime: runtimeMetricsForExport(get(voxelleRuntimeMetrics))
     };
     try {
       await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
@@ -114,6 +178,42 @@
       ? 'n/a'
       : `${$projectPerfMetrics.lastWorkerMeshComputeMs.toFixed(2)} ms`
   );
+
+  const memoryApiLabel = $derived(
+    $voxelleRuntimeMetrics.memoryApiAvailable ? 'available' : 'unavailable (e.g. Safari)'
+  );
+  const jsHeapUsedLabel = $derived(formatBytes($voxelleRuntimeMetrics.jsHeapUsedBytes));
+  const jsHeapTotalLabel = $derived(formatBytes($voxelleRuntimeMetrics.jsHeapTotalBytes));
+  const jsHeapLimitLabel = $derived(formatBytes($voxelleRuntimeMetrics.jsHeapLimitBytes));
+  const heapUsagePctLabel = $derived(
+    $voxelleRuntimeMetrics.heapUsagePercent === null
+      ? 'n/a'
+      : `${$voxelleRuntimeMetrics.heapUsagePercent.toFixed(1)}%`
+  );
+  const sampleAgeLabel = $derived.by(() => {
+    void sampleAgeTick;
+    const t0 = $voxelleRuntimeMetrics.lastSamplePerfMs;
+    if (t0 <= 0) return 'n/a';
+    const age = Math.max(0, performance.now() - t0);
+    return age < 1000 ? `${Math.round(age)} ms` : `${(age / 1000).toFixed(1)} s`;
+  });
+  const sampleWallLabel = $derived($voxelleRuntimeMetrics.lastSampleAtIso ?? 'n/a');
+  const renderingModeLabel = $derived($voxelleRuntimeMetrics.renderingMode);
+  const rendererDprLabel = $derived($voxelleRuntimeMetrics.rendererPixelRatio.toFixed(2));
+  const rayBufLabel = $derived(
+    $voxelleRuntimeMetrics.rayBufferWidth === null ||
+      $voxelleRuntimeMetrics.rayBufferHeight === null
+      ? 'n/a'
+      : `${$voxelleRuntimeMetrics.rayBufferWidth}×${$voxelleRuntimeMetrics.rayBufferHeight}`
+  );
+  const rayDprLabel = $derived(
+    $voxelleRuntimeMetrics.rayTracePixelRatio === null
+      ? 'n/a'
+      : $voxelleRuntimeMetrics.rayTracePixelRatio.toFixed(2)
+  );
+  const runtimeVoxelLabel = $derived(
+    `${$voxelleRuntimeMetrics.filledVoxelCount} + ${$voxelleRuntimeMetrics.hiddenVoxelCount} hidden`
+  );
 </script>
 
 {#if open}
@@ -136,6 +236,54 @@
         <div class="stat-row">
           <dt>Filled voxel count</dt>
           <dd>{filledVoxelCount}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>JS heap API</dt>
+          <dd>{memoryApiLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>JS heap used</dt>
+          <dd>{jsHeapUsedLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>JS heap total</dt>
+          <dd>{jsHeapTotalLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>JS heap limit</dt>
+          <dd>{jsHeapLimitLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>Heap usage (used / limit)</dt>
+          <dd>{heapUsagePctLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>Runtime sample age</dt>
+          <dd>{sampleAgeLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>Sample time (UTC)</dt>
+          <dd class="stats-dd--wrap">{sampleWallLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>Rendering mode (last sample)</dt>
+          <dd>{renderingModeLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>Renderer pixel ratio</dt>
+          <dd>{rendererDprLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>Ray trace DPR (last sample)</dt>
+          <dd>{rayDprLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>Ray buffer (internal)</dt>
+          <dd>{rayBufLabel}</dd>
+        </div>
+        <div class="stat-row">
+          <dt>Voxels (last sample)</dt>
+          <dd>{runtimeVoxelLabel}</dd>
         </div>
         <div class="stat-row">
           <dt>Last edit duration</dt>
@@ -213,6 +361,14 @@
 <style>
   .modal--project-stats {
     min-width: min(90vw, 20rem);
+    max-width: min(92vw, 28rem);
+    max-height: min(90vh, calc(100dvh - 2rem));
+    overflow: hidden;
+  }
+
+  .modal--project-stats h3 {
+    flex-shrink: 0;
+    margin: 0;
   }
 
   .stats-list {
@@ -220,6 +376,12 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    padding-right: 0.125rem;
   }
 
   .stat-row {
@@ -244,6 +406,16 @@
     margin: 0;
     font-family:
       ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  }
+
+  .stats-dd--wrap {
+    text-align: right;
+    max-width: 12rem;
+    word-break: break-all;
+  }
+
+  .modal--project-stats .modal-buttons {
+    flex-shrink: 0;
   }
 
   .modal-buttons {

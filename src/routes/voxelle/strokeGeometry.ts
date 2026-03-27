@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { ClayBrushShape, ClayMode, StrokeMode } from './store/core';
+import type { ClayBrushShape, ClayMode, DrawBrushShape, StrokeMode } from './store/core';
 import { ConvexHull } from 'three/addons/math/ConvexHull.js';
 import { parseCoordKey } from './coordUtils';
 
@@ -305,7 +305,7 @@ function thickenPathInPlane(
   return result;
 }
 
-/** Sphere: x²+y²+z² <= r² (Euclidean). Same voxels as legacy getSphereVoxels + per-voxel Math.round (see puffPath). */
+/** Sphere: x²+y²+z² <= r² (Euclidean). Same voxels as legacy getSphereVoxels + per-voxel Math.round (see expandPathWithBrushStamps). */
 function addSphereVoxelsToSeen(
   cx: number,
   cy: number,
@@ -347,10 +347,10 @@ function addSphereVoxelsToSeen(
 }
 
 /**
- * One airbrush sphere droplet merged into accumulators (deterministic: no scatter / radius-range RNG).
- * Matches a single iteration of `puffPath` for that center and radius.
+ * One spherical brush stamp merged into accumulators (deterministic: no scatter / radius-range RNG).
+ * Matches a single iteration of `expandPathWithBrushStamps` with shape `sphere` for that center and radius.
  */
-export function mergeAirbrushSphereDropletIntoSeen(
+export function mergeSphereStampIntoSeen(
   cx: number,
   cy: number,
   cz: number,
@@ -361,8 +361,8 @@ export function mergeAirbrushSphereDropletIntoSeen(
   addSphereVoxelsToSeen(cx, cy, cz, radius, seen, result);
 }
 
-/** One airbrush cube droplet (same as thickenPath on a single center). */
-export function mergeAirbrushCubeDropletIntoSeen(
+/** One cuboid brush stamp (same as thickenPath on a single center). */
+export function mergeCubeStampIntoSeen(
   px: number,
   py: number,
   pz: number,
@@ -399,6 +399,27 @@ export function mergeAirbrushCubeDropletIntoSeen(
   }
 }
 
+/** One pyramid brush stamp (same footprint as draw `pyramidPath` per center). */
+export function mergePyramidStampIntoSeen(
+  px: number,
+  py: number,
+  pz: number,
+  radius: number,
+  seen: Set<string>,
+  result: [number, number, number][]
+): void {
+  for (const [x, y, z] of getPyramidVoxels(px, py, pz, radius)) {
+    const xi = Math.round(x);
+    const yi = Math.round(y);
+    const zi = Math.round(z);
+    const k = `${xi},${yi},${zi}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      result.push([xi, yi, zi]);
+    }
+  }
+}
+
 /** Returns a deterministic RNG in [0, 1) from a seed (mulberry32). */
 export function createSeededRng(seed: number): () => number {
   let state = seed >>> 0;
@@ -411,43 +432,15 @@ export function createSeededRng(seed: number): () => number {
   };
 }
 
-/** Expands each path point into a sphere. Radius 0=single voxel, 1=3³, 2=5³, 3=7³, 4=9³, 5=11³. Scatter: max voxel offset for sphere centers (0=none). When radiusMin/radiusMax provided and radiusMax > radiusMin, picks random radius per sphere. Optional rng for deterministic scatter/radius (e.g. from createSeededRng). */
-export function puffPath(
-  positions: [number, number, number][],
-  radius: number,
-  scatter: number = 0,
-  radiusMin?: number,
-  radiusMax?: number,
-  rng?: () => number
-): [number, number, number][] {
-  if (positions.length === 0) return [];
-  const rand = rng ?? Math.random;
-  const useRange = radiusMin !== undefined && radiusMax !== undefined && radiusMax > radiusMin;
-  const rMin = useRange ? Math.max(0, radiusMin!) : Math.max(0, radius);
-  const rMax = useRange ? Math.max(0, radiusMax!) : rMin;
-  const s = Math.max(0, Math.floor(scatter));
-  const seen = new Set<string>();
-  const result: [number, number, number][] = [];
-  for (const [px, py, pz] of positions) {
-    const ox = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
-    const oy = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
-    const oz = s > 0 ? Math.round((rand() * 2 - 1) * s) : 0;
-    const r = useRange
-      ? (Math.round(rMin * 2) +
-          Math.floor(rand() * (Math.round(rMax * 2) - Math.round(rMin * 2) + 1))) /
-        2
-      : rMin;
-    addSphereVoxelsToSeen(px + ox, py + oy, pz + oz, r, seen, result);
-  }
-  return result;
-}
-
 /**
- * Like puffPath but each droplet is an axis-aligned cube (thickenPath) instead of a sphere.
- * Same scatter and optional radius range semantics as puffPath.
+ * Union of brush stamps (`sphere` | `cube` | `pyramid`) at each path point.
+ * Radius 0=single voxel; sphere r=1 gives 7 voxels (center + 6 face neighbors); cube uses Chebyshev neighborhood per center.
+ * Scatter: max voxel offset for stamp centers (0=none). When radiusMin/radiusMax provided and radiusMax > radiusMin, picks random radius per stamp.
+ * Optional rng for deterministic scatter/radius (e.g. from createSeededRng).
  */
-function cubePuffPath(
+export function expandPathWithBrushStamps(
   positions: [number, number, number][],
+  brushShape: DrawBrushShape,
   radius: number,
   scatter: number = 0,
   radiusMin?: number,
@@ -471,10 +464,18 @@ function cubePuffPath(
           Math.floor(rand() * (Math.round(rMax * 2) - Math.round(rMin * 2) + 1))) /
         2
       : rMin;
-    const xi = Math.round(px + ox);
-    const yi = Math.round(py + oy);
-    const zi = Math.round(pz + oz);
-    mergeAirbrushCubeDropletIntoSeen(xi, yi, zi, r, seen, result);
+    if (brushShape === 'sphere') {
+      addSphereVoxelsToSeen(px + ox, py + oy, pz + oz, r, seen, result);
+    } else {
+      const xi = Math.round(px + ox);
+      const yi = Math.round(py + oy);
+      const zi = Math.round(pz + oz);
+      if (brushShape === 'cube') {
+        mergeCubeStampIntoSeen(xi, yi, zi, r, seen, result);
+      } else {
+        mergePyramidStampIntoSeen(xi, yi, zi, r, seen, result);
+      }
+    }
   }
   return result;
 }
@@ -573,20 +574,20 @@ export interface PathThickenParams {
   branchTaperStartRadius?: number;
   /** When branch+taper: end radius (optional; falls back to 0). */
   branchTaperEndRadius?: number;
-  airbrushRadius: number;
-  airbrushScatter: number;
-  airbrushRadiusRange: boolean;
-  airbrushRadiusMin: number;
-  airbrushRadiusMax: number;
-  /** Airbrush droplet footprint: sphere (default) or Chebyshev cube. */
-  airbrushBrushShape?: 'sphere' | 'cube';
-  /** When true, airbrush voxels are restricted to the plane through the path start. */
-  airbrushConstrainToPlane?: boolean;
-  /** Axis for plane constraint when airbrushConstrainToPlane: from face normal (airbrushPlaneAxis) or sidebar (planeAxis). Ignored when airbrushPlaneNormal set. */
-  airbrushPlaneAxis?: 0 | 1 | 2;
+  sprayRadius: number;
+  sprayScatter: number;
+  sprayRadiusRange: boolean;
+  sprayRadiusMin: number;
+  sprayRadiusMax: number;
+  /** Spray stamp footprint: sphere, cube, or pyramid (same as draw brush shapes). */
+  sprayBrushShape?: DrawBrushShape;
+  /** When true, Spray voxels are restricted to the plane through the path start. */
+  sprayConstrainToPlane?: boolean;
+  /** Axis for plane constraint when sprayConstrainToPlane: from face normal (sprayPlaneAxis) or sidebar (planeAxis). Ignored when sprayPlaneNormal set. */
+  sprayPlaneAxis?: 0 | 1 | 2;
   /** Plane normal for camera-plane constraint (non-axis-aligned). When set, voxels are filtered to lie on this plane through the path start. */
-  airbrushPlaneNormal?: { x: number; y: number; z: number };
-  /** Axis for plane constraint (0=X, 1=Y, 2=Z, 'auto'=Y). Used when airbrushPlaneAxis not set. */
+  sprayPlaneNormal?: { x: number; y: number; z: number };
+  /** Axis for plane constraint (0=X, 1=Y, 2=Z, 'auto'=Y). Used when sprayPlaneAxis not set. */
   planeAxis?: 0 | 1 | 2 | 'auto';
   /** Wall/spray direction. 'auto' uses wallFaceNormal when present. */
   sprayDirection?: SprayDirectionName;
@@ -604,7 +605,7 @@ export interface PathThickenParams {
   drawBrushFaceNormal?: { x: number; y: number; z: number };
   /** Bulk / smooth / melt: square|circle = tangent plane; cube|sphere = 3D along stroke. */
   clayBrushShape?: ClayBrushShape;
-  /** Optional seed for deterministic scatter/radius in puffPath (preview and apply use same seed per stroke). */
+  /** Optional seed for deterministic scatter/radius in expandPathWithBrushStamps (preview and apply use same seed per stroke). */
   seed?: number;
 }
 
@@ -623,7 +624,7 @@ const CLAY_PATH_THICKEN_MODES = new Set<ClayMode>([
 
 /**
  * Thickens a path according to stroke/clay mode. Single source of truth for preview and apply.
- * Priority: airbrush > clay branch+taper > clay thicken > raw.
+ * Priority: Spray stroke > clay branch+taper > clay thicken > raw.
  */
 export function thickenPathForStroke(
   positions: [number, number, number][],
@@ -633,7 +634,7 @@ export function thickenPathForStroke(
   const isClayPath = params.clayMode !== undefined && CLAY_PATH_THICKEN_MODES.has(params.clayMode);
   const rng = params.seed != null ? createSeededRng(params.seed) : undefined;
 
-  // Clay modes take precedence; stroke mode (e.g. airbrush) only applies to Draw tools
+  // Clay modes take precedence; stroke mode (e.g. Spray) only applies to Draw tools
   if (isClayPath && params.clayMode === 'wall') {
     const dir = params.sprayDirection ?? 'auto';
     const dirVec = getSprayDirectionVector(dir, params.wallFaceNormal ?? undefined);
@@ -699,28 +700,26 @@ export function thickenPathForStroke(
       case 'cube':
         return thickenPath(positions, r);
       case 'sphere':
-        return puffPath(positions, r, 0);
+        return expandPathWithBrushStamps(positions, 'sphere', r, 0);
     }
   }
   if (isClayPath && params.clayBrushRadius > 0) {
     return thickenPath(positions, params.clayBrushRadius);
   }
   if (isClayPath) return positions;
-  if (params.strokeMode === 'airbrush') {
-    const shape = params.airbrushBrushShape ?? 'sphere';
-    const rMin = params.airbrushRadiusRange ? params.airbrushRadiusMin : undefined;
-    const rMax = params.airbrushRadiusRange ? params.airbrushRadiusMax : undefined;
-    if (shape === 'cube') {
-      return cubePuffPath(
-        positions,
-        params.airbrushRadius,
-        params.airbrushScatter,
-        rMin,
-        rMax,
-        rng
-      );
-    }
-    return puffPath(positions, params.airbrushRadius, params.airbrushScatter, rMin, rMax, rng);
+  if (params.strokeMode === 'spray') {
+    const shape = params.sprayBrushShape ?? 'sphere';
+    const rMin = params.sprayRadiusRange ? params.sprayRadiusMin : undefined;
+    const rMax = params.sprayRadiusRange ? params.sprayRadiusMax : undefined;
+    return expandPathWithBrushStamps(
+      positions,
+      shape,
+      params.sprayRadius,
+      params.sprayScatter,
+      rMin,
+      rMax,
+      rng
+    );
   }
   const dbs = params.drawBrushSize ?? 0;
   if (dbs > 0) {
@@ -736,7 +735,7 @@ export function thickenPathForStroke(
         : positions;
     if (shape === 'pyramid') return pyramidPath(positionsToUse, dbs);
     if (shape === 'cube') return thickenPath(positionsToUse, dbs);
-    return puffPath(positionsToUse, dbs, 0);
+    return expandPathWithBrushStamps(positionsToUse, 'sphere', dbs, 0);
   }
   return positions;
 }
@@ -788,7 +787,7 @@ export function pyramidPath(
   return result;
 }
 
-/** Applies a brush along a path. Sphere uses puffPath (scatter=0); cube uses thickenPath. */
+/** Applies a brush along a path. Sphere uses expandPathWithBrushStamps (scatter=0); cube uses thickenPath. */
 export function applyBrushAlongPath(
   positions: [number, number, number][],
   shape: 'sphere' | 'cube',
@@ -796,7 +795,7 @@ export function applyBrushAlongPath(
 ): [number, number, number][] {
   if (positions.length === 0) return [];
   if (shape === 'sphere') {
-    return puffPath(positions, radius, 0);
+    return expandPathWithBrushStamps(positions, 'sphere', radius, 0);
   }
   return thickenPath(positions, radius);
 }
@@ -1095,16 +1094,16 @@ export function getAxisAlignedCircleFromNormal(
 }
 
 /**
- * Right cylinder or cone along the axis through `faceNormal`: base disk from `center` to `edge`
+ * Right cylinder or linear taper along the axis through `faceNormal`: base disk from `center` to `edge`
  * in the plane, then extruded by `depth` voxel steps (same layer count as cuboid: base + |depth| offsets).
- * Cone mode linearly tapers radius to zero at the far end; cylinder keeps the base radius.
+ * `taperPct` 0 = cylinder; 100 = radius linearly to zero at the far end (cone); between = frustum.
  */
-export function getAxisAlignedCylindroid(
+export function getAxisAlignedCylinder(
   center: [number, number, number],
   edge: [number, number, number],
   faceNormal: Vec3Like,
   depth: number,
-  cone: boolean,
+  taperPct: number,
   hollow = false,
   hollowWallThickness = 1
 ): [number, number, number][] {
@@ -1159,6 +1158,7 @@ export function getAxisAlignedCylindroid(
   const step = comp > 0 ? 1 : -1;
   const layers = Math.abs(depth);
   const dir = depth > 0 ? step : -step;
+  const taper = Math.min(100, Math.max(0, taperPct));
 
   const seen = new Set<string>();
   const positions: [number, number, number][] = [];
@@ -1193,9 +1193,9 @@ export function getAxisAlignedCylindroid(
   for (let k = 0; k <= layers; k++) {
     const w = baseW + dir * k;
     let rSq = baseRSq;
-    if (cone && layers > 0) {
-      const t = (layers - k) / layers;
-      rSq = baseRSq * t * t;
+    if (taper > 0 && layers > 0) {
+      const scale = 1 - (taper / 100) * (k / layers);
+      rSq = baseRSq * scale * scale;
     }
     addDiskAtW(w, rSq);
   }
@@ -1514,7 +1514,7 @@ function projectPointOntoPlaneThroughOrigin(
   return [p[0] - n.x * t, p[1] - n.y * t, p[2] - n.z * t];
 }
 
-function polygonoidNormalToDropUV(n: THREE.Vector3): {
+function solidPolygonNormalToDropUV(n: THREE.Vector3): {
   dropAxis: 0 | 1 | 2;
   uAxis: 0 | 1 | 2;
   vAxis: 0 | 1 | 2;
@@ -1555,11 +1555,11 @@ function bresenham2DCells(x0: number, y0: number, x1: number, y1: number): [numb
 }
 
 /**
- * Filled base for polygonoid: corners may be non-coplanar in world space. Vertices are projected
+ * Filled base for solid polygon extrusion: corners may be non-coplanar in world space. Vertices are projected
  * onto the plane through `planeOrigin` with normal `initialExtrusionNormal` (from the first click),
  * then filled like the polygon tool; voxels lie on that plane.
  */
-export function getPolygonoidBasePositions(
+export function getSolidPolygonBasePositions(
   points: [number, number, number][],
   planeOrigin: [number, number, number],
   initialExtrusionNormal: Vec3Like
@@ -1573,7 +1573,7 @@ export function getPolygonoidBasePositions(
   if (n.lengthSq() < 1e-12) return null;
   n.normalize();
 
-  const { dropAxis, uAxis, vAxis } = polygonoidNormalToDropUV(n);
+  const { dropAxis, uAxis, vAxis } = solidPolygonNormalToDropUV(n);
   const dPlane = -n.x * planeOrigin[0] - n.y * planeOrigin[1] - n.z * planeOrigin[2];
 
   const to2DProj = (p: [number, number, number]) => {
@@ -1702,7 +1702,7 @@ export function getPolygonoidBasePositions(
 /**
  * Extrude a filled base layer along the dominant axis of `initialExtrusionNormal` (voxel steps).
  */
-export function extrudePolygonoidBaseAlongNormal(
+export function extrudeSolidPolygonBaseAlongNormal(
   baseLayer: [number, number, number][],
   initialExtrusionNormal: Vec3Like,
   depth: number,
@@ -1748,9 +1748,9 @@ export function extrudePolygonoidBaseAlongNormal(
 
 /**
  * Projected fill from corners + extrusion along first-click normal (same as
- * `extrudePolygonoidBaseAlongNormal(getPolygonoidBasePositions(...), ...)`).
+ * `extrudeSolidPolygonBaseAlongNormal(getSolidPolygonBasePositions(...), ...)`).
  */
-export function getPolygonoidStrokeVoxels(
+export function getSolidPolygonStrokeVoxels(
   points: [number, number, number][],
   planeOrigin: [number, number, number],
   initialExtrusionNormal: Vec3Like | null,
@@ -1759,9 +1759,9 @@ export function getPolygonoidStrokeVoxels(
   hollowWallThickness = 1
 ): [number, number, number][] {
   if (!initialExtrusionNormal) return [];
-  const baseRaw = getPolygonoidBasePositions(points, planeOrigin, initialExtrusionNormal);
+  const baseRaw = getSolidPolygonBasePositions(points, planeOrigin, initialExtrusionNormal);
   if (!baseRaw || baseRaw.length === 0) return [];
-  return extrudePolygonoidBaseAlongNormal(
+  return extrudeSolidPolygonBaseAlongNormal(
     baseRaw,
     initialExtrusionNormal,
     depth,
@@ -1770,8 +1770,8 @@ export function getPolygonoidStrokeVoxels(
   );
 }
 
-/** Signed depth per world axis for HUD (matches polygonoid extrusion direction). */
-export function getPolygonoidDepthDeltaDisplay(
+/** Signed depth per world axis for HUD (matches solid polygon extrusion direction). */
+export function getSolidPolygonDepthDeltaDisplay(
   initialExtrusionNormal: Vec3Like | null,
   depth: number
 ): { dx: number; dy: number; dz: number } {

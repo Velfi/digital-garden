@@ -95,13 +95,13 @@ export type StrokeMode =
   | 'circle'
   | 'precise'
   | 'cuboid'
-  | 'cylindroid'
+  | 'cylinder'
+  | 'polygonHull'
   | 'polygon'
-  | 'polygonoid'
   | 'fill'
-  | 'airbrush';
+  | 'spray';
 
-/** Tools that use stroke mode (selection method). Clay/stamp/fly/eyedropper use their own flows. */
+/** Tools that use `strokeMode` (sidebar selection method). Clay/stamp/fly/eyedropper use their own flows. */
 export const STROKE_TOOLS: readonly Tool[] = [
   'voxel',
   'remove',
@@ -188,10 +188,10 @@ export const selection = writable<Map<string, Voxel>>(new Map());
 export const selectionMode = writable<SelectionMode>('replace');
 export const fillSelectDiagonals = writable<boolean>(false);
 export const fillRespectsColor = writable<boolean>(true);
-/** When true, fill and airbrush respect `constrainToPlaneRef`. */
+/** When true, fill and Spray respect `constrainToPlaneRef`. */
 export const constrainToPlaneEnabled = writable<boolean>(false);
 /**
- * Plane used for fill flood and airbrush path when `constrainToPlaneEnabled` is on.
+ * Plane used for fill flood and Spray path when `constrainToPlaneEnabled` is on.
  * Auto = dominant axis of clicked face; camera = view plane; X/Y/Z = world axis through seed.
  */
 export type ConstrainToPlaneRef = 'auto' | 'camera' | 0 | 1 | 2;
@@ -201,21 +201,22 @@ export const constrainToPlaneRef = writable<ConstrainToPlaneRef>('auto');
  * 0 = fill in the plane of anchor voxels; positive = outward along that normal (previous voxel default).
  */
 export const polygonOffsetFromNormal = writable<number>(1);
-export const strokeMode = writable<StrokeMode>('airbrush');
-/** Stroke mode only when current tool uses it (draw tools). Null for clay/stamp/fly/eyedropper so selection method never applies. */
+export const strokeMode = writable<StrokeMode>('spray');
+/** `strokeMode` when the active tool uses the draw stroke pipeline; null for clay/stamp/fly/eyedropper. */
 export const effectiveStrokeMode = derived([tool, strokeMode], ([t, sm]) =>
   DRAW_TOOLS_USING_STROKE_MODE.includes(t) ? sm : null
 );
 /** When true (default), line stroke is axis-aligned; when false, line is drawn on the plane through the start voxel. */
 export const lineAxisAlign = writable<boolean>(true);
 export const planeAxis = writable<PlaneAxis>(1);
-/** When true, plane/cuboid/cylindroid stroke selects only perimeter (plane) or volumetric shell. */
+/** When true, plane/cuboid/cylinder stroke selects only perimeter (plane) or volumetric shell. */
 export const planeCuboidHollow = writable<boolean>(false);
-/** Voxel layers kept from the outer surface when hollow (plane/cuboid/cylindroid); 1 = thinnest shell. */
+/** Voxel layers kept from the outer surface when hollow (plane/cuboid/cylinder); 1 = thinnest shell. */
 export const PLANE_CUBOID_HOLLOW_WALL_MAX = 32;
 export const planeCuboidHollowWallThickness = writable<number>(1);
-/** Cylindroid extrusion: constant-radius cylinder vs linear taper to a tip (cone). */
-export const planeCylindroidCone = writable<boolean>(false);
+/** Cylinder extrusion taper: 0 = right cylinder; 100 = linear taper to a point at the far end (cone). */
+export const PLANE_CYLINDER_TAPER_PCT_MAX = 100;
+export const planeCylinderTaperPct = writable<number>(0);
 export const clayMode = writable<ClayMode>('bulk');
 /** Clay brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
 export const clayBrushRadius = writable<number>(2);
@@ -254,17 +255,17 @@ export const ropeBrushShape = writable<RopeBrushShape>('sphere');
 export const ropeBrushRadius = writable<number>(2);
 /** Rope mode: gravity direction (rope sags toward this axis). */
 export const ropeGravityDirection = writable<RopeGravityDirection>('down');
-/** Airbrush: each droplet is a sphere or axis-aligned cube (same radius index as sphere). */
-export type AirbrushBrushShape = 'sphere' | 'cube';
-export const airbrushBrushShape = writable<AirbrushBrushShape>('sphere');
-/** Airbrush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxel diameter spheres. */
-export const airbrushRadius = writable<number>(2);
-/** Airbrush: max voxel offset for sphere centers (0=none, 1–4=scatter/spray). */
-export const airbrushScatter = writable<number>(0);
-/** Airbrush: when true, radius varies between airbrushRadiusMin and airbrushRadiusMax per sphere. */
-export const airbrushRadiusRange = writable<boolean>(false);
-export const airbrushRadiusMin = writable<number>(0);
-export const airbrushRadiusMax = writable<number>(4);
+/** Spray brush shape: same options as draw brush shapes (cube / sphere / pyramid). */
+export type SprayBrushShape = DrawBrushShape;
+export const sprayBrushShape = writable<SprayBrushShape>('sphere');
+/** Spray size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxel diameter (stamp size). */
+export const sprayRadius = writable<number>(2);
+/** Spray: max voxel offset for stamp centers (0=none, 1–4=scatter). */
+export const sprayScatter = writable<number>(0);
+/** Spray: when true, radius varies between sprayRadiusMin and sprayRadiusMax per stamp. */
+export const sprayRadiusRange = writable<boolean>(false);
+export const sprayRadiusMin = writable<number>(0);
+export const sprayRadiusMax = writable<number>(4);
 /** Wall (and legacy): direction to extend voxels. Auto = use face normal (wall only). */
 export type SprayDirection =
   | 'none'

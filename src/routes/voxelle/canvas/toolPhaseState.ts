@@ -4,9 +4,10 @@
  */
 
 export type CuboidStrokePhase = 'plane' | 'depth' | null;
-export type CylindroidStrokePhase = 'plane' | 'depth' | null;
-export type PolygonStrokePhase = 'placing' | null;
-export type PolygonoidStrokePhase = 'placing' | 'depth' | null;
+export type CylinderStrokePhase = 'plane' | 'depth' | null;
+/** Surface Polygon (convex hull in plane) placement phase. */
+export type PolygonHullStrokePhase = 'placing' | null;
+export type SolidPolygonStrokePhase = 'placing' | 'depth' | null;
 export type RoofStrokePhase = 'placing' | null;
 export type RopeStrokePhase = 'placing' | 'tension' | null;
 export type PiscinaPlacementPhase = 'pick' | 'shape';
@@ -14,17 +15,18 @@ export type PiscinaPlacementPhase = 'pick' | 'shape';
 /** True when a segmented stroke (extra click targets / phases) is in progress. */
 export function isSegmentedStrokeGestureActive(opts: {
   cuboidPhase: CuboidStrokePhase;
-  cylindroidPhase: CylindroidStrokePhase;
-  polygonPhase: PolygonStrokePhase;
-  polygonoidPhase: PolygonoidStrokePhase;
+  cylinderPhase: CylinderStrokePhase;
+  /** Hull-in-plane polygon stroke (`StrokeMode` `polygonHull`). */
+  polygonPhase: PolygonHullStrokePhase;
+  solidPolygonPhase: SolidPolygonStrokePhase;
   roofPhase: RoofStrokePhase;
   ropePhase: RopeStrokePhase;
 }): boolean {
   return !!(
     opts.cuboidPhase ||
-    opts.cylindroidPhase ||
+    opts.cylinderPhase ||
     opts.polygonPhase ||
-    opts.polygonoidPhase ||
+    opts.solidPolygonPhase ||
     opts.roofPhase ||
     opts.ropePhase
   );

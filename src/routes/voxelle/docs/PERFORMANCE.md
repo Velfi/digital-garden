@@ -110,7 +110,7 @@ This document lists the main **performance-oriented mechanisms** in Voxelle, wha
 - **`SELECTION_OVERLAY_MESH_THRESHOLD`** ([`strokePreviewBounds.ts`](../strokePreviewBounds.ts)) – above ~20k selected voxels, use **AABB box** + wireframe instead of per-voxel greedy overlay.
 - **`PREVIEW_BBOX_VOXEL_THRESHOLD`** – large stroke previews use analytic bounds / bbox paths instead of enumerating voxels.
 - **[`previewMeshLod.ts`](../previewMeshLod.ts)** – downsample preview positions to a coarse grid (`computePreviewLodStride`) so ghost meshes stay cheap (Add panel and **large stroke** previews in `VoxelCanvas` / `meshManager.updatePreviewMeshLod`). Idle refinement swaps in full-resolution greedy mesh when the main thread is idle; placement commit still uses the full voxel list.
-- **Airbrush** – `puffPath` / `cubePuffPath` merge each droplet into a shared set without allocating intermediate sphere arrays; when scatter is 0 and radius range is off, the canvas **incrementally** extends that union along the path each move instead of rebuilding from scratch.
+- **Spray** (selection method; `strokeMode` `spray`) – `expandPathWithBrushStamps` (sphere / cube / pyramid) merges each stamp into a shared set without allocating intermediate shape arrays; when scatter is 0 and radius range is off, the canvas **incrementally** extends that union along the stroke each move instead of rebuilding from scratch.
 
 **Why** – Gizmos and previews stay fluid on large selections and fat brushes.
 

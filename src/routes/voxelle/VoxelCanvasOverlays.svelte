@@ -23,24 +23,26 @@
     cuboidDepth: number;
     updateCuboidFromDepth: () => void;
     commitCuboid: () => void;
-    cylindroidPhase: 'plane' | 'depth' | null;
-    cylindroidDepth: number;
-    updateCylindroidFromDepth: () => void;
-    commitCylindroid: () => void;
+    cylinderPhase: 'plane' | 'depth' | null;
+    cylinderDepth: number;
+    updateCylinderFromDepth: () => void;
+    commitCylinder: () => void;
     polygonPhase: 'placing' | null;
     polygonPointCount: number;
     commitPolygon: () => void;
     cancelPolygon: () => void;
-    polygonoidPhase: 'placing' | 'depth' | null;
-    polygonoidPointCount: number;
-    polygonoidExtrudable: boolean;
-    beginPolygonoidDepth: () => void;
-    polygonoidDepth: number;
-    updatePolygonoidFromDepth: () => void;
-    commitPolygonoid: () => void;
-    cancelPolygonoid: () => void;
+    solidPolygonPhase: 'placing' | 'depth' | null;
+    solidPolygonPointCount: number;
+    solidPolygonExtrudable: boolean;
+    beginSolidPolygonDepth: () => void;
+    solidPolygonDepth: number;
+    updateSolidPolygonFromDepth: () => void;
+    commitSolidPolygon: () => void;
+    cancelSolidPolygon: () => void;
     roofPhase: 'placing' | null;
-    roofPointCount: number;
+    /** When false, hide Done/Cancel (e.g. roof footprint mode before first gesture). */
+    roofHudVisible: boolean;
+    roofDoneDisabled: boolean;
     commitRoof: () => void;
     cancelRoof: () => void;
     piscinaPhase: 'pick' | 'shape';
@@ -86,24 +88,25 @@
     cuboidDepth = $bindable(),
     updateCuboidFromDepth,
     commitCuboid,
-    cylindroidPhase,
-    cylindroidDepth = $bindable(),
-    updateCylindroidFromDepth,
-    commitCylindroid,
+    cylinderPhase,
+    cylinderDepth = $bindable(),
+    updateCylinderFromDepth,
+    commitCylinder,
     polygonPhase,
     polygonPointCount,
     commitPolygon,
     cancelPolygon,
-    polygonoidPhase,
-    polygonoidPointCount,
-    polygonoidExtrudable,
-    beginPolygonoidDepth,
-    polygonoidDepth = $bindable(),
-    updatePolygonoidFromDepth,
-    commitPolygonoid,
-    cancelPolygonoid,
+    solidPolygonPhase,
+    solidPolygonPointCount,
+    solidPolygonExtrudable,
+    beginSolidPolygonDepth,
+    solidPolygonDepth = $bindable(),
+    updateSolidPolygonFromDepth,
+    commitSolidPolygon,
+    cancelSolidPolygon,
     roofPhase,
-    roofPointCount,
+    roofHudVisible,
+    roofDoneDisabled,
     commitRoof,
     cancelRoof,
     piscinaPhase,
@@ -267,30 +270,30 @@
     Done
   </button>
 {/if}
-{#if cylindroidPhase === 'depth'}
+{#if cylinderPhase === 'depth'}
   <div class="depth-slider-container" data-voxelle-no-passthrough>
     <div
       class="depth-slider-track"
       role="slider"
-      aria-label="Cylindroid depth"
+      aria-label="Cylinder depth"
       aria-valuemin={-256}
       aria-valuemax={256}
-      aria-valuenow={cylindroidDepth}
+      aria-valuenow={cylinderDepth}
       tabindex="0"
       onpointerdown={(e) => {
         e.preventDefault();
         e.stopPropagation();
         depthSliderPointerId = e.pointerId;
         depthSliderStartY = e.clientY;
-        depthSliderStartDepth = cylindroidDepth;
+        depthSliderStartDepth = cylinderDepth;
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       }}
       onpointermove={(e) => {
         e.preventDefault();
         if (depthSliderPointerId !== e.pointerId) return;
         const dy = depthSliderStartY - e.clientY;
-        cylindroidDepth = Math.max(-256, Math.min(256, depthSliderStartDepth + Math.round(dy / 10)));
-        updateCylindroidFromDepth();
+        cylinderDepth = Math.max(-256, Math.min(256, depthSliderStartDepth + Math.round(dy / 10)));
+        updateCylinderFromDepth();
       }}
       onpointerup={(e) => {
         if (depthSliderPointerId === e.pointerId) depthSliderPointerId = null;
@@ -301,7 +304,7 @@
     >
       <div
         class="depth-slider-thumb"
-        style="bottom: {Math.min(99, Math.max(1, 50 + (cylindroidDepth / 512) * 98))}%"
+        style="bottom: {Math.min(99, Math.max(1, 50 + (cylinderDepth / 512) * 98))}%"
       ></div>
     </div>
     <div class="depth-slider-controls">
@@ -310,19 +313,19 @@
         class="depth-btn"
         onpointerdown={(e) => e.stopPropagation()}
         onclick={() => {
-          cylindroidDepth = Math.max(-256, cylindroidDepth - 1);
-          updateCylindroidFromDepth();
+          cylinderDepth = Math.max(-256, cylinderDepth - 1);
+          updateCylinderFromDepth();
         }}
         aria-label="Decrease depth">−</button
       >
-      <span class="depth-slider-label">Depth: {cylindroidDepth}</span>
+      <span class="depth-slider-label">Depth: {cylinderDepth}</span>
       <button
         type="button"
         class="depth-btn"
         onpointerdown={(e) => e.stopPropagation()}
         onclick={() => {
-          cylindroidDepth = Math.min(256, cylindroidDepth + 1);
-          updateCylindroidFromDepth();
+          cylinderDepth = Math.min(256, cylinderDepth + 1);
+          updateCylinderFromDepth();
         }}
         aria-label="Increase depth">+</button
       >
@@ -333,37 +336,37 @@
     class="cuboid-done-btn"
     data-voxelle-no-passthrough
     onpointerdown={(e) => e.stopPropagation()}
-    onclick={() => commitCylindroid()}
+    onclick={() => commitCylinder()}
     title="Tap Done to apply"
-    aria-label="Apply cylindroid selection"
+    aria-label="Apply cylinder selection"
   >
     Done
   </button>
 {/if}
-{#if polygonoidPhase === 'depth'}
+{#if solidPolygonPhase === 'depth'}
   <div class="depth-slider-container" data-voxelle-no-passthrough>
     <div
       class="depth-slider-track"
       role="slider"
-      aria-label="Polygonoid depth"
+      aria-label="Solid Polygon depth"
       aria-valuemin={-256}
       aria-valuemax={256}
-      aria-valuenow={polygonoidDepth}
+      aria-valuenow={solidPolygonDepth}
       tabindex="0"
       onpointerdown={(e) => {
         e.preventDefault();
         e.stopPropagation();
         depthSliderPointerId = e.pointerId;
         depthSliderStartY = e.clientY;
-        depthSliderStartDepth = polygonoidDepth;
+        depthSliderStartDepth = solidPolygonDepth;
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       }}
       onpointermove={(e) => {
         e.preventDefault();
         if (depthSliderPointerId !== e.pointerId) return;
         const dy = depthSliderStartY - e.clientY;
-        polygonoidDepth = Math.max(-256, Math.min(256, depthSliderStartDepth + Math.round(dy / 10)));
-        updatePolygonoidFromDepth();
+        solidPolygonDepth = Math.max(-256, Math.min(256, depthSliderStartDepth + Math.round(dy / 10)));
+        updateSolidPolygonFromDepth();
       }}
       onpointerup={(e) => {
         if (depthSliderPointerId === e.pointerId) depthSliderPointerId = null;
@@ -374,7 +377,7 @@
     >
       <div
         class="depth-slider-thumb"
-        style="bottom: {Math.min(99, Math.max(1, 50 + (polygonoidDepth / 512) * 98))}%"
+        style="bottom: {Math.min(99, Math.max(1, 50 + (solidPolygonDepth / 512) * 98))}%"
       ></div>
     </div>
     <div class="depth-slider-controls">
@@ -383,19 +386,19 @@
         class="depth-btn"
         onpointerdown={(e) => e.stopPropagation()}
         onclick={() => {
-          polygonoidDepth = Math.max(-256, polygonoidDepth - 1);
-          updatePolygonoidFromDepth();
+          solidPolygonDepth = Math.max(-256, solidPolygonDepth - 1);
+          updateSolidPolygonFromDepth();
         }}
         aria-label="Decrease depth">−</button
       >
-      <span class="depth-slider-label">Depth: {polygonoidDepth}</span>
+      <span class="depth-slider-label">Depth: {solidPolygonDepth}</span>
       <button
         type="button"
         class="depth-btn"
         onpointerdown={(e) => e.stopPropagation()}
         onclick={() => {
-          polygonoidDepth = Math.min(256, polygonoidDepth + 1);
-          updatePolygonoidFromDepth();
+          solidPolygonDepth = Math.min(256, solidPolygonDepth + 1);
+          updateSolidPolygonFromDepth();
         }}
         aria-label="Increase depth">+</button
       >
@@ -406,9 +409,9 @@
     class="cuboid-done-btn"
     data-voxelle-no-passthrough
     onpointerdown={(e) => e.stopPropagation()}
-    onclick={() => commitPolygonoid()}
+    onclick={() => commitSolidPolygon()}
     title="Tap Done to apply"
-    aria-label="Apply polygonoid"
+    aria-label="Apply Solid Polygon"
   >
     Done
   </button>
@@ -437,42 +440,42 @@
     </button>
   </div>
 {/if}
-{#if polygonoidPhase === 'placing' && polygonoidPointCount >= 2}
+{#if solidPolygonPhase === 'placing' && solidPolygonPointCount >= 2}
   <div class="polygon-actions" data-voxelle-no-passthrough>
     <button
       type="button"
       class="polygon-done-btn"
       onpointerdown={(e) => e.stopPropagation()}
-      onclick={() => beginPolygonoidDepth()}
-      disabled={!polygonoidExtrudable}
-      title={polygonoidExtrudable
+      onclick={() => beginSolidPolygonDepth()}
+      disabled={!solidPolygonExtrudable}
+      title={solidPolygonExtrudable
         ? 'Set depth, then Done to apply'
         : 'Need at least two corners (outline projects onto the first face you clicked)'}
-      aria-label="Start polygonoid extrusion"
+      aria-label="Set depth for Solid Polygon outline"
     >
-      Extrude
+      Set depth
     </button>
     <button
       type="button"
       class="polygon-cancel-btn"
       onpointerdown={(e) => e.stopPropagation()}
-      onclick={() => cancelPolygonoid()}
+      onclick={() => cancelSolidPolygon()}
       title="Cancel"
-      aria-label="Cancel polygonoid"
+      aria-label="Cancel Solid Polygon outline"
     >
       Cancel
     </button>
   </div>
 {/if}
-{#if roofPhase === 'placing' && roofPointCount >= 2}
+{#if roofPhase === 'placing' && roofHudVisible}
   <div class="polygon-actions" data-voxelle-no-passthrough>
     <button
       type="button"
       class="polygon-done-btn"
       onpointerdown={(e) => e.stopPropagation()}
       onclick={() => commitRoof()}
-      disabled={roofPointCount < 4}
-      title={roofPointCount < 4 ? 'Need at least 4 corners' : 'Build roof'}
+      disabled={roofDoneDisabled}
+      title={roofDoneDisabled ? 'Complete the footprint (polygon: 4+ corners; circle/square: drag on a face)' : 'Build roof'}
       aria-label="Apply roof"
     >
       Done

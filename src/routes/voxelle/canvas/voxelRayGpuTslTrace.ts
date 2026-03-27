@@ -137,6 +137,9 @@ export async function createVoxelRayGpuTracePipeline(
   });
   bloomTarget.texture.name = 'voxelleRayGpuBloom';
 
+  let lastRayTargetW = w;
+  let lastRayTargetH = h;
+
   const uClipToWorld = uniform(new Matrix4());
   const uCamPos = uniform(new Vector3());
   const uOrigin = uniform(new Vector3());
@@ -1165,6 +1168,7 @@ export async function createVoxelRayGpuTracePipeline(
   const scene = new Scene();
   scene.add(quad);
   const ortho = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const clipToWorldScratch = new Matrix4();
 
   return {
     beautyTexture: beautyTarget.texture,
@@ -1172,6 +1176,9 @@ export async function createVoxelRayGpuTracePipeline(
     setSize(nw: number, nh: number, ndpr: number) {
       const cw = Math.max(1, Math.floor(nw * ndpr));
       const ch = Math.max(1, Math.floor(nh * ndpr));
+      if (cw === lastRayTargetW && ch === lastRayTargetH) return;
+      lastRayTargetW = cw;
+      lastRayTargetH = ch;
       beautyTarget.setSize(cw, ch, 1);
       bloomTarget.setSize(cw, ch, 1);
       uBufH.value = ch;
@@ -1186,11 +1193,8 @@ export async function createVoxelRayGpuTracePipeline(
       maxDist: number
     ) {
       volAcc.value = volTex;
-      const clipToWorld = new Matrix4().multiplyMatrices(
-        camera.matrixWorld,
-        camera.projectionMatrixInverse
-      );
-      uClipToWorld.value.copy(clipToWorld);
+      clipToWorldScratch.multiplyMatrices(camera.matrixWorld, camera.projectionMatrixInverse);
+      uClipToWorld.value.copy(clipToWorldScratch);
       uCamPos.value.setFromMatrixPosition(camera.matrixWorld);
       uOrigin.value.set(origin[0], origin[1], origin[2]);
       uDims.value.set(dims[0], dims[1], dims[2]);

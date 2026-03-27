@@ -9,7 +9,7 @@ Voxelle is a 3D sculpting tool made of blocks (voxels).
 ### Add and erase blocks
 
 1. Open the **Draw** tab.
-2. Pick **Voxel** to add or **Remove** to erase.
+2. Under **Tool**, pick **Add** to place blocks or **Remove** to erase.
 3. Click or drag in the canvas.
 
 ### Paint your model
@@ -35,7 +35,7 @@ Voxelle is a 3D sculpting tool made of blocks (voxels).
 
 ### Copy repeated parts
 
-1. Use **Select** to pick voxels.
+1. Under **Selection**, use **Select** to pick voxels (or load a shape from the Stamp book).
 2. Switch to **Stamp**.
 3. Click to place copies of the selection.
 
@@ -50,36 +50,54 @@ Voxelle is a 3D sculpting tool made of blocks (voxels).
 
 ## Draw Tools
 
-- **Voxel** - add blocks
+**Tool** column (left):
+
+- **Add** - place blocks
 - **Remove** - erase blocks
 - **Paint** - recolor blocks
-- **Select** - select blocks
-- **Stamp** - place a copy of selected blocks
-- **Eyedropper** - pick a color from the model
 
-### Selection method (how dragging behaves)
+**Selection** column (right):
 
-- **Line** - draw a line between start and end points
-- **Plane** - fill a flat plane
-- **Cuboid** - draw a box
-- **Polygon** - place points, then fill the inside
-- **Fill** - flood fill connected area
-- **Airbrush** - spray-like brush while dragging
+- **Select** - select blocks for Stamp/Punch or editing
+- **Stamp** - place a copy of the selected pattern
+- **Punch** - cut the stamp pattern into the surface
+
+Other:
+
+- **Eyedropper** - pick a color from the model (from menus / shortcuts as exposed in the app)
+
+### Selection method (sidebar)
+
+How strokes behave depends on the category, then the **Area shape** in the floating tool panel.
+
+**Row 1 — Stroke · Surface · Solid**
+
+- **Stroke** — **Area shape**: **Line** or **Precise** (lock a plane from a face, then place or drag).
+- **Surface** — **Area shape**: **Plane**, **Circle**, or **Polygon** (flat region: rectangle, disk, or point outline).
+- **Solid** — **Area shape**: **Cube**, **Cylinder**, or **Polygon** (extruded volume: box, round column, or outlined extrusion).
+
+**Row 2 — Spray · Fill**
+
+- **Spray** — soft droplets along the stroke (options in the tool panel).
+- **Fill** — flood connected voxels or empty space (depends on tool: Add / Remove / Paint / Select).
+
+Fill and Spray have no second shape row; choosing them sets the mode directly.
 
 ### Selection method options explained
 
-#### Line: Axis-align
+#### Stroke → Line: Axis-align
 
 - **What it does**: locks the line to a single axis (X, Y, or Z), based on your drag direction.
 - **When ON**: great for clean, blocky straight lines.
 - **When OFF**: line follows your full drag in 3D, which is better for diagonal placement.
-- **How to turn it off**: in the floating tool options panel, uncheck **Axis-align** while using **Line** mode.
+- **How to turn it off**: in the floating tool options panel, uncheck **Axis-align** while **Line** is selected under **Area shape**.
 
-#### Plane and Cuboid: Axis
+#### Plane options (Surface / Solid shapes that use a plane)
 
-- **X / Y / Z**: force a specific plane orientation.
-- **Auto**: use the face you clicked.
-- **Tip**: while dragging Plane or Cuboid, hold **Alt** and scroll to cycle X/Y/Z quickly.
+- **Plane options** in the tool panel: **X / Y / Z** force orientation; **Auto** uses the face you clicked.
+- **Hollow (shell only)**: keep only the outer shell (edge of a plane, or walls of a box/cylinder).
+- **Tip**: while dragging many plane-based shapes, hold **Alt** and scroll to cycle X/Y/Z quickly.
+- **Solid** → **Cylinder**: **Taper** slider makes the column taper to a cone.
 
 #### Fill options
 
@@ -87,17 +105,18 @@ Voxelle is a 3D sculpting tool made of blocks (voxels).
 - **Respect color**: only fills voxels with the same starting color.
 - **Constrain to plane**: keeps fill on a single plane instead of spreading in full 3D.
 
-#### Airbrush options
+#### Spray options
 
-- **Size**: fixed spray size.
-- **Size range**: random size between Min and Max each spray step.
+- **Size**: fixed droplet size.
+- **Size range**: random size between Min and Max each step.
 - **Scatter**: how far droplets spread from the center path.
 
-### Helpful draw options
+### Helpful draw options (tool panel)
 
-- **Brush shape**: Sphere, Cube, Pyramid
-- **Brush size**: 0-5
-- **Snap to surface**: keeps brush on surface instead of through it
+- **Area shape** — depends on **Stroke** / **Surface** / **Solid** (see above); not the same as brush stamp.
+- **Brush shape** — **Cube**, **Sphere**, **Pyramid** (stamp used when drawing with Add / Remove / Paint and similar strokes).
+- **Brush size** — slider (1–64 voxels by radius index).
+- **Snap to surface (embed)** — offsets the brush along the face normal so it sits on the surface instead of cutting through.
 - **Stamp rotation**: rotate copied selection in quarter-turns before placing
 
 ---
@@ -170,6 +189,11 @@ Use **X**, **Y**, and **Z** symmetry toggles to mirror edits across axes.
 ---
 
 ## Sidebar Controls
+
+### Draw tab
+
+- **Tool** and **Selection** are two columns with a divider between them: **Add**, **Remove**, and **Paint** on the left; **Select**, **Stamp**, and **Punch** on the right.
+- **Selection method**: top row **Stroke · Surface · Solid**; bottom row **Spray · Fill**. Choosing **Stroke**, **Surface**, or **Solid** unlocks **Area shape** buttons in the floating tool panel (bottom of the canvas).
 
 ### Color
 

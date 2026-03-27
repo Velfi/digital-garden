@@ -166,8 +166,11 @@ export interface GeneratorPrimaryPointerUpDeps {
   scheduleRender: () => void;
 }
 
-/** Face-click generators: apply placement on primary pointer up (mirrors VoxelCanvas). */
-export function applyGeneratorFaceClickPointerUp(
+/**
+ * Face-click generators: apply on primary pointer down so orbit (down on sky, up on mesh)
+ * does not trigger placement or surface pick.
+ */
+export function applyGeneratorFaceClickPointerDown(
   ctx: GeneratorPrimaryPointerUpDeps,
   event: PointerEvent
 ): void {
@@ -175,89 +178,75 @@ export function applyGeneratorFaceClickPointerUp(
 
   if (ctx.tool === 'rocks') {
     const hit = ctx.getIntersection();
-    if (hit) {
-      const place = ctx.getAddPosition(hit);
-      const normal = ctx.getFaceNormalFromHit(hit);
-      if (place && normal) {
-        const seed = ctx.getNextRockSeed() === 0 ? ctx.randomSeed32() : ctx.getNextRockSeed();
-        ctx.placeRocks(place, normal, seed);
-        ctx.setNextRockSeed(ctx.randomSeed32());
-      }
-    }
+    if (!hit) return;
+    const place = ctx.getAddPosition(hit);
+    const normal = ctx.getFaceNormalFromHit(hit);
+    if (!place || !normal) return;
+    const seed = ctx.getNextRockSeed() === 0 ? ctx.randomSeed32() : ctx.getNextRockSeed();
+    ctx.placeRocks(place, normal, seed);
+    ctx.setNextRockSeed(ctx.randomSeed32());
     return;
   }
   if (ctx.tool === 'grass') {
     const hit = ctx.getIntersection();
-    if (hit) {
-      const place = ctx.getAddPosition(hit);
-      const normal = ctx.getFaceNormalFromHit(hit);
-      if (place && normal) {
-        const seed = ctx.getNextGrassSeed() === 0 ? ctx.randomSeed32() : ctx.getNextGrassSeed();
-        ctx.placeGrass(place, normal, seed);
-        ctx.setNextGrassSeed(ctx.randomSeed32());
-      }
-    }
+    if (!hit) return;
+    const place = ctx.getAddPosition(hit);
+    const normal = ctx.getFaceNormalFromHit(hit);
+    if (!place || !normal) return;
+    const seed = ctx.getNextGrassSeed() === 0 ? ctx.randomSeed32() : ctx.getNextGrassSeed();
+    ctx.placeGrass(place, normal, seed);
+    ctx.setNextGrassSeed(ctx.randomSeed32());
     return;
   }
   if (ctx.tool === 'flora') {
     const hit = ctx.getIntersection();
-    if (hit) {
-      const place = ctx.getAddPosition(hit);
-      const normal = ctx.getFaceNormalFromHit(hit);
-      if (place && normal) {
-        const seed = ctx.getNextFloraSeed() === 0 ? ctx.randomSeed32() : ctx.getNextFloraSeed();
-        ctx.placeFlora(place, normal, seed);
-        ctx.setNextFloraSeed(ctx.randomSeed32());
-      }
-    }
-    return;
-  }
-  if (ctx.tool === 'piscina') {
-    ctx.updatePointerFromEvent(event);
-    if (ctx.piscinaPhase === 'pick') {
-      const hit = ctx.getIntersection();
-      if (hit) {
-        const place = ctx.getAddPosition(hit);
-        const normal = ctx.getFaceNormalFromHit(hit);
-        if (place && normal) {
-          if (ctx.getNextPiscinaSeed() === 0) {
-            ctx.setNextPiscinaSeed(ctx.randomSeed32());
-          }
-          ctx.commitPiscinaSurfacePick(place, normal);
-          ctx.scheduleRender();
-        }
-      }
-    }
-    return;
-  }
-  if (ctx.tool === 'insecta') {
-    ctx.updatePointerFromEvent(event);
-    if (ctx.insectaPhase === 'pick') {
-      const hit = ctx.getIntersection();
-      if (hit) {
-        const place = ctx.getAddPosition(hit);
-        const normal = ctx.getFaceNormalFromHit(hit);
-        if (place && normal) {
-          if (ctx.getNextInsectaSeed() === 0) {
-            ctx.setNextInsectaSeed(ctx.randomSeed32());
-          }
-          ctx.commitInsectaSurfacePick(place, normal);
-          ctx.scheduleRender();
-        }
-      }
-    }
+    if (!hit) return;
+    const place = ctx.getAddPosition(hit);
+    const normal = ctx.getFaceNormalFromHit(hit);
+    if (!place || !normal) return;
+    const seed = ctx.getNextFloraSeed() === 0 ? ctx.randomSeed32() : ctx.getNextFloraSeed();
+    ctx.placeFlora(place, normal, seed);
+    ctx.setNextFloraSeed(ctx.randomSeed32());
     return;
   }
   if (ctx.tool === 'ashlar') {
     const hit = ctx.getIntersection();
-    if (hit) {
-      const place = ctx.getAddPosition(hit);
-      const normal = ctx.getFaceNormalFromHit(hit);
-      if (place && normal) {
-        const seed = ctx.getNextAshlarSeed() === 0 ? ctx.randomSeed32() : ctx.getNextAshlarSeed();
-        ctx.placeAshlar(place, normal, seed);
-        ctx.setNextAshlarSeed(ctx.randomSeed32());
-      }
+    if (!hit) return;
+    const place = ctx.getAddPosition(hit);
+    const normal = ctx.getFaceNormalFromHit(hit);
+    if (!place || !normal) return;
+    const seed = ctx.getNextAshlarSeed() === 0 ? ctx.randomSeed32() : ctx.getNextAshlarSeed();
+    ctx.placeAshlar(place, normal, seed);
+    ctx.setNextAshlarSeed(ctx.randomSeed32());
+    return;
+  }
+  if (ctx.tool === 'piscina') {
+    ctx.updatePointerFromEvent(event);
+    if (ctx.piscinaPhase !== 'pick') return;
+    const hit = ctx.getIntersection();
+    if (!hit) return;
+    const place = ctx.getAddPosition(hit);
+    const normal = ctx.getFaceNormalFromHit(hit);
+    if (!place || !normal) return;
+    if (ctx.getNextPiscinaSeed() === 0) {
+      ctx.setNextPiscinaSeed(ctx.randomSeed32());
     }
+    ctx.commitPiscinaSurfacePick(place, normal);
+    ctx.scheduleRender();
+    return;
+  }
+  if (ctx.tool === 'insecta') {
+    ctx.updatePointerFromEvent(event);
+    if (ctx.insectaPhase !== 'pick') return;
+    const hit = ctx.getIntersection();
+    if (!hit) return;
+    const place = ctx.getAddPosition(hit);
+    const normal = ctx.getFaceNormalFromHit(hit);
+    if (!place || !normal) return;
+    if (ctx.getNextInsectaSeed() === 0) {
+      ctx.setNextInsectaSeed(ctx.randomSeed32());
+    }
+    ctx.commitInsectaSurfacePick(place, normal);
+    ctx.scheduleRender();
   }
 }

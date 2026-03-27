@@ -9,7 +9,8 @@ import { hexToInt } from '../store/index';
 import type { Voxel, VoxellePreferences } from '../store/index';
 import { buildVoxelRayTraceParams } from './voxelRayShared';
 import { DEFAULT_RAY_TICK_BUDGET_MS } from './voxelRayProgressive';
-import type { VoxelRayTsl } from './voxelRayTsl';
+import { maybeSampleVoxelleRuntimeMetrics } from '../store/runtimeMetrics';
+import type { VoxelRayTsl, VoxelRayTslTickContext } from './voxelRayTsl';
 import type { VoxelleRenderer } from './sceneSetup';
 import { isWebGPURenderer } from './rendererUtils';
 
@@ -41,6 +42,7 @@ export type VoxelCanvasAnimateContext = {
   dirLight: THREE.DirectionalLight;
   hemisphereLight: THREE.HemisphereLight;
   getVoxels: () => Map<string, Voxel>;
+  getHiddenVoxelCount: () => number;
   getEnableSky: () => boolean;
   getBackgroundColor: () => string;
   getAmbientIntensity: () => number;
@@ -70,9 +72,9 @@ export type VoxelCanvasAnimateContext = {
   isStampDrag: boolean;
   selectionGizmoDragging: boolean;
   getCuboidPhase: () => 'plane' | 'depth' | null;
-  getCylindroidPhase: () => 'plane' | 'depth' | null;
+  getCylinderPhase: () => 'plane' | 'depth' | null;
   getPolygonPhase: () => 'placing' | null;
-  getPolygonoidPhase: () => 'placing' | 'depth' | null;
+  getSolidPolygonPhase: () => 'placing' | 'depth' | null;
   getRoofPhase: () => 'placing' | null;
   getRopePhase: () => 'placing' | 'tension' | null;
   getFlyControlsEnabled: () => boolean;
@@ -88,6 +90,16 @@ export type VoxelCanvasAnimateContext = {
 
 export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void {
   const t = ctx.nowMs;
+
+  maybeSampleVoxelleRuntimeMetrics(t, {
+    renderingMode: ctx.getRenderingMode(),
+    rendererPixelRatio: ctx.renderer.getPixelRatio(),
+    containerWidth: ctx.container.clientWidth,
+    containerHeight: ctx.container.clientHeight,
+    filledVoxelCount: ctx.getVoxels().size,
+    hiddenVoxelCount: ctx.getHiddenVoxelCount(),
+    rayMaxBufferDim: ctx.getVoxellePreferences().rayMaxBufferDim
+  });
 
   if (ctx.showFpsCounter) {
     let fpsCounterPeriodStartMs = ctx.getFpsCounterPeriodStartMs();
@@ -187,8 +199,15 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
     if (ctx.rayRenderer) {
       const texBefore = ctx.rayRenderer.output.beautyTexture;
       const webgpuRenderer = isWebGPURenderer(ctx.renderer)
-        ? (ctx.renderer as Parameters<VoxelRayTsl['tick']>[10]['webgpuRenderer'])
+        ? (ctx.renderer as NonNullable<VoxelRayTslTickContext['webgpuRenderer']>)
         : null;
+      const tickCtx: VoxelRayTslTickContext = {
+        webgpuRenderer,
+        rayTraceBackend: prefs.rayTraceBackend,
+        rayTickBudgetMs: prefs.rayTickBudgetMs,
+        rayMaxBufferDim: prefs.rayMaxBufferDim,
+        rayMaxTemporalSamples: prefs.rayMaxTemporalSamples
+      };
       ctx.rayRenderer.tick(
         delta,
         ctx.container.clientWidth,
@@ -196,16 +215,11 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
         ctx.renderer.getPixelRatio(),
         ctx.getVoxels(),
         params,
-        contentDirty || camDirty,
+        contentDirty,
+        camDirty,
         ctx.camera,
         prefs.rayTickBudgetMs ?? DEFAULT_RAY_TICK_BUDGET_MS,
-        {
-          webgpuRenderer,
-          rayTraceBackend: prefs.rayTraceBackend,
-          rayTickBudgetMs: prefs.rayTickBudgetMs,
-          rayMaxBufferDim: prefs.rayMaxBufferDim,
-          rayMaxTemporalSamples: prefs.rayMaxTemporalSamples
-        }
+        tickCtx
       );
       const texAfter = ctx.rayRenderer.output.beautyTexture;
       if (texBefore !== texAfter) {
@@ -223,9 +237,9 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
     ctx.isStampDrag ||
     ctx.selectionGizmoDragging ||
     ctx.getCuboidPhase() !== null ||
-    ctx.getCylindroidPhase() !== null ||
+    ctx.getCylinderPhase() !== null ||
     ctx.getPolygonPhase() !== null ||
-    ctx.getPolygonoidPhase() !== null ||
+    ctx.getSolidPolygonPhase() !== null ||
     ctx.getRoofPhase() !== null ||
     ctx.getRopePhase() !== null;
   if (

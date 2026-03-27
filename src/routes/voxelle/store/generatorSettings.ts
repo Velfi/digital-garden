@@ -3,6 +3,11 @@
  * Re-exported from core.ts for a stable public API.
  */
 import { writable } from 'svelte/store';
+import {
+  normalizeRoofProfilePoints,
+  ROOF_PROFILE_CURVE_DEFAULT,
+  type RoofProfilePoint
+} from './generators/roofProfileCurve';
 import type { ArticulatedLeg2 } from './generators/articulatedLeg';
 import { cloneArticulatedLeg2 } from './generators/articulatedLeg';
 import { INSECTA_INITIAL_LEGS } from './generators/insecta/insectaInitialLegs';
@@ -201,11 +206,16 @@ export const insectaWingHindSpread = writable<number>(72);
 export const insectaWingHindPitch = writable<number>(4);
 export const insectaWingHindOffset = writable<number>(-1);
 
+/** Roof generator: how the footprint is chosen on the voxel surface. */
+export type RoofSelectionMethodId = 'polygon' | 'circle' | 'square';
+export const roofSelectionMethod = writable<RoofSelectionMethodId>('polygon');
+
 /** Roof generator: profile style. */
 export type RoofStyleId =
   | 'flat'
   | 'flat_parapet'
   | 'pyramid'
+  | 'custom_profile'
   | 'cone'
   | 'shed'
   | 'saltbox'
@@ -217,6 +227,12 @@ export type RoofStyleId =
   | 'pavilion'
   | 'dutch_gable';
 export const roofStyle = writable<RoofStyleId>('pyramid');
+
+export type { RoofProfilePoint };
+/** Normalized control points: x from eave (0) inward to ridge/center (1), y = relative height (0–1). */
+export const roofProfileCurve = writable<RoofProfilePoint[]>(
+  normalizeRoofProfilePoints([...ROOF_PROFILE_CURVE_DEFAULT])
+);
 /** Roof generator: rise in voxels (pyramid, shed, gable). */
 export const roofHeight = writable<number>(4);
 /** Roof generator: slab depth for flat style (voxels). */

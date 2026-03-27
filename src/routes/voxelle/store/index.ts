@@ -42,7 +42,8 @@ export {
   planeCuboidHollow,
   PLANE_CUBOID_HOLLOW_WALL_MAX,
   planeCuboidHollowWallThickness,
-  planeCylindroidCone,
+  PLANE_CYLINDER_TAPER_PCT_MAX,
+  planeCylinderTaperPct,
   clayMode,
   clayBrushRadius,
   clayBrushShape,
@@ -62,12 +63,12 @@ export {
   ropeBrushShape,
   ropeBrushRadius,
   ropeGravityDirection,
-  airbrushBrushShape,
-  airbrushRadius,
-  airbrushScatter,
-  airbrushRadiusRange,
-  airbrushRadiusMin,
-  airbrushRadiusMax,
+  sprayBrushShape,
+  sprayRadius,
+  sprayScatter,
+  sprayRadiusRange,
+  sprayRadiusMin,
+  sprayRadiusMax,
   sprayDirection,
   sprayStreakLength,
   wallWidth,
@@ -192,6 +193,8 @@ export {
   insectaWingHindOffset,
   type FloraPresetId,
   type PiscinaPresetId,
+  roofSelectionMethod,
+  roofProfileCurve,
   roofStyle,
   roofHeight,
   roofThickness,
@@ -204,6 +207,8 @@ export {
   roofWindingFlipTick,
   roofHollow,
   type RoofStyleId,
+  type RoofProfilePoint,
+  type RoofSelectionMethodId,
   showGrid,
   activeRendererIsWebGPU,
   renderingMode,
@@ -269,6 +274,7 @@ export {
 
 export { glowVoxelCount, recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 export { projectPerfMetrics, markUndoRedoGestureStart } from './projectPerf';
+export { voxelleRuntimeMetrics } from './runtimeMetrics';
 export {
   projectOpenLoading,
   LARGE_PROJECT_OPEN_VOXEL_THRESHOLD,
@@ -366,6 +372,7 @@ export type {
   RopeBrushShape,
   RopeGravityDirection,
   DrawBrushShape,
+  SprayBrushShape,
   SprayDirection,
   FaceNormal,
   AddPanelState,
@@ -383,6 +390,23 @@ export type {
 
 // canUndo, canRedo as aliases
 export { canUndoStore as canUndo, canRedoStore as canRedo } from './core';
+
+export type {
+  SelectionStrokeFamily,
+  SelectionStrokeFamilyVariant
+} from './selectionStrokeFamily';
+export {
+  SELECTION_STROKE_FAMILY_ORDER,
+  SELECTION_STROKE_FAMILY_LABELS,
+  SELECTION_STROKE_FAMILY_VARIANTS,
+  strokeModeToSelectionStrokeFamily,
+  defaultStrokeModeForSelectionStrokeFamily,
+  isStrokeModeInSelectionStrokeFamily,
+  selectionStrokeFamilyShowsShapeVariants,
+  strokeModeUsesPlaneAxis,
+  strokeModeUsesPolygonOffset,
+  strokeModeUsesPlaneCuboidHollowShell
+} from './selectionStrokeFamily';
 
 // Selection
 export type {

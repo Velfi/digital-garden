@@ -12,6 +12,7 @@
   import { get } from 'svelte/store';
   import {
     voxels,
+    hiddenVoxels,
     gridSize,
     glowVoxelCount,
     showGrid,
@@ -28,7 +29,7 @@
     planeCuboidHollow,
     PLANE_CUBOID_HOLLOW_WALL_MAX,
     planeCuboidHollowWallThickness,
-    planeCylindroidCone,
+    planeCylinderTaperPct,
     clayMode,
     clayBrushRadius,
     clayBrushShape,
@@ -39,12 +40,12 @@
     ropeBrushShape,
     ropeBrushRadius,
     ropeGravityDirection,
-    airbrushBrushShape,
-    airbrushRadius,
-    airbrushScatter,
-    airbrushRadiusRange,
-    airbrushRadiusMin,
-    airbrushRadiusMax,
+    sprayBrushShape,
+    sprayRadius,
+    sprayScatter,
+    sprayRadiusRange,
+    sprayRadiusMin,
+    sprayRadiusMax,
     sprayDirection,
     sprayStreakLength,
     wallWidth,
@@ -211,6 +212,8 @@
     beginProjectOpenLoading,
     updateProjectOpenLoadingProgress,
     completeProjectOpenLoading,
+    roofSelectionMethod,
+    roofProfileCurve,
     roofStyle,
     roofHeight,
     roofThickness,
@@ -277,12 +280,12 @@
     getAxisAlignedLine,
     getAxisAlignedPlaneFromNormal,
     getAxisAlignedCircleFromNormal,
-    getAxisAlignedCylindroid,
+    getAxisAlignedCylinder,
     getAxisAlignedCuboid,
     getPolygonVoxels,
-    getPolygonoidBasePositions,
-    getPolygonoidDepthDeltaDisplay,
-    extrudePolygonoidBaseAlongNormal,
+    getSolidPolygonBasePositions,
+    getSolidPolygonDepthDeltaDisplay,
+    extrudeSolidPolygonBaseAlongNormal,
     getBresenham3DLine,
     getRayDirectionPath,
     projectPointOntoPlane,
@@ -290,8 +293,9 @@
     getRopeCurveVoxels,
     applyBrushAlongPath,
     getSprayDirectionVector,
-    mergeAirbrushSphereDropletIntoSeen,
-    mergeAirbrushCubeDropletIntoSeen,
+    mergeSphereStampIntoSeen,
+    mergeCubeStampIntoSeen,
+    mergePyramidStampIntoSeen,
     type PathThickenParams
   } from './strokeGeometry';
   import {
@@ -300,10 +304,10 @@
     diskStrokeBounds,
     cuboidStrokeBounds,
     cuboidSolidVoxelCount,
-    cylindroidStrokeBounds,
-    cylindroidSolidVoxelCount,
-    buildCylindroidPreviewVolume,
-    type CylindroidPreviewVolume,
+    cylinderStrokeBounds,
+    cylinderSolidVoxelCount,
+    buildCylinderPreviewVolume,
+    type CylinderPreviewVolume,
     lineStrokeBounds,
     inflateStrokePreviewBoundsForDrawBrush,
     expandStrokePreviewBoundsOriginMirror,
@@ -353,12 +357,12 @@
   import { handleFlyPointerUp } from './canvas/handlers/pointerHandler';
   import { runPointerDownPrelude, runPointerMovePrelude } from './canvas/pointerOrchestrator';
   import { isSegmentedStrokeGestureActive } from './canvas/toolPhaseState';
-  import { applyGeneratorFaceClickPointerUp } from './canvas/handlers/generatorPointer';
-  import { applyMoodFaceClickPointerUp } from './canvas/handlers/moodPointer';
+  import { applyGeneratorFaceClickPointerDown } from './canvas/handlers/generatorPointer';
+  import { applyMoodFaceClickPointerDown } from './canvas/handlers/moodPointer';
   import {
     buildVoxelGeneratorPrimaryPointerUpDeps,
     buildVoxelGeneratorRmbDeps,
-    buildVoxelMoodPointerUpDeps,
+    buildVoxelMoodFaceClickDeps,
     type VoxelGeneratorPrimaryPointerUpBridge,
     type VoxelGeneratorRmbBridge
   } from './canvas/handlers/voxelPointerCore';
@@ -492,51 +496,51 @@
     return { faceNormal, cameraForward };
   }
 
-  function airbrushPlaneParamsForFaceNormal(
+  function sprayPlaneParamsForFaceNormal(
     faceForAuto: THREE.Vector3 | null | undefined
   ): Pick<
     PathThickenParams,
-    'airbrushConstrainToPlane' | 'airbrushPlaneAxis' | 'airbrushPlaneNormal'
+    'sprayConstrainToPlane' | 'sprayPlaneAxis' | 'sprayPlaneNormal'
   > {
     const enabled = get(constrainToPlaneEnabled);
     if (!enabled) {
       return {
-        airbrushConstrainToPlane: false,
-        airbrushPlaneAxis: undefined,
-        airbrushPlaneNormal: undefined
+        sprayConstrainToPlane: false,
+        sprayPlaneAxis: undefined,
+        sprayPlaneNormal: undefined
       };
     }
     const ref = get(constrainToPlaneRef);
     if (ref === 'camera') {
       return {
-        airbrushConstrainToPlane: true,
-        airbrushPlaneAxis: undefined,
-        airbrushPlaneNormal: getCameraPlaneNormal()
+        sprayConstrainToPlane: true,
+        sprayPlaneAxis: undefined,
+        sprayPlaneNormal: getCameraPlaneNormal()
       };
     }
     if (ref === 'auto') {
       const n = faceForAuto ?? dragFaceNormal;
       return {
-        airbrushConstrainToPlane: true,
-        airbrushPlaneAxis: n ? getDominantAxisOfNormal(n) : undefined,
-        airbrushPlaneNormal: undefined
+        sprayConstrainToPlane: true,
+        sprayPlaneAxis: n ? getDominantAxisOfNormal(n) : undefined,
+        sprayPlaneNormal: undefined
       };
     }
     return {
-      airbrushConstrainToPlane: true,
-      airbrushPlaneAxis: ref,
-      airbrushPlaneNormal: undefined
+      sprayConstrainToPlane: true,
+      sprayPlaneAxis: ref,
+      sprayPlaneNormal: undefined
     };
   }
 
-  function airbrushPlaneParamsForStroke(): Pick<
+  function sprayPlaneParamsForStroke(): Pick<
     PathThickenParams,
-    'airbrushConstrainToPlane' | 'airbrushPlaneAxis' | 'airbrushPlaneNormal'
+    'sprayConstrainToPlane' | 'sprayPlaneAxis' | 'sprayPlaneNormal'
   > {
-    return airbrushPlaneParamsForFaceNormal(dragFaceNormal);
+    return sprayPlaneParamsForFaceNormal(dragFaceNormal);
   }
 
-  function getAirbrushConstrainPlaneNormalWorld(): THREE.Vector3 | null {
+  function getSprayConstrainPlaneNormalWorld(): THREE.Vector3 | null {
     if (!get(constrainToPlaneEnabled)) return null;
     const ref = get(constrainToPlaneRef);
     if (ref === 'camera' && camera) {
@@ -552,7 +556,7 @@
     return null;
   }
 
-  function getAirbrushHoverConstrainPlaneNormal(hit: THREE.Intersection): THREE.Vector3 | null {
+  function getSprayHoverConstrainPlaneNormal(hit: THREE.Intersection): THREE.Vector3 | null {
     if (!get(constrainToPlaneEnabled)) return null;
     const ref = get(constrainToPlaneRef);
     if (ref === 'camera' && camera) {
@@ -570,6 +574,10 @@
 
   let container: HTMLDivElement;
   let containerResizeObserver: ResizeObserver | null = null;
+  /** Skip redundant composer/RT realloc when CSS size and pixel ratio are unchanged. */
+  let lastCanvasResizeW = -1;
+  let lastCanvasResizeH = -1;
+  let lastCanvasResizePr = -1;
   let gizmoRef = $state<{ draw: () => void } | undefined>(undefined);
   let camera = $state<THREE.PerspectiveCamera | THREE.OrthographicCamera>();
   let perspectiveCamera: THREE.PerspectiveCamera;
@@ -722,10 +730,10 @@
   let nextAshlarPlacementSeed = $state(0);
   /** Clay bulk: last sampled position for path accumulation */
   let lastBulkPos: [number, number, number] | null = null;
-  /** Deterministic airbrush (no scatter / radius range): incremental droplet union per stroke */
-  let airbrushIncrementalSeen: Set<string> | null = null;
-  let airbrushIncrementalOut: [number, number, number][] | null = null;
-  let airbrushIncrementalPathLen = 0;
+  /** Deterministic spray (no scatter / radius range): incremental droplet union per stroke */
+  let sprayIncrementalSeen: Set<string> | null = null;
+  let sprayIncrementalOut: [number, number, number][] | null = null;
+  let sprayIncrementalPathLen = 0;
   /** Latest full-res stroke preview positions when using LOD coarse path (idle refinement reads this). */
   let strokePreviewLodPendingFull: [number, number, number][] | null = null;
   /** Branch: pointer down position for view-plane direction and length */
@@ -753,14 +761,14 @@
     normal: THREE.Vector3;
   } | null = null;
   let cuboidDepth = $state(1); // voxel layers; pointer drag or slider to adjust
-  let cylindroidPhase = $state<'plane' | 'depth' | null>(null);
-  let cylindroidPlane: {
+  let cylinderPhase = $state<'plane' | 'depth' | null>(null);
+  let cylinderPlane: {
     center: [number, number, number];
     edge: [number, number, number];
     normal: THREE.Vector3;
   } | null = null;
-  let cylindroidDepth = $state(1);
-  let polygonoidDepth = $state(1);
+  let cylinderDepth = $state(1);
+  let solidPolygonDepth = $state(1);
   let depthAdjustPointerId: number | null = null;
   let lastDepthPhaseClientY = 0;
   let depthPhaseAccumulator = 0; // fractional pixels, accumulate to avoid jerky rounding
@@ -779,26 +787,35 @@
   /** Face normal from the latest polygon anchor click; used with polygon offset along that axis. */
   let polygonPlacementNormal = $state<FaceNormal | null>(null);
 
-  // Polygonoid: place corner loop (projected onto first-click plane), Extrude → depth phase like cuboid
-  let polygonoidPoints = $state<[number, number, number][]>([]);
-  let polygonoidPhase = $state<'placing' | 'depth' | null>(null);
-  /** Face normal from the first polygonoid anchor; extrusion follows its dominant axis. */
-  let polygonoidInitialNormal = $state<FaceNormal | null>(null);
+  // Solid polygon: place corner loop (projected onto first-click plane), Set depth → depth phase like cuboid
+  let solidPolygonPoints = $state<[number, number, number][]>([]);
+  let solidPolygonPhase = $state<'placing' | 'depth' | null>(null);
+  /** Face normal from the first solid-polygon anchor; extrusion follows its dominant axis. */
+  let solidPolygonInitialNormal = $state<FaceNormal | null>(null);
 
-  const polygonoidExtrudable = $derived.by(() => {
-    if (polygonoidPoints.length < 2 || !polygonoidInitialNormal) return false;
-    const o = polygonoidPoints[0]!;
-    const n = polygonoidInitialNormal;
+  const solidPolygonExtrudable = $derived.by(() => {
+    if (solidPolygonPoints.length < 2 || !solidPolygonInitialNormal) return false;
+    const o = solidPolygonPoints[0]!;
+    const n = solidPolygonInitialNormal;
     const vec = { x: n[0], y: n[1], z: n[2] };
-    return getPolygonoidBasePositions(polygonoidPoints, o, vec) !== null;
+    return getSolidPolygonBasePositions(solidPolygonPoints, o, vec) !== null;
   });
 
   /** Roof generator: corner loop (reuse polygon point mesh / line preview). */
   let roofPoints = $state<[number, number, number][]>([]);
   let roofPhase = $state<'placing' | null>(null);
   let roofPlacementNormal = $state<FaceNormal | null>(null);
+  /** Circle/square footprint: drag on face (same plane logic as Draw → circle stroke). */
+  let isRoofShapeDrag = $state(false);
+  let roofShapeDragKind = $state<'circle' | 'square' | null>(null);
+  let roofDragStartPos = $state<[number, number, number] | null>(null);
+  let roofShapeLiveFootprint = $state<[number, number, number][] | null>(null);
+  let roofShapeCommittedFootprint = $state<[number, number, number][] | null>(null);
+  let roofShapeWindingFlipped = $state(false);
   /** Last seen `roofWindingFlipTick` so UI flips only bump the counter. */
   let prevRoofWindingFlipTick = -1;
+  /** Tracks `roofSelectionMethod` for “changed while placing” cancel. */
+  let lastRoofSelForCancel: string | null = null;
 
   // Rope: two-point + tension flow
   let ropePointA = $state<[number, number, number] | null>(null);
@@ -1000,7 +1017,7 @@
     return getRaycastTargetsFrom({
       meshManager,
       polygonPhase,
-      polygonoidPhase,
+      solidPolygonPhase,
       roofPhase,
       polygonPointsMesh,
       ropePhase,
@@ -1046,7 +1063,7 @@
     return raycastIntersectionWithLockedPlane(raycaster, axis, lockedValue);
   }
 
-  /** Intersect the current raycaster ray with a plane through planePoint with the given normal. Used for airbrush constrain-to-plane in empty space. */
+  /** Intersect the current raycaster ray with a plane through planePoint with the given normal. Used for spray constrain-to-plane in empty space. */
   function getIntersectionWithPlane(
     planePoint: THREE.Vector3,
     normal: THREE.Vector3
@@ -1061,7 +1078,7 @@
     return raycastEffectivePlaneNormal(dragFaceNormal, dragPlaneAxisOverride, get(planeAxis));
   }
 
-  /** Camera look direction (view plane normal) for airbrush constrain to camera plane. */
+  /** Camera look direction (view plane normal) for spray constrain to camera plane. */
   function getCameraPlaneNormal(): { x: number; y: number; z: number } | undefined {
     return raycastCameraPlaneNormal(camera ?? null);
   }
@@ -1708,50 +1725,52 @@
     drawBrushInflate?: Pick<PathThickenParams, 'drawBrushShape' | 'drawBrushSize'>;
     /** When true, use bbox preview without building voxel arrays (e.g. large cuboid depth). */
     forceUseBbox?: boolean;
-    /** Large cylindroid preview: oriented cylinder/cone instead of selection AABB box. */
-    cylindroidVolume?: CylindroidPreviewVolume;
+    /** Large cylinder preview: oriented cylinder/cone instead of selection AABB box. */
+    cylinderVolume?: CylinderPreviewVolume;
   };
 
-  function clearAirbrushIncrementalPuff(): void {
-    airbrushIncrementalSeen = null;
-    airbrushIncrementalOut = null;
-    airbrushIncrementalPathLen = 0;
+  function clearSprayIncrementalPuff(): void {
+    sprayIncrementalSeen = null;
+    sprayIncrementalOut = null;
+    sprayIncrementalPathLen = 0;
   }
 
-  function canUseAirbrushIncrementalPuff(): boolean {
+  function canUseSprayIncrementalPuff(): boolean {
     return (
-      get(effectiveStrokeMode) === 'airbrush' &&
-      get(airbrushScatter) === 0 &&
-      !get(airbrushRadiusRange)
+      get(effectiveStrokeMode) === 'spray' &&
+      get(sprayScatter) === 0 &&
+      !get(sprayRadiusRange)
     );
   }
 
-  function ensureAirbrushIncrementalBuffers(): void {
-    if (!airbrushIncrementalSeen || !airbrushIncrementalOut) {
-      airbrushIncrementalSeen = new Set<string>();
-      airbrushIncrementalOut = [];
-      airbrushIncrementalPathLen = 0;
+  function ensureSprayIncrementalBuffers(): void {
+    if (!sprayIncrementalSeen || !sprayIncrementalOut) {
+      sprayIncrementalSeen = new Set<string>();
+      sprayIncrementalOut = [];
+      sprayIncrementalPathLen = 0;
     }
   }
 
-  function extendAirbrushIncrementalPuff(
+  function extendSprayIncrementalPuff(
     path: [number, number, number][],
     params: PathThickenParams
   ): void {
-    ensureAirbrushIncrementalBuffers();
-    const seen = airbrushIncrementalSeen!;
-    const out = airbrushIncrementalOut!;
-    const r = params.airbrushRadius;
-    const shape = params.airbrushBrushShape ?? 'sphere';
-    for (let i = airbrushIncrementalPathLen; i < path.length; i++) {
+    ensureSprayIncrementalBuffers();
+    const seen = sprayIncrementalSeen!;
+    const out = sprayIncrementalOut!;
+    const r = params.sprayRadius;
+    const shape = params.sprayBrushShape ?? 'sphere';
+    for (let i = sprayIncrementalPathLen; i < path.length; i++) {
       const p = path[i]!;
       if (shape === 'cube') {
-        mergeAirbrushCubeDropletIntoSeen(p[0], p[1], p[2], r, seen, out);
+        mergeCubeStampIntoSeen(p[0], p[1], p[2], r, seen, out);
+      } else if (shape === 'pyramid') {
+        mergePyramidStampIntoSeen(p[0], p[1], p[2], r, seen, out);
       } else {
-        mergeAirbrushSphereDropletIntoSeen(p[0], p[1], p[2], r, seen, out);
+        mergeSphereStampIntoSeen(p[0], p[1], p[2], r, seen, out);
       }
     }
-    airbrushIncrementalPathLen = path.length;
+    sprayIncrementalPathLen = path.length;
   }
 
   function updatePreviewMesh(
@@ -1772,8 +1791,8 @@
       !isVoxelDrag &&
       !isStampDrag &&
       cuboidPhase !== 'depth' &&
-      cylindroidPhase !== 'depth' &&
-      polygonoidPhase !== 'depth' &&
+      cylinderPhase !== 'depth' &&
+      solidPolygonPhase !== 'depth' &&
       ropePhase !== 'tension';
 
     const previewVoxelFor = (count: number): Voxel => {
@@ -1794,9 +1813,15 @@
             : getPaintColorResolver()();
     };
 
+    const drawBrushInflatesBounds =
+      bboxGated != null &&
+      bboxGated.drawBrushInflate != null &&
+      (bboxGated.drawBrushInflate.drawBrushSize ?? 0) > 0;
+
     const useBbox =
       bboxGated !== null &&
       (bboxGated.forceUseBbox === true ||
+        (bboxGated.cylinderVolume != null && !drawBrushInflatesBounds) ||
         (positions.length > 0 &&
           positions.length * strokePreviewSymmetryExpansionFactor() >=
             PREVIEW_BBOX_VOXEL_THRESHOLD));
@@ -1818,8 +1843,8 @@
       const pv = previewVoxelFor(positions.length > 0 ? positions.length : 1);
       strokePreviewLodScheduler.cancel();
       strokePreviewLodPendingFull = null;
-      let cylVol = bboxGated.cylindroidVolume;
-      if (bboxGated.drawBrushInflate) cylVol = undefined;
+      let cylVol = bboxGated.cylinderVolume;
+      if (drawBrushInflatesBounds) cylVol = undefined;
       const sym = getCurrentSymmetryAxes();
       if (cylVol && (isShiftPlaneSymmetryActive() || sym.x || sym.y || sym.z)) {
         cylVol = undefined;
@@ -1929,49 +1954,49 @@
     render();
   }
 
-  function updateCylindroidFromDepth() {
-    if (!cylindroidPlane) return;
-    const ax = Math.abs(cylindroidPlane.normal.x);
-    const ay = Math.abs(cylindroidPlane.normal.y);
-    const az = Math.abs(cylindroidPlane.normal.z);
+  function updateCylinderFromDepth() {
+    if (!cylinderPlane) return;
+    const ax = Math.abs(cylinderPlane.normal.x);
+    const ay = Math.abs(cylinderPlane.normal.y);
+    const az = Math.abs(cylinderPlane.normal.z);
     const axis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
     const d: [number, number, number] = [0, 0, 0];
-    d[axis] = cylindroidDepth;
+    d[axis] = cylinderDepth;
     deltaDisplay = { dx: d[0], dy: d[1], dz: d[2] };
-    const cb = cylindroidStrokeBounds(
-      cylindroidPlane.center,
-      cylindroidPlane.edge,
-      cylindroidPlane.normal,
-      cylindroidDepth
+    const cb = cylinderStrokeBounds(
+      cylinderPlane.center,
+      cylinderPlane.edge,
+      cylinderPlane.normal,
+      cylinderDepth
     );
     const bboxHintBase: StrokePreviewBboxHint = {
       primaryBounds: cb,
-      cylindroidVolume: buildCylindroidPreviewVolume(
-        cylindroidPlane.center,
-        cylindroidPlane.edge,
-        cylindroidPlane.normal,
+      cylinderVolume: buildCylinderPreviewVolume(
+        cylinderPlane.center,
+        cylinderPlane.edge,
+        cylinderPlane.normal,
         cb,
-        cylindroidDepth,
-        get(planeCylindroidCone)
+        cylinderDepth,
+        get(planeCylinderTaperPct)
       )
     };
     const solidEst =
-      cylindroidSolidVoxelCount(
-        cylindroidPlane.center,
-        cylindroidPlane.edge,
-        cylindroidPlane.normal,
-        cylindroidDepth
+      cylinderSolidVoxelCount(
+        cylinderPlane.center,
+        cylinderPlane.edge,
+        cylinderPlane.normal,
+        cylinderDepth
       ) * strokePreviewSymmetryExpansionFactor();
     if (solidEst >= PREVIEW_BBOX_VOXEL_THRESHOLD) {
       pendingStrokePositions = [];
       updatePreviewMesh([], { ...bboxHintBase, forceUseBbox: true });
     } else {
-      pendingStrokePositions = getAxisAlignedCylindroid(
-        cylindroidPlane.center,
-        cylindroidPlane.edge,
-        cylindroidPlane.normal,
-        cylindroidDepth,
-        get(planeCylindroidCone),
+      pendingStrokePositions = getAxisAlignedCylinder(
+        cylinderPlane.center,
+        cylinderPlane.edge,
+        cylinderPlane.normal,
+        cylinderDepth,
+        get(planeCylinderTaperPct),
         get(planeCuboidHollow),
         clampPlaneCuboidHollowWallThickness()
       );
@@ -1980,14 +2005,14 @@
     render();
   }
 
-  function commitCylindroid() {
-    if (!cylindroidPlane) return;
-    const positions = getAxisAlignedCylindroid(
-      cylindroidPlane.center,
-      cylindroidPlane.edge,
-      cylindroidPlane.normal,
-      cylindroidDepth,
-      get(planeCylindroidCone),
+  function commitCylinder() {
+    if (!cylinderPlane) return;
+    const positions = getAxisAlignedCylinder(
+      cylinderPlane.center,
+      cylinderPlane.edge,
+      cylinderPlane.normal,
+      cylinderDepth,
+      get(planeCylinderTaperPct),
       get(planeCuboidHollow),
       clampPlaneCuboidHollowWallThickness()
     );
@@ -1999,8 +2024,8 @@
       }
     }
     deltaDisplay = null;
-    cylindroidPhase = null;
-    cylindroidPlane = null;
+    cylinderPhase = null;
+    cylinderPlane = null;
     pendingStrokePositions = [];
     updatePreviewMesh([]);
     render();
@@ -2043,33 +2068,33 @@
     );
   }
 
-  function polygonoidNormalVec(): { x: number; y: number; z: number } | null {
-    const n = polygonoidInitialNormal;
+  function solidPolygonNormalVec(): { x: number; y: number; z: number } | null {
+    const n = solidPolygonInitialNormal;
     if (!n) return null;
     return { x: n[0], y: n[1], z: n[2] };
   }
 
-  function getPolygonoidPlacingFillPreview(): [number, number, number][] {
-    if (polygonoidPoints.length < 2) return [];
-    const vec = polygonoidNormalVec();
+  function getSolidPolygonPlacingFillPreview(): [number, number, number][] {
+    if (solidPolygonPoints.length < 2) return [];
+    const vec = solidPolygonNormalVec();
     if (!vec) return [];
-    const origin = polygonoidPoints[0]!;
-    const base = getPolygonoidBasePositions(polygonoidPoints, origin, vec);
+    const origin = solidPolygonPoints[0]!;
+    const base = getSolidPolygonBasePositions(solidPolygonPoints, origin, vec);
     if (!base) return [];
-    return applyPolygonNormalOffset(base, polygonoidInitialNormal, get(polygonOffsetFromNormal));
+    return applyPolygonNormalOffset(base, solidPolygonInitialNormal, get(polygonOffsetFromNormal));
   }
 
-  function buildPolygonoidStrokePositions(): [number, number, number][] {
-    const vec = polygonoidNormalVec();
-    if (!vec || polygonoidPoints.length < 2) return [];
-    const origin = polygonoidPoints[0]!;
-    const base = getPolygonoidBasePositions(polygonoidPoints, origin, vec);
+  function buildSolidPolygonStrokePositions(): [number, number, number][] {
+    const vec = solidPolygonNormalVec();
+    if (!vec || solidPolygonPoints.length < 2) return [];
+    const origin = solidPolygonPoints[0]!;
+    const base = getSolidPolygonBasePositions(solidPolygonPoints, origin, vec);
     if (!base) return [];
-    const baseOff = applyPolygonNormalOffset(base, polygonoidInitialNormal, get(polygonOffsetFromNormal));
-    return extrudePolygonoidBaseAlongNormal(
+    const baseOff = applyPolygonNormalOffset(base, solidPolygonInitialNormal, get(polygonOffsetFromNormal));
+    return extrudeSolidPolygonBaseAlongNormal(
       baseOff,
       vec,
-      polygonoidDepth,
+      solidPolygonDepth,
       get(planeCuboidHollow),
       clampPlaneCuboidHollowWallThickness()
     );
@@ -2084,19 +2109,51 @@
   }
 
   function cancelRoof() {
+    if (isRoofShapeDrag && container && dragPointerId !== null) {
+      try {
+        container.releasePointerCapture(dragPointerId);
+      } catch {
+        /* ignore */
+      }
+      dragPointerId = null;
+    }
     roofPoints = [];
     roofPhase = null;
     roofPlacementNormal = null;
+    isRoofShapeDrag = false;
+    roofShapeDragKind = null;
+    roofDragStartPos = null;
+    roofShapeLiveFootprint = null;
+    roofShapeCommittedFootprint = null;
+    roofShapeWindingFlipped = false;
     updatePolygonPreview([]);
     updatePreviewMesh([]);
   }
 
   function refreshRoofPreviewMesh() {
-    if (roofPoints.length < 4 || !roofPlacementNormal) {
+    if (!roofPlacementNormal) {
       updatePreviewMesh([]);
       return;
     }
-    const roofMap = generateRoofVoxels(roofPoints, roofPlacementNormal, {
+    const sel = get(roofSelectionMethod);
+    let pointArg: [number, number, number][];
+    let footprintFromShape: [number, number, number][] | undefined;
+    if (sel === 'polygon') {
+      if (roofPoints.length < 4) {
+        updatePreviewMesh([]);
+        return;
+      }
+      pointArg = roofPoints;
+    } else {
+      const fp = roofShapeLiveFootprint ?? roofShapeCommittedFootprint;
+      if (!fp || fp.length === 0) {
+        updatePreviewMesh([]);
+        return;
+      }
+      pointArg = [];
+      footprintFromShape = fp;
+    }
+    const roofMap = generateRoofVoxels(pointArg, roofPlacementNormal, {
       style: get(roofStyle),
       height: get(roofHeight),
       thickness: get(roofThickness),
@@ -2107,15 +2164,30 @@
       parapetHeight: get(roofParapetHeight),
       saltSkew: get(roofSaltSkew),
       hollow: get(roofHollow),
-      color: getPaintColorResolver()().color
+      color: getPaintColorResolver()().color,
+      footprintFromShape,
+      footprintWindingFlip: sel !== 'polygon' && roofShapeWindingFlipped,
+      profileCurve: get(roofProfileCurve)
     });
     const positions = [...roofMap.keys()].map((k) => parseCoordKey(k) as [number, number, number]);
     updatePreviewMesh(positions);
   }
 
   function commitRoof() {
-    if (roofPoints.length < 4 || !roofPlacementNormal) return;
-    const roofMap = generateRoofVoxels(roofPoints, roofPlacementNormal, {
+    if (!roofPlacementNormal) return;
+    const sel = get(roofSelectionMethod);
+    let pointArg: [number, number, number][];
+    let footprintFromShape: [number, number, number][] | undefined;
+    if (sel === 'polygon') {
+      if (roofPoints.length < 4) return;
+      pointArg = roofPoints;
+    } else {
+      const fp = roofShapeCommittedFootprint;
+      if (!fp || fp.length === 0) return;
+      pointArg = [];
+      footprintFromShape = fp;
+    }
+    const roofMap = generateRoofVoxels(pointArg, roofPlacementNormal, {
       style: get(roofStyle),
       height: get(roofHeight),
       thickness: get(roofThickness),
@@ -2126,7 +2198,10 @@
       parapetHeight: get(roofParapetHeight),
       saltSkew: get(roofSaltSkew),
       hollow: get(roofHollow),
-      color: getPaintColorResolver()().color
+      color: getPaintColorResolver()().color,
+      footprintFromShape,
+      footprintWindingFlip: sel !== 'polygon' && roofShapeWindingFlipped,
+      profileCurve: get(roofProfileCurve)
     });
     if (roofMap.size === 0) return;
     const allPositions: [number, number, number][] = [];
@@ -2224,7 +2299,7 @@
     render();
   }
 
-  function cancelPolygonoid() {
+  function cancelSolidPolygon() {
     if (depthAdjustPointerId !== null && container) {
       try {
         container.releasePointerCapture(depthAdjustPointerId);
@@ -2234,38 +2309,38 @@
       depthAdjustPointerId = null;
     }
     deltaDisplay = null;
-    polygonoidPoints = [];
-    polygonoidPhase = null;
-    polygonoidInitialNormal = null;
+    solidPolygonPoints = [];
+    solidPolygonPhase = null;
+    solidPolygonInitialNormal = null;
     updatePolygonPreview([]);
     pendingStrokePositions = [];
     updatePreviewMesh([]);
   }
 
-  function beginPolygonoidDepth() {
-    const vec = polygonoidNormalVec();
-    if (!vec || polygonoidPoints.length < 2) return;
-    const origin = polygonoidPoints[0]!;
-    if (getPolygonoidBasePositions(polygonoidPoints, origin, vec) === null) return;
-    polygonoidPhase = 'depth';
-    polygonoidDepth = 1;
-    updatePolygonoidFromDepth();
+  function beginSolidPolygonDepth() {
+    const vec = solidPolygonNormalVec();
+    if (!vec || solidPolygonPoints.length < 2) return;
+    const origin = solidPolygonPoints[0]!;
+    if (getSolidPolygonBasePositions(solidPolygonPoints, origin, vec) === null) return;
+    solidPolygonPhase = 'depth';
+    solidPolygonDepth = 1;
+    updateSolidPolygonFromDepth();
   }
 
-  function updatePolygonoidFromDepth() {
-    if (polygonoidPhase !== 'depth') return;
-    const vec = polygonoidNormalVec();
+  function updateSolidPolygonFromDepth() {
+    if (solidPolygonPhase !== 'depth') return;
+    const vec = solidPolygonNormalVec();
     if (!vec) return;
-    const positions = buildPolygonoidStrokePositions();
-    deltaDisplay = getPolygonoidDepthDeltaDisplay(vec, polygonoidDepth);
+    const positions = buildSolidPolygonStrokePositions();
+    deltaDisplay = getSolidPolygonDepthDeltaDisplay(vec, solidPolygonDepth);
     pendingStrokePositions = positions;
     updatePreviewMesh(positions);
     render();
   }
 
-  function commitPolygonoid() {
-    if (polygonoidPhase !== 'depth') return;
-    const positions = buildPolygonoidStrokePositions();
+  function commitSolidPolygon() {
+    if (solidPolygonPhase !== 'depth') return;
+    const positions = buildSolidPolygonStrokePositions();
     if (positions.length > 0) {
       if ($tool === 'select') {
         applySelectStroke(positions, selectionModeForCurrentGesture ?? get(selectionMode));
@@ -2274,9 +2349,9 @@
       }
     }
     deltaDisplay = null;
-    polygonoidPhase = null;
-    polygonoidPoints = [];
-    polygonoidInitialNormal = null;
+    solidPolygonPhase = null;
+    solidPolygonPoints = [];
+    solidPolygonInitialNormal = null;
     updatePolygonPreview([]);
     pendingStrokePositions = [];
     updatePreviewMesh([]);
@@ -2350,8 +2425,8 @@
     if (polygonPhase) {
       cancelPolygon();
     }
-    if (polygonoidPhase) {
-      cancelPolygonoid();
+    if (solidPolygonPhase) {
+      cancelSolidPolygon();
     }
     if (roofPhase) {
       cancelRoof();
@@ -2359,7 +2434,7 @@
     if (ropePhase) {
       cancelRope();
     }
-    if (cuboidPhase || cylindroidPhase) {
+    if (cuboidPhase || cylinderPhase) {
       if (depthAdjustPointerId !== null) {
         try {
           container.releasePointerCapture(depthAdjustPointerId);
@@ -2370,8 +2445,8 @@
       }
       cuboidPhase = null;
       cuboidPlane = null;
-      cylindroidPhase = null;
-      cylindroidPlane = null;
+      cylinderPhase = null;
+      cylinderPlane = null;
       pendingStrokePositions = [];
       updatePreviewMesh([]);
     }
@@ -2399,7 +2474,7 @@
       lastBulkPos = null;
       clearShiftPlaneSymmetryState();
       pendingStrokePositions = [];
-      clearAirbrushIncrementalPuff();
+      clearSprayIncrementalPuff();
       updatePreviewMesh([]);
       // No undo - we never applied changes
     }
@@ -2449,9 +2524,9 @@
         selectionGizmo?.isGizmoDrag ||
         isSegmentedStrokeGestureActive({
           cuboidPhase,
-          cylindroidPhase,
+          cylinderPhase,
           polygonPhase,
-          polygonoidPhase,
+          solidPolygonPhase,
           roofPhase,
           ropePhase
         })
@@ -2529,9 +2604,9 @@
         selectionGizmo?.isGizmoDrag ||
         isSegmentedStrokeGestureActive({
           cuboidPhase,
-          cylindroidPhase,
+          cylinderPhase,
           polygonPhase,
-          polygonoidPhase,
+          solidPolygonPhase,
           roofPhase,
           ropePhase
         })
@@ -2543,6 +2618,12 @@
       return;
     }
     if (event.button !== 0) return;
+    if (isMoodTool($tool)) {
+      applyMoodFaceClickPointerDown(
+        buildVoxelMoodFaceClickDeps(voxelGeneratorPrimaryPointerUpBridge),
+        event
+      );
+    }
     if ($tool === 'hand' || isMoodTool($tool)) return;
 
     // Cuboid depth phase: pointer down starts drag-to-adjust-depth (anywhere on canvas)
@@ -2562,9 +2643,9 @@
     }
 
     if (
-      get(effectiveStrokeMode) === 'cylindroid' &&
-      cylindroidPhase === 'depth' &&
-      cylindroidPlane &&
+      get(effectiveStrokeMode) === 'cylinder' &&
+      cylinderPhase === 'depth' &&
+      cylinderPlane &&
       !$addPanelStore.open
     ) {
       event.preventDefault();
@@ -2577,8 +2658,8 @@
     }
 
     if (
-      get(effectiveStrokeMode) === 'polygonoid' &&
-      polygonoidPhase === 'depth' &&
+      get(effectiveStrokeMode) === 'polygon' &&
+      solidPolygonPhase === 'depth' &&
       !$addPanelStore.open
     ) {
       event.preventDefault();
@@ -2607,8 +2688,8 @@
       polygonPointsMesh &&
       camera &&
       polygonPointsMesh.count > 0 &&
-      ((strokeModeAtPointerDown === 'polygon' && polygonPhase) ||
-        (strokeModeAtPointerDown === 'polygonoid' && polygonoidPhase === 'placing'));
+      ((strokeModeAtPointerDown === 'polygonHull' && polygonPhase) ||
+        (strokeModeAtPointerDown === 'polygon' && solidPolygonPhase === 'placing'));
     if (tryPolygonCornerPick) {
       raycaster.setFromCamera(pointer, camera);
       const cornerHits = raycaster.intersectObject(polygonPointsMesh, false);
@@ -2638,7 +2719,14 @@
       return;
     }
 
-    if (hit && $tool === 'roof' && roofPhase && polygonPointsMesh && camera) {
+    if (
+      hit &&
+      $tool === 'roof' &&
+      get(roofSelectionMethod) === 'polygon' &&
+      roofPhase &&
+      polygonPointsMesh &&
+      camera
+    ) {
       raycaster.setFromCamera(pointer, camera);
       const roofPointHits = raycaster.intersectObject(polygonPointsMesh, false);
       if (roofPointHits.length > 0) hit = roofPointHits[0];
@@ -2715,7 +2803,7 @@
     }
     if (!hit) return;
 
-    if (get(effectiveStrokeMode) === 'polygon') {
+    if (get(effectiveStrokeMode) === 'polygonHull') {
       event.preventDefault();
       event.stopPropagation();
       // Click on existing point: remove it
@@ -2768,40 +2856,40 @@
       return;
     }
 
-    if (get(effectiveStrokeMode) === 'polygonoid') {
+    if (get(effectiveStrokeMode) === 'polygon') {
       event.preventDefault();
       event.stopPropagation();
-      if (polygonoidPhase === 'depth') {
+      if (solidPolygonPhase === 'depth') {
         requestAnimationFrame(() => render());
         return;
       }
       if (hit.object === polygonPointsMesh && typeof hit.instanceId === 'number') {
         const idx = hit.instanceId;
-        if (idx >= 0 && idx < polygonoidPoints.length) {
-          polygonoidPoints = polygonoidPoints.filter((_, i) => i !== idx);
-          if (polygonoidPoints.length === 0) polygonoidInitialNormal = null;
-          polygonoidPhase = polygonoidPoints.length > 0 ? 'placing' : null;
-          updatePolygonPreview(polygonoidPoints);
-          updatePreviewMesh(getPolygonoidPlacingFillPreview());
+        if (idx >= 0 && idx < solidPolygonPoints.length) {
+          solidPolygonPoints = solidPolygonPoints.filter((_, i) => i !== idx);
+          if (solidPolygonPoints.length === 0) solidPolygonInitialNormal = null;
+          solidPolygonPhase = solidPolygonPoints.length > 0 ? 'placing' : null;
+          updatePolygonPreview(solidPolygonPoints);
+          updatePreviewMesh(getSolidPolygonPlacingFillPreview());
         }
       } else {
         const pos = getVoxelPosition(hit);
         if (pos) {
-          const existingIdx = polygonoidPoints.findIndex(
+          const existingIdx = solidPolygonPoints.findIndex(
             ([x, y, z]) => x === pos[0] && y === pos[1] && z === pos[2]
           );
           if (existingIdx >= 0) {
-            polygonoidPoints = polygonoidPoints.filter((_, i) => i !== existingIdx);
-            if (polygonoidPoints.length === 0) polygonoidInitialNormal = null;
-            polygonoidPhase = polygonoidPoints.length > 0 ? 'placing' : null;
+            solidPolygonPoints = solidPolygonPoints.filter((_, i) => i !== existingIdx);
+            if (solidPolygonPoints.length === 0) solidPolygonInitialNormal = null;
+            solidPolygonPhase = solidPolygonPoints.length > 0 ? 'placing' : null;
           } else {
-            const wasEmpty = polygonoidPoints.length === 0;
-            polygonoidPhase = 'placing';
-            polygonoidPoints = [...polygonoidPoints, pos];
-            if (wasEmpty) polygonoidInitialNormal = getFaceNormalFromHit(hit);
+            const wasEmpty = solidPolygonPoints.length === 0;
+            solidPolygonPhase = 'placing';
+            solidPolygonPoints = [...solidPolygonPoints, pos];
+            if (wasEmpty) solidPolygonInitialNormal = getFaceNormalFromHit(hit);
           }
-          updatePolygonPreview(polygonoidPoints);
-          updatePreviewMesh(getPolygonoidPlacingFillPreview());
+          updatePolygonPreview(solidPolygonPoints);
+          updatePreviewMesh(getSolidPolygonPlacingFillPreview());
         }
       }
       requestAnimationFrame(() => render());
@@ -2811,29 +2899,54 @@
     if ($tool === 'roof' && !$addPanelStore.open) {
       event.preventDefault();
       event.stopPropagation();
-      if (hit.object === polygonPointsMesh && hit.instanceId != null) {
-        const idx = hit.instanceId;
-        if (idx >= 0 && idx < roofPoints.length) {
-          roofPoints = roofPoints.filter((_, i) => i !== idx);
-          roofPhase = roofPoints.length > 0 ? 'placing' : null;
-          updatePolygonPreview(roofPoints);
-          refreshRoofPreviewMesh();
+      const roofSel = get(roofSelectionMethod);
+      if (roofSel === 'polygon') {
+        if (hit.object === polygonPointsMesh && hit.instanceId != null) {
+          const idx = hit.instanceId;
+          if (idx >= 0 && idx < roofPoints.length) {
+            roofPoints = roofPoints.filter((_, i) => i !== idx);
+            roofPhase = roofPoints.length > 0 ? 'placing' : null;
+            updatePolygonPreview(roofPoints);
+            refreshRoofPreviewMesh();
+          }
+        } else {
+          const pos = getVoxelPosition(hit);
+          if (pos) {
+            const existingIdx = roofPoints.findIndex(
+              ([x, y, z]) => x === pos[0] && y === pos[1] && z === pos[2]
+            );
+            if (existingIdx >= 0) {
+              roofPoints = roofPoints.filter((_, i) => i !== existingIdx);
+              roofPhase = roofPoints.length > 0 ? 'placing' : null;
+            } else {
+              roofPhase = 'placing';
+              roofPoints = [...roofPoints, pos];
+              roofPlacementNormal = getFaceNormalFromHit(hit);
+            }
+            updatePolygonPreview(roofPoints);
+            refreshRoofPreviewMesh();
+          }
         }
       } else {
         const pos = getVoxelPosition(hit);
-        if (pos) {
-          const existingIdx = roofPoints.findIndex(
-            ([x, y, z]) => x === pos[0] && y === pos[1] && z === pos[2]
-          );
-          if (existingIdx >= 0) {
-            roofPoints = roofPoints.filter((_, i) => i !== existingIdx);
-            roofPhase = roofPoints.length > 0 ? 'placing' : null;
-          } else {
-            roofPhase = 'placing';
-            roofPoints = [...roofPoints, pos];
-            roofPlacementNormal = getFaceNormalFromHit(hit);
-          }
-          updatePolygonPreview(roofPoints);
+        const normal = getFaceNormalFromHit(hit);
+        if (pos && normal) {
+          container.setPointerCapture(event.pointerId);
+          dragPointerId = event.pointerId;
+          isRoofShapeDrag = true;
+          roofShapeDragKind = roofSel;
+          roofDragStartPos = pos;
+          roofPlacementNormal = normal;
+          roofPhase = 'placing';
+          roofPoints = [];
+          roofShapeCommittedFootprint = null;
+          roofShapeLiveFootprint = null;
+          updatePolygonPreview([]);
+          const faceN = { x: normal[0], y: normal[1], z: normal[2] };
+          roofShapeLiveFootprint =
+            roofSel === 'circle'
+              ? getAxisAlignedCircleFromNormal(pos, pos, faceN, false, 1)
+              : getAxisAlignedPlaneFromNormal(pos, pos, faceN, false, 1);
           refreshRoofPreviewMesh();
         }
       }
@@ -2905,13 +3018,13 @@
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-            airbrushRadius: (get(airbrushRadius) as number) * 0.5,
-            airbrushScatter: get(airbrushScatter),
-            airbrushRadiusRange: get(airbrushRadiusRange),
-            airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
-            airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
-            airbrushBrushShape: get(airbrushBrushShape),
-            ...airbrushPlaneParamsForStroke(),
+            sprayRadius: (get(sprayRadius) as number) * 0.5,
+            sprayScatter: get(sprayScatter),
+            sprayRadiusRange: get(sprayRadiusRange),
+            sprayRadiusMin: get(sprayRadiusMin) * 0.5,
+            sprayRadiusMax: get(sprayRadiusMax) * 0.5,
+            sprayBrushShape: get(sprayBrushShape),
+            ...sprayPlaneParamsForStroke(),
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
@@ -2955,13 +3068,13 @@
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-            airbrushRadius: (get(airbrushRadius) as number) * 0.5,
-            airbrushScatter: get(airbrushScatter),
-            airbrushRadiusRange: get(airbrushRadiusRange),
-            airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
-            airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
-            airbrushBrushShape: get(airbrushBrushShape),
-            ...airbrushPlaneParamsForStroke(),
+            sprayRadius: (get(sprayRadius) as number) * 0.5,
+            sprayScatter: get(sprayScatter),
+            sprayRadiusRange: get(sprayRadiusRange),
+            sprayRadiusMin: get(sprayRadiusMin) * 0.5,
+            sprayRadiusMax: get(sprayRadiusMax) * 0.5,
+            sprayBrushShape: get(sprayBrushShape),
+            ...sprayPlaneParamsForStroke(),
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
@@ -3344,8 +3457,12 @@
       return;
     }
 
-    // Face-click generators: placement runs on pointerup; do not start stroke drag
+    // Face-click generators: place / surface-pick on pointerdown; do not start stroke drag
     if (isGeneratorFaceClickTool(get(tool))) {
+      applyGeneratorFaceClickPointerDown(
+        buildVoxelGeneratorPrimaryPointerUpDeps(voxelGeneratorPrimaryPointerUpBridge),
+        event
+      );
       requestAnimationFrame(() => render());
       return;
     }
@@ -3375,11 +3492,11 @@
     hit.object.getWorldQuaternion(worldQuaternion);
     const faceNormal = hit.face!.normal.clone().applyQuaternion(worldQuaternion);
     const pa = get(planeAxis);
-    // Line (non-axis-aligned) and airbrush (constrain-to-plane): always use clicked face normal
+    // Line (non-axis-aligned) and spray (constrain-to-plane): always use clicked face normal
     const lineOnFace = get(effectiveStrokeMode) === 'line' && !get(lineAxisAlign);
-    const airbrushUseFaceNormal = get(effectiveStrokeMode) === 'airbrush';
+    const sprayUseFaceNormal = get(effectiveStrokeMode) === 'spray';
     dragFaceNormal =
-      lineOnFace || pa === 'auto' || airbrushUseFaceNormal ? faceNormal : axisVector(pa);
+      lineOnFace || pa === 'auto' || sprayUseFaceNormal ? faceNormal : axisVector(pa);
     dragPlaneAxisOverride = null;
     pendingStrokePositions = [startPos];
     const clayModeVal = get(clayMode);
@@ -3395,7 +3512,7 @@
         clayModeVal === 'terrain');
     if (isClayPathFollow) {
       lastBulkPos = startPos;
-    } else if (get(effectiveStrokeMode) === 'airbrush') {
+    } else if (get(effectiveStrokeMode) === 'spray') {
       lastBulkPos = startPos;
     }
     const strokeParams = {
@@ -3406,13 +3523,13 @@
       branchTaper: get(branchTaper),
       branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
       branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-      airbrushRadius: (get(airbrushRadius) as number) * 0.5,
-      airbrushScatter: get(airbrushScatter),
-      airbrushRadiusRange: get(airbrushRadiusRange),
-      airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
-      airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
-      airbrushBrushShape: get(airbrushBrushShape),
-      ...airbrushPlaneParamsForStroke(),
+      sprayRadius: (get(sprayRadius) as number) * 0.5,
+      sprayScatter: get(sprayScatter),
+      sprayRadiusRange: get(sprayRadiusRange),
+      sprayRadiusMin: get(sprayRadiusMin) * 0.5,
+      sprayRadiusMax: get(sprayRadiusMax) * 0.5,
+      sprayBrushShape: get(sprayBrushShape),
+      ...sprayPlaneParamsForStroke(),
       planeAxis: get(planeAxis),
       sprayDirection: get(sprayDirection),
       sprayStreakLength: get(sprayStreakLength),
@@ -3431,14 +3548,14 @@
     };
     if (
       !isClayPathFollow &&
-      get(effectiveStrokeMode) === 'airbrush' &&
-      canUseAirbrushIncrementalPuff()
+      get(effectiveStrokeMode) === 'spray' &&
+      canUseSprayIncrementalPuff()
     ) {
-      clearAirbrushIncrementalPuff();
-      extendAirbrushIncrementalPuff(pendingStrokePositions, strokeParams);
-      updatePreviewMesh(airbrushIncrementalOut!, null);
+      clearSprayIncrementalPuff();
+      extendSprayIncrementalPuff(pendingStrokePositions, strokeParams);
+      updatePreviewMesh(sprayIncrementalOut!, null);
     } else {
-      clearAirbrushIncrementalPuff();
+      clearSprayIncrementalPuff();
       updatePreviewMesh(thickenPathForStroke(pendingStrokePositions, strokeParams));
     }
     requestAnimationFrame(() => render());
@@ -3493,7 +3610,53 @@
         render();
         return;
       }
-      // Cuboid / cylindroid depth phase: depth from pointer drag (up/down movement) or slider
+      if (
+        $tool === 'roof' &&
+        isRoofShapeDrag &&
+        roofDragStartPos &&
+        roofPlacementNormal &&
+        roofShapeDragKind &&
+        event
+      ) {
+        updatePointerFromEvent(event);
+        const start = roofDragStartPos;
+        const n = new THREE.Vector3(
+          roofPlacementNormal[0],
+          roofPlacementNormal[1],
+          roofPlacementNormal[2]
+        );
+        const planePoint = new THREE.Vector3(start[0] + 0.5, start[1] + 0.5, start[2] + 0.5);
+        let currentPos = getIntersectionWithPlane(planePoint, n);
+        if (!currentPos) {
+          const hitMv = getIntersection();
+          if (hitMv) {
+            const p = getVoxelPosition(hitMv);
+            if (p) currentPos = p;
+          }
+        }
+        if (currentPos) {
+          const snapped: [number, number, number] = [
+            Math.floor(currentPos[0]),
+            Math.floor(currentPos[1]),
+            Math.floor(currentPos[2])
+          ];
+          const faceN = { x: n.x, y: n.y, z: n.z };
+          roofShapeLiveFootprint =
+            roofShapeDragKind === 'circle'
+              ? getAxisAlignedCircleFromNormal(start, snapped, faceN, false, 1)
+              : getAxisAlignedPlaneFromNormal(start, snapped, faceN, false, 1);
+          refreshRoofPreviewMesh();
+          deltaDisplay = {
+            dx: snapped[0] - start[0],
+            dy: snapped[1] - start[1],
+            dz: snapped[2] - start[2]
+          };
+        }
+        rollOverMesh.visible = false;
+        render();
+        return;
+      }
+      // Cuboid / cylinder depth phase: depth from pointer drag (up/down movement) or slider
       if (
         cuboidPhase === 'depth' &&
         cuboidPlane &&
@@ -3510,8 +3673,8 @@
         return;
       }
       if (
-        cylindroidPhase === 'depth' &&
-        cylindroidPlane &&
+        cylinderPhase === 'depth' &&
+        cylinderPlane &&
         event &&
         depthAdjustPointerId === event.pointerId
       ) {
@@ -3520,12 +3683,12 @@
         depthPhaseAccumulator += dy / 12;
         const step = Math.trunc(depthPhaseAccumulator);
         depthPhaseAccumulator -= step;
-        cylindroidDepth = Math.max(-256, Math.min(256, cylindroidDepth + step));
-        updateCylindroidFromDepth();
+        cylinderDepth = Math.max(-256, Math.min(256, cylinderDepth + step));
+        updateCylinderFromDepth();
         return;
       }
       if (
-        polygonoidPhase === 'depth' &&
+        solidPolygonPhase === 'depth' &&
         event &&
         depthAdjustPointerId === event.pointerId
       ) {
@@ -3534,8 +3697,8 @@
         depthPhaseAccumulator += dy / 12;
         const step = Math.trunc(depthPhaseAccumulator);
         depthPhaseAccumulator -= step;
-        polygonoidDepth = Math.max(-256, Math.min(256, polygonoidDepth + step));
-        updatePolygonoidFromDepth();
+        solidPolygonDepth = Math.max(-256, Math.min(256, solidPolygonDepth + step));
+        updateSolidPolygonFromDepth();
         return;
       }
       if (isVoxelDrag && dragStartPos) {
@@ -3579,13 +3742,13 @@
               branchTaper: get(branchTaper),
               branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
               branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-              airbrushRadius: (get(airbrushRadius) as number) * 0.5,
-              airbrushScatter: get(airbrushScatter),
-              airbrushRadiusRange: get(airbrushRadiusRange),
-              airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
-              airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
-              airbrushBrushShape: get(airbrushBrushShape),
-              ...airbrushPlaneParamsForStroke(),
+              sprayRadius: (get(sprayRadius) as number) * 0.5,
+              sprayScatter: get(sprayScatter),
+              sprayRadiusRange: get(sprayRadiusRange),
+              sprayRadiusMin: get(sprayRadiusMin) * 0.5,
+              sprayRadiusMax: get(sprayRadiusMax) * 0.5,
+              sprayBrushShape: get(sprayBrushShape),
+              ...sprayPlaneParamsForStroke(),
               planeAxis: get(planeAxis),
               sprayDirection: get(sprayDirection),
               sprayStreakLength: get(sprayStreakLength),
@@ -3663,7 +3826,7 @@
             render();
             return;
           }
-          const isAirbrushPath = strokeModeVal === 'airbrush' && lastBulkPos;
+          const isSprayPath = strokeModeVal === 'spray' && lastBulkPos;
           const isClayPathFollow =
             $tool === 'clay' &&
             (clayPathMode === 'bulk' ||
@@ -3690,13 +3853,13 @@
             }
           }
           const isAxisAlignedLine = strokeModeVal === 'line' && get(lineAxisAlign);
-          // Plane/circle/cuboid/cylindroid and axis-aligned line: prefer drag-plane intersection so shape
+          // Plane/circle/cuboid/cylinder and axis-aligned line: prefer drag-plane intersection so shape
           // extends into empty space. If ray is parallel to the plane, keep voxel-hit fallback.
           if (
             (strokeModeVal === 'plane' ||
               strokeModeVal === 'circle' ||
               strokeModeVal === 'cuboid' ||
-              strokeModeVal === 'cylindroid' ||
+              strokeModeVal === 'cylinder' ||
               isAxisAlignedLine) &&
             dragStartPos
           ) {
@@ -3711,9 +3874,9 @@
               if (planePos) currentPos = planePos;
             }
           }
-          // Airbrush + constrain to plane: prefer plane intersection over voxel hit so cursor stays on the invisible plane
-          if (isAirbrushPath && dragStartPos) {
-            const normal = getAirbrushConstrainPlaneNormalWorld();
+          // Spray + constrain to plane: prefer plane intersection over voxel hit so cursor stays on the invisible plane
+          if (isSprayPath && dragStartPos) {
+            const normal = getSprayConstrainPlaneNormalWorld();
             if (normal) {
               const planePoint = new THREE.Vector3(
                 dragStartPos[0] + 0.5,
@@ -3738,7 +3901,7 @@
                 currentPos[axis] = dragStartPos[axis];
               }
             }
-            if (isClayPathFollow || isAirbrushPath) {
+            if (isClayPathFollow || isSprayPath) {
               if (
                 isClayPathFollow &&
                 clayPathMode === 'wall' &&
@@ -3768,14 +3931,14 @@
                 (strokeModeVal === 'plane' ||
                   strokeModeVal === 'circle' ||
                   strokeModeVal === 'cuboid' ||
-                  strokeModeVal === 'cylindroid') &&
+                  strokeModeVal === 'cylinder') &&
                 normal
               ) {
                 const hollow = get(planeCuboidHollow);
                 const hollowWall =
                   strokeModeVal === 'circle' ? 1 : clampPlaneCuboidHollowWallThickness();
                 pendingStrokePositions =
-                  strokeModeVal === 'circle' || strokeModeVal === 'cylindroid'
+                  strokeModeVal === 'circle' || strokeModeVal === 'cylinder'
                     ? getAxisAlignedCircleFromNormal(
                         dragStartPos,
                         currentPos,
@@ -3804,11 +3967,11 @@
             let strokeBboxHint: StrokePreviewBboxHint | null = null;
             if (
               !isClayPathFollow &&
-              !isAirbrushPath &&
+              !isSprayPath &&
               dragStartPos &&
               (strokeModeVal === 'plane' ||
                 strokeModeVal === 'cuboid' ||
-                strokeModeVal === 'cylindroid' ||
+                strokeModeVal === 'cylinder' ||
                 strokeModeVal === 'line')
             ) {
               const nPlane = getEffectivePlaneNormal();
@@ -3817,18 +3980,18 @@
                   primaryBounds: planeStrokeBounds(dragStartPos, currentPos, nPlane),
                   drawBrushInflate: drawBrushInflateParams()
                 };
-              } else if (strokeModeVal === 'cylindroid' && nPlane) {
+              } else if (strokeModeVal === 'cylinder' && nPlane) {
                 const db = diskStrokeBounds(dragStartPos, currentPos, nPlane);
                 strokeBboxHint = {
                   primaryBounds: db,
                   drawBrushInflate: drawBrushInflateParams(),
-                  cylindroidVolume: buildCylindroidPreviewVolume(
+                  cylinderVolume: buildCylinderPreviewVolume(
                     dragStartPos,
                     currentPos,
                     nPlane,
                     db,
                     0,
-                    get(planeCylindroidCone)
+                    get(planeCylinderTaperPct)
                   )
                 };
               } else if (strokeModeVal === 'line') {
@@ -3842,11 +4005,11 @@
                 };
               }
             }
-            // Clay path modes: show thickened preview (brush radius); airbrush: droplet preview
+            // Clay path modes: show thickened preview (brush radius); spray: droplet preview
             const moveStrokeParams: PathThickenParams = {
               strokeMode:
-                isAirbrushPath && !isClayPathFollow
-                  ? 'airbrush'
+                isSprayPath && !isClayPathFollow
+                  ? 'spray'
                   : (strokeModeVal ?? get(strokeMode)),
               clayMode: isClayPathFollow ? clayPathMode : undefined,
               clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
@@ -3854,13 +4017,13 @@
               branchTaper: get(branchTaper),
               branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
               branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-              airbrushRadius: (get(airbrushRadius) as number) * 0.5,
-              airbrushScatter: get(airbrushScatter),
-              airbrushRadiusRange: get(airbrushRadiusRange),
-              airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
-              airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
-              airbrushBrushShape: get(airbrushBrushShape),
-              ...airbrushPlaneParamsForStroke(),
+              sprayRadius: (get(sprayRadius) as number) * 0.5,
+              sprayScatter: get(sprayScatter),
+              sprayRadiusRange: get(sprayRadiusRange),
+              sprayRadiusMin: get(sprayRadiusMin) * 0.5,
+              sprayRadiusMax: get(sprayRadiusMax) * 0.5,
+              sprayBrushShape: get(sprayBrushShape),
+              ...sprayPlaneParamsForStroke(),
               planeAxis: get(planeAxis),
               sprayDirection: get(sprayDirection),
               sprayStreakLength: get(sprayStreakLength),
@@ -3878,14 +4041,14 @@
               seed: currentStrokeSeed
             };
             if (
-              isAirbrushPath &&
+              isSprayPath &&
               !isClayPathFollow &&
-              canUseAirbrushIncrementalPuff()
+              canUseSprayIncrementalPuff()
             ) {
-              extendAirbrushIncrementalPuff(pendingStrokePositions, moveStrokeParams);
-              updatePreviewMesh(airbrushIncrementalOut!, strokeBboxHint);
+              extendSprayIncrementalPuff(pendingStrokePositions, moveStrokeParams);
+              updatePreviewMesh(sprayIncrementalOut!, strokeBboxHint);
             } else {
-              if (isAirbrushPath && !isClayPathFollow) clearAirbrushIncrementalPuff();
+              if (isSprayPath && !isClayPathFollow) clearSprayIncrementalPuff();
               updatePreviewMesh(
                 thickenPathForStroke(pendingStrokePositions, moveStrokeParams),
                 strokeBboxHint
@@ -3904,16 +4067,16 @@
         return;
       }
       deltaDisplay = null;
-      // Cuboid / cylindroid depth phase: preserve preview when idle (not dragging)
+      // Cuboid / cylinder depth phase: preserve preview when idle (not dragging)
       if (cuboidPhase === 'depth' && cuboidPlane) {
         render();
         return;
       }
-      if (cylindroidPhase === 'depth' && cylindroidPlane) {
+      if (cylinderPhase === 'depth' && cylinderPlane) {
         render();
         return;
       }
-      if (polygonoidPhase === 'depth') {
+      if (solidPolygonPhase === 'depth') {
         render();
         return;
       }
@@ -3923,8 +4086,8 @@
         render();
         return;
       }
-      // Polygon / polygonoid placing / roof: preserve point loop preview, show rollOver for next point
-      if (polygonPhase || polygonoidPhase === 'placing' || roofPhase) {
+      // Polygon hull / solid polygon placing / roof: preserve point loop preview, show rollOver for next point
+      if (polygonPhase || solidPolygonPhase === 'placing' || roofPhase) {
         const hit = getIntersection();
         if (hit && hit.object !== polygonPointsMesh) {
           const pos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
@@ -4279,11 +4442,11 @@
       const hit = getIntersection();
       if (!hit || !hit.face) {
         rollOverMesh.visible = false;
-        if (get(effectiveStrokeMode) === 'airbrush') updatePreviewMesh([]);
+        if (get(effectiveStrokeMode) === 'spray') updatePreviewMesh([]);
         render();
         return;
       }
-      if (get(effectiveStrokeMode) === 'airbrush') {
+      if (get(effectiveStrokeMode) === 'spray') {
         let anchorPos: [number, number, number] | null = null;
         if ($tool === 'remove' || $tool === 'paint') {
           const voxelPos = getVoxelPosition(hit);
@@ -4298,7 +4461,7 @@
         }
         if (anchorPos) {
           let hoverPos: [number, number, number] = anchorPos;
-          const hoverPlaneN = getAirbrushHoverConstrainPlaneNormal(hit);
+          const hoverPlaneN = getSprayHoverConstrainPlaneNormal(hit);
           if (hoverPlaneN) {
             const planePoint = new THREE.Vector3(
               anchorPos[0] + 0.5,
@@ -4313,20 +4476,20 @@
           rollOverMesh.visible = false;
           updatePreviewMesh(
             thickenPathForStroke([hoverPos], {
-              strokeMode: 'airbrush',
+              strokeMode: 'spray',
               clayMode: undefined,
               clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
               clayBrushShape: get(clayBrushShape),
               branchTaper: get(branchTaper),
               branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
               branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-              airbrushRadius: (get(airbrushRadius) as number) * 0.5,
-              airbrushScatter: get(airbrushScatter),
-              airbrushRadiusRange: get(airbrushRadiusRange),
-              airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
-              airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
-              airbrushBrushShape: get(airbrushBrushShape),
-              ...airbrushPlaneParamsForFaceNormal(faceN),
+              sprayRadius: (get(sprayRadius) as number) * 0.5,
+              sprayScatter: get(sprayScatter),
+              sprayRadiusRange: get(sprayRadiusRange),
+              sprayRadiusMin: get(sprayRadiusMin) * 0.5,
+              sprayRadiusMax: get(sprayRadiusMax) * 0.5,
+              sprayBrushShape: get(sprayBrushShape),
+              ...sprayPlaneParamsForFaceNormal(faceN),
               planeAxis: get(planeAxis),
               sprayDirection: get(sprayDirection),
               sprayStreakLength: get(sprayStreakLength),
@@ -4447,14 +4610,35 @@
       }
       depthAdjustPointerId = null;
     }
+    if (event.button === 0 && $tool === 'roof' && isRoofShapeDrag) {
+      updatePointerFromEvent(event);
+      isRoofShapeDrag = false;
+      roofShapeDragKind = null;
+      roofDragStartPos = null;
+      if (roofShapeLiveFootprint && roofShapeLiveFootprint.length > 0) {
+        roofShapeCommittedFootprint = roofShapeLiveFootprint;
+      }
+      roofShapeLiveFootprint = null;
+      if (dragPointerId !== null) {
+        try {
+          container.releasePointerCapture(event.pointerId);
+        } catch {
+          /* ignore */
+        }
+        dragPointerId = null;
+      }
+      deltaDisplay = null;
+      refreshRoofPreviewMesh();
+      render();
+    }
     if (
       event.button === 2 &&
       (isVoxelDrag ||
         selectionGizmo?.isGizmoDrag ||
         cuboidPhase ||
-        cylindroidPhase ||
+        cylinderPhase ||
         polygonPhase ||
-        polygonoidPhase ||
+        solidPolygonPhase ||
         roofPhase)
     ) {
       cancelDrag();
@@ -4505,14 +4689,6 @@
         dragPointerId = null;
       }
     }
-    applyGeneratorFaceClickPointerUp(
-      buildVoxelGeneratorPrimaryPointerUpDeps(voxelGeneratorPrimaryPointerUpBridge),
-      event
-    );
-    applyMoodFaceClickPointerUp(
-      buildVoxelMoodPointerUpDeps(voxelGeneratorPrimaryPointerUpBridge),
-      event
-    );
     if (event.button === 0 && isVoxelDrag) {
       updatePointerFromEvent(event);
       const mode = get(effectiveStrokeMode);
@@ -4567,7 +4743,7 @@
         };
         cuboidDepth = 1;
         updateCuboidFromDepth();
-      } else if (mode === 'cylindroid' && dragStartPos && normal && !isClayPath) {
+      } else if (mode === 'cylinder' && dragStartPos && normal && !isClayPath) {
         let edgePos = dragStartPos;
         const planePoint = new THREE.Vector3(
           dragStartPos[0] + 0.5,
@@ -4584,14 +4760,14 @@
             if (pos) edgePos = pos;
           }
         }
-        cylindroidPhase = 'depth';
-        cylindroidPlane = {
+        cylinderPhase = 'depth';
+        cylinderPlane = {
           center: dragStartPos,
           edge: edgePos,
           normal
         };
-        cylindroidDepth = 1;
-        updateCylindroidFromDepth();
+        cylinderDepth = 1;
+        updateCylinderFromDepth();
       } else {
         // Apply the stroke on release (line/plane / clay modes)
         if (pendingStrokePositions.length > 0) {
@@ -4614,13 +4790,13 @@
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-            airbrushRadius: (get(airbrushRadius) as number) * 0.5,
-            airbrushScatter: get(airbrushScatter),
-            airbrushRadiusRange: get(airbrushRadiusRange),
-            airbrushRadiusMin: get(airbrushRadiusMin) * 0.5,
-            airbrushRadiusMax: get(airbrushRadiusMax) * 0.5,
-            airbrushBrushShape: get(airbrushBrushShape),
-            ...airbrushPlaneParamsForStroke(),
+            sprayRadius: (get(sprayRadius) as number) * 0.5,
+            sprayScatter: get(sprayScatter),
+            sprayRadiusRange: get(sprayRadiusRange),
+            sprayRadiusMin: get(sprayRadiusMin) * 0.5,
+            sprayRadiusMax: get(sprayRadiusMax) * 0.5,
+            sprayBrushShape: get(sprayBrushShape),
+            ...sprayPlaneParamsForStroke(),
             planeAxis: get(planeAxis),
             sprayDirection: get(sprayDirection),
             sprayStreakLength: get(sprayStreakLength),
@@ -4661,7 +4837,7 @@
       dragFaceNormal = null;
       dragPlaneAxisOverride = null;
       lastBulkPos = null;
-      clearAirbrushIncrementalPuff();
+      clearSprayIncrementalPuff();
       clearShiftPlaneSymmetryState();
       dragPointerId = null;
     }
@@ -4698,8 +4874,8 @@
       render();
       e.preventDefault();
     }
-    if (e.key === 'Escape' && polygonoidPhase) {
-      cancelPolygonoid();
+    if (e.key === 'Escape' && solidPolygonPhase) {
+      cancelSolidPolygon();
       render();
       e.preventDefault();
     }
@@ -4817,12 +4993,12 @@
         return;
       }
     }
-    // Alt+scroll during plane/cuboid/cylindroid drag: cycle plane orientation (X/Y/Z)
+    // Alt+scroll during plane/cuboid/cylinder drag: cycle plane orientation (X/Y/Z)
     const mode = get(effectiveStrokeMode);
     if (
       event.altKey &&
       isVoxelDrag &&
-      (mode === 'plane' || mode === 'circle' || mode === 'cuboid' || mode === 'cylindroid') &&
+      (mode === 'plane' || mode === 'circle' || mode === 'cuboid' || mode === 'cylinder') &&
       dragStartPos &&
       getEffectivePlaneNormal()
     ) {
@@ -4853,7 +5029,7 @@
           mode === 'circle' ? 1 : clampPlaneCuboidHollowWallThickness();
         const n = axisVector(next);
         pendingStrokePositions =
-          mode === 'circle' || mode === 'cylindroid'
+          mode === 'circle' || mode === 'cylinder'
             ? getAxisAlignedCircleFromNormal(dragStartPos, currentPos, n, hollow, hollowWall)
             : getAxisAlignedPlaneFromNormal(dragStartPos, currentPos, n, hollow, hollowWall);
         if (mode === 'plane' || mode === 'cuboid') {
@@ -4861,18 +5037,18 @@
             primaryBounds: planeStrokeBounds(dragStartPos, currentPos, n),
             drawBrushInflate: drawBrushInflateParams()
           };
-        } else if (mode === 'cylindroid') {
+        } else if (mode === 'cylinder') {
           const db = diskStrokeBounds(dragStartPos, currentPos, n);
           altScrollBbox = {
             primaryBounds: db,
             drawBrushInflate: drawBrushInflateParams(),
-            cylindroidVolume: buildCylindroidPreviewVolume(
+            cylinderVolume: buildCylinderPreviewVolume(
               dragStartPos,
               currentPos,
               n,
               db,
               0,
-              get(planeCylindroidCone)
+              get(planeCylinderTaperPct)
             )
           };
         }
@@ -5326,6 +5502,13 @@
     const maxPr = Math.max(0, get(voxellePreferences).maxPixelRatio);
     const targetPr = maxPr > 0 ? Math.min(window.devicePixelRatio, maxPr) : window.devicePixelRatio;
     renderer.setPixelRatio(targetPr);
+    const pr = renderer.getPixelRatio();
+    if (w === lastCanvasResizeW && h === lastCanvasResizeH && pr === lastCanvasResizePr) {
+      return;
+    }
+    lastCanvasResizeW = w;
+    lastCanvasResizeH = h;
+    lastCanvasResizePr = pr;
     if (camera instanceof THREE.OrthographicCamera) {
       updateOrthoFrustum();
     } else {
@@ -5334,7 +5517,6 @@
     }
     // Keep canvas CSS-driven (100% of container) to avoid stale inline sizes after fullscreen toggles.
     renderer.setSize(w, h, false);
-    const pr = renderer.getPixelRatio();
     bloomComposer?.setPixelRatio(pr);
     bloomComposer?.setSize(w, h);
     finalComposer?.setPixelRatio(pr);
@@ -5463,6 +5645,7 @@
       dirLight,
       hemisphereLight,
       getVoxels: () => get(voxels),
+      getHiddenVoxelCount: () => get(hiddenVoxels).size,
       getEnableSky: () => get(enableSky),
       getBackgroundColor: () => get(backgroundColor),
       getAmbientIntensity: () => get(ambientIntensity),
@@ -5500,9 +5683,9 @@
       isStampDrag,
       selectionGizmoDragging: !!selectionGizmo?.isGizmoDrag,
       getCuboidPhase: () => cuboidPhase,
-      getCylindroidPhase: () => cylindroidPhase,
+      getCylinderPhase: () => cylinderPhase,
       getPolygonPhase: () => polygonPhase,
-      getPolygonoidPhase: () => polygonoidPhase,
+      getSolidPolygonPhase: () => solidPolygonPhase,
       getRoofPhase: () => roofPhase,
       getRopePhase: () => ropePhase,
       getFlyControlsEnabled: () => !!flyControls?.enabled,
@@ -5525,32 +5708,32 @@
       pendingStrokePositions = [];
       updatePreviewMesh([]);
     }
-    if (mode !== 'cylindroid' && cylindroidPhase) {
-      cylindroidPhase = null;
-      cylindroidPlane = null;
+    if (mode !== 'cylinder' && cylinderPhase) {
+      cylinderPhase = null;
+      cylinderPlane = null;
       pendingStrokePositions = [];
       updatePreviewMesh([]);
     }
-    if (mode !== 'polygon' && polygonPhase) {
+    if (mode !== 'polygonHull' && polygonPhase) {
       cancelPolygon();
     }
-    if (mode !== 'polygonoid' && polygonoidPhase) {
-      cancelPolygonoid();
+    if (mode !== 'polygon' && solidPolygonPhase) {
+      cancelSolidPolygon();
     }
   });
 
   $effect(() => {
-    void $planeCylindroidCone;
-    if (cylindroidPhase === 'depth' && cylindroidPlane) {
-      updateCylindroidFromDepth();
+    void $planeCylinderTaperPct;
+    if (cylinderPhase === 'depth' && cylinderPlane) {
+      updateCylinderFromDepth();
     }
   });
 
   $effect(() => {
     void $planeCuboidHollow;
     void $planeCuboidHollowWallThickness;
-    if (polygonoidPhase === 'depth') {
-      updatePolygonoidFromDepth();
+    if (solidPolygonPhase === 'depth') {
+      updateSolidPolygonFromDepth();
     }
   });
 
@@ -5584,26 +5767,58 @@
   });
 
   $effect(() => {
+    void $roofSelectionMethod;
+    void $tool;
+    const cur = $roofSelectionMethod;
+    if ($tool === 'roof' && roofPhase && lastRoofSelForCancel !== null && lastRoofSelForCancel !== cur) {
+      cancelRoof();
+    }
+    lastRoofSelForCancel = cur;
+  });
+
+  $effect(() => {
     const t = $roofWindingFlipTick;
     if (!roofPhase) {
       prevRoofWindingFlipTick = t;
       return;
     }
-    if (roofPoints.length < 2) {
+    const sel = $roofSelectionMethod;
+    if (sel === 'polygon') {
+      if (roofPoints.length < 2) {
+        prevRoofWindingFlipTick = t;
+        return;
+      }
+      if (t === prevRoofWindingFlipTick) return;
       prevRoofWindingFlipTick = t;
-      return;
+      roofPoints = [...roofPoints].reverse();
+      updatePolygonPreview(roofPoints);
+    } else {
+      const hasShape =
+        (roofShapeLiveFootprint?.length ?? 0) > 0 || (roofShapeCommittedFootprint?.length ?? 0) > 0;
+      if (!hasShape && !isRoofShapeDrag) {
+        prevRoofWindingFlipTick = t;
+        return;
+      }
+      if (t === prevRoofWindingFlipTick) return;
+      prevRoofWindingFlipTick = t;
+      roofShapeWindingFlipped = !roofShapeWindingFlipped;
     }
-    if (t === prevRoofWindingFlipTick) return;
-    prevRoofWindingFlipTick = t;
-    roofPoints = [...roofPoints].reverse();
-    updatePolygonPreview(roofPoints);
     refreshRoofPreviewMesh();
     requestAnimationFrame(() => markCanvasDirty());
   });
 
   $effect(() => {
-    if (!roofPhase || roofPoints.length < 4) return;
+    if (!roofPhase) return;
+    const sel = $roofSelectionMethod;
+    if (sel === 'polygon' && roofPoints.length < 4) return;
+    if (sel !== 'polygon') {
+      const fp = roofShapeLiveFootprint ?? roofShapeCommittedFootprint;
+      if (!fp?.length && !isRoofShapeDrag) return;
+    }
     void roofPoints;
+    void roofShapeLiveFootprint;
+    void roofShapeCommittedFootprint;
+    void isRoofShapeDrag;
     void roofPlacementNormal;
     refreshRoofPreviewMesh();
     const u1 = roofStyle.subscribe(() => refreshRoofPreviewMesh());
@@ -5616,6 +5831,7 @@
     const u8 = roofParapetHeight.subscribe(() => refreshRoofPreviewMesh());
     const u9 = roofSaltSkew.subscribe(() => refreshRoofPreviewMesh());
     const u10 = roofHollow.subscribe(() => refreshRoofPreviewMesh());
+    const u11 = roofProfileCurve.subscribe(() => refreshRoofPreviewMesh());
     return () => {
       u1();
       u2();
@@ -5627,6 +5843,7 @@
       u8();
       u9();
       u10();
+      u11();
     };
   });
 
@@ -5648,14 +5865,14 @@
   });
 
   $effect(() => {
-    if (!polygonoidPhase || polygonoidPhase !== 'placing' || polygonoidPoints.length < 2) return;
-    void polygonoidPoints;
-    void polygonoidInitialNormal;
-    const syncPolygonoidFillPreview = () => {
-      updatePreviewMesh(getPolygonoidPlacingFillPreview());
+    if (!solidPolygonPhase || solidPolygonPhase !== 'placing' || solidPolygonPoints.length < 2) return;
+    void solidPolygonPoints;
+    void solidPolygonInitialNormal;
+    const syncSolidPolygonFillPreview = () => {
+      updatePreviewMesh(getSolidPolygonPlacingFillPreview());
     };
-    syncPolygonoidFillPreview();
-    return polygonOffsetFromNormal.subscribe(() => syncPolygonoidFillPreview());
+    syncSolidPolygonFillPreview();
+    return polygonOffsetFromNormal.subscribe(() => syncSolidPolygonFillPreview());
   });
 
   $effect(() => {
@@ -5853,6 +6070,38 @@
     void $lightColor;
     void $sunlightIntensity;
     void $ambientIntensity;
+    /** Post / mood (atmosphere, tint, grain, sun shafts): applied inside `render` only — must dirty canvas when they change. */
+    void $atmosphereActiveForRender;
+    void $atmosphereColor;
+    void $atmosphereThickness;
+    void $atmosphereDensity;
+    void $atmosphereMode;
+    void $atmosphereSpatialMode;
+    void $atmospherePlane;
+    void $atmosphereHeightBias;
+    void $atmosphereHeightFalloff;
+    void $atmosphereDriftEnabled;
+    void $atmosphereDriftAmount;
+    void $atmosphereDriftScale;
+    void $atmosphereDriftSpeed;
+    void $distanceTintEnabled;
+    void $distanceTintNearColor;
+    void $distanceTintMidColor;
+    void $distanceTintFarColor;
+    void $distanceTintNearDistance;
+    void $distanceTintFarDistance;
+    void $distanceTintStrength;
+    void $grainEnabled;
+    void $grainStrength;
+    void $grainAnimated;
+    void $grainSpeed;
+    void $grainMode;
+    void $sunShaftsEnabled;
+    void $sunShaftsStrength;
+    void $sunShaftsDecay;
+    void $sunShaftsDensity;
+    void $sunShaftsWeight;
+    void $sunShaftsSamples;
     applyPresentationFromStores();
     markCanvasDirty();
   });
@@ -6009,9 +6258,9 @@
         isVoxelDrag ||
         isStampDrag ||
         cuboidPhase !== null ||
-        cylindroidPhase !== null ||
+        cylinderPhase !== null ||
         polygonPhase !== null ||
-        polygonoidPhase !== null ||
+        solidPolygonPhase !== null ||
         roofPhase !== null ||
         ropePhase !== null ||
         (get(tool) === 'piscina' && piscinaPhase === 'shape') ||
@@ -6190,9 +6439,9 @@
       isFly &&
       (isSegmentedStrokeGestureActive({
         cuboidPhase,
-        cylindroidPhase,
+        cylinderPhase,
         polygonPhase,
-        polygonoidPhase,
+        solidPolygonPhase,
         roofPhase,
         ropePhase
       }) ||
@@ -6212,9 +6461,9 @@
       if (
         isSegmentedStrokeGestureActive({
           cuboidPhase,
-          cylindroidPhase,
+          cylinderPhase,
           polygonPhase,
-          polygonoidPhase,
+          solidPolygonPhase,
           roofPhase,
           ropePhase
         }) ||
@@ -6491,24 +6740,30 @@
     bind:cuboidDepth
     {updateCuboidFromDepth}
     {commitCuboid}
-    {cylindroidPhase}
-    bind:cylindroidDepth
-    {updateCylindroidFromDepth}
-    {commitCylindroid}
+    {cylinderPhase}
+    bind:cylinderDepth
+    {updateCylinderFromDepth}
+    {commitCylinder}
     {polygonPhase}
     polygonPointCount={polygonPoints.length}
     {commitPolygon}
     {cancelPolygon}
-    {polygonoidPhase}
-    polygonoidPointCount={polygonoidPoints.length}
-    {polygonoidExtrudable}
-    {beginPolygonoidDepth}
-    bind:polygonoidDepth
-    {updatePolygonoidFromDepth}
-    {commitPolygonoid}
-    {cancelPolygonoid}
+    {solidPolygonPhase}
+    solidPolygonPointCount={solidPolygonPoints.length}
+    {solidPolygonExtrudable}
+    {beginSolidPolygonDepth}
+    bind:solidPolygonDepth
+    {updateSolidPolygonFromDepth}
+    {commitSolidPolygon}
+    {cancelSolidPolygon}
     {roofPhase}
-    roofPointCount={roofPoints.length}
+    roofHudVisible={roofPhase === 'placing' &&
+      ($roofSelectionMethod === 'polygon'
+        ? roofPoints.length >= 2
+        : isRoofShapeDrag || (roofShapeCommittedFootprint?.length ?? 0) > 0)}
+    roofDoneDisabled={$roofSelectionMethod === 'polygon'
+      ? roofPoints.length < 4
+      : !(roofShapeCommittedFootprint && roofShapeCommittedFootprint.length > 0)}
     {commitRoof}
     {cancelRoof}
     {piscinaPhase}

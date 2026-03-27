@@ -9,16 +9,17 @@
     planeCuboidHollow,
     PLANE_CUBOID_HOLLOW_WALL_MAX,
     planeCuboidHollowWallThickness,
-    planeCylindroidCone,
+    PLANE_CYLINDER_TAPER_PCT_MAX,
+    planeCylinderTaperPct,
     drawBrushShape,
     drawBrushSize,
     drawBrushSnapToSurface,
-    airbrushBrushShape,
-    airbrushRadius,
-    airbrushScatter,
-    airbrushRadiusRange,
-    airbrushRadiusMin,
-    airbrushRadiusMax,
+    sprayBrushShape,
+    sprayRadius,
+    sprayScatter,
+    sprayRadiusRange,
+    sprayRadiusMin,
+    sprayRadiusMax,
     fillSelectDiagonals,
     fillRespectsColor,
     constrainToPlaneEnabled,
@@ -28,32 +29,73 @@
   } from '../store/index';
   import { DRAW_BRUSH_SHAPES } from './constants';
   import {
-    airbrushVisible as airbrushVisibleFn,
+    sprayVisible as sprayVisibleFn,
     constrainPlaneSectionVisible as constrainPlaneSectionVisibleFn,
     fillVisible as fillVisibleFn,
+    isStrokeTool,
     lineAxisAlignVisible as lineAxisAlignVisibleFn,
     planeAxisVisible as planeAxisVisibleFn,
     planeOrCuboidStroke as planeOrCuboidStrokeFn,
-    polygonVisible as polygonVisibleFn,
-    polygonoidVisible as polygonoidVisibleFn,
+    polygonHullVisible as polygonHullVisibleFn,
+    solidPolygonVisible as solidPolygonVisibleFn,
     showBrushSection as showBrushSectionFn
   } from './toolVisibility';
+  import {
+    SELECTION_STROKE_FAMILY_VARIANTS,
+    selectionStrokeFamilyShowsShapeVariants,
+    strokeModeToSelectionStrokeFamily
+  } from '../store/selectionStrokeFamily';
 
   const BRUSH_SIZE_MAX = MAX_BRUSH_SIZE - 1;
 
   const planeAxisVisible = $derived(planeAxisVisibleFn($strokeMode, $tool));
   const planeOrCuboidStroke = $derived(planeOrCuboidStrokeFn($strokeMode));
   const lineAxisAlignVisible = $derived(lineAxisAlignVisibleFn($strokeMode, $tool));
-  const airbrushVisible = $derived(airbrushVisibleFn($strokeMode, $tool));
+  const sprayVisible = $derived(sprayVisibleFn($strokeMode, $tool));
   const fillVisible = $derived(fillVisibleFn($strokeMode, $tool));
   const constrainPlaneSectionVisible = $derived(constrainPlaneSectionVisibleFn($strokeMode, $tool));
-  const polygonVisible = $derived(polygonVisibleFn($strokeMode, $tool));
-  const polygonoidVisible = $derived(polygonoidVisibleFn($strokeMode, $tool));
+  const polygonHullVisible = $derived(polygonHullVisibleFn($strokeMode, $tool));
+  const solidPolygonVisible = $derived(solidPolygonVisibleFn($strokeMode, $tool));
   const showBrushSection = $derived(showBrushSectionFn($toolPane, $strokeMode, $tool));
+
+  const strokeShapeFamily = $derived(strokeModeToSelectionStrokeFamily($strokeMode));
+  const strokeShapeVariants = $derived(SELECTION_STROKE_FAMILY_VARIANTS[strokeShapeFamily]);
+  const strokeShapeSectionVisible = $derived(
+    $toolPane === 'draw' &&
+      isStrokeTool($tool) &&
+      selectionStrokeFamilyShowsShapeVariants(strokeShapeFamily)
+  );
 </script>
 
+{#if strokeShapeSectionVisible}
+  <section class="tool-panel-section" aria-label="Area shape">
+    <div class="tool-panel-row tool-panel-row--section-heading">
+      <span class="tool-panel-label">Area shape</span>
+    </div>
+    <div class="stroke-buttons" role="group" aria-label="Area shape">
+      {#each strokeShapeVariants as v (v.mode)}
+        <button
+          type="button"
+          class:active={$strokeMode === v.mode}
+          onclick={() => strokeMode.set(v.mode)}
+          title={v.title}
+        >
+          {v.panelLabel ?? v.label}
+        </button>
+      {/each}
+    </div>
+  </section>
+{/if}
+
 {#if showBrushSection}
-  <section class="tool-panel-section" aria-label="Draw brush">
+  <section
+    class="tool-panel-section"
+    class:tool-panel-section--divider-after-area={strokeShapeSectionVisible}
+    aria-label="Brush"
+  >
+    <div class="tool-panel-row tool-panel-row--section-heading">
+      <span class="tool-panel-label">Brush shape</span>
+    </div>
     <div class="stroke-buttons" role="group" aria-label="Brush shape">
       {#each DRAW_BRUSH_SHAPES as s (s.id)}
         <button
@@ -106,8 +148,11 @@
 {/if}
 
 {#if planeAxisVisible}
-  <section class="tool-panel-section" aria-label="Plane axis">
-    <div class="stroke-buttons" role="group" aria-label="Plane axis">
+  <section class="tool-panel-section" aria-label="Plane options">
+    <div class="tool-panel-row tool-panel-row--section-heading">
+      <span class="tool-panel-label">Plane options</span>
+    </div>
+    <div class="stroke-buttons" role="group" aria-label="Plane orientation">
       <button
         type="button"
         class:active={$planeAxis === 0}
@@ -146,20 +191,33 @@
         type="checkbox"
         checked={$planeCuboidHollow}
         onchange={(e) => planeCuboidHollow.set((e.target as HTMLInputElement).checked)}
-        title="Only perimeter (plane/circle) or shell (cuboid/cylindroid)"
+        title="Hollow: keep only the outer shell (plane edge, or walls of box/cylinder)"
       />
       Hollow
     </label>
-    {#if $strokeMode === 'cylindroid'}
-      <label class="tool-panel-check">
+    {#if $strokeMode === 'cylinder'}
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Taper</span>
         <input
-          type="checkbox"
-          checked={$planeCylindroidCone}
-          onchange={(e) => planeCylindroidCone.set((e.target as HTMLInputElement).checked)}
-          title="Taper radius to a point along extrusion (cone); off = right cylinder"
+          type="range"
+          min="0"
+          max={PLANE_CYLINDER_TAPER_PCT_MAX}
+          step="1"
+          value={Math.min(
+            PLANE_CYLINDER_TAPER_PCT_MAX,
+            Math.max(0, Math.round($planeCylinderTaperPct))
+          )}
+          oninput={(e) =>
+            planeCylinderTaperPct.set(Number((e.target as HTMLInputElement).value))}
+          title="0% = cylinder; 100% = cone (radius to zero at far end)"
         />
-        Cone (taper to tip)
-      </label>
+        <span class="tool-panel-value"
+          >{Math.min(
+            PLANE_CYLINDER_TAPER_PCT_MAX,
+            Math.max(0, Math.round($planeCylinderTaperPct))
+          )}%</span
+        >
+      </div>
     {/if}
     {#if $planeCuboidHollow && planeOrCuboidStroke}
       <div class="tool-panel-row">
@@ -175,7 +233,7 @@
           )}
           oninput={(e) =>
             planeCuboidHollowWallThickness.set(Number((e.target as HTMLInputElement).value))}
-          title="Hollow shell depth in voxels (plane, cuboid, cylindroid)"
+          title="Hollow shell depth in voxels (plane, cuboid, cylinder)"
         />
         <span class="tool-panel-value"
           >{Math.min(
@@ -188,14 +246,14 @@
   </section>
 {/if}
 
-{#if polygonoidVisible}
-  <section class="tool-panel-section" aria-label="Polygonoid shell">
+{#if solidPolygonVisible}
+  <section class="tool-panel-section" aria-label="Polygon extrusion shell">
     <label class="tool-panel-check">
       <input
         type="checkbox"
         checked={$planeCuboidHollow}
         onchange={(e) => planeCuboidHollow.set((e.target as HTMLInputElement).checked)}
-        title="Extrude as a hollow shell (same as cuboid)"
+        title="Hollow shell only along depth (walls only, same as Cube/Cylinder hollow)"
       />
       Hollow
     </label>
@@ -234,7 +292,7 @@
           type="checkbox"
           checked={$constrainToPlaneEnabled}
           onchange={(e) => constrainToPlaneEnabled.set((e.target as HTMLInputElement).checked)}
-          title="Limit fill flood and airbrush stroke to a plane through the click/drag start"
+          title="Limit fill flood and Spray stroke to a plane through the click/drag start"
         />
         Constrain to plane
       </label>
@@ -286,41 +344,35 @@
   </section>
 {/if}
 
-{#if airbrushVisible}
-  <section class="tool-panel-section" aria-label="Airbrush">
-    <div class="tool-panel-row">
-      <span class="tool-panel-label">Droplet</span>
-      <div class="stroke-buttons" role="group" aria-label="Airbrush droplet shape">
+{#if sprayVisible}
+  <section class="tool-panel-section" aria-label="Spray">
+    <div class="tool-panel-row tool-panel-row--section-heading">
+      <span class="tool-panel-label">Brush shape</span>
+    </div>
+    <div class="stroke-buttons" role="group" aria-label="Spray brush shape">
+      {#each DRAW_BRUSH_SHAPES as s (s.id)}
         <button
           type="button"
-          class:active={$airbrushBrushShape === 'sphere'}
-          onclick={() => airbrushBrushShape.set('sphere')}
-          title="Round spray (Euclidean sphere per droplet)"
+          class:active={$sprayBrushShape === s.id}
+          onclick={() => sprayBrushShape.set(s.id)}
+          title={s.title}
         >
-          Sphere
+          {s.label}
         </button>
-        <button
-          type="button"
-          class:active={$airbrushBrushShape === 'cube'}
-          onclick={() => airbrushBrushShape.set('cube')}
-          title="Boxy spray (axis-aligned cube per droplet)"
-        >
-          Cube
-        </button>
-      </div>
+      {/each}
     </div>
     <div class="tool-panel-row">
       <label class="tool-panel-check">
         <input
           type="checkbox"
-          checked={$airbrushRadiusRange}
-          onchange={(e) => airbrushRadiusRange.set((e.target as HTMLInputElement).checked)}
+          checked={$sprayRadiusRange}
+          onchange={(e) => sprayRadiusRange.set((e.target as HTMLInputElement).checked)}
           title="Vary droplet size for spray effect"
         />
         Size range
       </label>
     </div>
-    {#if $airbrushRadiusRange}
+    {#if $sprayRadiusRange}
       <div class="tool-panel-row">
         <span class="tool-panel-label">Min</span>
         <input
@@ -328,14 +380,14 @@
           min="0"
           max={BRUSH_SIZE_MAX}
           step="1"
-          value={$airbrushRadiusMin}
+          value={$sprayRadiusMin}
           oninput={(e) => {
             const v = Number((e.target as HTMLInputElement).value);
-            airbrushRadiusMin.set(v);
-            if (v > get(airbrushRadiusMax)) airbrushRadiusMax.set(v);
+            sprayRadiusMin.set(v);
+            if (v > get(sprayRadiusMax)) sprayRadiusMax.set(v);
           }}
         />
-        <span class="tool-panel-value">{$airbrushRadiusMin + 1}</span>
+        <span class="tool-panel-value">{$sprayRadiusMin + 1}</span>
       </div>
       <div class="tool-panel-row">
         <span class="tool-panel-label">Max</span>
@@ -344,14 +396,14 @@
           min="0"
           max={BRUSH_SIZE_MAX}
           step="1"
-          value={$airbrushRadiusMax}
+          value={$sprayRadiusMax}
           oninput={(e) => {
             const v = Number((e.target as HTMLInputElement).value);
-            airbrushRadiusMax.set(v);
-            if (v < get(airbrushRadiusMin)) airbrushRadiusMin.set(v);
+            sprayRadiusMax.set(v);
+            if (v < get(sprayRadiusMin)) sprayRadiusMin.set(v);
           }}
         />
-        <span class="tool-panel-value">{$airbrushRadiusMax + 1}</span>
+        <span class="tool-panel-value">{$sprayRadiusMax + 1}</span>
       </div>
     {:else}
       <div class="tool-panel-row">
@@ -361,10 +413,10 @@
           min="0"
           max={BRUSH_SIZE_MAX}
           step="1"
-          value={$airbrushRadius}
-          oninput={(e) => airbrushRadius.set(Number((e.target as HTMLInputElement).value))}
+          value={$sprayRadius}
+          oninput={(e) => sprayRadius.set(Number((e.target as HTMLInputElement).value))}
         />
-        <span class="tool-panel-value">{$airbrushRadius + 1}</span>
+        <span class="tool-panel-value">{$sprayRadius + 1}</span>
       </div>
     {/if}
     <div class="tool-panel-row">
@@ -374,10 +426,10 @@
         min="0"
         max={BRUSH_SIZE_MAX}
         step="1"
-        value={$airbrushScatter}
-        oninput={(e) => airbrushScatter.set(Number((e.target as HTMLInputElement).value))}
+        value={$sprayScatter}
+        oninput={(e) => sprayScatter.set(Number((e.target as HTMLInputElement).value))}
       />
-      <span class="tool-panel-value">{$airbrushScatter}</span>
+      <span class="tool-panel-value">{$sprayScatter}</span>
     </div>
   </section>
 {/if}
@@ -407,7 +459,7 @@
   </section>
 {/if}
 
-{#if polygonVisible || polygonoidVisible}
+{#if polygonHullVisible || solidPolygonVisible}
   <section class="tool-panel-section" aria-label="Polygon offset">
     <div class="tool-panel-row">
       <span class="tool-panel-label">Offset from normal</span>
@@ -424,3 +476,20 @@
     </div>
   </section>
 {/if}
+
+<style>
+  .tool-panel-section--divider-after-area {
+    border-top: 1px solid var(--border-color);
+    padding-top: 0.5rem;
+    margin-top: 0.15rem;
+  }
+
+  .tool-panel-row--section-heading {
+    margin-bottom: 0.2rem;
+  }
+
+  .tool-panel-row--section-heading :global(.tool-panel-label) {
+    font-weight: 600;
+    font-size: 0.82rem;
+  }
+</style>

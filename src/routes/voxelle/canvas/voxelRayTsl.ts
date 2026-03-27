@@ -95,12 +95,13 @@ export class VoxelRayTsl {
     dpr: number,
     voxels: Map<string, Voxel>,
     params: VoxelRayTraceParams,
-    invalidated: boolean,
+    contentInvalidated: boolean,
+    viewInvalidated: boolean,
     camera: THREE.Camera,
     budgetMs: number = DEFAULT_RAY_TICK_BUDGET_MS,
     tickContext?: VoxelRayTslTickContext
   ): void {
-    if (invalidated) {
+    if (contentInvalidated || this.resources === null) {
       const t0 = voxellePerfEnabled() ? perfNow() : 0;
       this.resources?.dispose();
       this.resources = buildVoxelRayGpuResources(voxels);
@@ -161,6 +162,7 @@ export class VoxelRayTsl {
       maxTemporalSamples: tickContext?.rayMaxTemporalSamples
     };
 
+    const progressiveInvalidated = contentInvalidated || viewInvalidated;
     this.progressive.tick(
       delta,
       width,
@@ -168,7 +170,7 @@ export class VoxelRayTsl {
       rayDpr,
       voxels,
       params,
-      invalidated,
+      progressiveInvalidated,
       camera,
       cpuBudget,
       tickOpts

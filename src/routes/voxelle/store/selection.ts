@@ -5,6 +5,7 @@ import {
   inBoundsBox,
   getEffectiveBounds,
   getVoxelBounds,
+  getSelectionBounds,
   type SelectionBounds
 } from '../coordUtils';
 import {
@@ -64,8 +65,37 @@ export type FillEmptyAsyncResult = FillEmptyResult & {
   cancelled: boolean;
 };
 
-function getEffectiveBoundsForSelection(): ReturnType<typeof getEffectiveBounds> {
-  return getEffectiveBounds(get(voxels), SELECTION_BOUNDS_MARGIN);
+/** Voxel hull ∪ selection keys, expanded by margin (so neighbors of selected voids stay in-range). */
+function getEffectiveBoundsForSelection(): SelectionBounds {
+  const v = get(voxels);
+  const sel = get(selection);
+  const vb = getVoxelBounds(v);
+  const sb = getSelectionBounds(sel);
+  const m = SELECTION_BOUNDS_MARGIN;
+  if (!vb && !sb) {
+    return getEffectiveBounds(v, m);
+  }
+  if (!vb && sb) {
+    return {
+      minX: sb.minX - m,
+      minY: sb.minY - m,
+      minZ: sb.minZ - m,
+      maxX: sb.maxX + m,
+      maxY: sb.maxY + m,
+      maxZ: sb.maxZ + m
+    };
+  }
+  if (vb && !sb) {
+    return getEffectiveBounds(v, m);
+  }
+  return {
+    minX: Math.min(vb!.minX, sb!.minX) - m,
+    minY: Math.min(vb!.minY, sb!.minY) - m,
+    minZ: Math.min(vb!.minZ, sb!.minZ) - m,
+    maxX: Math.max(vb!.maxX, sb!.maxX) + m,
+    maxY: Math.max(vb!.maxY, sb!.maxY) + m,
+    maxZ: Math.max(vb!.maxZ, sb!.maxZ) + m
+  };
 }
 
 const DEFAULT_FILL_YIELD_EVERY = 8192;
@@ -459,7 +489,6 @@ export function growSelection() {
 
 export function shrinkSelection() {
   commitUndoAfter(() => {
-    const v = get(voxels);
     const bounds = getEffectiveBoundsForSelection();
     const sel = get(selection);
     const next = new Map<string, Voxel>();
@@ -470,13 +499,12 @@ export function shrinkSelection() {
         const nx = x + dx;
         const ny = y + dy;
         const nz = z + dz;
-        if (inBoundsBox(nx, ny, nz, bounds)) {
-          const k = coordKey(nx, ny, nz);
-          if (!v.has(k)) {
-            onBoundary = true;
-            break;
-          }
-        } else {
+        if (!inBoundsBox(nx, ny, nz, bounds)) {
+          onBoundary = true;
+          break;
+        }
+        const k = coordKey(nx, ny, nz);
+        if (!sel.has(k)) {
           onBoundary = true;
           break;
         }

@@ -1,12 +1,12 @@
 /**
- * Mood tools: reserved for pointer-up hooks (face-click disabled; mood uses Hand navigation).
+ * Mood tools: face-click on pointerdown (same rationale as generator face-click tools).
  */
 import type { Intersection } from 'three';
 import type { FaceNormal } from '../../store/core';
 import { isMoodFaceClickTool } from '../../store/mood/registry';
 import { setAtmospherePlaneFromWorldPointAndNormal } from '../../store/atmosphere';
 
-export interface MoodPointerUpDeps {
+export interface MoodFaceClickDeps {
   tool: string;
   addPanelOpen: boolean;
   getIntersection: () => Intersection | null | undefined;
@@ -15,8 +15,11 @@ export interface MoodPointerUpDeps {
   scheduleRender: () => void;
 }
 
-export function applyMoodFaceClickPointerUp(
-  ctx: MoodPointerUpDeps,
+/** @deprecated Use {@link MoodFaceClickDeps}. */
+export type MoodPointerUpDeps = MoodFaceClickDeps;
+
+export function applyMoodFaceClickPointerDown(
+  ctx: MoodFaceClickDeps,
   event: PointerEvent
 ): void {
   if (event.button !== 0 || ctx.addPanelOpen) return;

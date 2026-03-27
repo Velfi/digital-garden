@@ -4,6 +4,8 @@ import type { FaceNormal, RoofStyleId } from '../core';
 import type { Voxel } from '../../voxelMaterial';
 import { plasticVoxel } from '../../voxelMaterial';
 import { getCoplanarPolygonFillPositions } from '../../strokeGeometry';
+import type { RoofProfilePoint } from './roofProfileCurve';
+import { sampleRoofProfileCurve } from './roofProfileCurve';
 
 export type GenerateRoofOptions = {
   style: RoofStyleId;
@@ -28,6 +30,15 @@ export type GenerateRoofOptions = {
   /** Keep only voxels with at least one empty 6-neighbor (hollow shell). */
   hollow?: boolean;
   color: number;
+  /**
+   * Coplanar voxel positions for the roof base (e.g. circle / square stroke). Boundary metrics use the
+   * convex hull of these cells in plane UV space.
+   */
+  footprintFromShape?: [number, number, number][];
+  /** Reverse hull winding (matches polygon “Flip” for shed / asymmetry). */
+  footprintWindingFlip?: boolean;
+  /** Style `custom_profile`: piecewise-linear height vs inward distance (see `roofProfileCurve`). */
+  profileCurve?: RoofProfilePoint[];
 };
 
 const ROOF_NEIGHBOR_DXYZ: [number, number, number][] = [
@@ -79,6 +90,43 @@ function integerRoofStep(
     step[0] * placementNormal[0] + step[1] * placementNormal[1] + step[2] * placementNormal[2];
   if (pdot < 0) step[ax] = -step[ax]!;
   return step;
+}
+
+function convexHull2DUnique(uvIn: [number, number][]): [number, number][] {
+  const seen = new Set<string>();
+  const pts: [number, number][] = [];
+  for (const p of uvIn) {
+    const k = `${p[0]},${p[1]}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    pts.push(p);
+  }
+  if (pts.length <= 1) return pts;
+  pts.sort((a, b) => (a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1]));
+  const cross = (o: [number, number], a: [number, number], b: [number, number]) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: [number, number][] = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+  const upper: [number, number][] = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i]!;
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
+function normalFromPlacementFace(placementNormal: FaceNormal): THREE.Vector3 {
+  return new THREE.Vector3(placementNormal[0], placementNormal[1], placementNormal[2]).normalize();
 }
 
 function planeUnitNormalFromPoints(points: [number, number, number][]): THREE.Vector3 | null {
@@ -281,7 +329,8 @@ function dualSlopeFrac(dNorm: number, breakAt: number, knee: number): number {
 }
 
 /**
- * Coplanar footprint (4+ vertices), extruded / built upward along `placementNormal` (axis-aligned hint).
+ * Coplanar footprint (polygon corners or `options.footprintFromShape`), extruded / built upward along
+ * `placementNormal` (axis-aligned hint).
  */
 export function generateRoofVoxels(
   points: [number, number, number][],
@@ -289,20 +338,51 @@ export function generateRoofVoxels(
   options: GenerateRoofOptions
 ): Map<string, Voxel> {
   const out = new Map<string, Voxel>();
-  if (points.length < 4) return finalizeRoofMap(out, options.hollow);
+  const rawShape = options.footprintFromShape;
+  let footprint: [number, number, number][];
+  let n: THREE.Vector3;
+  let verts2D: [number, number][];
+  let footprintUV: [number, number][];
 
-  const footprint = getCoplanarPolygonFillPositions(points);
-  if (footprint === null || footprint.length === 0) return finalizeRoofMap(out, options.hollow);
-
-  const n = planeUnitNormalFromPoints(points);
-  if (!n) return finalizeRoofMap(out, options.hollow);
+  if (rawShape && rawShape.length > 0) {
+    const keySet = new Set<string>();
+    footprint = [];
+    for (const p of rawShape) {
+      const k = coordKey(p[0], p[1], p[2]);
+      if (keySet.has(k)) continue;
+      keySet.add(k);
+      footprint.push(p);
+    }
+    if (footprint.length === 0) return finalizeRoofMap(out, options.hollow);
+    n = normalFromPlacementFace(placementNormal);
+    const { uAxis, vAxis } = getDropUVAxes(n);
+    footprintUV = footprint.map((p) => toUV(p, uAxis, vAxis));
+    verts2D = convexHull2DUnique(footprintUV);
+    if (verts2D.length < 3) {
+      const bb = bboxFromFootprintUV(footprintUV);
+      verts2D = [
+        [bb.minU, bb.minV],
+        [bb.maxU, bb.minV],
+        [bb.maxU, bb.maxV],
+        [bb.minU, bb.maxV]
+      ];
+    }
+    if (options.footprintWindingFlip) verts2D = [...verts2D].reverse();
+  } else {
+    if (points.length < 4) return finalizeRoofMap(out, options.hollow);
+    const fp = getCoplanarPolygonFillPositions(points);
+    if (fp === null || fp.length === 0) return finalizeRoofMap(out, options.hollow);
+    footprint = fp;
+    const pn = planeUnitNormalFromPoints(points);
+    if (!pn) return finalizeRoofMap(out, options.hollow);
+    n = pn;
+    const { uAxis, vAxis } = getDropUVAxes(n);
+    verts2D = points.map((p) => toUV(p, uAxis, vAxis));
+    footprintUV = footprint.map((p) => toUV(p, uAxis, vAxis));
+  }
 
   const step = integerRoofStep(n.x, n.y, n.z, placementNormal);
-  const { uAxis, vAxis } = getDropUVAxes(n);
   const pv = plasticVoxel(options.color);
-
-  const verts2D = points.map((p) => toUV(p, uAxis, vAxis));
-  const footprintUV = footprint.map((p) => toUV(p, uAxis, vAxis));
 
   if (options.style === 'flat') {
     const t = Math.max(1, Math.min(64, Math.floor(options.thickness)));
@@ -346,6 +426,25 @@ export function generateRoofVoxels(
     return finalizeRoofMap(out, options.hollow);
   }
 
+  if (options.style === 'custom_profile') {
+    let dMax = 0;
+    for (const uv of footprintUV) {
+      dMax = Math.max(dMax, minDistToPolygonBoundary2D(uv, verts2D));
+    }
+    if (dMax < 1e-9) dMax = 1;
+    const curve = options.profileCurve;
+    for (let i = 0; i < footprint.length; i++) {
+      const p = footprint[i]!;
+      const uv = footprintUV[i]!;
+      const d = minDistToPolygonBoundary2D(uv, verts2D);
+      const t = d / dMax;
+      const yn = sampleRoofProfileCurve(curve ?? [], t);
+      const layers = columnLayersShedGable(yn, H);
+      placeColumn(out, p, step, layers, pv, 0);
+    }
+    return finalizeRoofMap(out, options.hollow);
+  }
+
   if (options.style === 'cone') {
     let cu = 0,
       cv = 0;
@@ -373,7 +472,7 @@ export function generateRoofVoxels(
   }
 
   if (options.style === 'shed') {
-    const basis = shedBasis(verts2D, footprintUV, options.shedEdgeIndex, points.length);
+    const basis = shedBasis(verts2D, footprintUV, options.shedEdgeIndex, verts2D.length);
     if (!basis) return finalizeRoofMap(out, options.hollow);
     const { Vi, perp, tMin, span } = basis;
     for (let i = 0; i < footprint.length; i++) {
@@ -388,7 +487,7 @@ export function generateRoofVoxels(
   }
 
   if (options.style === 'saltbox') {
-    const basis = shedBasis(verts2D, footprintUV, options.shedEdgeIndex, points.length);
+    const basis = shedBasis(verts2D, footprintUV, options.shedEdgeIndex, verts2D.length);
     if (!basis) return finalizeRoofMap(out, options.hollow);
     const { Vi, perp, tMin, span } = basis;
     /**

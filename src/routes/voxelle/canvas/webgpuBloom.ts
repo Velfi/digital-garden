@@ -511,6 +511,9 @@ export async function createWebGPUBloomPipeline(
     r.outputColorSpace = prevCs;
   }
 
+  let lastBloomCw = -1;
+  let lastBloomCh = -1;
+
   return {
     renderPipeline,
     bloomPass,
@@ -523,6 +526,9 @@ export async function createWebGPUBloomPipeline(
     setSize(nw: number, nh: number, pr: number) {
       const cw = Math.max(1, Math.floor(nw * pr));
       const ch = Math.max(1, Math.floor(nh * pr));
+      if (cw === lastBloomCw && ch === lastBloomCh) return;
+      lastBloomCw = cw;
+      lastBloomCh = ch;
       sceneRenderTarget.setSize(cw, ch, 1);
       bloomSourceRenderTarget.setSize(cw, ch, 1);
       renderPipeline.needsUpdate = true;

@@ -4,7 +4,7 @@
 import type { Intersection } from 'three';
 import type { FaceNormal } from '../../store/core';
 import type { GeneratorPrimaryPointerUpDeps, GeneratorRmbDeps } from './generatorPointer';
-import type { MoodPointerUpDeps } from './moodPointer';
+import type { MoodFaceClickDeps } from './moodPointer';
 
 export interface VoxelGeneratorRmbBridge {
   getTool: () => string;
@@ -118,7 +118,7 @@ export function buildVoxelGeneratorPrimaryPointerUpDeps(
   };
 }
 
-export function buildVoxelMoodPointerUpDeps(
+export function buildVoxelMoodFaceClickDeps(
   b: Pick<
     VoxelGeneratorPrimaryPointerUpBridge,
     | 'getTool'
@@ -128,7 +128,7 @@ export function buildVoxelMoodPointerUpDeps(
     | 'getFaceNormalFromHit'
     | 'scheduleRender'
   >
-): MoodPointerUpDeps {
+): MoodFaceClickDeps {
   return {
     tool: b.getTool(),
     addPanelOpen: b.getAddPanelOpen(),

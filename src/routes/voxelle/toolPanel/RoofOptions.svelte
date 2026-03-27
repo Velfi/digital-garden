@@ -1,6 +1,8 @@
 <script lang="ts">
+  import RoofProfileCurveEditor from './RoofProfileCurveEditor.svelte';
   import {
     tool,
+    roofSelectionMethod,
     roofStyle,
     roofHeight,
     roofThickness,
@@ -41,6 +43,7 @@
 
   const roofShowThickness = $derived($roofStyle === 'flat' || $roofStyle === 'flat_parapet');
   const roofShowHeight = $derived($roofStyle !== 'flat' && $roofStyle !== 'flat_parapet');
+  const roofShowProfileEditor = $derived($roofStyle === 'custom_profile');
   const roofShowRidge = $derived(
     $roofStyle === 'gable' ||
       $roofStyle === 'hip' ||
@@ -59,6 +62,35 @@
 {#if $tool === 'roof'}
   <section class="tool-panel-section" aria-label="Roof">
     <div class="tool-panel-row tool-panel-row--wide-label">
+      <span class="tool-panel-label">Footprint</span>
+      <div class="stroke-buttons roof-footprint-btns" role="group" aria-label="Roof footprint shape">
+        <button
+          type="button"
+          class:active={$roofSelectionMethod === 'polygon'}
+          onclick={() => roofSelectionMethod.set('polygon')}
+          title="Click corners (4+), then Done"
+        >
+          Poly
+        </button>
+        <button
+          type="button"
+          class:active={$roofSelectionMethod === 'circle'}
+          onclick={() => roofSelectionMethod.set('circle')}
+          title="Drag on a face for a filled disk (like Draw → circle)"
+        >
+          Circle
+        </button>
+        <button
+          type="button"
+          class:active={$roofSelectionMethod === 'square'}
+          onclick={() => roofSelectionMethod.set('square')}
+          title="Drag on a face for a filled rectangle (like Draw → plane)"
+        >
+          Square
+        </button>
+      </div>
+    </div>
+    <div class="tool-panel-row tool-panel-row--wide-label">
       <span class="tool-panel-label">Style</span>
       <select
         class="tool-panel-select"
@@ -69,6 +101,7 @@
         <option value="flat">Flat</option>
         <option value="flat_parapet">Flat + parapet</option>
         <option value="pyramid">Pyramid</option>
+        <option value="custom_profile">Custom (curve)</option>
         <option value="cone">Cone (turret)</option>
         <option value="shed">Shed</option>
         <option value="saltbox">Saltbox</option>
@@ -148,6 +181,9 @@
         />
         <span class="tool-panel-value">{$roofHeight}</span>
       </div>
+    {/if}
+    {#if roofShowProfileEditor}
+      <RoofProfileCurveEditor />
     {/if}
     {#if roofShowWall}
       <div class="tool-panel-row">
@@ -285,5 +321,13 @@
   :global(.roof-shed-edge-value) {
     min-width: 1.25rem;
     text-align: center;
+  }
+
+  :global(.roof-footprint-btns) {
+    flex: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    justify-content: flex-end;
   }
 </style>

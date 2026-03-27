@@ -512,6 +512,16 @@ describe('selection store actions', () => {
     expect(get(selection).size).toBe(0);
   });
 
+  it('shrinkSelection peels when surrounded by unselected solids', () => {
+    const positions: [number, number, number, number][] = [];
+    for (let x = 0; x < 3; x++)
+      for (let y = 0; y < 3; y++) for (let z = 0; z < 3; z++) positions.push([x, y, z, 0xff0000]);
+    voxels.set(makeVoxels(positions));
+    selection.set(makeVoxels([[1, 1, 1, 0xff0000]]));
+    shrinkSelection();
+    expect(get(selection).size).toBe(0);
+  });
+
   it('hollowOut removes interior voxels', () => {
     const positions: [number, number, number, number][] = [];
     for (let x = 0; x < 3; x++)

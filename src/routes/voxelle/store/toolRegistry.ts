@@ -27,7 +27,7 @@ const DESCRIPTORS: ToolDescriptor[] = [
   {
     id: 'voxel',
     category: 'draw',
-    label: 'Voxel',
+    label: 'Add',
     title: 'Place voxels',
     defaultPane: 'draw'
   },

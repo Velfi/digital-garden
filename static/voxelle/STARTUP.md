@@ -5,7 +5,7 @@ Voxelle is a 3D building and sculpting tool made of little cubes (voxels).
 ## Quick Start
 
 1. In the sidebar, choose a tool:
-   - **Voxel** to add blocks
+   - **Add** to place blocks
    - **Remove** to erase blocks
    - **Paint** to recolor blocks
 2. Click or drag in the canvas to edit.
@@ -15,15 +15,15 @@ Voxelle is a 3D building and sculpting tool made of little cubes (voxels).
 
 ## Most Useful Controls
 
-- **Draw tab**: precise building tools
+- **Draw tab**: **Add**, **Remove**, **Paint**, and **Selection** tools (**Select** / **Stamp** / **Punch**)
 - **Clay tab**: looser sculpting tools
 - **Fly tab**: first-person camera (WASD, E/Q, Shift, mouse)
 - **F**: enter fullscreen mode. Press F or Escape to exit.
-- **Escape**: close dialogs, exit fly mode, cancel in-progress polygon/rope/cuboid actions
+- **Escape**: close dialogs, exit fly mode, cancel in-progress polygon, rope, or **Solid**-shape strokes
 
 ## Good First Workflow
 
-1. Block out the shape with **Voxel**.
+1. Block out the shape with **Add**.
 2. Clean up with **Remove**.
 3. Color with **Paint** or sample with **Eyedropper**.
 4. Use **Select** + **Stamp** to duplicate repeated parts.

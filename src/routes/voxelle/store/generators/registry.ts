@@ -13,7 +13,7 @@ export type GeneratorToolId = (typeof GENERATOR_TOOLS)[number];
 
 const GENERATOR_SET = new Set<string>(GENERATOR_TOOLS);
 
-/** Face-click generators: primary click applies on pointerup (no stroke drag). */
+/** Face-click generators: primary click applies on pointerdown (no stroke drag). */
 export const GENERATOR_FACE_CLICK_TOOLS = [
   'rocks',
   'grass',

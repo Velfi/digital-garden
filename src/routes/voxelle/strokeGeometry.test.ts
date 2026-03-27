@@ -3,24 +3,26 @@ import {
   thickenPathForStroke,
   thickenPath,
   thickenPathTapered,
-  puffPath,
+  expandPathWithBrushStamps,
   createSeededRng,
   getBresenham3DLine,
   getAxisAlignedLine,
   projectPointOntoPlane,
   getAxisAlignedPlaneFromNormal,
   getAxisAlignedCircleFromNormal,
-  getAxisAlignedCylindroid,
+  getAxisAlignedCylinder,
   getAxisAlignedCuboid,
   getPolygonVoxels,
-  getPolygonoidBasePositions,
-  getPolygonoidStrokeVoxels,
+  getSolidPolygonBasePositions,
+  getSolidPolygonStrokeVoxels,
   getRayDirectionPath,
   getRopeCurveVoxels,
   applyBrushAlongPath,
   getSprayDirectionVector,
-  mergeAirbrushSphereDropletIntoSeen,
-  mergeAirbrushCubeDropletIntoSeen
+  mergeSphereStampIntoSeen,
+  mergeCubeStampIntoSeen,
+  mergePyramidStampIntoSeen,
+  pyramidPath
 } from './strokeGeometry';
 import type { StrokeMode } from './store/core';
 
@@ -28,22 +30,22 @@ const defaultParams = {
   strokeMode: 'line' as StrokeMode,
   clayBrushRadius: 1,
   branchTaper: false,
-  airbrushRadius: 1,
-  airbrushScatter: 0,
-  airbrushRadiusRange: false,
-  airbrushRadiusMin: 0,
-  airbrushRadiusMax: 2
+  sprayRadius: 1,
+  sprayScatter: 0,
+  sprayRadiusRange: false,
+  sprayRadiusMin: 0,
+  sprayRadiusMax: 2
 };
 
 describe('thickenPathForStroke', () => {
-  it('clay modes ignore stroke mode (e.g. airbrush) and use clay brush logic', () => {
+  it('clay modes ignore stroke mode (e.g. spray) and use clay brush logic', () => {
     // Bug: stroke mode was checked before clay mode, so clay tools (melt, smooth, etc.)
-    // incorrectly used airbrush spherical expansion when stroke mode was "airbrush".
+    // incorrectly used Spray spherical expansion when strokeMode was still set to spray.
     // Melt/smooth/bulk use surface-plane thickening: default Y layer, cube r=1 => 3×3.
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const clayResult = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      strokeMode: 'airbrush',
+      strokeMode: 'spray',
       clayMode: 'melt',
       clayBrushRadius: 1
     });
@@ -51,43 +53,56 @@ describe('thickenPathForStroke', () => {
     expect(new Set(clayResult.map(([, y]) => y)).size).toBe(1);
   });
 
-  it('stroke mode airbrush applies when not using clay', () => {
+  it('stroke mode spray applies when not using clay', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
-    const airbrushResult = thickenPathForStroke(singlePoint, {
+    const sprayResult = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      strokeMode: 'airbrush',
+      strokeMode: 'spray',
       clayBrushRadius: 1
     });
-    // Airbrush uses puffPath (sphere); r=1 gives 7 voxels (center + 6 face neighbors)
-    expect(airbrushResult.length).toBe(7);
+    // Spray sphere: expandPathWithBrushStamps(..., 'sphere'); r=1 gives 7 voxels (center + 6 face neighbors)
+    expect(sprayResult.length).toBe(7);
   });
 
-  it('airbrush cube mode uses Chebyshev cube per droplet', () => {
+  it('spray cube mode uses Chebyshev cube per droplet', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const cubeAir = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      strokeMode: 'airbrush',
+      strokeMode: 'spray',
       clayBrushRadius: 1,
-      airbrushBrushShape: 'cube',
-      airbrushRadius: 1
+      sprayBrushShape: 'cube',
+      sprayRadius: 1
     });
     expect(cubeAir.length).toBe(27); // same as thickenPath(singlePoint, 1)
   });
 
-  it('airbrush constrain to plane does not flatten brush shape (path is constrained in canvas)', () => {
+  it('spray pyramid mode matches draw pyramidPath per droplet', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const expected = pyramidPath(singlePoint, 1);
+    const pyramidAir = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      strokeMode: 'spray',
+      clayBrushRadius: 1,
+      sprayBrushShape: 'pyramid',
+      sprayRadius: 1
+    });
+    expect(sortPositionKeys(pyramidAir)).toEqual(sortPositionKeys(expected));
+  });
+
+  it('spray constrain to plane does not flatten brush shape (path is constrained in canvas)', () => {
     const path: [number, number, number][] = [[1, 2, 3]];
     const unconstrained = thickenPathForStroke(path, {
       ...defaultParams,
-      strokeMode: 'airbrush',
-      airbrushRadius: 1
+      strokeMode: 'spray',
+      sprayRadius: 1
     });
     expect(unconstrained.length).toBe(7);
     // With constrain to plane, brush shape stays spherical; only path is constrained (in VoxelCanvas).
     const constrainedY = thickenPathForStroke(path, {
       ...defaultParams,
-      strokeMode: 'airbrush',
-      airbrushRadius: 1,
-      airbrushConstrainToPlane: true,
+      strokeMode: 'spray',
+      sprayRadius: 1,
+      sprayConstrainToPlane: true,
       planeAxis: 1
     });
     expect(constrainedY.length).toBe(7);
@@ -95,9 +110,9 @@ describe('thickenPathForStroke', () => {
     expect(new Set(ys).size).toBeGreaterThan(1); // sphere has voxels off the plane
     const constrainedX = thickenPathForStroke(path, {
       ...defaultParams,
-      strokeMode: 'airbrush',
-      airbrushRadius: 1,
-      airbrushConstrainToPlane: true,
+      strokeMode: 'spray',
+      sprayRadius: 1,
+      sprayConstrainToPlane: true,
       planeAxis: 0
     });
     expect(constrainedX.length).toBe(7);
@@ -105,7 +120,7 @@ describe('thickenPathForStroke', () => {
     expect(new Set(xs).size).toBeGreaterThan(1);
   });
 
-  // Regression: switching to Clay after using a selection method (line, plane, airbrush, etc.)
+  // Regression: switching to Clay after using a selection method (line, plane, spray, etc.)
   // must use clay brush, not the previous selection method. Callers must pass clayMode when tool is clay.
   it('clay mode with selection method line uses clay brush not draw brush', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
@@ -183,22 +198,22 @@ describe('thickenPathForStroke', () => {
       clayBrushRadius: 1,
       clayBrushShape: 'sphere'
     });
-    expect(result).toEqual(puffPath(singlePoint, 1, 0));
+    expect(result).toEqual(expandPathWithBrushStamps(singlePoint, 'sphere', 1, 0));
     expect(result.length).toBe(7);
   });
 
   it('without clayMode, selection method determines behavior (callers must pass clayMode when in clay)', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
-    const withAirbrush = thickenPathForStroke(singlePoint, {
+    const withSpray = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      strokeMode: 'airbrush',
+      strokeMode: 'spray',
       clayBrushRadius: 1
       // clayMode intentionally omitted
     });
-    expect(withAirbrush.length).toBe(7); // airbrush sphere
+    expect(withSpray.length).toBe(7); // spray sphere
     const withClay = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      strokeMode: 'airbrush',
+      strokeMode: 'spray',
       clayBrushRadius: 1,
       clayMode: 'melt'
     });
@@ -314,7 +329,7 @@ describe('thickenPathForStroke', () => {
   });
 });
 
-describe('puffPath with seeded RNG', () => {
+describe('expandPathWithBrushStamps (sphere) with seeded RNG', () => {
   it('same seed and path produce identical output', () => {
     const positions: [number, number, number][] = [
       [0, 0, 0],
@@ -323,9 +338,9 @@ describe('puffPath with seeded RNG', () => {
     ];
     const seed = 12345;
     const rng = createSeededRng(seed);
-    const a = puffPath(positions, 1, 2, undefined, undefined, rng);
+    const a = expandPathWithBrushStamps(positions, 'sphere', 1, 2, undefined, undefined, rng);
     const rng2 = createSeededRng(seed);
-    const b = puffPath(positions, 1, 2, undefined, undefined, rng2);
+    const b = expandPathWithBrushStamps(positions, 'sphere', 1, 2, undefined, undefined, rng2);
     expect(a).toEqual(b);
   });
 
@@ -334,8 +349,8 @@ describe('puffPath with seeded RNG', () => {
       [0, 0, 0],
       [1, 0, 0]
     ];
-    const out1 = puffPath(positions, 1, 2, undefined, undefined, createSeededRng(1));
-    const out2 = puffPath(positions, 1, 2, undefined, undefined, createSeededRng(2));
+    const out1 = expandPathWithBrushStamps(positions, 'sphere', 1, 2, undefined, undefined, createSeededRng(1));
+    const out2 = expandPathWithBrushStamps(positions, 'sphere', 1, 2, undefined, undefined, createSeededRng(2));
     expect(out1).not.toEqual(out2);
   });
 });
@@ -598,14 +613,14 @@ describe('getAxisAlignedCuboid', () => {
   });
 });
 
-describe('getAxisAlignedCylindroid', () => {
+describe('getAxisAlignedCylinder', () => {
   const nZ = { x: 0, y: 0, z: 1 };
   const center: [number, number, number] = [0, 0, 0];
   const edge: [number, number, number] = [2, 0, 0];
 
   it('depth 0 matches circle in plane', () => {
     const circle = getAxisAlignedCircleFromNormal(center, edge, nZ);
-    const cyl = getAxisAlignedCylindroid(center, edge, nZ, 0, false);
+    const cyl = getAxisAlignedCylinder(center, edge, nZ, 0, 0);
     expect(cyl).toEqual(circle);
   });
 
@@ -614,7 +629,7 @@ describe('getAxisAlignedCylindroid', () => {
     const d1 = d0.map(([x, y, z]) => [x, y, z + 1] as [number, number, number]);
     const merged = [...d0, ...d1];
     const seen = new Set(merged.map((p) => `${p[0]},${p[1]},${p[2]}`));
-    const cyl = getAxisAlignedCylindroid(center, edge, nZ, 1, false);
+    const cyl = getAxisAlignedCylinder(center, edge, nZ, 1, 0);
     expect(cyl.length).toBe(seen.size);
     for (const p of cyl) {
       expect(seen.has(`${p[0]},${p[1]},${p[2]}`)).toBe(true);
@@ -622,12 +637,18 @@ describe('getAxisAlignedCylindroid', () => {
   });
 
   it('cone depth 1 adds only axis tip on second layer', () => {
-    const cyl = getAxisAlignedCylindroid(center, edge, nZ, 1, true);
+    const cyl = getAxisAlignedCylinder(center, edge, nZ, 1, 100);
     const onTipZ = cyl.filter((p) => p[2] === 1);
     expect(onTipZ).toEqual([[0, 0, 1]]);
     expect(cyl.length).toBeLessThan(
-      getAxisAlignedCylindroid(center, edge, nZ, 1, false).length
+      getAxisAlignedCylinder(center, edge, nZ, 1, 0).length
     );
+  });
+
+  it('50% taper keeps wider tip than full cone for depth 1', () => {
+    const full = getAxisAlignedCylinder(center, edge, nZ, 1, 100);
+    const half = getAxisAlignedCylinder(center, edge, nZ, 1, 50);
+    expect(half.length).toBeGreaterThan(full.length);
   });
 });
 
@@ -675,10 +696,10 @@ describe('getPolygonVoxels', () => {
 
 const nY = { x: 0, y: 1, z: 0 };
 
-describe('getPolygonoidBasePositions', () => {
+describe('getSolidPolygonBasePositions', () => {
   it('returns null for fewer than 2 points', () => {
-    expect(getPolygonoidBasePositions([], [0, 0, 0], nY)).toBeNull();
-    expect(getPolygonoidBasePositions([[0, 0, 0]], [0, 0, 0], nY)).toBeNull();
+    expect(getSolidPolygonBasePositions([], [0, 0, 0], nY)).toBeNull();
+    expect(getSolidPolygonBasePositions([[0, 0, 0]], [0, 0, 0], nY)).toBeNull();
   });
 
   it('fills silhouette of non-coplanar loop projected onto first-click plane (+Y)', () => {
@@ -688,7 +709,7 @@ describe('getPolygonoidBasePositions', () => {
       [0, 3, 0],
       [0, 0, 3]
     ];
-    const base = getPolygonoidBasePositions(tetra, tetra[0]!, nY);
+    const base = getSolidPolygonBasePositions(tetra, tetra[0]!, nY);
     expect(base).not.toBeNull();
     expect(base!.length).toBeGreaterThan(0);
     for (const [, y] of base!) expect(y + 0).toBe(0);
@@ -701,14 +722,14 @@ describe('getPolygonoidBasePositions', () => {
       [2, 0, 2],
       [0, 0, 2]
     ];
-    const base = getPolygonoidBasePositions(sq, sq[0]!, nY);
+    const base = getSolidPolygonBasePositions(sq, sq[0]!, nY);
     expect(base).not.toBeNull();
     expect(base!.length).toBeGreaterThan(0);
     for (const [, y] of base!) expect(y + 0).toBe(0);
   });
 });
 
-describe('getPolygonoidStrokeVoxels', () => {
+describe('getSolidPolygonStrokeVoxels', () => {
   const unitSquareY0: [number, number, number][] = [
     [0, 0, 0],
     [1, 0, 0],
@@ -718,14 +739,14 @@ describe('getPolygonoidStrokeVoxels', () => {
   const sqOrigin = unitSquareY0[0]!;
 
   it('depth 0 returns base only', () => {
-    const base = getPolygonoidBasePositions(unitSquareY0, sqOrigin, nY)!;
-    const v = getPolygonoidStrokeVoxels(unitSquareY0, sqOrigin, nY, 0, false);
+    const base = getSolidPolygonBasePositions(unitSquareY0, sqOrigin, nY)!;
+    const v = getSolidPolygonStrokeVoxels(unitSquareY0, sqOrigin, nY, 0, false);
     expect(v.length).toBe(base.length);
   });
 
   it('extrudes unit square by one layer along +Y', () => {
-    const base = getPolygonoidBasePositions(unitSquareY0, sqOrigin, nY)!;
-    const v = getPolygonoidStrokeVoxels(unitSquareY0, sqOrigin, nY, 1, false);
+    const base = getSolidPolygonBasePositions(unitSquareY0, sqOrigin, nY)!;
+    const v = getSolidPolygonStrokeVoxels(unitSquareY0, sqOrigin, nY, 1, false);
     expect(v.length).toBe(base.length * 2);
     const byY = new Map<number, number>();
     for (const [, y] of v) byY.set(y, (byY.get(y) ?? 0) + 1);
@@ -734,8 +755,8 @@ describe('getPolygonoidStrokeVoxels', () => {
   });
 
   it('extrusion sign follows initial normal (+Y vs −Y)', () => {
-    const vUp = getPolygonoidStrokeVoxels(unitSquareY0, sqOrigin, nY, 1, false);
-    const vDown = getPolygonoidStrokeVoxels(unitSquareY0, sqOrigin, { x: 0, y: -1, z: 0 }, 1, false);
+    const vUp = getSolidPolygonStrokeVoxels(unitSquareY0, sqOrigin, nY, 1, false);
+    const vDown = getSolidPolygonStrokeVoxels(unitSquareY0, sqOrigin, { x: 0, y: -1, z: 0 }, 1, false);
     const maxUp = Math.max(...vUp.map(([, y]) => y));
     const minDown = Math.min(...vDown.map(([, y]) => y));
     expect(maxUp).toBeGreaterThan(0);
@@ -750,8 +771,8 @@ describe('getPolygonoidStrokeVoxels', () => {
       [0, 0, 4]
     ];
     const o = big[0]!;
-    const solid = getPolygonoidStrokeVoxels(big, o, nY, 4, false);
-    const hollow = getPolygonoidStrokeVoxels(big, o, nY, 4, true, 1);
+    const solid = getSolidPolygonStrokeVoxels(big, o, nY, 4, false);
+    const hollow = getSolidPolygonStrokeVoxels(big, o, nY, 4, true, 1);
     expect(hollow.length).toBeGreaterThan(0);
     expect(hollow.length).toBeLessThan(solid.length);
   });
@@ -847,37 +868,56 @@ function sortPositionKeys(pos: [number, number, number][]): string[] {
   return pos.map(([a, b, c]) => `${a},${b},${c}`).sort();
 }
 
-describe('airbrush incremental droplet merge', () => {
-  it('incremental sphere merge matches puffPath (no scatter/range)', () => {
+describe('spray incremental droplet merge', () => {
+  it('incremental sphere merge matches expandPathWithBrushStamps sphere (no scatter/range)', () => {
     const path: [number, number, number][] = [
       [0, 0, 0],
       [2, 0, 0],
       [4, 0, 0]
     ];
-    const full = puffPath(path, 1.5, 0);
+    const full = expandPathWithBrushStamps(path, 'sphere', 1.5, 0);
     const seen = new Set<string>();
     const out: [number, number, number][] = [];
     for (const p of path) {
-      mergeAirbrushSphereDropletIntoSeen(p[0], p[1], p[2], 1.5, seen, out);
+      mergeSphereStampIntoSeen(p[0], p[1], p[2], 1.5, seen, out);
     }
     expect(sortPositionKeys(out)).toEqual(sortPositionKeys(full));
   });
 
-  it('incremental cube merge matches airbrush cube thickenPathForStroke', () => {
+  it('incremental cube merge matches spray cube thickenPathForStroke', () => {
     const path: [number, number, number][] = [
       [0, 0, 0],
       [3, 0, 0]
     ];
     const full = thickenPathForStroke(path, {
       ...defaultParams,
-      strokeMode: 'airbrush',
-      airbrushBrushShape: 'cube',
-      airbrushRadius: 2
+      strokeMode: 'spray',
+      sprayBrushShape: 'cube',
+      sprayRadius: 2
     });
     const seen = new Set<string>();
     const out: [number, number, number][] = [];
     for (const p of path) {
-      mergeAirbrushCubeDropletIntoSeen(p[0], p[1], p[2], 2, seen, out);
+      mergeCubeStampIntoSeen(p[0], p[1], p[2], 2, seen, out);
+    }
+    expect(sortPositionKeys(out)).toEqual(sortPositionKeys(full));
+  });
+
+  it('incremental pyramid merge matches spray pyramid thickenPathForStroke', () => {
+    const path: [number, number, number][] = [
+      [0, 0, 0],
+      [3, 0, 0]
+    ];
+    const full = thickenPathForStroke(path, {
+      ...defaultParams,
+      strokeMode: 'spray',
+      sprayBrushShape: 'pyramid',
+      sprayRadius: 2
+    });
+    const seen = new Set<string>();
+    const out: [number, number, number][] = [];
+    for (const p of path) {
+      mergePyramidStampIntoSeen(p[0], p[1], p[2], 2, seen, out);
     }
     expect(sortPositionKeys(out)).toEqual(sortPositionKeys(full));
   });

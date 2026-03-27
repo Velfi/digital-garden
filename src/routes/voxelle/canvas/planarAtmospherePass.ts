@@ -424,7 +424,7 @@ export class SunShaftsPass extends ShaderPass {
         enabled: { value: 0 },
         sunScreenUv: { value: new THREE.Vector2(0.5, 0.2) },
         shaftColor: { value: new THREE.Color(0xc8d4e0) },
-        shaftStrength: { value: 0.7 },
+        shaftStrength: { value: 4.0 },
         shaftDecay: { value: 0.92 },
         shaftDensity: { value: 0.8 },
         shaftWeight: { value: 0.6 },

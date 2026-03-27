@@ -166,8 +166,8 @@ export function diskStrokeBounds(
   };
 }
 
-/** Outer AABB of cylindroid extrusion (cone fits inside the same box as a cylinder with the base radius). */
-export function cylindroidStrokeBounds(
+/** Outer AABB of cylinder extrusion (cone fits inside the same box as a cylinder with the base radius). */
+export function cylinderStrokeBounds(
   center: [number, number, number],
   edge: [number, number, number],
   faceNormal: Vec3Like,
@@ -197,14 +197,14 @@ export function cylindroidStrokeBounds(
   return out;
 }
 
-/** Upper-bound voxel count inside `cylindroidStrokeBounds` (preview LOD threshold; not exact fill count). */
-export function cylindroidSolidVoxelCount(
+/** Upper-bound voxel count inside cylinderStrokeBounds (preview LOD threshold; not exact fill count). */
+export function cylinderSolidVoxelCount(
   center: [number, number, number],
   edge: [number, number, number],
   faceNormal: Vec3Like,
   depth: number
 ): number {
-  const box = cylindroidStrokeBounds(center, edge, faceNormal, depth);
+  const box = cylinderStrokeBounds(center, edge, faceNormal, depth);
   const wx = box.maxX - box.minX + 1;
   const wy = box.maxY - box.minY + 1;
   const wz = box.maxZ - box.minZ + 1;
@@ -212,10 +212,10 @@ export function cylindroidSolidVoxelCount(
 }
 
 /**
- * Oriented cylinder/cone proxy for large cylindroid stroke preview (meshManager).
+ * Oriented cylinder/cone proxy for large cylinder stroke preview (meshManager).
  * Local +Y is the axis from base (radiusBottom at −Y) toward tip (radiusTop at +Y).
  */
-export type CylindroidPreviewVolume = {
+export type CylinderPreviewVolume = {
   center: [number, number, number];
   height: number;
   radiusBottom: number;
@@ -227,15 +227,15 @@ export type CylindroidPreviewVolume = {
 
 const MIN_PREVIEW_CYLINDER_RADIUS = 0.25;
 
-/** Build a right cylinder or cone matching `cylindroidStrokeBounds` extent and base disk. */
-export function buildCylindroidPreviewVolume(
+/** Build a right cylinder or tapered solid matching cylinderStrokeBounds extent and base disk. */
+export function buildCylinderPreviewVolume(
   center: [number, number, number],
   edge: [number, number, number],
   faceNormal: Vec3Like,
   bounds: SelectionBounds,
   depth: number,
-  cone: boolean
-): CylindroidPreviewVolume {
+  taperPct: number
+): CylinderPreviewVolume {
   const ax = Math.abs(faceNormal.x);
   const ay = Math.abs(faceNormal.y);
   const az = Math.abs(faceNormal.z);
@@ -269,7 +269,7 @@ export function buildCylindroidPreviewVolume(
   const step = comp > 0 ? 1 : -1;
   const layers = Math.abs(depth);
   const dir = depth > 0 ? step : -step;
-  const taperCone = cone && layers > 0;
+  const taper = Math.min(100, Math.max(0, taperPct));
 
   const axis: [number, number, number] = [0, 0, 0];
   axis[fixedAxis] = dir > 0 ? 1 : -1;
@@ -282,11 +282,13 @@ export function buildCylindroidPreviewVolume(
   const c: [number, number, number] = [center[0], center[1], center[2]];
   c[fixedAxis] = center[fixedAxis] + (dir * layers) / 2;
 
+  const radiusTop = R * (1 - taper / 100);
+
   return {
     center: c,
     height: Math.max(height, MIN_PREVIEW_CYLINDER_RADIUS),
     radiusBottom: R,
-    radiusTop: taperCone ? 0 : R,
+    radiusTop: Math.max(radiusTop, 0),
     axisX: axis[0],
     axisY: axis[1],
     axisZ: axis[2]
@@ -440,7 +442,7 @@ export function expandStrokePreviewBoundsAroundCenter(
 
 /**
  * Conservative expansion for draw brush on plane/cuboid/line preview.
- * Clay / airbrush / wall etc. should not use bbox preview path.
+ * Clay / Spray / wall etc. should not use bbox preview path.
  */
 export function inflateStrokePreviewBoundsForDrawBrush(
   b: SelectionBounds,
