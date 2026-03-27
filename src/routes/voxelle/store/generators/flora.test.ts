@@ -65,6 +65,12 @@ describe('flora generator', () => {
     expect(pos.length).toBe(1);
   });
 
+  it('supports even girth cross-sections with half-step girth', () => {
+    const o = opts({ height: 1, girth: 0.5, wobble: 0, taper: 0 });
+    const pos = getFloraPositions(42, [0, 0, 0], [0, 1, 0], o);
+    expect(pos.length).toBe(4);
+  });
+
   it('multi-stem produces more voxels than single when clustered', () => {
     const single = getFloraPositions(7, [0, 0, 0], [0, 1, 0], opts({ stemCount: 1, height: 8 }));
     const multi = getFloraPositions(

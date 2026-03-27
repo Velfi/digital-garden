@@ -87,15 +87,15 @@
           type="range"
           min="0"
           max="4"
-          step="1"
+          step="0.5"
           value={$floraGirth}
           oninput={(e) => {
             floraGirth.set(Number((e.target as HTMLInputElement).value));
             floraMarkCustom();
           }}
-          title="Cross-section radius in tangent plane (0–4)"
+          title="Cross-section in tangent plane (1x1 to 9x9, supports even sizes)"
         />
-        <span class="tool-panel-value">{$floraGirth}</span>
+        <span class="tool-panel-value">{Math.floor($floraGirth * 2) + 1}x{Math.floor($floraGirth * 2) + 1}</span>
       </div>
       <div class="tool-panel-row tool-panel-row--wide-label">
         <span class="tool-panel-label">Wobble</span>

@@ -182,7 +182,7 @@ function clampOptions(o: GenerateFloraOptions): GenerateFloraOptions {
   return {
     preset: o.preset,
     height: clamp(Math.floor(o.height), 1, 48),
-    girth: clamp(Math.floor(o.girth), 0, 4),
+    girth: clamp(o.girth, 0, 4),
     wobble: clamp(o.wobble, 0, 1),
     taper: clamp(o.taper, 0, 1),
     stemCount: clamp(Math.floor(o.stemCount), 1, 8),
@@ -203,11 +203,11 @@ function effectiveGirthAt(
   baseGirth: number,
   taper01: number
 ): number {
-  const g = Math.max(0, Math.floor(baseGirth));
+  const g = clamp(baseGirth, 0, 4);
   if (g === 0) return 0;
   if (taper01 <= 0 || height <= 1) return g;
   const t = stepIndex / (height - 1);
-  return Math.max(0, Math.round(g * (1 - taper01 * t)));
+  return Math.max(0, g * (1 - taper01 * t));
 }
 
 function tryAddKey(keys: Set<string>, key: string, cap: { left: number }): boolean {
@@ -229,13 +229,16 @@ function addDiskChebyshev(
   cap: { left: number }
 ): void {
   if (cap.left <= 0) return;
-  if (R <= 0) {
+  const radius = Math.max(0, R);
+  const side = Math.max(1, Math.floor(radius * 2) + 1);
+  if (side <= 1) {
     tryAddKey(keys, coordKey(px, py, pz), cap);
     return;
   }
-  for (let u = -R; u <= R; u++) {
-    for (let v = -R; v <= R; v++) {
-      if (Math.max(Math.abs(u), Math.abs(v)) > R) continue;
+  const lo = -Math.floor((side - 1) / 2);
+  const hi = lo + side - 1;
+  for (let u = lo; u <= hi; u++) {
+    for (let v = lo; v <= hi; v++) {
       const x = px + u * t1[0] + v * t2[0];
       const y = py + u * t1[1] + v * t2[1];
       const z = pz + u * t1[2] + v * t2[2];

@@ -125,7 +125,7 @@ Fill and Spray have no second shape row; choosing them sets the mode directly.
 
 Open the **Sculpt** tab in the sidebar. Names are Blender-inspired, but everything runs on a **voxel grid**: brushes add/remove/move whole cells, not mesh vertices. Behavior matches the tooltips and the notes below.
 
-- **Draw** (fill empty voxels along the stroke), **Scrape** (delete solid voxels in the brush), **Smooth** (majority fill/remove in the brush, or optional **Mesh** Taubin smooth on a local surface then revoxelize; see below), **Extrude** (add voxels along a view-based stroke), **Wall**, **Terrain** (heightfield on column tops; Y-up)
+- **Draw** (fill empty voxels along the stroke), **Scrape** (delete solid voxels in the brush), **Smooth** (majority fill/remove in the brush, or optional **Mesh** Taubin smooth on a local surface then revoxelize; see below), **Extrude** (add voxels along a stroke; direction uses **Extrusion** options below), **Wall**, **Terrain** (heightfield on column tops; Y-up)
 
 **Rope** (Generators tab) — draw a hanging rope between two points.
 
@@ -146,6 +146,12 @@ Open the **Sculpt** tab in the sidebar. Names are Blender-inspired, but everythi
 - **Majority** (default): counts solid neighbors in a 3D window and fills empty cells or removes thin spikes—pure voxel logic. **Reach** and **Strength** control neighborhood size and how aggressive the rule is.
 - **Mesh**: builds a **greedy mesh** of solid voxels in a box around the stroke (brush bounds plus **Reach** as extra margin), runs **Taubin** smoothing on mesh vertices (with boundary vertices on that box pinned), then treats each voxel cell as inside/outside the smoothed surface (primarily **+X ray parity** against the triangle soup, with a **padded vertex bounding box** fallback for cells that were solid in that region so merged quads do not drop interior voxels). Colors and materials are copied from the **nearest original voxel** in the box, so seams between materials may blend. **Passes** and **Relax** control iteration count and step strength.
 - **Caveats**: hollow cavities fully inside the edit box can classify oddly after remeshing; very large regions may fall back to **Majority** automatically for performance (ROI cell budget).
+
+#### Extrude (branch): Extrusion reference
+
+- **Camera** (default): drag distance sets length; drag direction is mapped through the view plane (camera **right** and **up**), so “up on screen” grows along screen-up in the world, not along the camera look axis.
+- **Auto**: extrude along the dominant world axis of the **start face** normal (same idea as face snapping elsewhere). If the pick has no face, behavior matches **Camera**.
+- **X / Y / Z**: extrude along that world axis only; **plus or minus** follows your drag projected onto the view plane (when the projection is ambiguous, the positive axis is used).
 
 #### Extrude (branch): Taper
 

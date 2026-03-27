@@ -54,7 +54,7 @@ export type FloraPresetId =
 export const floraPreset = writable<FloraPresetId>('stalk');
 /** Flora: segments along +face normal (4–48). */
 export const floraHeight = writable<number>(12);
-/** Flora: cross-section radius in tangent plane (0–4, Chebyshev disk). */
+/** Flora: cross-section half-width in tangent plane (0–4, 0.5 step supports even sizes). */
 export const floraGirth = writable<number>(1);
 /** Flora: lateral wander 0–1. */
 export const floraWobble = writable<number>(0.25);

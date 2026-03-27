@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import * as THREE from 'three';
 import {
   thickenPathForStroke,
   thickenPath,
@@ -16,6 +17,7 @@ import {
   getSolidPolygonBasePositions,
   getSolidPolygonStrokeVoxels,
   getRayDirectionPath,
+  resolveBranchExtrudeDirection,
   getRopeCurveVoxels,
   getClothPatchFromPinsVoxels,
   applyBrushAlongPath,
@@ -63,6 +65,31 @@ describe('thickenPathForStroke', () => {
     });
     // Spray sphere: expandPathWithBrushStamps(..., 'sphere'); r=1 gives 7 voxels (center + 6 face neighbors)
     expect(sprayResult.length).toBe(7);
+  });
+
+  it('spray snap to surface offsets droplet center along face normal', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const unsnapped = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      strokeMode: 'spray',
+      sculptBrushRadius: 1,
+      sprayRadius: 1,
+      spraySnapToSurface: false,
+      drawBrushFaceNormal: { x: 1, y: 0, z: 0 }
+    });
+    const snapped = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      strokeMode: 'spray',
+      sculptBrushRadius: 1,
+      sprayRadius: 1,
+      spraySnapToSurface: true,
+      drawBrushFaceNormal: { x: 1, y: 0, z: 0 }
+    });
+    expect(unsnapped.length).toBe(7);
+    expect(snapped.length).toBe(7);
+    expect(sortPositionKeys(snapped)).toEqual(
+      sortPositionKeys(unsnapped.map(([x, y, z]) => [x + 1, y, z] as [number, number, number]))
+    );
   });
 
   it('spray cube mode uses Chebyshev cube per droplet', () => {
@@ -1095,5 +1122,106 @@ describe('getRayDirectionPath', () => {
     const result = getRayDirectionPath([0, 0, 0], { x: 1, y: 0, z: 0 }, 1);
     expect(result).toContainEqual([0, 0, 0]);
     expect(result).toContainEqual([1, 0, 0]);
+  });
+});
+
+describe('resolveBranchExtrudeDirection', () => {
+  /** View from +Z toward origin so view dir is not parallel to default up (+Y). */
+  function cameraInFrontOfOrigin(): THREE.PerspectiveCamera {
+    const c = new THREE.PerspectiveCamera();
+    c.position.set(0, 0, 8);
+    c.lookAt(0, 0, 0);
+    c.updateMatrixWorld(true);
+    return c;
+  }
+
+  it('camera: horizontal drag maps to world X (default scene)', () => {
+    const cam = cameraInFrontOfOrigin();
+    const d = resolveBranchExtrudeDirection('camera', {
+      camera: cam,
+      screenDx: 10,
+      screenDy: 0,
+      faceNormal: null
+    });
+    expect(Math.abs(d.x)).toBeGreaterThan(0.9);
+    expect(Math.abs(d.y)).toBeLessThan(0.2);
+    expect(Math.abs(d.z)).toBeLessThan(0.2);
+  });
+
+  it('camera: falls back to world up when drag is zero', () => {
+    const cam = cameraInFrontOfOrigin();
+    const d = resolveBranchExtrudeDirection('camera', {
+      camera: cam,
+      screenDx: 0,
+      screenDy: 0,
+      faceNormal: null
+    });
+    expect(d.y).toBeGreaterThan(0.9);
+  });
+
+  it('auto without face matches camera mode', () => {
+    const cam = cameraInFrontOfOrigin();
+    const a = resolveBranchExtrudeDirection('auto', {
+      camera: cam,
+      screenDx: 10,
+      screenDy: 0,
+      faceNormal: null
+    });
+    const b = resolveBranchExtrudeDirection('camera', {
+      camera: cam,
+      screenDx: 10,
+      screenDy: 0,
+      faceNormal: null
+    });
+    expect(a.x).toBeCloseTo(b.x, 5);
+    expect(a.y).toBeCloseTo(b.y, 5);
+    expect(a.z).toBeCloseTo(b.z, 5);
+  });
+
+  it('auto: uses face normal axis with sign from drag', () => {
+    const cam = cameraInFrontOfOrigin();
+    const pos = resolveBranchExtrudeDirection('auto', {
+      camera: cam,
+      screenDx: 10,
+      screenDy: 0,
+      faceNormal: { x: 1, y: 0, z: 0 }
+    });
+    expect(pos.x).toBeGreaterThan(0);
+    const neg = resolveBranchExtrudeDirection('auto', {
+      camera: cam,
+      screenDx: -10,
+      screenDy: 0,
+      faceNormal: { x: 1, y: 0, z: 0 }
+    });
+    expect(neg.x).toBeLessThan(0);
+  });
+
+  it('axis X flips sign when screenDx flips', () => {
+    const cam = cameraInFrontOfOrigin();
+    const p = resolveBranchExtrudeDirection(0, {
+      camera: cam,
+      screenDx: 10,
+      screenDy: 0,
+      faceNormal: null
+    });
+    const q = resolveBranchExtrudeDirection(0, {
+      camera: cam,
+      screenDx: -10,
+      screenDy: 0,
+      faceNormal: null
+    });
+    expect(p.x * q.x).toBeLessThan(0);
+    expect(Math.abs(p.x)).toBe(1);
+    expect(Math.abs(q.x)).toBe(1);
+  });
+
+  it('null camera uses +Y for camera mode degenerate drag', () => {
+    const d = resolveBranchExtrudeDirection('camera', {
+      camera: null,
+      screenDx: 0,
+      screenDy: 0,
+      faceNormal: null
+    });
+    expect(d).toEqual({ x: 0, y: 1, z: 0 });
   });
 });

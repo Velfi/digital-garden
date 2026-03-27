@@ -211,7 +211,7 @@ export const strokeMode = writable<StrokeMode>('spray');
 export const effectiveStrokeMode = derived([tool, strokeMode], ([t, sm]) =>
   DRAW_TOOLS_USING_STROKE_MODE.includes(t) ? sm : null
 );
-/** When true (default), line stroke is axis-aligned; when false, line is drawn on the plane through the start voxel. */
+/** When true (default), line stroke is axis-aligned; when false, 3D Bresenham line between start and end voxel. */
 export const lineAxisAlign = writable<boolean>(true);
 export const planeAxis = writable<PlaneAxis>(1);
 /** When true, plane/cuboid/cylinder stroke selects only perimeter (plane) or volumetric shell. */
@@ -240,6 +240,11 @@ export const branchTaper = writable<boolean>(false);
 export const branchTaperStartSize = writable<number>(2);
 /** Branch taper: end size index 0..(MAX_BRUSH_SIZE-1) (when taper on). */
 export const branchTaperEndSize = writable<number>(0);
+/**
+ * Branch (Extrude): extrusion axis reference.
+ * Auto = dominant axis of start face; Camera = drag mapped through view plane (right/up); X/Y/Z = world axes (sign from drag).
+ */
+export const branchExtrudeRef = writable<ConstrainToPlaneRef>('camera');
 /** Smooth mode: Chebyshev neighborhood radius beyond face-only (0 = legacy 6-neighbor window). */
 export const smoothNeighborRadius = writable<number>(0);
 /** Smooth mode: 0 = gentle thresholds, 100 = same rule as legacy scaled to local neighbor count. */
@@ -283,6 +288,8 @@ export const sprayScatter = writable<number>(0);
 export const sprayRadiusRange = writable<boolean>(false);
 export const sprayRadiusMin = writable<number>(0);
 export const sprayRadiusMax = writable<number>(4);
+/** When true, offset each spray droplet along the stroke face normal so it sits on the surface (like draw brush snap). */
+export const spraySnapToSurface = writable<boolean>(true);
 /** Wall (and legacy): direction to extend voxels. Auto = use face normal (wall only). */
 export type SprayDirection =
   | 'none'

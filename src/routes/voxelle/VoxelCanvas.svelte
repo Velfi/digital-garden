@@ -38,6 +38,7 @@
     branchTaperEndSize,
     branchBrushProfile,
     branchEndCap,
+    branchExtrudeRef,
     ropeTension,
     clothTension,
     ropeBrushShape,
@@ -49,6 +50,7 @@
     sprayRadiusRange,
     sprayRadiusMin,
     sprayRadiusMax,
+    spraySnapToSurface,
     sprayDirection,
     sprayStreakLength,
     wallWidth,
@@ -292,7 +294,7 @@
     extrudeSolidPolygonBaseAlongNormal,
     getBresenham3DLine,
     getRayDirectionPath,
-    projectPointOntoPlane,
+    resolveBranchExtrudeDirection,
     thickenPathForStroke,
     getRopeCurveVoxels,
     getClothPatchFromPinsVoxels,
@@ -301,6 +303,7 @@
     mergeSphereStampIntoSeen,
     mergeCubeStampIntoSeen,
     mergePyramidStampIntoSeen,
+    offsetSprayStampCenterForSnap,
     type PathThickenParams
   } from './strokeGeometry';
   import { isSculptDragPathMode, isSculptStrokePathMode } from './store/sculptModes';
@@ -1770,14 +1773,19 @@
     const out = sprayIncrementalOut!;
     const r = params.sprayRadius;
     const shape = params.sprayBrushShape ?? 'sphere';
+    const snapN =
+      (params.spraySnapToSurface ?? false) && params.drawBrushFaceNormal
+        ? params.drawBrushFaceNormal
+        : null;
     for (let i = sprayIncrementalPathLen; i < path.length; i++) {
       const p = path[i]!;
+      const [cx, cy, cz] = offsetSprayStampCenterForSnap(p[0], p[1], p[2], r, snapN);
       if (shape === 'cube') {
-        mergeCubeStampIntoSeen(p[0], p[1], p[2], r, seen, out);
+        mergeCubeStampIntoSeen(cx, cy, cz, r, seen, out);
       } else if (shape === 'pyramid') {
-        mergePyramidStampIntoSeen(p[0], p[1], p[2], r, seen, out);
+        mergePyramidStampIntoSeen(cx, cy, cz, r, seen, out);
       } else {
-        mergeSphereStampIntoSeen(p[0], p[1], p[2], r, seen, out);
+        mergeSphereStampIntoSeen(cx, cy, cz, r, seen, out);
       }
     }
     sprayIncrementalPathLen = path.length;
@@ -3175,6 +3183,7 @@
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize) * 0.5,
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+            spraySnapToSurface: get(spraySnapToSurface),
             drawBrushFaceNormal: dragFaceNormal
               ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
               : undefined,
@@ -3194,6 +3203,8 @@
       if (pos) {
         isVoxelDrag = true;
         dragStartPos = pos;
+        const n = getFaceNormalFromHit(hit);
+        dragFaceNormal = n ? new THREE.Vector3(n[0], n[1], n[2]) : null;
         branchPointerDownX = event.clientX;
         branchPointerDownY = event.clientY;
         pendingStrokePositions = [pos];
@@ -3227,6 +3238,7 @@
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize) * 0.5,
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+            spraySnapToSurface: get(spraySnapToSurface),
             drawBrushFaceNormal: dragFaceNormal
               ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
               : undefined,
@@ -3676,6 +3688,7 @@
       drawBrushShape: get(drawBrushShape),
       drawBrushSize: get(drawBrushSize) * 0.5,
       drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+      spraySnapToSurface: get(spraySnapToSurface),
       drawBrushFaceNormal: dragFaceNormal
         ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
         : undefined,
@@ -3840,33 +3853,19 @@
         if (event) refreshShiftPlaneSymmetryState(event.shiftKey);
         const sculptPathMode = get(sculptMode);
         if ($tool === 'sculpt' && sculptPathMode === 'branch') {
-          // Branch: view-plane direction (drag up = grow up on screen, not into scene)
           const currX = event?.clientX ?? branchPointerDownX;
           const currY = event?.clientY ?? branchPointerDownY;
           const dx = currX - branchPointerDownX;
           const dy = branchPointerDownY - currY; // screen up = positive
           const length = Math.max(0, Math.round(Math.sqrt(dx * dx + dy * dy) / 6));
-          let dir = { x: 0, y: 0, z: 0 };
-          if (length > 0 && camera) {
-            camera.updateMatrixWorld(true);
-            const viewDir = new THREE.Vector3();
-            camera.getWorldDirection(viewDir);
-            const right = new THREE.Vector3().crossVectors(viewDir, camera.up).normalize();
-            const up = new THREE.Vector3().crossVectors(right, viewDir).normalize();
-            dir = {
-              x: right.x * dx + up.x * dy,
-              y: right.y * dx + up.y * dy,
-              z: right.z * dx + up.z * dy
-            };
-            const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-            if (len > 1e-6) {
-              dir = { x: dir.x / len, y: dir.y / len, z: dir.z / len };
-            } else {
-              dir = { x: up.x, y: up.y, z: up.z };
-            }
-          } else if (length > 0) {
-            dir = { x: 0, y: 1, z: 0 };
-          }
+          const dir = resolveBranchExtrudeDirection(get(branchExtrudeRef), {
+            camera: camera ?? null,
+            screenDx: dx,
+            screenDy: dy,
+            faceNormal: dragFaceNormal
+              ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
+              : null
+          });
           pendingStrokePositions = getRayDirectionPath(dragStartPos, dir, length);
           updatePreviewMesh(
             thickenPathForStroke(pendingStrokePositions, {
@@ -3897,6 +3896,7 @@
               drawBrushShape: get(drawBrushShape),
               drawBrushSize: get(drawBrushSize) * 0.5,
               drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+              spraySnapToSurface: get(spraySnapToSurface),
               drawBrushFaceNormal: dragFaceNormal
                 ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
                 : undefined,
@@ -4002,6 +4002,26 @@
               if (planePos) currentPos = planePos;
             }
           }
+          // Free 3D line: no voxel hit — snap endpoint on view-parallel plane through start (same idea as plane shapes)
+          if (
+            currentPos === null &&
+            strokeModeVal === 'line' &&
+            !get(lineAxisAlign) &&
+            dragStartPos &&
+            camera
+          ) {
+            const camN = getCameraPlaneNormal();
+            if (camN) {
+              const planePoint = new THREE.Vector3(
+                dragStartPos[0] + 0.5,
+                dragStartPos[1] + 0.5,
+                dragStartPos[2] + 0.5
+              );
+              const n = new THREE.Vector3(camN.x, camN.y, camN.z);
+              const planePos = getIntersectionWithPlane(planePoint, n);
+              if (planePos) currentPos = planePos;
+            }
+          }
           // Spray + constrain to plane: prefer plane intersection over voxel hit so cursor stays on the invisible plane
           if (isSprayPath && dragStartPos) {
             const normal = getSprayConstrainPlaneNormalWorld();
@@ -4081,13 +4101,8 @@
                         hollow,
                         hollowWall
                       );
-              } else if (strokeModeVal === 'line' && !get(lineAxisAlign) && dragFaceNormal) {
-                const projected = projectPointOntoPlane(currentPos, dragStartPos, {
-                  x: dragFaceNormal.x,
-                  y: dragFaceNormal.y,
-                  z: dragFaceNormal.z
-                });
-                pendingStrokePositions = getBresenham3DLine(dragStartPos, projected);
+              } else if (strokeModeVal === 'line' && !get(lineAxisAlign)) {
+                pendingStrokePositions = getBresenham3DLine(dragStartPos, currentPos);
               } else {
                 pendingStrokePositions = getAxisAlignedLine(dragStartPos, currentPos);
               }
@@ -4127,7 +4142,7 @@
                   primaryBounds: lineStrokeBounds(
                     dragStartPos,
                     currentPos,
-                    !get(lineAxisAlign) && !!dragFaceNormal
+                    !get(lineAxisAlign)
                   ),
                   drawBrushInflate: drawBrushInflateParams()
                 };
@@ -4165,6 +4180,7 @@
               drawBrushShape: get(drawBrushShape),
               drawBrushSize: get(drawBrushSize) * 0.5,
               drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+              spraySnapToSurface: get(spraySnapToSurface),
               drawBrushFaceNormal: dragFaceNormal
                 ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
                 : undefined,
@@ -4640,6 +4656,7 @@
               drawBrushShape: get(drawBrushShape),
               drawBrushSize: get(drawBrushSize) * 0.5,
               drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+              spraySnapToSurface: get(spraySnapToSurface),
               drawBrushFaceNormal: faceN ? { x: faceN.x, y: faceN.y, z: faceN.z } : undefined,
               seed: 0
             })
@@ -4931,6 +4948,7 @@
             drawBrushShape: get(drawBrushShape),
             drawBrushSize: get(drawBrushSize) * 0.5,
             drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+            spraySnapToSurface: get(spraySnapToSurface),
             drawBrushFaceNormal: dragFaceNormal
               ? { x: dragFaceNormal.x, y: dragFaceNormal.y, z: dragFaceNormal.z }
               : undefined,

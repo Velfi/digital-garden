@@ -16,6 +16,7 @@
     branchTaperEndSize,
     branchBrushProfile,
     branchEndCap,
+    branchExtrudeRef,
     sprayDirection,
     wallWidth,
     wallHeight,
@@ -225,6 +226,51 @@
         {/if}
       {/if}
       {#if $sculptMode === 'branch'}
+        <div class="tool-panel-row tool-panel-row--section-heading">
+          <span class="tool-panel-label">Extrusion</span>
+        </div>
+        <div class="stroke-buttons" role="group" aria-label="Extrude direction reference">
+          <button
+            type="button"
+            class:active={$branchExtrudeRef === 'auto'}
+            onclick={() => branchExtrudeRef.set('auto')}
+            title="Along dominant axis of the start face (falls back to view plane if no face)"
+          >
+            Auto
+          </button>
+          <button
+            type="button"
+            class:active={$branchExtrudeRef === 'camera'}
+            onclick={() => branchExtrudeRef.set('camera')}
+            title="View plane: drag maps through camera right and up (default)"
+          >
+            Camera
+          </button>
+          <button
+            type="button"
+            class:active={$branchExtrudeRef === 0}
+            onclick={() => branchExtrudeRef.set(0)}
+            title="World ±X (sign from drag vs view plane)"
+          >
+            X
+          </button>
+          <button
+            type="button"
+            class:active={$branchExtrudeRef === 1}
+            onclick={() => branchExtrudeRef.set(1)}
+            title="World ±Y (sign from drag vs view plane)"
+          >
+            Y
+          </button>
+          <button
+            type="button"
+            class:active={$branchExtrudeRef === 2}
+            onclick={() => branchExtrudeRef.set(2)}
+            title="World ±Z (sign from drag vs view plane)"
+          >
+            Z
+          </button>
+        </div>
         <div class="tool-panel-row tool-panel-row--brush-shape">
           <span class="tool-panel-label">Profile</span>
           <div class="stroke-buttons" role="group" aria-label="Branch brush profile">

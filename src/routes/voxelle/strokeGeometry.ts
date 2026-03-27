@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type {
   BranchEndCap,
   BranchBrushProfile,
+  ConstrainToPlaneRef,
   SculptBrushShape,
   SculptMode,
   DrawBrushShape,
@@ -107,6 +108,87 @@ export function getRayDirectionPath(
     }
   }
   return positions;
+}
+
+/** Minimal camera API for branch extrude (matches Three.js Camera). */
+export type BranchExtrudeCamera = {
+  updateMatrixWorld(force?: boolean): void;
+  getWorldDirection(target: THREE.Vector3): THREE.Vector3;
+  up: THREE.Vector3;
+};
+
+function branchViewPlaneRaw(
+  camera: BranchExtrudeCamera | null,
+  screenDx: number,
+  screenDy: number
+): THREE.Vector3 {
+  if (!camera) return new THREE.Vector3(0, 1, 0);
+  camera.updateMatrixWorld(true);
+  const viewDir = new THREE.Vector3();
+  camera.getWorldDirection(viewDir);
+  const right = new THREE.Vector3().crossVectors(viewDir, camera.up).normalize();
+  const up = new THREE.Vector3().crossVectors(right, viewDir).normalize();
+  return new THREE.Vector3()
+    .addScaledVector(right, screenDx)
+    .addScaledVector(up, screenDy);
+}
+
+function axisSignFromViewDrag(raw: THREE.Vector3, axis: Vec3Like): number {
+  const d = raw.x * axis.x + raw.y * axis.y + raw.z * axis.z;
+  if (Math.abs(d) < 1e-9) return 1;
+  return d > 0 ? 1 : -1;
+}
+
+/**
+ * World-space extrusion direction for sculpt branch (Extrude).
+ * Camera = normalize(screen right/up in world); Auto = snapped face normal with sign from drag; X/Y/Z = world axis with sign from drag.
+ */
+export function resolveBranchExtrudeDirection(
+  ref: ConstrainToPlaneRef,
+  params: {
+    camera: BranchExtrudeCamera | null;
+    screenDx: number;
+    screenDy: number;
+    faceNormal: Vec3Like | null;
+  }
+): Vec3Like {
+  const { camera, screenDx, screenDy, faceNormal } = params;
+  const raw = branchViewPlaneRaw(camera, screenDx, screenDy);
+
+  if (ref === 'camera') {
+    const len = raw.length();
+    if (len > 1e-6) {
+      return { x: raw.x / len, y: raw.y / len, z: raw.z / len };
+    }
+    if (camera) {
+      camera.updateMatrixWorld(true);
+      const viewDir = new THREE.Vector3();
+      camera.getWorldDirection(viewDir);
+      const right = new THREE.Vector3().crossVectors(viewDir, camera.up).normalize();
+      const up = new THREE.Vector3().crossVectors(right, viewDir).normalize();
+      return { x: up.x, y: up.y, z: up.z };
+    }
+    return { x: 0, y: 1, z: 0 };
+  }
+
+  if (ref === 'auto') {
+    if (faceNormal) {
+      const [ax, ay, az] = snapNormalToAxis(faceNormal);
+      const axis = { x: ax, y: ay, z: az };
+      const sign = axisSignFromViewDrag(raw, axis);
+      return { x: ax * sign, y: ay * sign, z: az * sign };
+    }
+    return resolveBranchExtrudeDirection('camera', params);
+  }
+
+  const axisVec: Vec3Like =
+    ref === 0 ? { x: 1, y: 0, z: 0 } : ref === 1 ? { x: 0, y: 1, z: 0 } : { x: 0, y: 0, z: 1 };
+  const sign = axisSignFromViewDrag(raw, axisVec);
+  return {
+    x: axisVec.x * sign,
+    y: axisVec.y * sign,
+    z: axisVec.z * sign
+  };
 }
 
 /** Map continuous radius to nearest discrete size (0, 0.5, 1, 1.5, 2, ..., up to 12 for 25 voxels). */
@@ -807,11 +889,25 @@ export function createSeededRng(seed: number): () => number {
   };
 }
 
+/** Offset spray droplet center along face normal so the stamp sits on the surface (same idea as draw brush snap). */
+export function offsetSprayStampCenterForSnap(
+  px: number,
+  py: number,
+  pz: number,
+  stampRadius: number,
+  normal: { x: number; y: number; z: number } | undefined | null
+): [number, number, number] {
+  if (!normal) return [px, py, pz];
+  const k = Math.max(0, Math.round(stampRadius));
+  return [px + normal.x * k, py + normal.y * k, pz + normal.z * k];
+}
+
 /**
  * Union of brush stamps (`sphere` | `cube` | `pyramid`) at each path point.
  * Radius 0=single voxel; sphere r=1 gives 7 voxels (center + 6 face neighbors); cube uses Chebyshev neighborhood per center.
  * Scatter: max voxel offset for stamp centers (0=none). When radiusMin/radiusMax provided and radiusMax > radiusMin, picks random radius per stamp.
  * Optional rng for deterministic scatter/radius (e.g. from createSeededRng).
+ * When snapSurfaceNormal is set, each stamp center is offset by round(stampRadius) * normal before scatter (surface embed).
  */
 export function expandPathWithBrushStamps(
   positions: [number, number, number][],
@@ -820,7 +916,8 @@ export function expandPathWithBrushStamps(
   scatter: number = 0,
   radiusMin?: number,
   radiusMax?: number,
-  rng?: () => number
+  rng?: () => number,
+  snapSurfaceNormal?: { x: number; y: number; z: number } | null
 ): [number, number, number][] {
   if (positions.length === 0) return [];
   const rand = rng ?? Math.random;
@@ -839,12 +936,13 @@ export function expandPathWithBrushStamps(
           Math.floor(rand() * (Math.round(rMax * 2) - Math.round(rMin * 2) + 1))) /
         2
       : rMin;
+    const [bx, by, bz] = offsetSprayStampCenterForSnap(px, py, pz, r, snapSurfaceNormal);
     if (brushShape === 'sphere') {
-      addSphereVoxelsToSeen(px + ox, py + oy, pz + oz, r, seen, result);
+      addSphereVoxelsToSeen(bx + ox, by + oy, bz + oz, r, seen, result);
     } else {
-      const xi = Math.round(px + ox);
-      const yi = Math.round(py + oy);
-      const zi = Math.round(pz + oz);
+      const xi = Math.round(bx + ox);
+      const yi = Math.round(by + oy);
+      const zi = Math.round(bz + oz);
       if (brushShape === 'cube') {
         mergeCubeStampIntoSeen(xi, yi, zi, r, seen, result);
       } else {
@@ -956,6 +1054,8 @@ export interface PathThickenParams {
   sprayRadiusMax: number;
   /** Spray stamp footprint: sphere, cube, or pyramid (same as draw brush shapes). */
   sprayBrushShape?: DrawBrushShape;
+  /** When true and drawBrushFaceNormal set, offset each droplet along that normal (surface embed). */
+  spraySnapToSurface?: boolean;
   /** When true, Spray voxels are restricted to the plane through the path start. */
   sprayConstrainToPlane?: boolean;
   /** Axis for plane constraint when sprayConstrainToPlane: from face normal (sprayPlaneAxis) or sidebar (planeAxis). Ignored when sprayPlaneNormal set. */
@@ -1093,6 +1193,10 @@ export function thickenPathForStroke(
     const shape = params.sprayBrushShape ?? 'sphere';
     const rMin = params.sprayRadiusRange ? params.sprayRadiusMin : undefined;
     const rMax = params.sprayRadiusRange ? params.sprayRadiusMax : undefined;
+    const snapN =
+      (params.spraySnapToSurface ?? false) && params.drawBrushFaceNormal
+        ? params.drawBrushFaceNormal
+        : null;
     return expandPathWithBrushStamps(
       positions,
       shape,
@@ -1100,7 +1204,8 @@ export function thickenPathForStroke(
       params.sprayScatter,
       rMin,
       rMax,
-      rng
+      rng,
+      snapN
     );
   }
   const dbs = params.drawBrushSize ?? 0;

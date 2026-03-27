@@ -20,6 +20,7 @@
     sprayRadiusRange,
     sprayRadiusMin,
     sprayRadiusMax,
+    spraySnapToSurface,
     fillSelectDiagonals,
     fillRespectsColor,
     constrainToPlaneEnabled,
@@ -431,6 +432,15 @@
       />
       <span class="tool-panel-value">{$sprayScatter}</span>
     </div>
+    <label class="tool-panel-check">
+      <input
+        type="checkbox"
+        checked={$spraySnapToSurface}
+        onchange={(e) => spraySnapToSurface.set((e.target as HTMLInputElement).checked)}
+        title="Offset droplets along the face normal so they sit on the surface instead of through it"
+      />
+      Snap to surface
+    </label>
   </section>
 {/if}
 

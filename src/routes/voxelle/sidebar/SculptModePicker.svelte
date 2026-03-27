@@ -33,7 +33,7 @@
       type="button"
       class:active={$sculptMode === 'branch'}
       onclick={() => sculptMode.set('branch')}
-      title="Extrude: add voxels along a stroke extruded in view space from the start face"
+      title="Extrude: add voxels along a stroke; tool panel sets Auto / Camera / X / Y / Z extrusion reference"
     >
       Extrude
     </button>
