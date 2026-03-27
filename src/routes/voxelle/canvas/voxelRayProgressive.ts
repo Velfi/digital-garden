@@ -835,11 +835,28 @@ function applyRayPostMood(
   // Sun shafts: applied in WebGL/WebGPU post (same as blocky) so strength matches sunScreenUv sampling.
   if (params.grainEnabled && params.grainStrength > 0) {
     const t = params.grainAnimated ? params.timeSeconds * params.grainSpeed : 0;
-    const n = (Math.sin((u + t * 0.37) * 12.9898 + (v + t * 0.19) * 78.233) * 43758.5453) % 1;
-    const gN = (n - Math.floor(n) - 0.5) * params.grainStrength;
-    r += gN;
-    g += gN;
-    b += gN;
+    const s = params.grainStrength;
+    if (params.grainColorful) {
+      const fract01 = (x: number) => x - Math.floor(x);
+      const n1 = fract01(
+        Math.sin((u + t * 0.37) * 12.9898 + (v + t * 0.19) * 78.233) * 43758.5453
+      );
+      const n2 = fract01(
+        Math.sin((u + t * 0.41 + 19.19) * 93.9898 + (v + t * 0.23 + 73.73) * 67.345) * 24634.6345
+      );
+      const n3 = fract01(
+        Math.sin((u + t * 0.29 + 47.77) * 27.123 + (v + t * 0.31 + 11.13) * 98.456) * 56445.2345
+      );
+      r += (n1 - 0.5) * s;
+      g += (n2 - 0.5) * s;
+      b += (n3 - 0.5) * s;
+    } else {
+      const n = (Math.sin((u + t * 0.37) * 12.9898 + (v + t * 0.19) * 78.233) * 43758.5453) % 1;
+      const gN = (n - Math.floor(n) - 0.5) * s;
+      r += gN;
+      g += gN;
+      b += gN;
+    }
   }
   return [r, g, b];
 }

@@ -12,6 +12,7 @@ export type MeshManagerLike = {
 export type RaycastTargetsInput = {
   meshManager: MeshManagerLike | null;
   polygonPhase: 'placing' | null;
+  polygonoidPhase: 'placing' | 'depth' | null;
   roofPhase: 'placing' | null;
   polygonPointsMesh: THREE.InstancedMesh | null;
   ropePhase: 'placing' | 'tension' | null;
@@ -26,7 +27,10 @@ export function getRaycastTargetsFrom(input: RaycastTargetsInput): THREE.Object3
       targets.push(mesh);
     }
   }
-  if ((input.polygonPhase || input.roofPhase) && input.polygonPointsMesh) {
+  if (
+    (input.polygonPhase || input.polygonoidPhase === 'placing' || input.roofPhase) &&
+    input.polygonPointsMesh
+  ) {
     targets.push(input.polygonPointsMesh);
   }
   if (input.ropePhase && input.ropePointsMesh) {

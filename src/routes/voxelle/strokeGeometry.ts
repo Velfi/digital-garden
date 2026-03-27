@@ -1291,6 +1291,9 @@ function pointInPolygon2D(px: number, py: number, polygon: [number, number][]): 
   return inside;
 }
 
+/** Voxel corner coordinates can be large; plane tests need slack vs float error. */
+const COPLANAR_FILL_TOL = 0.08;
+
 /** True if all points lie on the plane through a,b,c (within tolerance). */
 export function areCoplanar(
   points: [number, number, number][],
@@ -1345,7 +1348,7 @@ export function getCoplanarPolygonFillPositions(
   const a = points[triple[0]];
   const b = points[triple[1]];
   const c = points[triple[2]];
-  if (!areCoplanar(points, a, b, c)) return null;
+  if (!areCoplanar(points, a, b, c, COPLANAR_FILL_TOL)) return null;
 
   const ab = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
   const ac = new THREE.Vector3(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
@@ -1391,6 +1394,7 @@ export function getCoplanarPolygonFillPositions(
       positions.push([...coord]);
     }
   }
+  if (positions.length === 0) return null;
   return positions;
 }
 
@@ -1496,4 +1500,296 @@ export function getPolygonVoxels(points: [number, number, number][]): [number, n
     }
   }
   return positions;
+}
+
+function projectPointOntoPlaneThroughOrigin(
+  p: [number, number, number],
+  planeOrigin: [number, number, number],
+  n: THREE.Vector3
+): [number, number, number] {
+  const ox = p[0] - planeOrigin[0];
+  const oy = p[1] - planeOrigin[1];
+  const oz = p[2] - planeOrigin[2];
+  const t = n.x * ox + n.y * oy + n.z * oz;
+  return [p[0] - n.x * t, p[1] - n.y * t, p[2] - n.z * t];
+}
+
+function polygonoidNormalToDropUV(n: THREE.Vector3): {
+  dropAxis: 0 | 1 | 2;
+  uAxis: 0 | 1 | 2;
+  vAxis: 0 | 1 | 2;
+} {
+  const ax = Math.abs(n.x);
+  const ay = Math.abs(n.y);
+  const az = Math.abs(n.z);
+  const dropAxis = (ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2) as 0 | 1 | 2;
+  const uAxis = (dropAxis === 0 ? 1 : 0) as 0 | 1 | 2;
+  const vAxis = (dropAxis === 2 ? 1 : 2) as 0 | 1 | 2;
+  return { dropAxis, uAxis, vAxis };
+}
+
+/** Integer (u,v) cells along a 2D segment (inclusive). */
+function bresenham2DCells(x0: number, y0: number, x1: number, y1: number): [number, number][] {
+  const cells: [number, number][] = [];
+  let x = x0;
+  let y = y0;
+  const dx = Math.abs(x1 - x0);
+  const sx = x0 < x1 ? 1 : -1;
+  let dy = -Math.abs(y1 - y0);
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    cells.push([x, y]);
+    if (x === x1 && y === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y += sy;
+    }
+  }
+  return cells;
+}
+
+/**
+ * Filled base for polygonoid: corners may be non-coplanar in world space. Vertices are projected
+ * onto the plane through `planeOrigin` with normal `initialExtrusionNormal` (from the first click),
+ * then filled like the polygon tool; voxels lie on that plane.
+ */
+export function getPolygonoidBasePositions(
+  points: [number, number, number][],
+  planeOrigin: [number, number, number],
+  initialExtrusionNormal: Vec3Like
+): [number, number, number][] | null {
+  if (points.length < 2) return null;
+  const n = new THREE.Vector3(
+    initialExtrusionNormal.x,
+    initialExtrusionNormal.y,
+    initialExtrusionNormal.z
+  );
+  if (n.lengthSq() < 1e-12) return null;
+  n.normalize();
+
+  const { dropAxis, uAxis, vAxis } = polygonoidNormalToDropUV(n);
+  const dPlane = -n.x * planeOrigin[0] - n.y * planeOrigin[1] - n.z * planeOrigin[2];
+
+  const to2DProj = (p: [number, number, number]) => {
+    const proj = projectPointOntoPlaneThroughOrigin(p, planeOrigin, n);
+    return [proj[uAxis], proj[vAxis]] as [number, number];
+  };
+
+  const liftUV = (u: number, v: number): [number, number, number] => {
+    const nd = n.getComponent(dropAxis);
+    if (Math.abs(nd) < 1e-9) return [planeOrigin[0], planeOrigin[1], planeOrigin[2]];
+    const cu = u + 0.5;
+    const cv = v + 0.5;
+    const third = -(dPlane + n.getComponent(uAxis) * cu + n.getComponent(vAxis) * cv) / nd;
+    const coord: [number, number, number] = [0, 0, 0];
+    coord[uAxis] = u;
+    coord[vAxis] = v;
+    coord[dropAxis] = Math.round(third);
+    return coord;
+  };
+
+  const dedupe = (cells: [number, number, number][]) => {
+    const seen = new Set<string>();
+    const out: [number, number, number][] = [];
+    for (const c of cells) {
+      const k = `${c[0]},${c[1]},${c[2]}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        out.push(c);
+      }
+    }
+    return out.length > 0 ? out : null;
+  };
+
+  if (points.length === 2) {
+    const a2 = to2DProj(points[0]!);
+    const b2 = to2DProj(points[1]!);
+    const line2d = bresenham2DCells(
+      Math.round(a2[0]),
+      Math.round(a2[1]),
+      Math.round(b2[0]),
+      Math.round(b2[1])
+    );
+    const lifted = line2d.map(([u, v]) => liftUV(u, v));
+    return dedupe(lifted);
+  }
+
+  if (points.length === 3) {
+    const a = points[0]!;
+    const b = points[1]!;
+    const c = points[2]!;
+    const a2 = to2DProj(a);
+    const b2 = to2DProj(b);
+    const c2 = to2DProj(c);
+    const v0x = b2[0] - a2[0];
+    const v0y = b2[1] - a2[1];
+    const v1x = c2[0] - a2[0];
+    const v1y = c2[1] - a2[1];
+    const denom = v0x * v1y - v0y * v1x;
+    const triTol = 1e-6;
+    if (Math.abs(denom) < 1e-9) {
+      const line2d = bresenham2DCells(
+        Math.round(a2[0]),
+        Math.round(a2[1]),
+        Math.round(c2[0]),
+        Math.round(c2[1])
+      );
+      const lifted = line2d.map(([u, v]) => liftUV(u, v));
+      return dedupe(lifted);
+    }
+    const inTriangle = (pu: number, pv: number) => {
+      const px = pu - a2[0];
+      const py = pv - a2[1];
+      const s = (px * v1y - py * v1x) / denom;
+      const t = (py * v0x - px * v0y) / denom;
+      return s >= -triTol && t >= -triTol && s + t <= 1 + triTol;
+    };
+    const minU = Math.min(a2[0], b2[0], c2[0]);
+    const maxU = Math.max(a2[0], b2[0], c2[0]);
+    const minV = Math.min(a2[1], b2[1], c2[1]);
+    const maxV = Math.max(a2[1], b2[1], c2[1]);
+    const floorU = Math.floor(minU);
+    const ceilU = Math.ceil(maxU);
+    const floorV = Math.floor(minV);
+    const ceilV = Math.ceil(maxV);
+    const lifted: [number, number, number][] = [];
+    for (let u = floorU; u <= ceilU; u++) {
+      for (let v = floorV; v <= ceilV; v++) {
+        const corners2D: [number, number][] = [
+          [u, v],
+          [u + 1, v],
+          [u + 1, v + 1],
+          [u, v + 1]
+        ];
+        if (!corners2D.some(([pu, pv]) => inTriangle(pu, pv))) continue;
+        lifted.push(liftUV(u, v));
+      }
+    }
+    return dedupe(lifted);
+  }
+
+  const polygon2D = points.map(to2DProj);
+  const minU = Math.min(...polygon2D.map(([u]) => u));
+  const maxU = Math.max(...polygon2D.map(([u]) => u));
+  const minV = Math.min(...polygon2D.map(([, v]) => v));
+  const maxV = Math.max(...polygon2D.map(([, v]) => v));
+  const floorU = Math.floor(minU);
+  const ceilU = Math.ceil(maxU);
+  const floorV = Math.floor(minV);
+  const ceilV = Math.ceil(maxV);
+  const lifted: [number, number, number][] = [];
+  for (let u = floorU; u <= ceilU; u++) {
+    for (let v = floorV; v <= ceilV; v++) {
+      const corners: [number, number][] = [
+        [u, v],
+        [u + 1, v],
+        [u + 1, v + 1],
+        [u, v + 1]
+      ];
+      if (!corners.some(([cx, cy]) => pointInPolygon2D(cx, cy, polygon2D))) continue;
+      lifted.push(liftUV(u, v));
+    }
+  }
+  return dedupe(lifted);
+}
+
+/**
+ * Extrude a filled base layer along the dominant axis of `initialExtrusionNormal` (voxel steps).
+ */
+export function extrudePolygonoidBaseAlongNormal(
+  baseLayer: [number, number, number][],
+  initialExtrusionNormal: Vec3Like,
+  depth: number,
+  hollow = false,
+  hollowWallThickness = 1
+): [number, number, number][] {
+  if (baseLayer.length === 0) return [];
+  const n = new THREE.Vector3(
+    initialExtrusionNormal.x,
+    initialExtrusionNormal.y,
+    initialExtrusionNormal.z
+  );
+  if (n.lengthSq() < 1e-12) return [];
+  n.normalize();
+
+  const ax = Math.abs(n.x);
+  const ay = Math.abs(n.y);
+  const az = Math.abs(n.z);
+  const fixedAxis = (ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2) as 0 | 1 | 2;
+  const comp = n.getComponent(fixedAxis);
+  const step = comp > 0 ? 1 : -1;
+  const layers = Math.abs(depth);
+  const dir = depth > 0 ? step : -step;
+
+  const seen = new Set<string>();
+  const positions: [number, number, number][] = [];
+  for (const [px, py, pz] of baseLayer) {
+    for (let k = 0; k <= layers; k++) {
+      const dk = dir * k;
+      const pos: [number, number, number] = [px, py, pz];
+      pos[fixedAxis] += dk;
+      const key = `${pos[0]},${pos[1]},${pos[2]}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        positions.push(pos);
+      }
+    }
+  }
+
+  if (!hollow) return positions;
+  return hollowSolidToShell(positions, hollowWallThickness, NEIGHBORS6);
+}
+
+/**
+ * Projected fill from corners + extrusion along first-click normal (same as
+ * `extrudePolygonoidBaseAlongNormal(getPolygonoidBasePositions(...), ...)`).
+ */
+export function getPolygonoidStrokeVoxels(
+  points: [number, number, number][],
+  planeOrigin: [number, number, number],
+  initialExtrusionNormal: Vec3Like | null,
+  depth: number,
+  hollow = false,
+  hollowWallThickness = 1
+): [number, number, number][] {
+  if (!initialExtrusionNormal) return [];
+  const baseRaw = getPolygonoidBasePositions(points, planeOrigin, initialExtrusionNormal);
+  if (!baseRaw || baseRaw.length === 0) return [];
+  return extrudePolygonoidBaseAlongNormal(
+    baseRaw,
+    initialExtrusionNormal,
+    depth,
+    hollow,
+    hollowWallThickness
+  );
+}
+
+/** Signed depth per world axis for HUD (matches polygonoid extrusion direction). */
+export function getPolygonoidDepthDeltaDisplay(
+  initialExtrusionNormal: Vec3Like | null,
+  depth: number
+): { dx: number; dy: number; dz: number } {
+  if (!initialExtrusionNormal) return { dx: 0, dy: 0, dz: 0 };
+
+  const n = new THREE.Vector3(
+    initialExtrusionNormal.x,
+    initialExtrusionNormal.y,
+    initialExtrusionNormal.z
+  );
+  if (n.lengthSq() < 1e-12) return { dx: 0, dy: 0, dz: 0 };
+  n.normalize();
+
+  const ax = Math.abs(n.x);
+  const ay = Math.abs(n.y);
+  const az = Math.abs(n.z);
+  const axis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
+  const d: [number, number, number] = [0, 0, 0];
+  d[axis] = depth;
+  return { dx: d[0]!, dy: d[1]!, dz: d[2]! };
 }

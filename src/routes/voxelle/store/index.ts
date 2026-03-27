@@ -321,6 +321,7 @@ export {
   grainStrength,
   grainAnimated,
   grainSpeed,
+  grainMode,
   grainActiveForRender,
   sunShaftsEnabled,
   sunShaftsStrength,
@@ -333,7 +334,7 @@ export {
   clearAtmospherePlane
 } from './atmosphere';
 
-export type { AtmosphereMode, AtmospherePlane, AtmosphereSpatialMode } from './atmosphere';
+export type { AtmosphereMode, AtmospherePlane, AtmosphereSpatialMode, GrainMode } from './atmosphere';
 
 export {
   getToolDescriptor,

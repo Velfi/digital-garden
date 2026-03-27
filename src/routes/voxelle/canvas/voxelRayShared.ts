@@ -63,6 +63,7 @@ export type VoxelRayTraceParams = {
   grainStrength: number;
   grainAnimated: boolean;
   grainSpeed: number;
+  grainColorful: boolean;
   sunShaftsEnabled: boolean;
   sunShaftsStrength: number;
 };
@@ -98,6 +99,7 @@ export function buildVoxelRayTraceParams(
     grainStrength?: number;
     grainAnimated?: boolean;
     grainSpeed?: number;
+    grainColorful?: boolean;
     sunShaftsEnabled?: boolean;
     sunShaftsStrength?: number;
   }
@@ -157,6 +159,7 @@ export function buildVoxelRayTraceParams(
     grainStrength: opts.grainStrength ?? 0.06,
     grainAnimated: opts.grainAnimated ?? true,
     grainSpeed: opts.grainSpeed ?? 1,
+    grainColorful: opts.grainColorful ?? true,
     sunShaftsEnabled: opts.sunShaftsEnabled ?? false,
     sunShaftsStrength: opts.sunShaftsStrength ?? 0.35
   };

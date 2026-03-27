@@ -27,6 +27,8 @@ import {
   grainStrength,
   grainAnimated,
   grainSpeed,
+  grainMode,
+  isGrainMode,
   sunShaftsEnabled,
   sunShaftsStrength,
   sunShaftsDecay,
@@ -174,6 +176,7 @@ export function serializeToVoxelleFormat(): VoxelleFileFormat {
         grainStrength: get(grainStrength),
         grainAnimated: get(grainAnimated),
         grainSpeed: get(grainSpeed),
+        grainMode: get(grainMode),
         sunShaftsEnabled: get(sunShaftsEnabled),
         sunShaftsStrength: get(sunShaftsStrength),
         sunShaftsDecay: get(sunShaftsDecay),
@@ -355,6 +358,7 @@ function applyModelData(data: VoxelleFileFormat): void {
       if (typeof atm.grainSpeed === 'number' && Number.isFinite(atm.grainSpeed)) {
         grainSpeed.set(Math.max(0, Math.min(20, atm.grainSpeed)));
       }
+      if (isGrainMode(atm.grainMode)) grainMode.set(atm.grainMode);
       if (typeof atm.sunShaftsEnabled === 'boolean') sunShaftsEnabled.set(atm.sunShaftsEnabled);
       if (typeof atm.sunShaftsStrength === 'number' && Number.isFinite(atm.sunShaftsStrength)) {
         sunShaftsStrength.set(Math.max(0, Math.min(10, atm.sunShaftsStrength)));
@@ -369,7 +373,7 @@ function applyModelData(data: VoxelleFileFormat): void {
         sunShaftsWeight.set(Math.max(0, Math.min(4, atm.sunShaftsWeight)));
       }
       if (typeof atm.sunShaftsSamples === 'number' && Number.isFinite(atm.sunShaftsSamples)) {
-        sunShaftsSamples.set(Math.max(1, Math.min(64, Math.round(atm.sunShaftsSamples))));
+        sunShaftsSamples.set(Math.max(20, Math.min(56, Math.round(atm.sunShaftsSamples))));
       }
     }
   }

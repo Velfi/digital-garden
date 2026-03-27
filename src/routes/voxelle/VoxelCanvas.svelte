@@ -246,6 +246,7 @@
     grainStrength,
     grainAnimated,
     grainSpeed,
+    grainMode,
     sunShaftsEnabled,
     sunShaftsStrength,
     sunShaftsDecay,
@@ -279,6 +280,9 @@
     getAxisAlignedCylindroid,
     getAxisAlignedCuboid,
     getPolygonVoxels,
+    getPolygonoidBasePositions,
+    getPolygonoidDepthDeltaDisplay,
+    extrudePolygonoidBaseAlongNormal,
     getBresenham3DLine,
     getRayDirectionPath,
     projectPointOntoPlane,
@@ -756,6 +760,7 @@
     normal: THREE.Vector3;
   } | null = null;
   let cylindroidDepth = $state(1);
+  let polygonoidDepth = $state(1);
   let depthAdjustPointerId: number | null = null;
   let lastDepthPhaseClientY = 0;
   let depthPhaseAccumulator = 0; // fractional pixels, accumulate to avoid jerky rounding
@@ -773,6 +778,20 @@
   let polygonPointsMaterial: THREE.MeshBasicMaterial | null = null;
   /** Face normal from the latest polygon anchor click; used with polygon offset along that axis. */
   let polygonPlacementNormal = $state<FaceNormal | null>(null);
+
+  // Polygonoid: place corner loop (projected onto first-click plane), Extrude → depth phase like cuboid
+  let polygonoidPoints = $state<[number, number, number][]>([]);
+  let polygonoidPhase = $state<'placing' | 'depth' | null>(null);
+  /** Face normal from the first polygonoid anchor; extrusion follows its dominant axis. */
+  let polygonoidInitialNormal = $state<FaceNormal | null>(null);
+
+  const polygonoidExtrudable = $derived.by(() => {
+    if (polygonoidPoints.length < 2 || !polygonoidInitialNormal) return false;
+    const o = polygonoidPoints[0]!;
+    const n = polygonoidInitialNormal;
+    const vec = { x: n[0], y: n[1], z: n[2] };
+    return getPolygonoidBasePositions(polygonoidPoints, o, vec) !== null;
+  });
 
   /** Roof generator: corner loop (reuse polygon point mesh / line preview). */
   let roofPoints = $state<[number, number, number][]>([]);
@@ -981,6 +1000,7 @@
     return getRaycastTargetsFrom({
       meshManager,
       polygonPhase,
+      polygonoidPhase,
       roofPhase,
       polygonPointsMesh,
       ropePhase,
@@ -1753,6 +1773,7 @@
       !isStampDrag &&
       cuboidPhase !== 'depth' &&
       cylindroidPhase !== 'depth' &&
+      polygonoidPhase !== 'depth' &&
       ropePhase !== 'tension';
 
     const previewVoxelFor = (count: number): Voxel => {
@@ -2022,6 +2043,38 @@
     );
   }
 
+  function polygonoidNormalVec(): { x: number; y: number; z: number } | null {
+    const n = polygonoidInitialNormal;
+    if (!n) return null;
+    return { x: n[0], y: n[1], z: n[2] };
+  }
+
+  function getPolygonoidPlacingFillPreview(): [number, number, number][] {
+    if (polygonoidPoints.length < 2) return [];
+    const vec = polygonoidNormalVec();
+    if (!vec) return [];
+    const origin = polygonoidPoints[0]!;
+    const base = getPolygonoidBasePositions(polygonoidPoints, origin, vec);
+    if (!base) return [];
+    return applyPolygonNormalOffset(base, polygonoidInitialNormal, get(polygonOffsetFromNormal));
+  }
+
+  function buildPolygonoidStrokePositions(): [number, number, number][] {
+    const vec = polygonoidNormalVec();
+    if (!vec || polygonoidPoints.length < 2) return [];
+    const origin = polygonoidPoints[0]!;
+    const base = getPolygonoidBasePositions(polygonoidPoints, origin, vec);
+    if (!base) return [];
+    const baseOff = applyPolygonNormalOffset(base, polygonoidInitialNormal, get(polygonOffsetFromNormal));
+    return extrudePolygonoidBaseAlongNormal(
+      baseOff,
+      vec,
+      polygonoidDepth,
+      get(planeCuboidHollow),
+      clampPlaneCuboidHollowWallThickness()
+    );
+  }
+
   function cancelPolygon() {
     polygonPoints = [];
     polygonPhase = null;
@@ -2171,6 +2224,65 @@
     render();
   }
 
+  function cancelPolygonoid() {
+    if (depthAdjustPointerId !== null && container) {
+      try {
+        container.releasePointerCapture(depthAdjustPointerId);
+      } catch {
+        /* ignore */
+      }
+      depthAdjustPointerId = null;
+    }
+    deltaDisplay = null;
+    polygonoidPoints = [];
+    polygonoidPhase = null;
+    polygonoidInitialNormal = null;
+    updatePolygonPreview([]);
+    pendingStrokePositions = [];
+    updatePreviewMesh([]);
+  }
+
+  function beginPolygonoidDepth() {
+    const vec = polygonoidNormalVec();
+    if (!vec || polygonoidPoints.length < 2) return;
+    const origin = polygonoidPoints[0]!;
+    if (getPolygonoidBasePositions(polygonoidPoints, origin, vec) === null) return;
+    polygonoidPhase = 'depth';
+    polygonoidDepth = 1;
+    updatePolygonoidFromDepth();
+  }
+
+  function updatePolygonoidFromDepth() {
+    if (polygonoidPhase !== 'depth') return;
+    const vec = polygonoidNormalVec();
+    if (!vec) return;
+    const positions = buildPolygonoidStrokePositions();
+    deltaDisplay = getPolygonoidDepthDeltaDisplay(vec, polygonoidDepth);
+    pendingStrokePositions = positions;
+    updatePreviewMesh(positions);
+    render();
+  }
+
+  function commitPolygonoid() {
+    if (polygonoidPhase !== 'depth') return;
+    const positions = buildPolygonoidStrokePositions();
+    if (positions.length > 0) {
+      if ($tool === 'select') {
+        applySelectStroke(positions, selectionModeForCurrentGesture ?? get(selectionMode));
+      } else {
+        runVoxelStroke(() => applyLineStroke(positions));
+      }
+    }
+    deltaDisplay = null;
+    polygonoidPhase = null;
+    polygonoidPoints = [];
+    polygonoidInitialNormal = null;
+    updatePolygonPreview([]);
+    pendingStrokePositions = [];
+    updatePreviewMesh([]);
+    render();
+  }
+
   function updatePolygonPointsMesh(points: [number, number, number][]) {
     if (!polygonPointsMesh || !polygonPointsMaterial) return;
     const count = Math.min(points.length, POLYGON_POINTS_MAX);
@@ -2237,6 +2349,9 @@
     }
     if (polygonPhase) {
       cancelPolygon();
+    }
+    if (polygonoidPhase) {
+      cancelPolygonoid();
     }
     if (roofPhase) {
       cancelRoof();
@@ -2336,6 +2451,7 @@
           cuboidPhase,
           cylindroidPhase,
           polygonPhase,
+          polygonoidPhase,
           roofPhase,
           ropePhase
         })
@@ -2415,6 +2531,7 @@
           cuboidPhase,
           cylindroidPhase,
           polygonPhase,
+          polygonoidPhase,
           roofPhase,
           ropePhase
         })
@@ -2459,6 +2576,20 @@
       return;
     }
 
+    if (
+      get(effectiveStrokeMode) === 'polygonoid' &&
+      polygonoidPhase === 'depth' &&
+      !$addPanelStore.open
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      depthAdjustPointerId = event.pointerId;
+      lastDepthPhaseClientY = event.clientY;
+      depthPhaseAccumulator = 0;
+      container.setPointerCapture(event.pointerId);
+      return;
+    }
+
     // Rope tension phase: pointer down on slider track starts drag (handled in template)
 
     if (selectionGizmo?.tryPointerDown(event)) return;
@@ -2469,8 +2600,32 @@
       return;
     }
 
-    let hit = getIntersection();
     const strokeModeAtPointerDown = get(effectiveStrokeMode);
+    /** Prefer instanced corner handles over greedy voxel mesh (merged quads break voxel-center picks). */
+    let hit: THREE.Intersection | null = null;
+    const tryPolygonCornerPick =
+      polygonPointsMesh &&
+      camera &&
+      polygonPointsMesh.count > 0 &&
+      ((strokeModeAtPointerDown === 'polygon' && polygonPhase) ||
+        (strokeModeAtPointerDown === 'polygonoid' && polygonoidPhase === 'placing'));
+    if (tryPolygonCornerPick) {
+      raycaster.setFromCamera(pointer, camera);
+      const cornerHits = raycaster.intersectObject(polygonPointsMesh, false);
+      if (cornerHits.length > 0) hit = cornerHits[0]!;
+    }
+    if (!hit) {
+      if (
+        !(
+          strokeModeAtPointerDown === 'precise' &&
+          precisePhase === 'armed' &&
+          preciseAnchor &&
+          preciseNormal
+        )
+      ) {
+        hit = getIntersection();
+      }
+    }
     if (
       !hit &&
       !(
@@ -2487,19 +2642,6 @@
       raycaster.setFromCamera(pointer, camera);
       const roofPointHits = raycaster.intersectObject(polygonPointsMesh, false);
       if (roofPointHits.length > 0) hit = roofPointHits[0];
-    }
-
-    // Polygon mode only when current tool uses stroke mode (effectiveStrokeMode is null for clay)
-    if (
-      hit &&
-      get(effectiveStrokeMode) === 'polygon' &&
-      polygonPhase &&
-      polygonPointsMesh &&
-      camera
-    ) {
-      raycaster.setFromCamera(pointer, camera);
-      const pointHits = raycaster.intersectObject(polygonPointsMesh, false);
-      if (pointHits.length > 0) hit = pointHits[0];
     }
 
     if (strokeModeAtPointerDown === 'precise' && precisePhase === 'idle' && hit) {
@@ -2577,7 +2719,7 @@
       event.preventDefault();
       event.stopPropagation();
       // Click on existing point: remove it
-      if (hit.object === polygonPointsMesh && hit.instanceId != null) {
+      if (hit.object === polygonPointsMesh && typeof hit.instanceId === 'number') {
         const idx = hit.instanceId;
         if (idx >= 0 && idx < polygonPoints.length) {
           polygonPoints = polygonPoints.filter((_, i) => i !== idx);
@@ -2620,6 +2762,46 @@
                 )
               : [];
           updatePreviewMesh(fillPositions);
+        }
+      }
+      requestAnimationFrame(() => render());
+      return;
+    }
+
+    if (get(effectiveStrokeMode) === 'polygonoid') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (polygonoidPhase === 'depth') {
+        requestAnimationFrame(() => render());
+        return;
+      }
+      if (hit.object === polygonPointsMesh && typeof hit.instanceId === 'number') {
+        const idx = hit.instanceId;
+        if (idx >= 0 && idx < polygonoidPoints.length) {
+          polygonoidPoints = polygonoidPoints.filter((_, i) => i !== idx);
+          if (polygonoidPoints.length === 0) polygonoidInitialNormal = null;
+          polygonoidPhase = polygonoidPoints.length > 0 ? 'placing' : null;
+          updatePolygonPreview(polygonoidPoints);
+          updatePreviewMesh(getPolygonoidPlacingFillPreview());
+        }
+      } else {
+        const pos = getVoxelPosition(hit);
+        if (pos) {
+          const existingIdx = polygonoidPoints.findIndex(
+            ([x, y, z]) => x === pos[0] && y === pos[1] && z === pos[2]
+          );
+          if (existingIdx >= 0) {
+            polygonoidPoints = polygonoidPoints.filter((_, i) => i !== existingIdx);
+            if (polygonoidPoints.length === 0) polygonoidInitialNormal = null;
+            polygonoidPhase = polygonoidPoints.length > 0 ? 'placing' : null;
+          } else {
+            const wasEmpty = polygonoidPoints.length === 0;
+            polygonoidPhase = 'placing';
+            polygonoidPoints = [...polygonoidPoints, pos];
+            if (wasEmpty) polygonoidInitialNormal = getFaceNormalFromHit(hit);
+          }
+          updatePolygonPreview(polygonoidPoints);
+          updatePreviewMesh(getPolygonoidPlacingFillPreview());
         }
       }
       requestAnimationFrame(() => render());
@@ -3342,6 +3524,20 @@
         updateCylindroidFromDepth();
         return;
       }
+      if (
+        polygonoidPhase === 'depth' &&
+        event &&
+        depthAdjustPointerId === event.pointerId
+      ) {
+        const dy = lastDepthPhaseClientY - event.clientY;
+        lastDepthPhaseClientY = event.clientY;
+        depthPhaseAccumulator += dy / 12;
+        const step = Math.trunc(depthPhaseAccumulator);
+        depthPhaseAccumulator -= step;
+        polygonoidDepth = Math.max(-256, Math.min(256, polygonoidDepth + step));
+        updatePolygonoidFromDepth();
+        return;
+      }
       if (isVoxelDrag && dragStartPos) {
         if (event) refreshShiftPlaneSymmetryState(event.shiftKey);
         const clayPathMode = get(clayMode);
@@ -3717,14 +3913,18 @@
         render();
         return;
       }
+      if (polygonoidPhase === 'depth') {
+        render();
+        return;
+      }
       // Rope tension phase: idle clay path below calls updatePreviewMesh([]) every move — keep catenary preview
       if (ropePhase === 'tension') {
         rollOverMesh.visible = false;
         render();
         return;
       }
-      // Polygon / roof: preserve point loop preview, show rollOver for next point
-      if (polygonPhase || roofPhase) {
+      // Polygon / polygonoid placing / roof: preserve point loop preview, show rollOver for next point
+      if (polygonPhase || polygonoidPhase === 'placing' || roofPhase) {
         const hit = getIntersection();
         if (hit && hit.object !== polygonPointsMesh) {
           const pos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
@@ -4249,7 +4449,13 @@
     }
     if (
       event.button === 2 &&
-      (isVoxelDrag || selectionGizmo?.isGizmoDrag || cuboidPhase || cylindroidPhase)
+      (isVoxelDrag ||
+        selectionGizmo?.isGizmoDrag ||
+        cuboidPhase ||
+        cylindroidPhase ||
+        polygonPhase ||
+        polygonoidPhase ||
+        roofPhase)
     ) {
       cancelDrag();
     }
@@ -4489,6 +4695,11 @@
     }
     if (e.key === 'Escape' && polygonPhase) {
       cancelPolygon();
+      render();
+      e.preventDefault();
+    }
+    if (e.key === 'Escape' && polygonoidPhase) {
+      cancelPolygonoid();
       render();
       e.preventDefault();
     }
@@ -4819,7 +5030,7 @@
 
     planarAtmospherePassGL = new StashingPlanarAtmospherePass(webglDepthStash);
     distanceTintPassGL = new StashingDistanceTintPass(webglDepthStash);
-    sunShaftsPassGL = new SunShaftsPass();
+    sunShaftsPassGL = new SunShaftsPass(webglDepthStash);
     grainPassGL = new GrainPass();
     planarAtmospherePassGL.enabled = false;
     distanceTintPassGL.enabled = false;
@@ -4847,7 +5058,7 @@
     atmosphereOnlyScenePass = new VoxelleSceneRenderPass(scene, camera, webglDepthStash);
     atmosphereOnlyFogPass = new StashingPlanarAtmospherePass(webglDepthStash);
     atmosphereOnlyDistanceTintPass = new StashingDistanceTintPass(webglDepthStash);
-    atmosphereOnlySunShaftsPass = new SunShaftsPass();
+    atmosphereOnlySunShaftsPass = new SunShaftsPass(webglDepthStash);
     atmosphereOnlyGrainPass = new GrainPass();
     atmosphereOnlyFogPass.enabled = false;
     atmosphereOnlyDistanceTintPass.enabled = false;
@@ -4913,7 +5124,7 @@
     atmosphereOnlyGrainPass.enabled = !hasGlow && postGrain;
     if (bloomMixPass) bloomMixPass.enabled = hasGlow;
     const el = renderer.domElement;
-    const sunUv = getSunScreenUv(camera as THREE.Camera);
+    const sunUv = getSunScreenUv(camera as THREE.Camera, false);
     const opts = {
       fogColorHex: get(atmosphereColor),
       fogDensity: get(atmosphereDensity),
@@ -4940,13 +5151,7 @@
       grainStrength: 0,
       grainAnimated: false,
       grainSpeed: 0,
-      sunShaftsEnabled: false,
-      sunScreenUv: sunUv,
-      sunShaftsStrength: 0,
-      sunShaftsDecay: 0,
-      sunShaftsDensity: 0,
-      sunShaftsWeight: 0,
-      sunShaftsSamples: 1,
+      grainColorful: false,
       width: el.width,
       height: el.height
     };
@@ -4975,6 +5180,7 @@
       decay: get(sunShaftsDecay),
       density: get(sunShaftsDensity),
       weight: get(sunShaftsWeight),
+      samples: get(sunShaftsSamples),
       width: el.width,
       height: el.height
     };
@@ -4983,6 +5189,7 @@
       strength: get(grainStrength),
       animated: get(grainAnimated),
       speed: get(grainSpeed),
+      colorful: get(grainMode) === 'colorful',
       timeSeconds: performance.now() * 0.001,
       width: el.width,
       height: el.height
@@ -4990,9 +5197,9 @@
     if (distanceTintPassGL.enabled) updateDistanceTintPassUniforms(distanceTintPassGL, camera, tintOpts);
     if (atmosphereOnlyDistanceTintPass.enabled)
       updateDistanceTintPassUniforms(atmosphereOnlyDistanceTintPass, camera, tintOpts);
-    if (sunShaftsPassGL.enabled) updateSunShaftsPassUniforms(sunShaftsPassGL, shaftsOpts);
+    if (sunShaftsPassGL.enabled) updateSunShaftsPassUniforms(sunShaftsPassGL, camera, shaftsOpts);
     if (atmosphereOnlySunShaftsPass.enabled)
-      updateSunShaftsPassUniforms(atmosphereOnlySunShaftsPass, shaftsOpts);
+      updateSunShaftsPassUniforms(atmosphereOnlySunShaftsPass, camera, shaftsOpts);
     if (grainPassGL.enabled) updateGrainPassUniforms(grainPassGL, grainOpts);
     if (atmosphereOnlyGrainPass.enabled) updateGrainPassUniforms(atmosphereOnlyGrainPass, grainOpts);
   }
@@ -5010,7 +5217,7 @@
     const wanted = wantsFog || postDistanceTint || postGrain || wantsSunShafts;
     webgpuBloomPipeline.setPlanarAtmosphereEnabled(wanted);
     if (wanted) {
-      const sunUv = getSunScreenUv(camera as THREE.Camera);
+      const sunUv = getSunScreenUv(camera as THREE.Camera, true);
       webgpuBloomPipeline.updatePlanarAtmosphereUniforms({
         camera,
         fogColorHex: get(atmosphereColor),
@@ -5038,6 +5245,7 @@
         grainStrength: get(grainStrength),
         grainAnimated: get(grainAnimated),
         grainSpeed: get(grainSpeed),
+        grainColorful: get(grainMode) === 'colorful',
         sunShaftsEnabled: get(sunShaftsEnabled),
         sunScreenUv: sunUv,
         sunShaftsStrength: get(sunShaftsStrength),
@@ -5050,21 +5258,44 @@
     return wanted;
   }
 
-  function getSunScreenUv(cam: THREE.Camera): { x: number; y: number } {
+  /**
+   * Screen-space sun anchor for god rays / planar sun term.
+   * Project a far point along the parallel sun direction (same as Three `Vector3.project` NDC).
+   * When the sun lies behind the camera plane, mirror NDC x/y through the origin — do not
+   * negate the whole view direction before projecting (that skews the anchor left/right vs up/down).
+   * WebGPU `screenUV` is top-left origin; pass `flipYForWebGpuFramebuffer = true` for `webgpuBloom` only.
+   */
+  function getSunScreenUv(
+    cam: THREE.Camera,
+    flipYForWebGpuFramebuffer: boolean
+  ): { x: number; y: number } {
     if (!dirLight) return { x: 0.5, y: 0.2 };
     const lightPos = new THREE.Vector3();
     const targetPos = new THREE.Vector3();
     dirLight.getWorldPosition(lightPos);
     dirLight.target.getWorldPosition(targetPos);
-    const toLight = lightPos.sub(targetPos);
-    if (toLight.lengthSq() < 1e-10) return { x: 0.5, y: 0.2 };
-    toLight.normalize();
-    // Directional light "sun" is directional; project a far probe point along light dir.
-    const probe = cam.position.clone().add(toLight.multiplyScalar(2048));
-    const sunNdc = probe.project(cam);
-    // Allow slight offscreen values so shafts still appear near frame edges.
-    const x = Math.min(1.25, Math.max(-0.25, sunNdc.x * 0.5 + 0.5));
-    const y = Math.min(1.25, Math.max(-0.25, sunNdc.y * 0.5 + 0.5));
+    const toSun = new THREE.Vector3().subVectors(lightPos, targetPos);
+    if (toSun.lengthSq() < 1e-10) return { x: 0.5, y: 0.2 };
+    toSun.normalize();
+
+    const forwardW = new THREE.Vector3();
+    cam.getWorldDirection(forwardW);
+    const behind = forwardW.dot(toSun) < 0;
+
+    const probe = new THREE.Vector3().copy(cam.position).addScaledVector(toSun, 1e6);
+    probe.project(cam);
+    let ndcX = probe.x;
+    let ndcY = probe.y;
+    if (behind) {
+      ndcX = -ndcX;
+      ndcY = -ndcY;
+    }
+
+    let x = ndcX * 0.5 + 0.5;
+    let y = ndcY * 0.5 + 0.5;
+    if (flipYForWebGpuFramebuffer) y = 1 - y;
+    x = Math.min(1.25, Math.max(-0.25, x));
+    y = Math.min(1.25, Math.max(-0.25, y));
     return { x, y };
   }
 
@@ -5248,6 +5479,7 @@
       getGrainStrength: () => get(grainStrength),
       getGrainAnimated: () => get(grainAnimated),
       getGrainSpeed: () => get(grainSpeed),
+      getGrainColorful: () => get(grainMode) === 'colorful',
       getSunShaftsEnabled: () => get(sunShaftsEnabled),
       getSunShaftsStrength: () => get(sunShaftsStrength),
       getRayTraceContentDirty: () => {
@@ -5270,6 +5502,7 @@
       getCuboidPhase: () => cuboidPhase,
       getCylindroidPhase: () => cylindroidPhase,
       getPolygonPhase: () => polygonPhase,
+      getPolygonoidPhase: () => polygonoidPhase,
       getRoofPhase: () => roofPhase,
       getRopePhase: () => ropePhase,
       getFlyControlsEnabled: () => !!flyControls?.enabled,
@@ -5301,12 +5534,23 @@
     if (mode !== 'polygon' && polygonPhase) {
       cancelPolygon();
     }
+    if (mode !== 'polygonoid' && polygonoidPhase) {
+      cancelPolygonoid();
+    }
   });
 
   $effect(() => {
     void $planeCylindroidCone;
     if (cylindroidPhase === 'depth' && cylindroidPlane) {
       updateCylindroidFromDepth();
+    }
+  });
+
+  $effect(() => {
+    void $planeCuboidHollow;
+    void $planeCuboidHollowWallThickness;
+    if (polygonoidPhase === 'depth') {
+      updatePolygonoidFromDepth();
     }
   });
 
@@ -5401,6 +5645,17 @@
     };
     syncPolygonFillPreview();
     return polygonOffsetFromNormal.subscribe(() => syncPolygonFillPreview());
+  });
+
+  $effect(() => {
+    if (!polygonoidPhase || polygonoidPhase !== 'placing' || polygonoidPoints.length < 2) return;
+    void polygonoidPoints;
+    void polygonoidInitialNormal;
+    const syncPolygonoidFillPreview = () => {
+      updatePreviewMesh(getPolygonoidPlacingFillPreview());
+    };
+    syncPolygonoidFillPreview();
+    return polygonOffsetFromNormal.subscribe(() => syncPolygonoidFillPreview());
   });
 
   $effect(() => {
@@ -5756,6 +6011,7 @@
         cuboidPhase !== null ||
         cylindroidPhase !== null ||
         polygonPhase !== null ||
+        polygonoidPhase !== null ||
         roofPhase !== null ||
         ropePhase !== null ||
         (get(tool) === 'piscina' && piscinaPhase === 'shape') ||
@@ -5936,6 +6192,7 @@
         cuboidPhase,
         cylindroidPhase,
         polygonPhase,
+        polygonoidPhase,
         roofPhase,
         ropePhase
       }) ||
@@ -5957,6 +6214,7 @@
           cuboidPhase,
           cylindroidPhase,
           polygonPhase,
+          polygonoidPhase,
           roofPhase,
           ropePhase
         }) ||
@@ -6241,6 +6499,14 @@
     polygonPointCount={polygonPoints.length}
     {commitPolygon}
     {cancelPolygon}
+    {polygonoidPhase}
+    polygonoidPointCount={polygonoidPoints.length}
+    {polygonoidExtrudable}
+    {beginPolygonoidDepth}
+    bind:polygonoidDepth
+    {updatePolygonoidFromDepth}
+    {commitPolygonoid}
+    {cancelPolygonoid}
     {roofPhase}
     roofPointCount={roofPoints.length}
     {commitRoof}

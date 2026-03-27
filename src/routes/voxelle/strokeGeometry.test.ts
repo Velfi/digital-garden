@@ -13,6 +13,8 @@ import {
   getAxisAlignedCylindroid,
   getAxisAlignedCuboid,
   getPolygonVoxels,
+  getPolygonoidBasePositions,
+  getPolygonoidStrokeVoxels,
   getRayDirectionPath,
   getRopeCurveVoxels,
   applyBrushAlongPath,
@@ -668,6 +670,90 @@ describe('getPolygonVoxels', () => {
     }
     // Slab bug would fill many voxels (full column per (u,v)); thin triangle should be small
     expect(result.length).toBeLessThanOrEqual(10);
+  });
+});
+
+const nY = { x: 0, y: 1, z: 0 };
+
+describe('getPolygonoidBasePositions', () => {
+  it('returns null for fewer than 2 points', () => {
+    expect(getPolygonoidBasePositions([], [0, 0, 0], nY)).toBeNull();
+    expect(getPolygonoidBasePositions([[0, 0, 0]], [0, 0, 0], nY)).toBeNull();
+  });
+
+  it('fills silhouette of non-coplanar loop projected onto first-click plane (+Y)', () => {
+    const tetra: [number, number, number][] = [
+      [0, 0, 0],
+      [3, 0, 0],
+      [0, 3, 0],
+      [0, 0, 3]
+    ];
+    const base = getPolygonoidBasePositions(tetra, tetra[0]!, nY);
+    expect(base).not.toBeNull();
+    expect(base!.length).toBeGreaterThan(0);
+    for (const [, y] of base!) expect(y + 0).toBe(0);
+  });
+
+  it('returns axis-aligned square fill in plane through origin', () => {
+    const sq: [number, number, number][] = [
+      [0, 0, 0],
+      [2, 0, 0],
+      [2, 0, 2],
+      [0, 0, 2]
+    ];
+    const base = getPolygonoidBasePositions(sq, sq[0]!, nY);
+    expect(base).not.toBeNull();
+    expect(base!.length).toBeGreaterThan(0);
+    for (const [, y] of base!) expect(y + 0).toBe(0);
+  });
+});
+
+describe('getPolygonoidStrokeVoxels', () => {
+  const unitSquareY0: [number, number, number][] = [
+    [0, 0, 0],
+    [1, 0, 0],
+    [1, 0, 1],
+    [0, 0, 1]
+  ];
+  const sqOrigin = unitSquareY0[0]!;
+
+  it('depth 0 returns base only', () => {
+    const base = getPolygonoidBasePositions(unitSquareY0, sqOrigin, nY)!;
+    const v = getPolygonoidStrokeVoxels(unitSquareY0, sqOrigin, nY, 0, false);
+    expect(v.length).toBe(base.length);
+  });
+
+  it('extrudes unit square by one layer along +Y', () => {
+    const base = getPolygonoidBasePositions(unitSquareY0, sqOrigin, nY)!;
+    const v = getPolygonoidStrokeVoxels(unitSquareY0, sqOrigin, nY, 1, false);
+    expect(v.length).toBe(base.length * 2);
+    const byY = new Map<number, number>();
+    for (const [, y] of v) byY.set(y, (byY.get(y) ?? 0) + 1);
+    expect(byY.get(0)).toBe(base.length);
+    expect(byY.get(1)).toBe(base.length);
+  });
+
+  it('extrusion sign follows initial normal (+Y vs −Y)', () => {
+    const vUp = getPolygonoidStrokeVoxels(unitSquareY0, sqOrigin, nY, 1, false);
+    const vDown = getPolygonoidStrokeVoxels(unitSquareY0, sqOrigin, { x: 0, y: -1, z: 0 }, 1, false);
+    const maxUp = Math.max(...vUp.map(([, y]) => y));
+    const minDown = Math.min(...vDown.map(([, y]) => y));
+    expect(maxUp).toBeGreaterThan(0);
+    expect(minDown).toBeLessThan(0);
+  });
+
+  it('hollow shell removes interior voxels for a wide extrusion', () => {
+    const big: [number, number, number][] = [
+      [0, 0, 0],
+      [4, 0, 0],
+      [4, 0, 4],
+      [0, 0, 4]
+    ];
+    const o = big[0]!;
+    const solid = getPolygonoidStrokeVoxels(big, o, nY, 4, false);
+    const hollow = getPolygonoidStrokeVoxels(big, o, nY, 4, true, 1);
+    expect(hollow.length).toBeGreaterThan(0);
+    expect(hollow.length).toBeLessThan(solid.length);
   });
 });
 

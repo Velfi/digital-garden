@@ -6,6 +6,7 @@
 export type CuboidStrokePhase = 'plane' | 'depth' | null;
 export type CylindroidStrokePhase = 'plane' | 'depth' | null;
 export type PolygonStrokePhase = 'placing' | null;
+export type PolygonoidStrokePhase = 'placing' | 'depth' | null;
 export type RoofStrokePhase = 'placing' | null;
 export type RopeStrokePhase = 'placing' | 'tension' | null;
 export type PiscinaPlacementPhase = 'pick' | 'shape';
@@ -15,6 +16,7 @@ export function isSegmentedStrokeGestureActive(opts: {
   cuboidPhase: CuboidStrokePhase;
   cylindroidPhase: CylindroidStrokePhase;
   polygonPhase: PolygonStrokePhase;
+  polygonoidPhase: PolygonoidStrokePhase;
   roofPhase: RoofStrokePhase;
   ropePhase: RopeStrokePhase;
 }): boolean {
@@ -22,6 +24,7 @@ export function isSegmentedStrokeGestureActive(opts: {
     opts.cuboidPhase ||
     opts.cylindroidPhase ||
     opts.polygonPhase ||
+    opts.polygonoidPhase ||
     opts.roofPhase ||
     opts.ropePhase
   );

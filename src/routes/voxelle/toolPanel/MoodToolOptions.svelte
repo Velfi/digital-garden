@@ -28,12 +28,14 @@
     grainStrength,
     grainAnimated,
     grainSpeed,
+    grainMode,
     sunShaftsEnabled,
     sunShaftsStrength,
     sunShaftsDecay,
     sunShaftsDensity,
     sunShaftsWeight,
-    sunShaftsSamples
+    sunShaftsSamples,
+    type GrainMode
   } from '../store/index';
 </script>
 
@@ -272,7 +274,7 @@
       <label class="row"><span>Decay</span><input type="range" min="0.5" max="0.99" step="0.01" value={$sunShaftsDecay} oninput={(e) => sunShaftsDecay.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$sunShaftsDecay.toFixed(2)}</span></label>
       <label class="row"><span>Density</span><input type="range" min="0.1" max="1.5" step="0.01" value={$sunShaftsDensity} oninput={(e) => sunShaftsDensity.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$sunShaftsDensity.toFixed(2)}</span></label>
       <label class="row"><span>Weight</span><input type="range" min="0" max="1.5" step="0.01" value={$sunShaftsWeight} oninput={(e) => sunShaftsWeight.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$sunShaftsWeight.toFixed(2)}</span></label>
-      <label class="row"><span>Samples</span><input type="range" min="6" max="32" step="1" value={$sunShaftsSamples} oninput={(e) => sunShaftsSamples.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$sunShaftsSamples}</span></label>
+      <label class="row"><span>Samples</span><input type="range" min="20" max="56" step="1" value={$sunShaftsSamples} oninput={(e) => sunShaftsSamples.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$sunShaftsSamples}</span></label>
     {:else}
       <label class="row">
         <input
@@ -283,6 +285,17 @@
         Enable grain
       </label>
       <label class="row"><span>Strength</span><input type="range" min="0" max="0.5" step="0.01" value={$grainStrength} oninput={(e) => grainStrength.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$grainStrength.toFixed(2)}</span></label>
+      <label class="row">
+        <span>Color</span>
+        <select
+          value={$grainMode}
+          onchange={(e) =>
+            grainMode.set((e.target as HTMLSelectElement).value as GrainMode)}
+        >
+          <option value="colorful">Colorful</option>
+          <option value="monochrome">Monochrome</option>
+        </select>
+      </label>
       <label class="row">
         <input
           type="checkbox"

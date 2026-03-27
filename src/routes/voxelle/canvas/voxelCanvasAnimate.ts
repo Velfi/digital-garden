@@ -57,6 +57,7 @@ export type VoxelCanvasAnimateContext = {
   getGrainStrength: () => number;
   getGrainAnimated: () => boolean;
   getGrainSpeed: () => number;
+  getGrainColorful: () => boolean;
   getSunShaftsEnabled: () => boolean;
   getSunShaftsStrength: () => number;
   getRayTraceContentDirty: () => boolean;
@@ -71,6 +72,7 @@ export type VoxelCanvasAnimateContext = {
   getCuboidPhase: () => 'plane' | 'depth' | null;
   getCylindroidPhase: () => 'plane' | 'depth' | null;
   getPolygonPhase: () => 'placing' | null;
+  getPolygonoidPhase: () => 'placing' | 'depth' | null;
   getRoofPhase: () => 'placing' | null;
   getRopePhase: () => 'placing' | 'tension' | null;
   getFlyControlsEnabled: () => boolean;
@@ -177,6 +179,7 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
       grainStrength: ctx.getGrainStrength(),
       grainAnimated: ctx.getGrainAnimated(),
       grainSpeed: ctx.getGrainSpeed(),
+      grainColorful: ctx.getGrainColorful(),
       sunShaftsEnabled: ctx.getSunShaftsEnabled(),
       sunShaftsStrength: ctx.getSunShaftsStrength()
     });
@@ -222,6 +225,7 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
     ctx.getCuboidPhase() !== null ||
     ctx.getCylindroidPhase() !== null ||
     ctx.getPolygonPhase() !== null ||
+    ctx.getPolygonoidPhase() !== null ||
     ctx.getRoofPhase() !== null ||
     ctx.getRopePhase() !== null;
   if (

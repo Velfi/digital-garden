@@ -63,6 +63,14 @@
     </button>
     <button
       type="button"
+      class:active={$strokeMode === 'polygonoid'}
+      onclick={() => strokeMode.set('polygonoid')}
+      title="Click to place outline corners, Extrude, then adjust depth (slider / vertical drag) and Done — like cuboid"
+    >
+      Polygonoid
+    </button>
+    <button
+      type="button"
       class:active={$strokeMode === 'fill'}
       onclick={() => strokeMode.set('fill')}
       title="Click to flood-fill: Voxel (empty space), Remove/Paint (voxels), Select/SelectByColor (selection)"

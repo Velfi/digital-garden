@@ -31,6 +31,14 @@
     polygonPointCount: number;
     commitPolygon: () => void;
     cancelPolygon: () => void;
+    polygonoidPhase: 'placing' | 'depth' | null;
+    polygonoidPointCount: number;
+    polygonoidExtrudable: boolean;
+    beginPolygonoidDepth: () => void;
+    polygonoidDepth: number;
+    updatePolygonoidFromDepth: () => void;
+    commitPolygonoid: () => void;
+    cancelPolygonoid: () => void;
     roofPhase: 'placing' | null;
     roofPointCount: number;
     commitRoof: () => void;
@@ -86,6 +94,14 @@
     polygonPointCount,
     commitPolygon,
     cancelPolygon,
+    polygonoidPhase,
+    polygonoidPointCount,
+    polygonoidExtrudable,
+    beginPolygonoidDepth,
+    polygonoidDepth = $bindable(),
+    updatePolygonoidFromDepth,
+    commitPolygonoid,
+    cancelPolygonoid,
     roofPhase,
     roofPointCount,
     commitRoof,
@@ -324,6 +340,79 @@
     Done
   </button>
 {/if}
+{#if polygonoidPhase === 'depth'}
+  <div class="depth-slider-container" data-voxelle-no-passthrough>
+    <div
+      class="depth-slider-track"
+      role="slider"
+      aria-label="Polygonoid depth"
+      aria-valuemin={-256}
+      aria-valuemax={256}
+      aria-valuenow={polygonoidDepth}
+      tabindex="0"
+      onpointerdown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        depthSliderPointerId = e.pointerId;
+        depthSliderStartY = e.clientY;
+        depthSliderStartDepth = polygonoidDepth;
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }}
+      onpointermove={(e) => {
+        e.preventDefault();
+        if (depthSliderPointerId !== e.pointerId) return;
+        const dy = depthSliderStartY - e.clientY;
+        polygonoidDepth = Math.max(-256, Math.min(256, depthSliderStartDepth + Math.round(dy / 10)));
+        updatePolygonoidFromDepth();
+      }}
+      onpointerup={(e) => {
+        if (depthSliderPointerId === e.pointerId) depthSliderPointerId = null;
+      }}
+      onpointercancel={(e) => {
+        if (depthSliderPointerId === e.pointerId) depthSliderPointerId = null;
+      }}
+    >
+      <div
+        class="depth-slider-thumb"
+        style="bottom: {Math.min(99, Math.max(1, 50 + (polygonoidDepth / 512) * 98))}%"
+      ></div>
+    </div>
+    <div class="depth-slider-controls">
+      <button
+        type="button"
+        class="depth-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => {
+          polygonoidDepth = Math.max(-256, polygonoidDepth - 1);
+          updatePolygonoidFromDepth();
+        }}
+        aria-label="Decrease depth">−</button
+      >
+      <span class="depth-slider-label">Depth: {polygonoidDepth}</span>
+      <button
+        type="button"
+        class="depth-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => {
+          polygonoidDepth = Math.min(256, polygonoidDepth + 1);
+          updatePolygonoidFromDepth();
+        }}
+        aria-label="Increase depth">+</button
+      >
+    </div>
+  </div>
+  <button
+    type="button"
+    class="cuboid-done-btn"
+    data-voxelle-no-passthrough
+    onpointerdown={(e) => e.stopPropagation()}
+    onclick={() => commitPolygonoid()}
+    title="Tap Done to apply"
+    aria-label="Apply polygonoid"
+  >
+    Done
+  </button>
+{/if}
 {#if polygonPhase === 'placing' && polygonPointCount >= 2}
   <div class="polygon-actions" data-voxelle-no-passthrough>
     <button
@@ -343,6 +432,33 @@
       onclick={() => cancelPolygon()}
       title="Cancel"
       aria-label="Cancel polygon"
+    >
+      Cancel
+    </button>
+  </div>
+{/if}
+{#if polygonoidPhase === 'placing' && polygonoidPointCount >= 2}
+  <div class="polygon-actions" data-voxelle-no-passthrough>
+    <button
+      type="button"
+      class="polygon-done-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => beginPolygonoidDepth()}
+      disabled={!polygonoidExtrudable}
+      title={polygonoidExtrudable
+        ? 'Set depth, then Done to apply'
+        : 'Need at least two corners (outline projects onto the first face you clicked)'}
+      aria-label="Start polygonoid extrusion"
+    >
+      Extrude
+    </button>
+    <button
+      type="button"
+      class="polygon-cancel-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => cancelPolygonoid()}
+      title="Cancel"
+      aria-label="Cancel polygonoid"
     >
       Cancel
     </button>

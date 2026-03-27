@@ -48,6 +48,7 @@ export type VoxelleFileFormat = {
       grainStrength?: number;
       grainAnimated?: boolean;
       grainSpeed?: number;
+      grainMode?: 'colorful' | 'monochrome';
       sunShaftsEnabled?: boolean;
       sunShaftsStrength?: number;
       sunShaftsDecay?: number;

@@ -50,10 +50,18 @@ export const distanceTintFarDistance = writable<number>(140);
 export const distanceTintStrength = writable<number>(0.6);
 export const distanceTintActiveForRender = derived(distanceTintEnabled, (on) => on);
 
+/** Per-channel RGB grain vs single scalar applied to RGB. */
+export type GrainMode = 'colorful' | 'monochrome';
+
+export function isGrainMode(v: unknown): v is GrainMode {
+  return v === 'colorful' || v === 'monochrome';
+}
+
 export const grainEnabled = writable<boolean>(false);
 export const grainStrength = writable<number>(0.12);
 export const grainAnimated = writable<boolean>(true);
 export const grainSpeed = writable<number>(1);
+export const grainMode = writable<GrainMode>('colorful');
 export const grainActiveForRender = derived([grainEnabled, grainStrength], ([on, s]) => on && s > 0);
 
 export const sunShaftsEnabled = writable<boolean>(false);
@@ -61,7 +69,7 @@ export const sunShaftsStrength = writable<number>(0.7);
 export const sunShaftsDecay = writable<number>(0.92);
 export const sunShaftsDensity = writable<number>(0.8);
 export const sunShaftsWeight = writable<number>(0.6);
-export const sunShaftsSamples = writable<number>(18);
+export const sunShaftsSamples = writable<number>(32);
 export const sunShaftsActiveForRender = derived(
   [sunShaftsEnabled, sunShaftsStrength],
   ([on, s]) => on && s > 0

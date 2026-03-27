@@ -41,6 +41,10 @@ export function polygonVisible(strokeMode: StrokeMode, tool: string): boolean {
   return strokeMode === 'polygon' && isStrokeTool(tool);
 }
 
+export function polygonoidVisible(strokeMode: StrokeMode, tool: string): boolean {
+  return strokeMode === 'polygonoid' && isStrokeTool(tool);
+}
+
 export function planeOrCuboidStroke(strokeMode: StrokeMode): boolean {
   return strokeMode === 'plane' || strokeMode === 'cuboid' || strokeMode === 'cylindroid';
 }
@@ -58,7 +62,8 @@ export function showBrushSection(
     drawBrushVisible(toolPane, tool) &&
     !airbrushVisible(strokeMode, tool) &&
     !fillVisible(strokeMode, tool) &&
-    !polygonVisible(strokeMode, tool)
+    !polygonVisible(strokeMode, tool) &&
+    !polygonoidVisible(strokeMode, tool)
   );
 }
 
@@ -108,6 +113,7 @@ export function toolPanelShellVisible(opts: {
     airbrushVisible(strokeMode, tool) ||
     fillVisible(strokeMode, tool) ||
     polygonVisible(strokeMode, tool) ||
+    polygonoidVisible(strokeMode, tool) ||
     stampVisible(tool) ||
     clayVisible(tool) ||
     generatorOptionsVisible(tool) ||

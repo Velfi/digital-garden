@@ -47,13 +47,7 @@ uniform float grainEnabled;
 uniform float grainStrength;
 uniform float grainAnimated;
 uniform float grainSpeed;
-uniform float sunShaftsEnabled;
-uniform vec2 sunScreenUv;
-uniform float sunShaftsStrength;
-uniform float sunShaftsDecay;
-uniform float sunShaftsDensity;
-uniform float sunShaftsWeight;
-uniform float sunShaftsSamples;
+uniform float grainColorful;
 
 void main() {
   vec2 texUv = gl_FragCoord.xy / resolution;
@@ -99,27 +93,31 @@ void main() {
       fogAmt = clamp(fogAmt + driftNoise * fogDriftAmount * fogDensity * 0.35, 0.0, 1.0);
     }
   }
-  vec3 outRgb = mix(base.rgb, fogColor, fogAmt);
+  float fogAmtStylized = min(fogAmt * 1.12, 1.0);
+  vec3 outRgb = mix(base.rgb, fogColor, fogAmtStylized);
   float viewDist = max(0.0, -viewPos.z);
   if (distanceTintEnabled > 0.5) {
     float nearT = clamp(viewDist / max(0.001, distanceTintNearDist), 0.0, 1.0);
     float farSpan = max(1.0, distanceTintFarDist - distanceTintNearDist);
     float farT = clamp((viewDist - distanceTintNearDist) / farSpan, 0.0, 1.0);
+    float farTGrade = pow(farT, 1.28);
     vec3 tintA = mix(distanceTintNearColor, distanceTintMidColor, nearT);
-    vec3 tintB = mix(distanceTintMidColor, distanceTintFarColor, farT);
-    vec3 tint = mix(tintA, tintB, farT);
+    vec3 tintB = mix(distanceTintMidColor, distanceTintFarColor, farTGrade);
+    vec3 tint = mix(tintA, tintB, farTGrade);
     outRgb = mix(outRgb, tint, clamp(distanceTintStrength, 0.0, 1.0));
   }
-  if (sunShaftsEnabled > 0.5) {
-    vec2 toSun = sunScreenUv - texUv;
-    float radial = max(0.0, 1.0 - length(toSun));
-    float shafts = pow(radial, 2.0) * sunShaftsStrength * sunShaftsDecay * sunShaftsDensity * sunShaftsWeight;
-    outRgb += shafts * fogColor;
-  }
   if (grainEnabled > 0.5) {
-    float t = grainAnimated > 0.5 ? timeSeconds * grainSpeed : 0.0;
-    float n = fract(sin(dot(texUv + vec2(t, t * 1.91), vec2(12.9898, 78.233))) * 43758.5453);
-    outRgb += (n - 0.5) * grainStrength;
+    float gt = grainAnimated > 0.5 ? timeSeconds * grainSpeed : 0.0;
+    vec2 gbase = texUv + vec2(gt, gt * 1.91);
+    if (grainColorful > 0.5) {
+      float n1 = fract(sin(dot(gbase, vec2(12.9898, 78.233))) * 43758.5453);
+      float n2 = fract(sin(dot(gbase + vec2(19.19, 73.73), vec2(93.9898, 67.345))) * 24634.6345);
+      float n3 = fract(sin(dot(gbase + vec2(47.77, 11.13), vec2(27.123, 98.456))) * 56445.2345);
+      outRgb += (vec3(n1, n2, n3) - 0.5) * grainStrength * 1.14;
+    } else {
+      float n = fract(sin(dot(gbase, vec2(12.9898, 78.233))) * 43758.5453);
+      outRgb += (n - 0.5) * grainStrength * 1.14;
+    }
   }
 
   gl_FragColor = vec4(outRgb, base.a);
@@ -189,13 +187,7 @@ function createPlanarFogShaderMaterial(): THREE.ShaderMaterial {
       grainStrength: { value: 0.06 },
       grainAnimated: { value: 1 },
       grainSpeed: { value: 1 },
-      sunShaftsEnabled: { value: 0 },
-      sunScreenUv: { value: new THREE.Vector2(0.5, 0.2) },
-      sunShaftsStrength: { value: 0.35 },
-      sunShaftsDecay: { value: 0.92 },
-      sunShaftsDensity: { value: 0.8 },
-      sunShaftsWeight: { value: 0.6 },
-      sunShaftsSamples: { value: 18 }
+      grainColorful: { value: 1 }
     },
     vertexShader: PLANAR_FOG_VERTEX,
     fragmentShader: PLANAR_FOG_FRAGMENT
@@ -259,15 +251,18 @@ void main() {
   float nearT = clamp(viewDist / max(0.001, nearDist), 0.0, 1.0);
   float farSpan = max(1.0, farDist - nearDist);
   float farT = clamp((viewDist - nearDist) / farSpan, 0.0, 1.0);
+  float farTGrade = pow(farT, 1.28);
   vec3 tintA = mix(nearColor, midColor, nearT);
-  vec3 tintB = mix(midColor, farColor, farT);
-  vec3 tint = mix(tintA, tintB, farT);
+  vec3 tintB = mix(midColor, farColor, farTGrade);
+  vec3 tint = mix(tintA, tintB, farTGrade);
   gl_FragColor = vec4(mix(base.rgb, tint, clamp(strength, 0.0, 1.0)), base.a);
 }
 `;
 
 const SUN_SHAFTS_FRAGMENT = `
 uniform sampler2D tDiffuse;
+uniform sampler2D tDepth;
+uniform mat4 cameraProjectionMatrixInverse;
 uniform vec2 resolution;
 uniform float enabled;
 uniform vec2 sunScreenUv;
@@ -276,6 +271,7 @@ uniform float shaftStrength;
 uniform float shaftDecay;
 uniform float shaftDensity;
 uniform float shaftWeight;
+uniform float shaftSamples;
 
 void main() {
   vec2 uv = gl_FragCoord.xy / resolution;
@@ -284,23 +280,63 @@ void main() {
     gl_FragColor = base;
     return;
   }
-  vec2 toSun = sunScreenUv - uv;
-  float dist = max(1e-4, length(toSun));
-  vec2 dir = toSun / dist;
-  vec2 stepUv = dir * (0.08 * shaftDensity);
-  vec3 accum = vec3(0.0);
-  float decay = 1.0;
-  vec2 sampleUv = uv;
-  for (int i = 0; i < 12; i++) {
-    sampleUv += stepUv;
-    vec3 c = texture2D(tDiffuse, sampleUv).rgb;
-    float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
-    accum += shaftColor * luma * decay * shaftWeight;
-    decay *= shaftDecay;
+  float depth = texture2D(tDepth, uv).r;
+  if (depth >= 1.0 - 1e-5) {
+    gl_FragColor = base;
+    return;
   }
-  float radial = exp(-dist * 2.4);
-  float intensity = shaftStrength * (0.2 + 0.8 * radial);
-  gl_FragColor = vec4(base.rgb + accum * intensity * 0.12, base.a);
+  vec2 ndc0 = uv * 2.0 - 1.0;
+  vec4 clip0 = vec4(ndc0.x, ndc0.y, depth * 2.0 - 1.0, 1.0);
+  vec4 vh0 = cameraProjectionMatrixInverse * clip0;
+  vec3 view0 = vh0.xyz / max(vh0.w, 1e-5);
+  float vz = max(0.0, -view0.z);
+
+  vec2 toSun = sunScreenUv - uv;
+  vec2 sunUvClamped = clamp(sunScreenUv, 0.0, 1.0);
+  float sunDepth = texture2D(tDepth, sunUvClamped).r;
+  bool sunVisible = sunDepth >= 0.9992;
+  float sunGate = sunVisible ? 1.0 : 0.12;
+  float rayLen = max(length(toSun), 1e-4);
+  vec2 dir = toSun / rayLen;
+  float maxMarch = min(rayLen * 0.78, 0.65);
+  float stepLen = maxMarch / max(shaftSamples, 1.0);
+  float rayOff = fract(sin(dot(uv, vec2(127.1, 311.7))) * 43758.5453) * stepLen;
+
+  float shaftAcc = 0.0;
+  for (int i = 0; i < 56; i++) {
+    if (float(i) >= shaftSamples) break;
+    float t = rayOff + stepLen * float(i);
+    vec2 coord = uv + dir * t;
+    vec2 cuv = clamp(coord, 0.0, 1.0);
+    float ds = texture2D(tDepth, cuv).r;
+    vec2 ndcs = cuv * 2.0 - 1.0;
+    vec4 clipS = vec4(ndcs.x, ndcs.y, ds * 2.0 - 1.0, 1.0);
+    vec4 vhS = cameraProjectionMatrixInverse * clipS;
+    vec3 viewS = vhS.xyz / max(vhS.w, 1e-5);
+    float vzS = max(0.0, -viewS.z);
+    float vzOcc = smoothstep(vz * 0.68, vz * 1.2, vzS);
+    bool curSky = depth >= 0.9992;
+    bool sampSky = ds >= 0.9992;
+    float skyLeak = curSky ? 1.0 : (sampSky ? 0.16 : 1.0);
+    float occW = vzOcc * skyLeak * sunGate;
+    vec3 sampleCol = texture2D(tDiffuse, cuv).rgb;
+    float luma = dot(sampleCol, vec3(0.2126, 0.7152, 0.0722));
+    float skyBlend = smoothstep(0.9986, 1.0, ds);
+    float geoScatter = pow(max(luma, 0.025), 0.58) * 1.85;
+    float skyScatter = 0.36 + luma * 0.68;
+    float scatter = mix(geoScatter, skyScatter, skyBlend);
+    float radialW = exp(-distance(sunScreenUv, cuv) * 1.38);
+    float decayPow = pow(max(shaftDecay, 0.0001), float(i));
+    shaftAcc += scatter * decayPow * occW * radialW;
+  }
+
+  float shaftSmooth = pow(max(shaftAcc, 1e-6), 0.82);
+  float sunCore = pow(exp(-length(toSun) * 2.85), 1.08);
+  float dMix = shaftDensity * 0.32 + 0.68;
+  float shaftIntensity = shaftSmooth * shaftStrength * 0.038 * shaftWeight * dMix;
+  float coreSurf = (depth >= 0.9992) ? 1.0 : 0.82;
+  float coreGlow = sunVisible ? (sunCore * shaftStrength * 0.22 * shaftWeight * coreSurf) : 0.0;
+  gl_FragColor = vec4(base.rgb + shaftColor * (shaftIntensity + coreGlow), base.a);
 }
 `;
 
@@ -311,6 +347,7 @@ uniform float enabled;
 uniform float grainStrength;
 uniform float grainAnimated;
 uniform float grainSpeed;
+uniform float grainColorful;
 uniform float timeSeconds;
 
 void main() {
@@ -325,10 +362,10 @@ void main() {
   float n1 = fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
   float n2 = fract(sin(dot(p + vec2(19.19, 73.73), vec2(93.9898, 67.345))) * 24634.6345);
   float n3 = fract(sin(dot(p + vec2(47.77, 11.13), vec2(27.123, 98.456))) * 56445.2345);
-  vec3 noise = vec3(n1, n2, n3) - 0.5;
+  vec3 noise = mix(vec3(n1), vec3(n1, n2, n3), grainColorful) - 0.5;
   float luminance = dot(base.rgb, vec3(0.2126, 0.7152, 0.0722));
   float visibility = mix(0.45, 1.0, smoothstep(0.1, 0.9, luminance));
-  gl_FragColor = vec4(base.rgb + noise * grainStrength * visibility, base.a);
+  gl_FragColor = vec4(base.rgb + noise * grainStrength * visibility * 1.14, base.a);
 }
 `;
 
@@ -375,11 +412,14 @@ export class StashingDistanceTintPass extends ShaderPass {
   }
 }
 
+/** God-ray style shafts; samples scene depth from `depthStash` (same as fog/tint passes). */
 export class SunShaftsPass extends ShaderPass {
-  constructor() {
+  constructor(readonly depthStash: WebGLDepthStash) {
     super(
       createFullScreenMaterial(SUN_SHAFTS_FRAGMENT, {
         tDiffuse: { value: null },
+        tDepth: { value: null },
+        cameraProjectionMatrixInverse: { value: new THREE.Matrix4() },
         resolution: { value: new THREE.Vector2(1, 1) },
         enabled: { value: 0 },
         sunScreenUv: { value: new THREE.Vector2(0.5, 0.2) },
@@ -387,9 +427,22 @@ export class SunShaftsPass extends ShaderPass {
         shaftStrength: { value: 0.7 },
         shaftDecay: { value: 0.92 },
         shaftDensity: { value: 0.8 },
-        shaftWeight: { value: 0.6 }
+        shaftWeight: { value: 0.6 },
+        shaftSamples: { value: 32 }
       })
     );
+  }
+
+  override render(
+    renderer: THREE.WebGLRenderer,
+    writeBuffer: THREE.WebGLRenderTarget,
+    readBuffer: THREE.WebGLRenderTarget,
+    deltaTime?: number,
+    maskActive?: boolean
+  ): void {
+    const u = this.material.uniforms;
+    if (u.tDepth) u.tDepth.value = this.depthStash.texture;
+    super.render(renderer, writeBuffer, readBuffer, deltaTime ?? 0, maskActive ?? false);
   }
 }
 
@@ -403,6 +456,7 @@ export class GrainPass extends ShaderPass {
         grainStrength: { value: 0.12 },
         grainAnimated: { value: 1 },
         grainSpeed: { value: 1 },
+        grainColorful: { value: 1 },
         timeSeconds: { value: 0 }
       })
     );
@@ -438,13 +492,7 @@ export function updatePlanarAtmosphereShaderUniforms(
     grainStrength: number;
     grainAnimated: boolean;
     grainSpeed: number;
-    sunShaftsEnabled: boolean;
-    sunScreenUv: { x: number; y: number };
-    sunShaftsStrength: number;
-    sunShaftsDecay: number;
-    sunShaftsDensity: number;
-    sunShaftsWeight: number;
-    sunShaftsSamples: number;
+    grainColorful: boolean;
     width: number;
     height: number;
   }
@@ -480,13 +528,7 @@ export function updatePlanarAtmosphereShaderUniforms(
   u.grainStrength.value = opts.grainStrength;
   u.grainAnimated.value = opts.grainAnimated ? 1 : 0;
   u.grainSpeed.value = opts.grainSpeed;
-  u.sunShaftsEnabled.value = opts.sunShaftsEnabled ? 1 : 0;
-  u.sunScreenUv.value.set(opts.sunScreenUv.x, opts.sunScreenUv.y);
-  u.sunShaftsStrength.value = opts.sunShaftsStrength;
-  u.sunShaftsDecay.value = opts.sunShaftsDecay;
-  u.sunShaftsDensity.value = opts.sunShaftsDensity;
-  u.sunShaftsWeight.value = opts.sunShaftsWeight;
-  u.sunShaftsSamples.value = opts.sunShaftsSamples;
+  u.grainColorful.value = opts.grainColorful ? 1 : 0;
 }
 
 export function updateDistanceTintPassUniforms(
@@ -520,6 +562,7 @@ export function updateDistanceTintPassUniforms(
 
 export function updateSunShaftsPassUniforms(
   pass: ShaderPass,
+  camera: THREE.Camera,
   opts: {
     enabled: boolean;
     colorHex: string;
@@ -528,6 +571,7 @@ export function updateSunShaftsPassUniforms(
     decay: number;
     density: number;
     weight: number;
+    samples: number;
     width: number;
     height: number;
   }
@@ -540,7 +584,11 @@ export function updateSunShaftsPassUniforms(
   u.shaftDecay.value = opts.decay;
   u.shaftDensity.value = opts.density;
   u.shaftWeight.value = opts.weight;
+  u.shaftSamples.value = Math.min(56, Math.max(20, Math.round(opts.samples)));
   u.resolution.value.set(opts.width, opts.height);
+  if (u.cameraProjectionMatrixInverse) {
+    u.cameraProjectionMatrixInverse.value.copy(camera.projectionMatrixInverse);
+  }
 }
 
 export function updateGrainPassUniforms(
@@ -550,6 +598,7 @@ export function updateGrainPassUniforms(
     strength: number;
     animated: boolean;
     speed: number;
+    colorful: boolean;
     timeSeconds: number;
     width: number;
     height: number;
@@ -560,6 +609,7 @@ export function updateGrainPassUniforms(
   u.grainStrength.value = opts.strength;
   u.grainAnimated.value = opts.animated ? 1 : 0;
   u.grainSpeed.value = opts.speed;
+  u.grainColorful.value = opts.colorful ? 1 : 0;
   u.timeSeconds.value = opts.timeSeconds;
   u.resolution.value.set(opts.width, opts.height);
 }

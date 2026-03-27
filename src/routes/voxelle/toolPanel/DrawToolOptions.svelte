@@ -35,6 +35,7 @@
     planeAxisVisible as planeAxisVisibleFn,
     planeOrCuboidStroke as planeOrCuboidStrokeFn,
     polygonVisible as polygonVisibleFn,
+    polygonoidVisible as polygonoidVisibleFn,
     showBrushSection as showBrushSectionFn
   } from './toolVisibility';
 
@@ -47,6 +48,7 @@
   const fillVisible = $derived(fillVisibleFn($strokeMode, $tool));
   const constrainPlaneSectionVisible = $derived(constrainPlaneSectionVisibleFn($strokeMode, $tool));
   const polygonVisible = $derived(polygonVisibleFn($strokeMode, $tool));
+  const polygonoidVisible = $derived(polygonoidVisibleFn($strokeMode, $tool));
   const showBrushSection = $derived(showBrushSectionFn($toolPane, $strokeMode, $tool));
 </script>
 
@@ -174,6 +176,44 @@
           oninput={(e) =>
             planeCuboidHollowWallThickness.set(Number((e.target as HTMLInputElement).value))}
           title="Hollow shell depth in voxels (plane, cuboid, cylindroid)"
+        />
+        <span class="tool-panel-value"
+          >{Math.min(
+            PLANE_CUBOID_HOLLOW_WALL_MAX,
+            Math.max(1, Math.floor($planeCuboidHollowWallThickness))
+          )}</span
+        >
+      </div>
+    {/if}
+  </section>
+{/if}
+
+{#if polygonoidVisible}
+  <section class="tool-panel-section" aria-label="Polygonoid shell">
+    <label class="tool-panel-check">
+      <input
+        type="checkbox"
+        checked={$planeCuboidHollow}
+        onchange={(e) => planeCuboidHollow.set((e.target as HTMLInputElement).checked)}
+        title="Extrude as a hollow shell (same as cuboid)"
+      />
+      Hollow
+    </label>
+    {#if $planeCuboidHollow}
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Wall thickness</span>
+        <input
+          type="range"
+          min="1"
+          max={PLANE_CUBOID_HOLLOW_WALL_MAX}
+          step="1"
+          value={Math.min(
+            PLANE_CUBOID_HOLLOW_WALL_MAX,
+            Math.max(1, Math.floor($planeCuboidHollowWallThickness))
+          )}
+          oninput={(e) =>
+            planeCuboidHollowWallThickness.set(Number((e.target as HTMLInputElement).value))}
+          title="Hollow shell depth in voxels"
         />
         <span class="tool-panel-value"
           >{Math.min(
@@ -367,8 +407,8 @@
   </section>
 {/if}
 
-{#if polygonVisible}
-  <section class="tool-panel-section" aria-label="Polygon">
+{#if polygonVisible || polygonoidVisible}
+  <section class="tool-panel-section" aria-label="Polygon offset">
     <div class="tool-panel-row">
       <span class="tool-panel-label">Offset from normal</span>
       <input

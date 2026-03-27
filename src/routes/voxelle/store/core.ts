@@ -97,6 +97,7 @@ export type StrokeMode =
   | 'cuboid'
   | 'cylindroid'
   | 'polygon'
+  | 'polygonoid'
   | 'fill'
   | 'airbrush';
 
