@@ -6025,14 +6025,19 @@
   });
 
   $effect(() => {
-    if (!solidPolygonPhase || solidPolygonPhase !== 'placing' || solidPolygonPoints.length < 2) return;
+    if (!solidPolygonPhase || solidPolygonPoints.length < 2) return;
+    void solidPolygonPhase;
     void solidPolygonPoints;
     void solidPolygonInitialNormal;
-    const syncSolidPolygonFillPreview = () => {
-      updatePreviewMesh(getSolidPolygonPlacingFillPreview());
+    const syncSolidPolygonOffsetPreview = () => {
+      if (solidPolygonPhase === 'placing') {
+        updatePreviewMesh(getSolidPolygonPlacingFillPreview());
+      } else if (solidPolygonPhase === 'depth') {
+        updateSolidPolygonFromDepth();
+      }
     };
-    syncSolidPolygonFillPreview();
-    return polygonOffsetFromNormal.subscribe(() => syncSolidPolygonFillPreview());
+    syncSolidPolygonOffsetPreview();
+    return polygonOffsetFromNormal.subscribe(() => syncSolidPolygonOffsetPreview());
   });
 
   $effect(() => {
