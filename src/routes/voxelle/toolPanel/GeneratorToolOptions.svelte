@@ -8,11 +8,13 @@
   import PiscinaOptions from './PiscinaOptions.svelte';
   import InsectaOptions from './InsectaOptions.svelte';
   import RoofOptions from './RoofOptions.svelte';
+  import RopeClothGeneratorOptions from './RopeClothGeneratorOptions.svelte';
 
   const generatorPanelOpen = $derived(isGeneratorTool($tool));
 </script>
 
 {#if generatorPanelOpen}
+  <RopeClothGeneratorOptions />
   <RocksOptions />
   <AshlarOptions />
   <GrassOptions />

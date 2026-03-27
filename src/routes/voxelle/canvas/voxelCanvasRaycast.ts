@@ -211,7 +211,7 @@ export function getStrokeStartFromHit(
   hit: THREE.Intersection,
   worldQuaternion: THREE.Quaternion
 ): [number, number, number] | null {
-  return tool === 'voxel' || tool === 'clay'
+  return tool === 'voxel' || tool === 'clay' || tool === 'rope' || tool === 'cloth'
     ? getAddPositionFromHit(hit, worldQuaternion)
     : getVoxelPositionFromHit(hit, worldQuaternion);
 }

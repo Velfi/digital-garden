@@ -554,7 +554,7 @@
     </button>
   </div>
 {/if}
-{#if $tool === 'clay' && clothPhase === 'placing'}
+{#if $tool === 'cloth' && clothPhase === 'placing'}
   <div class="polygon-actions" data-voxelle-no-passthrough>
     {#if clothPointCount >= 3}
       <button

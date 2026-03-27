@@ -116,6 +116,20 @@ const DESCRIPTORS: ToolDescriptor[] = [
     defaultPane: 'clay'
   },
   {
+    id: 'rope',
+    category: 'generator',
+    label: 'Rope',
+    title: 'Pick two points, set tension, draw catenary with brush',
+    defaultPane: 'generators'
+  },
+  {
+    id: 'cloth',
+    category: 'generator',
+    label: 'Cloth',
+    title: 'Place 3+ pins (closed boundary), Done, then tension; patch in the pin plane',
+    defaultPane: 'generators'
+  },
+  {
     id: 'rocks',
     category: 'generator',
     label: 'Rocks',

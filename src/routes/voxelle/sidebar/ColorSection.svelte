@@ -1,6 +1,10 @@
 <script lang="ts">
   import { get } from 'svelte/store';
   import { color, palette, selectedColors, tool, toolBeforeEyedropper } from '../store/index';
+  import {
+    CSS_COLOR4_NAMED_PALETTE_HEX,
+    VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX
+  } from '../store/cssColor4NamedPalette';
   import LospecPalette from '$lib/components/LospecPalette.svelte';
 </script>
 
@@ -42,7 +46,13 @@
       </button>
     </div>
   </div>
-  <LospecPalette {color} {palette} {selectedColors} defaultSlug="resurrect-64" />
+  <LospecPalette
+    {color}
+    {palette}
+    {selectedColors}
+    builtinPalette={CSS_COLOR4_NAMED_PALETTE_HEX}
+    builtinDefaultHex={VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX}
+  />
 </div>
 
 <style>

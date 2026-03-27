@@ -977,7 +977,7 @@ export interface PathThickenParams {
   /** When true and drawBrushFaceNormal set, offset brush by radius*normal so it sits on surface */
   drawBrushSnapToSurface?: boolean;
   drawBrushFaceNormal?: { x: number; y: number; z: number };
-  /** Bulk / smooth / melt: square|circle = tangent plane; cube|sphere = 3D along stroke. */
+  /** Bulk / smooth / melt / gouge: square|circle = tangent plane; cube|sphere = 3D along stroke. */
   clayBrushShape?: ClayBrushShape;
   /** Clay branch: axis-aligned cube vs cylinder along the stroke polyline. */
   branchBrushProfile?: BranchBrushProfile;
@@ -1074,10 +1074,13 @@ export function thickenPathForStroke(
     }
     return thickenPathInPlane(positions, r, 1);
   }
-  // Bulk, smooth, melt: four brush shapes (2D in tangent plane vs 3D volumetric).
+  // Bulk, smooth, melt, gouge: four brush shapes (2D in tangent plane vs 3D volumetric).
   if (
     isClayPath &&
-    (params.clayMode === 'bulk' || params.clayMode === 'smooth' || params.clayMode === 'melt') &&
+    (params.clayMode === 'bulk' ||
+      params.clayMode === 'smooth' ||
+      params.clayMode === 'melt' ||
+      params.clayMode === 'gouge') &&
     params.clayBrushRadius > 0
   ) {
     const shape = params.clayBrushShape ?? 'square';

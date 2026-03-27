@@ -244,6 +244,24 @@ describe('thickenPathForStroke', () => {
     expect(result.length).toBe(5);
   });
 
+  it('gouge with clay circle matches bulk circle thickening', () => {
+    const singlePoint: [number, number, number][] = [[0, 0, 0]];
+    const bulk = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      clayMode: 'bulk',
+      clayBrushRadius: 1,
+      clayBrushShape: 'circle'
+    });
+    const gouge = thickenPathForStroke(singlePoint, {
+      ...defaultParams,
+      clayMode: 'gouge',
+      clayBrushRadius: 1,
+      clayBrushShape: 'circle'
+    });
+    expect(gouge.length).toBe(bulk.length);
+    expect(new Set(gouge.map((p) => p.join(',')))).toEqual(new Set(bulk.map((p) => p.join(','))));
+  });
+
   it('clay wall with direction and wallHeight adds voxels along direction', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const result = thickenPathForStroke(singlePoint, {

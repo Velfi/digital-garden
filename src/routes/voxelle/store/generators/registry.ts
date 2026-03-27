@@ -1,5 +1,7 @@
 /** Procedural / generator tools (sidebar Generators tab). */
 export const GENERATOR_TOOLS = [
+  'rope',
+  'cloth',
   'rocks',
   'grass',
   'ashlar',

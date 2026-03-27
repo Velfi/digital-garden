@@ -10,7 +10,8 @@
     lastDrawTool,
     encodeModelForUrl,
     MOOD_TOOLS,
-    isMoodTool
+    isMoodTool,
+    GENERATOR_TOOLS
   } from './store/index';
   import { nanoid } from 'nanoid';
   import { storeShareInIndexedDB } from './shareStorage';
@@ -158,6 +159,8 @@
             $lastDrawTool === 'fly' ||
               $lastDrawTool === 'clay' ||
               $lastDrawTool === 'hand' ||
+              $lastDrawTool === 'rope' ||
+              $lastDrawTool === 'cloth' ||
               $lastDrawTool === 'rocks' ||
               $lastDrawTool === 'grass' ||
               $lastDrawTool === 'ashlar' ||
@@ -192,7 +195,7 @@
         aria-selected={$toolPane === 'generators'}
         onclick={() => {
           toolPane.set('generators');
-          tool.set('rocks');
+          tool.set(GENERATOR_TOOLS[0]);
         }}
       >
         Generators

@@ -2759,7 +2759,7 @@
       polygonPointsMesh.count > 0 &&
       ((strokeModeAtPointerDown === 'polygonHull' && polygonPhase) ||
         (strokeModeAtPointerDown === 'polygon' && solidPolygonPhase === 'placing') ||
-        ($tool === 'clay' && get(clayMode) === 'cloth' && clothPhase === 'placing'));
+        ($tool === 'cloth' && clothPhase === 'placing'));
     if (tryPolygonCornerPick) {
       raycaster.setFromCamera(pointer, camera);
       const cornerHits = raycaster.intersectObject(polygonPointsMesh, false);
@@ -2873,7 +2873,7 @@
     }
     if (!hit) return;
 
-    if ($tool === 'clay' && get(clayMode) === 'cloth' && clothPhase !== 'tension') {
+    if ($tool === 'cloth' && clothPhase !== 'tension') {
       event.preventDefault();
       event.stopPropagation();
       container.setPointerCapture(event.pointerId);
@@ -3091,9 +3091,8 @@
     container.setPointerCapture(event.pointerId);
     dragPointerId = event.pointerId;
 
-    // Clay tool + rope mode: two-click flow (before other clay modes)
-    const mode = get(clayMode);
-    if ($tool === 'clay' && mode === 'rope') {
+    // Rope tool: two-click flow (before clay path modes)
+    if ($tool === 'rope') {
       const pos = getAddPosition(hit) ?? getVoxelPosition(hit);
       if (pos) {
         if (ropePhase === null) {
@@ -3116,6 +3115,7 @@
       return;
     }
 
+    const mode = get(clayMode);
     // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/melt/wall/terrain)
     if (
       $tool === 'clay' &&
@@ -5060,8 +5060,7 @@
     }
     if (
       e.key === 'Enter' &&
-      get(tool) === 'clay' &&
-      get(clayMode) === 'cloth' &&
+      get(tool) === 'cloth' &&
       clothPhase === 'placing' &&
       clothPoints.length >= 3
     ) {
@@ -5903,11 +5902,11 @@
   });
 
   $effect(() => {
-    const mode = $clayMode;
-    if (mode !== 'rope' && ropePhase) {
+    const t = $tool;
+    if (t !== 'rope' && ropePhase) {
       cancelRope();
     }
-    if (mode !== 'cloth' && clothPhase) {
+    if (t !== 'cloth' && clothPhase) {
       cancelCloth();
     }
   });

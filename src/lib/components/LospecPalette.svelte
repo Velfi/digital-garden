@@ -8,9 +8,21 @@
     selectedColors?: Writable<string[]>;
     disabled?: boolean;
     defaultSlug?: string;
+    /** When set, show a first “Default” control that restores this palette (no API call). */
+    builtinPalette?: readonly string[];
+    /** Brush color after Default; must be in `builtinPalette` if set. */
+    builtinDefaultHex?: string;
   }
 
-  let { color, palette, selectedColors, disabled = false, defaultSlug }: Props = $props();
+  let {
+    color,
+    palette,
+    selectedColors,
+    disabled = false,
+    defaultSlug,
+    builtinPalette,
+    builtinDefaultHex
+  }: Props = $props();
 
   onMount(() => {
     if (defaultSlug) loadPaletteBySlug(defaultSlug);
@@ -20,8 +32,7 @@
     { name: 'Resurrect 64', slug: 'resurrect-64' },
     { name: 'Apollo', slug: 'apollo' },
     { name: 'Lospec500', slug: 'lospec500' },
-    { name: 'CC-29', slug: 'cc-29' },
-    { name: 'SLSO8', slug: 'slso8' }
+    { name: 'CC-29', slug: 'cc-29' }
   ];
 
   let lospecSlug = $state('');
@@ -66,6 +77,17 @@
 
   function loadLospecPalette() {
     loadPaletteBySlug(lospecSlug);
+  }
+
+  function applyBuiltinPalette() {
+    const colors = builtinPalette?.length ? [...builtinPalette] : [];
+    if (!colors.length) return;
+    loadError = '';
+    palette.set(colors);
+    const preferred =
+      builtinDefaultHex && colors.includes(builtinDefaultHex) ? builtinDefaultHex : colors[0];
+    color.set(preferred);
+    if (selectedColors) selectedColors.set([preferred]);
   }
 
   function handleSwatchClick(swatch: string, e: MouseEvent | { shiftKey?: boolean }) {
@@ -154,6 +176,11 @@
   a slug (e.g. greyt-bit, apollo)
 </p>
 <div class="popular-palettes">
+  {#if builtinPalette && builtinPalette.length > 0}
+    <button type="button" class="palette-link" onclick={applyBuiltinPalette} {disabled}>
+      Default
+    </button>
+  {/if}
   {#each POPULAR_PALETTES as p (p.slug)}
     <a
       href="https://lospec.com/palette-list/{p.slug}"
@@ -247,16 +274,31 @@
 
   .popular-palettes {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 0.25rem 0.5rem;
     margin-bottom: 0.25rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .palette-link {
+    flex-shrink: 0;
     font-size: 0.85rem;
     color: var(--link-color);
+    white-space: nowrap;
   }
-  .palette-link:hover {
+  button.palette-link {
+    border: none;
+    padding: 0;
+    background: none;
+    font: inherit;
+    cursor: pointer;
+  }
+  button.palette-link:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .palette-link:hover:not(:disabled) {
     text-decoration: underline;
   }
 
