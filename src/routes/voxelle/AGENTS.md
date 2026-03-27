@@ -33,7 +33,7 @@ Central state in writable stores. Import from `'./store/index'` (barrel at `stor
 - `stampBookStorage.ts` – IndexedDB stamp book (`voxelle-stamp-book`): ordered stamps with voxel entries + optional PNG preview blob
 - `store/stampBook.ts` – selection ↔ clipboard-shaped entries, optional **tags** (normalized lowercase), search/filter (`stampMatchesSearch`), import/export JSON (`voxelleStampLibrary: 1`); **Use** from stamp book sets `bookStampPattern` + clears edit `selection` (stamp/punch read book pattern or selection); non-empty selection clears `bookStampPattern`
 - `stampBookThumbnail.ts` – offscreen WebGL greedy-mesh snapshot → PNG for stamp previews
-- `api/voxelle/share` (POST) – stores model in Vercel Blob, returns short id
+- `api/voxelle/share/upload` (POST) – `handleUpload()` for Vercel Blob **client** uploads (browser uploads bytes directly; avoids function payload limits)
 - `api/voxelle/model/[id]` (GET) – fetches stored model by id
 - `store/clipboard.ts` – copySelection, cutSelection, pasteFromClipboard
 - `store/storage.ts` – loadFromStorage (localStorage only), loadFromStorageAsync (IndexedDB + localStorage migration), saveToStorage

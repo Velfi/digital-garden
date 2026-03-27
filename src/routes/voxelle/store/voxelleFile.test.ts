@@ -6,6 +6,7 @@ import {
   VOXELLE_FORMAT_VERSION,
   loadFromBytes,
   encodeForTransport,
+  encodeForTransportBytes,
   setWorkerImpls
 } from './voxelleFile';
 import { plasticVoxel } from '../voxelMaterial';
@@ -208,5 +209,12 @@ describe('loadFromBytes / encodeForTransport with injected impls', () => {
     expect(typeof encoded).toBe('string');
     expect(encoded.length).toBeGreaterThan(0);
     expect(() => atob(encoded)).not.toThrow();
+  });
+
+  it('encodeForTransportBytes matches base64 decode of encodeForTransport', async () => {
+    voxels.set(new Map([['0,0,0', plasticVoxel(0xff0000)]]));
+    const [asBytes, asB64] = await Promise.all([encodeForTransportBytes(), encodeForTransport()]);
+    const fromB64 = Uint8Array.from(atob(asB64), (c) => c.charCodeAt(0));
+    expect(asBytes).toEqual(fromB64);
   });
 });

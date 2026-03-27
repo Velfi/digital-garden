@@ -444,11 +444,16 @@ export async function loadFromFile(file: File): Promise<boolean> {
   return loadFromBytes(new Uint8Array(buf));
 }
 
-/** Encode model as base64(gzip(BSON)) for share URL or blob storage. */
-export async function encodeForTransport(): Promise<string> {
+/** Encode model as gzip(BSON) bytes (same payload as base64 transport, without base64 overhead). */
+export async function encodeForTransportBytes(): Promise<Uint8Array> {
   const data = serializeToVoxelleFormat();
   const bsonBytes = await serializeImpl(data);
-  const compressed = await gzipCompress(bsonBytes);
+  return gzipCompress(bsonBytes);
+}
+
+/** Encode model as base64(gzip(BSON)) for share URL or blob storage. */
+export async function encodeForTransport(): Promise<string> {
+  const compressed = await encodeForTransportBytes();
   let binary = '';
   for (let i = 0; i < compressed.length; i++) binary += String.fromCharCode(compressed[i]!);
   return btoa(binary);

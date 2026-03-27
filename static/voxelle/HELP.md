@@ -43,7 +43,7 @@ Voxelle is a 3D sculpting tool made of blocks (voxels).
 
 - **File -> Save .voxelle** downloads a project file.
 - **File -> Open...** opens a `.voxelle` file.
-- **File -> Share link** creates a URL.
+- **File -> Share link** creates a URL (on the deployed site the project is uploaded directly to storage so large models are not limited by the small server request size cap).
 - **File -> Save as GLTF** exports `.glb` for Blender/Unity/other 3D apps.
 
 ---

@@ -450,7 +450,7 @@ export {
 } from './selection';
 
 // URL / Share
-export { encodeModelForUrl } from './url';
+export { encodeModelForUrl, encodeModelBytesForUrl } from './url';
 
 // Clipboard
 export {
@@ -527,6 +527,7 @@ export {
   loadFromFile,
   loadFromBytes,
   encodeForTransport,
+  encodeForTransportBytes,
   serializeToVoxelleFormat,
   VOXELLE_FORMAT_VERSION
 } from './voxelleFile';

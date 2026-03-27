@@ -9,11 +9,13 @@
     toolPane,
     lastDrawTool,
     encodeModelForUrl,
+    encodeModelBytesForUrl,
     MOOD_TOOLS,
     isMoodTool,
     GENERATOR_TOOLS
   } from './store/index';
   import { nanoid } from 'nanoid';
+  import { upload } from '@vercel/blob/client';
   import { storeShareInIndexedDB } from './shareStorage';
   import ArtSidebar from '$lib/components/ArtSidebar.svelte';
   import ToolPicker from './sidebar/ToolPicker.svelte';
@@ -52,23 +54,29 @@
   async function openShareModal() {
     if ($voxels.size === 0) return;
     try {
-      const encoded = await encodeModelForUrl();
       const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
 
       if (isLocalhost) {
         const id = nanoid(12);
+        const encoded = await encodeModelForUrl();
         await storeShareInIndexedDB(id, encoded);
         shareUrl = `${window.location.origin}${window.location.pathname}?m=${id}`;
       } else {
-        const res = await fetch('/api/voxelle/share', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: encoded })
+        const id = nanoid(12);
+        const pathname = `voxelle/${id}`;
+        const bytes = await encodeModelBytesForUrl();
+        const slice = bytes.buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength
+        ) as ArrayBuffer;
+        const body = new Blob([slice], { type: 'application/octet-stream' });
+        await upload(pathname, body, {
+          access: 'public',
+          handleUploadUrl: '/api/voxelle/share/upload',
+          contentType: 'application/octet-stream',
+          multipart: true
         });
-        if (res.ok) {
-          const { id } = await res.json();
-          shareUrl = `${window.location.origin}${window.location.pathname}?m=${id}`;
-        }
+        shareUrl = `${window.location.origin}${window.location.pathname}?m=${id}`;
       }
       showShareModal = true;
     } catch {
