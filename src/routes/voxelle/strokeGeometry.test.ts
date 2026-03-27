@@ -17,6 +17,7 @@ import {
   getSolidPolygonStrokeVoxels,
   getRayDirectionPath,
   getRopeCurveVoxels,
+  getClothPatchFromPinsVoxels,
   applyBrushAlongPath,
   getSprayDirectionVector,
   mergeSphereStampIntoSeen,
@@ -922,6 +923,60 @@ describe('getRopeCurveVoxels', () => {
     const minY = Math.min(...result.map(([, y]) => y));
     expect(minY).toBeLessThan(10);
     expect(result.length).toBeGreaterThan(5);
+  });
+});
+
+describe('getClothPatchFromPinsVoxels', () => {
+  /** Triangle in XZ at y=10 (gravity −Y). */
+  const tri: [number, number, number][] = [
+    [0, 10, 0],
+    [10, 10, 0],
+    [5, 10, 8]
+  ];
+  const brushR = 1;
+
+  it('returns empty for fewer than 3 pins', () => {
+    expect(getClothPatchFromPinsVoxels([[0, 0, 0], [1, 0, 0]], 0.5, 'down', brushR)).toEqual([]);
+  });
+
+  it('is deterministic for fixed inputs', () => {
+    const r1 = getClothPatchFromPinsVoxels(tri, 0.4, 'down', brushR);
+    const r2 = getClothPatchFromPinsVoxels(tri, 0.4, 'down', brushR);
+    expect(r1).toEqual(r2);
+  });
+
+  it('lower tension sags more than higher tension (min Y)', () => {
+    const loose = getClothPatchFromPinsVoxels(tri, 0.15, 'down', brushR);
+    const tight = getClothPatchFromPinsVoxels(tri, 0.95, 'down', brushR);
+    expect(loose.length).toBeGreaterThan(0);
+    expect(tight.length).toBeGreaterThan(0);
+    const looseMinY = Math.min(...loose.map(([, y]) => y));
+    const tightMinY = Math.min(...tight.map(([, y]) => y));
+    expect(looseMinY).toBeLessThan(tightMinY);
+  });
+
+  it('high tension keeps interior higher than very low tension', () => {
+    const stiff = getClothPatchFromPinsVoxels(tri, 1, 'down', brushR);
+    const drapy = getClothPatchFromPinsVoxels(tri, 0, 'down', brushR);
+    const stiffMinY = Math.min(...stiff.map(([, y]) => y));
+    const drapyMinY = Math.min(...drapy.map(([, y]) => y));
+    expect(stiffMinY).toBeGreaterThan(drapyMinY);
+  });
+
+  it('collinear pins returns a polyline of boundary voxels', () => {
+    const line: [number, number, number][] = [
+      [0, 0, 0],
+      [3, 0, 0],
+      [6, 0, 0]
+    ];
+    const result = getClothPatchFromPinsVoxels(line, 0.5, 'down', brushR);
+    expect(result.length).toBeGreaterThanOrEqual(3);
+    expect(result.every(([x, , z]) => z === 0 && x >= 0 && x <= 6)).toBe(true);
+  });
+
+  it('produces many voxels for a small triangle patch', () => {
+    const result = getClothPatchFromPinsVoxels(tri, 0.5, 'down', brushR);
+    expect(result.length).toBeGreaterThan(8);
   });
 });
 

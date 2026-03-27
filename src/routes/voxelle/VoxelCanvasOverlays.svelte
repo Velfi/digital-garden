@@ -5,7 +5,7 @@
   import OrbitGizmo from './OrbitGizmo.svelte';
   import ToolPanel from './ToolPanel.svelte';
   import SelectionCountPanel from './SelectionCountPanel.svelte';
-  import { renderingMode, ropeTension, tool, voxellePreferences } from './store/index';
+  import { renderingMode, ropeTension, clothTension, tool, voxellePreferences } from './store/index';
 
   interface Props {
     gizmoRef?: { draw: () => void } | undefined;
@@ -54,6 +54,11 @@
     ropePhase: 'placing' | 'tension' | null;
     commitRope: () => void;
     cancelRope: () => void;
+    clothPhase: 'placing' | 'tension' | null;
+    clothPointCount: number;
+    finishClothPlacing: () => void;
+    commitCloth: () => void;
+    cancelCloth: () => void;
     fpsCounterDisplayed: number;
     deltaDisplay: { dx: number; dy: number; dz: number } | null;
     /** Precise stroke: snapped voxel coords under cursor on the work plane. */
@@ -118,6 +123,11 @@
     ropePhase,
     commitRope,
     cancelRope,
+    clothPhase,
+    clothPointCount,
+    finishClothPlacing,
+    commitCloth,
+    cancelCloth,
     fpsCounterDisplayed,
     deltaDisplay,
     preciseLocationHint,
@@ -142,6 +152,10 @@
   let ropeTensionSliderPointerId: number | null = $state(null);
   let ropeTensionSliderStartY = $state(0);
   let ropeTensionSliderStartVal = $state(0);
+
+  let clothTensionSliderPointerId: number | null = $state(null);
+  let clothTensionSliderStartY = $state(0);
+  let clothTensionSliderStartVal = $state(0);
 </script>
 
 {#if $renderingMode === 'ray' && rayRefinementProgress < 1}
@@ -540,6 +554,32 @@
     </button>
   </div>
 {/if}
+{#if $tool === 'clay' && clothPhase === 'placing'}
+  <div class="polygon-actions" data-voxelle-no-passthrough>
+    {#if clothPointCount >= 3}
+      <button
+        type="button"
+        class="polygon-done-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => finishClothPlacing()}
+        title="Simulate cloth and adjust tension"
+        aria-label="Finish placing cloth pins"
+      >
+        Done
+      </button>
+    {/if}
+    <button
+      type="button"
+      class="polygon-cancel-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => cancelCloth()}
+      title="Cancel"
+      aria-label="Cancel cloth"
+    >
+      Cancel
+    </button>
+  </div>
+{/if}
 {#if ropePhase === 'tension'}
   <div class="rope-tension-slider depth-slider-container" data-voxelle-no-passthrough>
     <div
@@ -613,6 +653,84 @@
       onclick={() => cancelRope()}
       title="Cancel"
       aria-label="Cancel rope"
+    >
+      Cancel
+    </button>
+  </div>
+{/if}
+{#if clothPhase === 'tension'}
+  <div class="rope-tension-slider depth-slider-container" data-voxelle-no-passthrough>
+    <div
+      class="depth-slider-track"
+      role="slider"
+      aria-label="Cloth tension"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round($clothTension * 100)}
+      tabindex="0"
+      onpointerdown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        clothTensionSliderPointerId = e.pointerId;
+        clothTensionSliderStartY = e.clientY;
+        clothTensionSliderStartVal = get(clothTension);
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }}
+      onpointermove={(e) => {
+        e.preventDefault();
+        if (clothTensionSliderPointerId !== e.pointerId) return;
+        const dy = clothTensionSliderStartY - e.clientY;
+        const delta = dy / 200;
+        clothTension.set(Math.max(0, Math.min(1, clothTensionSliderStartVal + delta)));
+      }}
+      onpointerup={(e) => {
+        if (clothTensionSliderPointerId === e.pointerId) clothTensionSliderPointerId = null;
+      }}
+      onpointercancel={(e) => {
+        if (clothTensionSliderPointerId === e.pointerId) clothTensionSliderPointerId = null;
+      }}
+    >
+      <div
+        class="depth-slider-thumb"
+        style="bottom: {Math.min(99, Math.max(1, $clothTension * 98))}%"
+      ></div>
+    </div>
+    <div class="depth-slider-controls">
+      <button
+        type="button"
+        class="depth-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => clothTension.set(Math.max(0, $clothTension - 0.05))}
+        aria-label="Decrease cloth tension">−</button
+      >
+      <span class="depth-slider-label">Tension: {Math.round($clothTension * 100)}%</span>
+      <button
+        type="button"
+        class="depth-btn"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => clothTension.set(Math.min(1, $clothTension + 0.05))}
+        aria-label="Increase cloth tension">+</button
+      >
+    </div>
+  </div>
+  <div class="polygon-actions" data-voxelle-no-passthrough>
+    <button
+      type="button"
+      class="rope-done-btn polygon-done-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => commitCloth()}
+      title="Apply cloth"
+      aria-label="Apply cloth"
+    >
+      Done
+    </button>
+    <button
+      type="button"
+      class="rope-cancel-btn polygon-cancel-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => cancelCloth()}
+      title="Cancel"
+      aria-label="Cancel cloth"
     >
       Cancel
     </button>

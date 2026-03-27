@@ -39,6 +39,7 @@
     branchBrushProfile,
     branchEndCap,
     ropeTension,
+    clothTension,
     ropeBrushShape,
     ropeBrushRadius,
     ropeGravityDirection,
@@ -293,6 +294,7 @@
     projectPointOntoPlane,
     thickenPathForStroke,
     getRopeCurveVoxels,
+    getClothPatchFromPinsVoxels,
     applyBrushAlongPath,
     getSprayDirectionVector,
     mergeSphereStampIntoSeen,
@@ -823,6 +825,9 @@
   let ropePointA = $state<[number, number, number] | null>(null);
   let ropePointB = $state<[number, number, number] | null>(null);
   let ropePhase = $state<'placing' | 'tension' | null>(null);
+  let clothPoints = $state<[number, number, number][]>([]);
+  let clothPlacementNormal = $state<FaceNormal | null>(null);
+  let clothPhase = $state<'placing' | 'tension' | null>(null);
   let ropePointsMesh: THREE.InstancedMesh | null = null;
   let ropePointsMaterial: THREE.MeshBasicMaterial | null = null;
   let previewMesh: THREE.Mesh | null = null;
@@ -1023,6 +1028,7 @@
       roofPhase,
       polygonPointsMesh,
       ropePhase,
+      clothPhase,
       ropePointsMesh
     });
   }
@@ -1795,7 +1801,8 @@
       cuboidPhase !== 'depth' &&
       cylinderPhase !== 'depth' &&
       solidPolygonPhase !== 'depth' &&
-      ropePhase !== 'tension';
+      ropePhase !== 'tension' &&
+      clothPhase !== 'tension';
 
     const previewVoxelFor = (count: number): Voxel => {
       if (useRemoveStylePreDragPreview) {
@@ -2283,6 +2290,61 @@
     render();
   }
 
+  function cancelCloth() {
+    clothPoints = [];
+    clothPlacementNormal = null;
+    clothPhase = null;
+    updatePolygonPreview([]);
+    updateRopePointsMesh([]);
+    updatePreviewMesh([]);
+  }
+
+  function finishClothPlacing() {
+    if (clothPoints.length < 3) return;
+    clothPhase = 'tension';
+    updatePolygonPreview([]);
+    if (dragPointerId !== null && container) {
+      try {
+        container.releasePointerCapture(dragPointerId);
+      } catch {
+        /* ignore */
+      }
+      dragPointerId = null;
+    }
+    updateClothFromTension();
+    requestAnimationFrame(() => render());
+  }
+
+  function updateClothFromTension() {
+    if (clothPoints.length < 3) return;
+    const t = get(clothTension);
+    const gravity = get(ropeGravityDirection);
+    const brushR = get(ropeBrushRadius) * 0.5;
+    const centerline = getClothPatchFromPinsVoxels(clothPoints, t, gravity, brushR);
+    const shape = get(ropeBrushShape);
+    const radius = brushR;
+    const positions = applyBrushAlongPath(centerline, shape, radius);
+    pendingStrokePositions = positions;
+    updatePreviewMesh(positions);
+    render();
+  }
+
+  function commitCloth() {
+    if (clothPoints.length < 3) return;
+    const t = get(clothTension);
+    const gravity = get(ropeGravityDirection);
+    const brushR = get(ropeBrushRadius) * 0.5;
+    const centerline = getClothPatchFromPinsVoxels(clothPoints, t, gravity, brushR);
+    const shape = get(ropeBrushShape);
+    const radius = brushR;
+    const positions = applyBrushAlongPath(centerline, shape, radius);
+    if (positions.length > 0) {
+      runVoxelStroke(() => applyClayStroke(positions, 'cloth', 0));
+    }
+    cancelCloth();
+    render();
+  }
+
   function commitPolygon() {
     if (polygonPoints.length < 2) return;
     let positions = applyPolygonNormalOffset(
@@ -2436,6 +2498,9 @@
     if (ropePhase) {
       cancelRope();
     }
+    if (clothPhase) {
+      cancelCloth();
+    }
     if (cuboidPhase || cylinderPhase) {
       if (depthAdjustPointerId !== null) {
         try {
@@ -2530,7 +2595,8 @@
           polygonPhase,
           solidPolygonPhase,
           roofPhase,
-          ropePhase
+          ropePhase,
+          clothPhase
         })
       ),
     cancelDrag
@@ -2610,7 +2676,8 @@
           polygonPhase,
           solidPolygonPhase,
           roofPhase,
-          ropePhase
+          ropePhase,
+          clothPhase
         })
       ) {
         event.preventDefault();
@@ -2691,7 +2758,8 @@
       camera &&
       polygonPointsMesh.count > 0 &&
       ((strokeModeAtPointerDown === 'polygonHull' && polygonPhase) ||
-        (strokeModeAtPointerDown === 'polygon' && solidPolygonPhase === 'placing'));
+        (strokeModeAtPointerDown === 'polygon' && solidPolygonPhase === 'placing') ||
+        ($tool === 'clay' && get(clayMode) === 'cloth' && clothPhase === 'placing'));
     if (tryPolygonCornerPick) {
       raycaster.setFromCamera(pointer, camera);
       const cornerHits = raycaster.intersectObject(polygonPointsMesh, false);
@@ -2804,6 +2872,67 @@
       return;
     }
     if (!hit) return;
+
+    if ($tool === 'clay' && get(clayMode) === 'cloth' && clothPhase !== 'tension') {
+      event.preventDefault();
+      event.stopPropagation();
+      container.setPointerCapture(event.pointerId);
+      dragPointerId = event.pointerId;
+      if (hit.object === polygonPointsMesh && typeof hit.instanceId === 'number') {
+        const idx = hit.instanceId;
+        if (idx >= 0 && idx < clothPoints.length) {
+          clothPoints = clothPoints.filter((_, i) => i !== idx);
+          if (clothPoints.length === 0) {
+            clothPhase = null;
+            clothPlacementNormal = null;
+          } else {
+            clothPhase = 'placing';
+          }
+          updatePolygonPreview(clothPoints);
+          const fill = clothPoints.length >= 3 ? getPolygonVoxels(clothPoints) : [];
+          updatePreviewMesh(
+            clothPlacementNormal
+              ? applyPolygonNormalOffset(
+                  fill,
+                  clothPlacementNormal,
+                  get(polygonOffsetFromNormal)
+                )
+              : fill
+          );
+        }
+      } else {
+        const pos = getAddPosition(hit) ?? getVoxelPosition(hit);
+        if (pos) {
+          const existingIdx = clothPoints.findIndex(
+            ([x, y, z]) => x === pos[0] && y === pos[1] && z === pos[2]
+          );
+          if (existingIdx >= 0) {
+            clothPoints = clothPoints.filter((_, i) => i !== existingIdx);
+            if (clothPoints.length === 0) {
+              clothPhase = null;
+              clothPlacementNormal = null;
+            }
+          } else {
+            clothPhase = 'placing';
+            clothPoints = [...clothPoints, pos];
+            if (!clothPlacementNormal) clothPlacementNormal = getFaceNormalFromHit(hit);
+          }
+          updatePolygonPreview(clothPoints);
+          const fill = clothPoints.length >= 3 ? getPolygonVoxels(clothPoints) : [];
+          updatePreviewMesh(
+            clothPlacementNormal
+              ? applyPolygonNormalOffset(
+                  fill,
+                  clothPlacementNormal,
+                  get(polygonOffsetFromNormal)
+                )
+              : fill
+          );
+        }
+      }
+      requestAnimationFrame(() => render());
+      return;
+    }
 
     if (get(effectiveStrokeMode) === 'polygonHull') {
       event.preventDefault();
@@ -4092,14 +4221,14 @@
         render();
         return;
       }
-      // Rope tension phase: idle clay path below calls updatePreviewMesh([]) every move — keep catenary preview
-      if (ropePhase === 'tension') {
+      // Rope / cloth tension phase: idle clay path below calls updatePreviewMesh([]) every move — keep preview
+      if (ropePhase === 'tension' || clothPhase === 'tension') {
         rollOverMesh.visible = false;
         render();
         return;
       }
-      // Polygon hull / solid polygon placing / roof: preserve point loop preview, show rollOver for next point
-      if (polygonPhase || solidPolygonPhase === 'placing' || roofPhase) {
+      // Polygon hull / solid polygon placing / roof / cloth pins: preserve point loop preview, show rollOver for next point
+      if (polygonPhase || solidPolygonPhase === 'placing' || roofPhase || clothPhase === 'placing') {
         const hit = getIntersection();
         if (hit && hit.object !== polygonPointsMesh) {
           const pos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
@@ -4900,6 +5029,11 @@
       render();
       e.preventDefault();
     }
+    if (e.key === 'Escape' && clothPhase) {
+      cancelCloth();
+      render();
+      e.preventDefault();
+    }
     if (e.key === 'Escape' && get(tool) === 'piscina' && piscinaPhase === 'shape') {
       pickAgainPiscina();
       e.preventDefault();
@@ -4921,6 +5055,20 @@
       const tag = active?.tagName;
       if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
         commitInsectaPlacement();
+        e.preventDefault();
+      }
+    }
+    if (
+      e.key === 'Enter' &&
+      get(tool) === 'clay' &&
+      get(clayMode) === 'cloth' &&
+      clothPhase === 'placing' &&
+      clothPoints.length >= 3
+    ) {
+      const active = document.activeElement;
+      const tag = active?.tagName;
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+        finishClothPlacing();
         e.preventDefault();
       }
     }
@@ -5704,6 +5852,7 @@
       getSolidPolygonPhase: () => solidPolygonPhase,
       getRoofPhase: () => roofPhase,
       getRopePhase: () => ropePhase,
+      getClothPhase: () => clothPhase,
       getFlyControlsEnabled: () => !!flyControls?.enabled,
       getPipelineAppliedThisFrame: () => pipelineApplied,
       getCanvasPresentationDirty: () => canvasPresentationDirty,
@@ -5758,6 +5907,9 @@
     if (mode !== 'rope' && ropePhase) {
       cancelRope();
     }
+    if (mode !== 'cloth' && clothPhase) {
+      cancelCloth();
+    }
   });
 
   $effect(() => {
@@ -5767,6 +5919,21 @@
     const unsubS = ropeBrushShape.subscribe(() => updateRopeFromTension());
     const unsubR = ropeBrushRadius.subscribe(() => updateRopeFromTension());
     const unsubG = ropeGravityDirection.subscribe(() => updateRopeFromTension());
+    return () => {
+      unsubT();
+      unsubS();
+      unsubR();
+      unsubG();
+    };
+  });
+
+  $effect(() => {
+    if (clothPhase !== 'tension') return;
+    updateClothFromTension();
+    const unsubT = clothTension.subscribe(() => updateClothFromTension());
+    const unsubS = ropeBrushShape.subscribe(() => updateClothFromTension());
+    const unsubR = ropeBrushRadius.subscribe(() => updateClothFromTension());
+    const unsubG = ropeGravityDirection.subscribe(() => updateClothFromTension());
     return () => {
       unsubT();
       unsubS();
@@ -6279,6 +6446,7 @@
         solidPolygonPhase !== null ||
         roofPhase !== null ||
         ropePhase !== null ||
+        clothPhase !== null ||
         (get(tool) === 'piscina' && piscinaPhase === 'shape') ||
         (get(tool) === 'insecta' && insectaPhase === 'shape'),
       getSelection: () => get(selection),
@@ -6459,7 +6627,8 @@
         polygonPhase,
         solidPolygonPhase,
         roofPhase,
-        ropePhase
+        ropePhase,
+        clothPhase
       }) ||
         selectionGizmo?.isGizmoDrag)
     ) {
@@ -6481,7 +6650,8 @@
           polygonPhase,
           solidPolygonPhase,
           roofPhase,
-          ropePhase
+          ropePhase,
+          clothPhase
         }) ||
         selectionGizmo?.isGizmoDrag ||
         isVoxelDrag
@@ -6791,6 +6961,11 @@
     {ropePhase}
     {commitRope}
     {cancelRope}
+    {clothPhase}
+    clothPointCount={clothPoints.length}
+    {finishClothPlacing}
+    {commitCloth}
+    {cancelCloth}
     {fpsCounterDisplayed}
     {deltaDisplay}
     {preciseLocationHint}

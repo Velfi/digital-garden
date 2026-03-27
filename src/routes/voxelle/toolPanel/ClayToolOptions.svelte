@@ -432,12 +432,12 @@
         Axis-align
       </label>
     {/if}
-    {#if $clayMode === 'rope'}
+    {#if $clayMode === 'rope' || $clayMode === 'cloth'}
       <div class="tool-panel-row">
         <span class="tool-panel-label">Gravity</span>
         <select
-          aria-label="Rope gravity direction"
-          title="Direction of gravity (rope sags toward this axis)"
+          aria-label="Gravity direction for rope or cloth"
+          title="Direction of gravity (rope sags / cloth hangs toward this axis)"
           bind:value={$ropeGravityDirection}
         >
           <option value="down">Down (−Y)</option>
@@ -450,7 +450,7 @@
       </div>
       <div class="tool-panel-row">
         <span class="tool-panel-label">Shape</span>
-        <div class="stroke-buttons" role="group" aria-label="Rope brush shape">
+        <div class="stroke-buttons" role="group" aria-label="Rope or cloth brush shape">
           <button
             type="button"
             class:active={$ropeBrushShape === 'sphere'}

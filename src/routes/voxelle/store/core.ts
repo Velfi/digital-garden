@@ -70,6 +70,7 @@ export type ClayMode =
   | 'branch'
   | 'melt'
   | 'rope'
+  | 'cloth'
   | 'wall'
   | 'inflate'
   | 'terrain';
@@ -255,6 +256,8 @@ export const terrainStrength = writable<number>(4);
 export const terrainSmoothRadius = writable<number>(1);
 /** Rope mode: tension 0–1 (0=max sag, 1=taut). */
 export const ropeTension = writable<number>(0.5);
+/** Cloth mode: tension 0–1 (0=loose/drapy, 1=stiff). */
+export const clothTension = writable<number>(0.5);
 /** Rope mode: brush shape (sphere or cube). */
 export const ropeBrushShape = writable<RopeBrushShape>('sphere');
 /** Rope brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */

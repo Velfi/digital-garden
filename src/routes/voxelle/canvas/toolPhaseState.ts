@@ -1,5 +1,5 @@
 /**
- * Types and helpers for multi-step tool gestures (cuboid depth, polygon/roof corners, rope, piscina).
+ * Types and helpers for multi-step tool gestures (cuboid depth, polygon/roof corners, rope/cloth, piscina).
  * VoxelCanvas owns the reactive state; this module documents shapes and shared predicates.
  */
 
@@ -10,6 +10,7 @@ export type PolygonHullStrokePhase = 'placing' | null;
 export type SolidPolygonStrokePhase = 'placing' | 'depth' | null;
 export type RoofStrokePhase = 'placing' | null;
 export type RopeStrokePhase = 'placing' | 'tension' | null;
+export type ClothStrokePhase = 'placing' | 'tension' | null;
 export type PiscinaPlacementPhase = 'pick' | 'shape';
 
 /** True when a segmented stroke (extra click targets / phases) is in progress. */
@@ -21,6 +22,7 @@ export function isSegmentedStrokeGestureActive(opts: {
   solidPolygonPhase: SolidPolygonStrokePhase;
   roofPhase: RoofStrokePhase;
   ropePhase: RopeStrokePhase;
+  clothPhase: ClothStrokePhase;
 }): boolean {
   return !!(
     opts.cuboidPhase ||
@@ -28,6 +30,7 @@ export function isSegmentedStrokeGestureActive(opts: {
     opts.polygonPhase ||
     opts.solidPolygonPhase ||
     opts.roofPhase ||
-    opts.ropePhase
+    opts.ropePhase ||
+    opts.clothPhase
   );
 }

@@ -79,6 +79,14 @@
     </button>
     <button
       type="button"
+      class:active={$clayMode === 'cloth'}
+      onclick={() => clayMode.set('cloth')}
+      title="Cloth: place 3+ pins (closed boundary), Done, then tension; patch simulates in the pin plane"
+    >
+      Cloth
+    </button>
+    <button
+      type="button"
       class:active={$clayMode === 'wall'}
       onclick={() => clayMode.set('wall')}
       title="Wall: extend voxels along an axis from the path (e.g. Y− for rain)"

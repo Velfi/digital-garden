@@ -62,6 +62,7 @@ export {
   terrainStrength,
   terrainSmoothRadius,
   ropeTension,
+  clothTension,
   ropeBrushShape,
   ropeBrushRadius,
   ropeGravityDirection,

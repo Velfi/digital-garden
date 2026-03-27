@@ -414,6 +414,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
       | 'branch'
       | 'melt'
       | 'rope'
+      | 'cloth'
       | 'wall'
       | 'inflate'
       | 'terrain',
@@ -471,6 +472,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
       clayModeVal === 'bulk' ||
       clayModeVal === 'branch' ||
       clayModeVal === 'rope' ||
+      clayModeVal === 'cloth' ||
       clayModeVal === 'wall'
     ) {
       updateVoxelsInStroke((next) => {

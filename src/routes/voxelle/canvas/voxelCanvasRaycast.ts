@@ -16,6 +16,7 @@ export type RaycastTargetsInput = {
   roofPhase: 'placing' | null;
   polygonPointsMesh: THREE.InstancedMesh | null;
   ropePhase: 'placing' | 'tension' | null;
+  clothPhase: 'placing' | 'tension' | null;
   ropePointsMesh: THREE.InstancedMesh | null;
 };
 
@@ -28,12 +29,15 @@ export function getRaycastTargetsFrom(input: RaycastTargetsInput): THREE.Object3
     }
   }
   if (
-    (input.polygonPhase || input.solidPolygonPhase === 'placing' || input.roofPhase) &&
+    (input.polygonPhase ||
+      input.solidPolygonPhase === 'placing' ||
+      input.roofPhase ||
+      input.clothPhase === 'placing') &&
     input.polygonPointsMesh
   ) {
     targets.push(input.polygonPointsMesh);
   }
-  if (input.ropePhase && input.ropePointsMesh) {
+  if ((input.ropePhase || input.clothPhase) && input.ropePointsMesh) {
     targets.push(input.ropePointsMesh);
   }
   return targets;

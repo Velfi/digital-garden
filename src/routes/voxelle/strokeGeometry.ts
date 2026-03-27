@@ -1321,6 +1321,327 @@ export function getRopeCurveVoxels(
   return result.length > 0 ? result : [a, b];
 }
 
+const CLOTH_PATCH_MAX_CELLS = 2200;
+const CLOTH_PATCH_MAX_DIM = 46;
+
+function distPointToSegment2D(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const apx = px - ax;
+  const apy = py - ay;
+  const ab2 = abx * abx + aby * aby;
+  if (ab2 < 1e-12) return Math.hypot(apx, apy);
+  let t = (apx * abx + apy * aby) / ab2;
+  t = Math.max(0, Math.min(1, t));
+  const qx = ax + t * abx;
+  const qy = ay + t * aby;
+  return Math.hypot(px - qx, py - qy);
+}
+
+function minDistToPolyBoundary(px: number, py: number, poly: { x: number; y: number }[]): number {
+  let d = Infinity;
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const p = poly[i]!;
+    const q = poly[(i + 1) % n]!;
+    d = Math.min(d, distPointToSegment2D(px, py, p.x, p.y, q.x, q.y));
+  }
+  return d;
+}
+
+function clothPatchPointInPolygon2D(px: number, py: number, poly: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const pi = poly[i]!;
+    const pj = poly[j]!;
+    const yi = pi.y;
+    const yj = pj.y;
+    if ((yi > py) !== (yj > py)) {
+      const xInt = ((pj.x - pi.x) * (py - yi)) / (yj - yi) + pi.x;
+      if (px < xInt) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * Closed polygon of 3+ pin voxels in 3D, filled with a plane grid, relaxed with PBD + gravity.
+ * Pins are the polygon boundary (Bresenham edges between consecutive pins, closed).
+ * tension 0 = loose/drapy, 1 = stiff. Returns positions for `applyBrushAlongPath`.
+ */
+export function getClothPatchFromPinsVoxels(
+  pins: [number, number, number][],
+  tension: number,
+  gravityDirection: RopeGravityDirection,
+  _brushRadiusVoxels: number
+): [number, number, number][] {
+  const sub = (p: [number, number, number], q: [number, number, number]): [number, number, number] => [
+    p[0] - q[0],
+    p[1] - q[1],
+    p[2] - q[2]
+  ];
+  const add = (p: [number, number, number], q: [number, number, number]): [number, number, number] => [
+    p[0] + q[0],
+    p[1] + q[1],
+    p[2] + q[2]
+  ];
+  const scale = (p: [number, number, number], s: number): [number, number, number] => [
+    p[0] * s,
+    p[1] * s,
+    p[2] * s
+  ];
+  const len = (p: [number, number, number]) =>
+    Math.sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
+  const norm = (p: [number, number, number]): [number, number, number] => {
+    const L = len(p);
+    if (L < 1e-12) return [0, 0, 0];
+    return [p[0] / L, p[1] / L, p[2] / L];
+  };
+  const cross = (a: [number, number, number], b: [number, number, number]): [number, number, number] => [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0]
+  ];
+  const dot3 = (a: [number, number, number], b: [number, number, number]) =>
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+  const raw = pins.filter((p, i) => i === 0 || p[0] !== pins[i - 1]![0] || p[1] !== pins[i - 1]![1] || p[2] !== pins[i - 1]![2]);
+  if (raw.length < 3) return [];
+
+  const O = raw[0]!;
+  let e1 = sub(raw[1]!, O);
+  let nvec = cross(e1, sub(raw[2]!, O));
+  let k = 3;
+  while (len(nvec) < 1e-9 && k < raw.length) {
+    nvec = cross(e1, sub(raw[k]!, O));
+    k++;
+  }
+  if (len(nvec) < 1e-9) {
+    const out: [number, number, number][] = [];
+    const seen = new Set<string>();
+    const n = raw.length;
+    for (let i = 0; i < n; i++) {
+      const seg = getBresenham3DLine(raw[i]!, raw[(i + 1) % n]!);
+      for (const p of seg) {
+        const key = `${p[0]},${p[1]},${p[2]}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.push(p);
+        }
+      }
+    }
+    return out.length > 0 ? out : [];
+  }
+
+  const nunit = norm(nvec);
+  let uaxis = norm(e1);
+  if (Math.abs(dot3(uaxis, nunit)) > 0.99) {
+    uaxis = norm(cross(nunit, [1, 0, 0]));
+    if (len(uaxis) < 1e-6) uaxis = norm(cross(nunit, [0, 1, 0]));
+  }
+  const vaxis = norm(cross(nunit, uaxis));
+
+  const uvPoly: { x: number; y: number }[] = [];
+  for (const p of raw) {
+    const d = sub(p, O);
+    uvPoly.push({ x: dot3(d, uaxis), y: dot3(d, vaxis) });
+  }
+  let area2 = 0;
+  for (let i = 0; i < uvPoly.length; i++) {
+    const p = uvPoly[i]!;
+    const q = uvPoly[(i + 1) % uvPoly.length]!;
+    area2 += p.x * q.y - q.x * p.y;
+  }
+  if (area2 < 0) uvPoly.reverse();
+
+  let umin = uvPoly[0]!.x;
+  let umax = uvPoly[0]!.x;
+  let vmin = uvPoly[0]!.y;
+  let vmax = uvPoly[0]!.y;
+  for (const q of uvPoly) {
+    umin = Math.min(umin, q.x);
+    umax = Math.max(umax, q.x);
+    vmin = Math.min(vmin, q.y);
+    vmax = Math.max(vmax, q.y);
+  }
+
+  const boundaryKeys = new Set<string>();
+  const nPin = raw.length;
+  for (let i = 0; i < nPin; i++) {
+    const seg = getBresenham3DLine(raw[i]!, raw[(i + 1) % nPin]!);
+    for (const p of seg) boundaryKeys.add(`${p[0]},${p[1]},${p[2]}`);
+  }
+
+  const ur = Math.max(1, umax - umin);
+  const vr = Math.max(1, vmax - vmin);
+  let stepU = 1;
+  let stepV = 1;
+  for (let guard = 0; guard < 48; guard++) {
+    const nu0 = Math.ceil(ur / stepU) + 3;
+    const nv0 = Math.ceil(vr / stepV) + 3;
+    if (nu0 * nv0 <= CLOTH_PATCH_MAX_CELLS && Math.max(nu0, nv0) <= CLOTH_PATCH_MAX_DIM) break;
+    if (stepU >= 32 && stepV >= 32) break;
+    if (ur / stepU >= vr / stepV) stepU++;
+    else stepV++;
+  }
+
+  type Node = {
+    iu: number;
+    iv: number;
+    pos: [number, number, number];
+    init: [number, number, number];
+    pinned: boolean;
+  };
+  const nodeMap = new Map<string, Node>();
+  const nodes: Node[] = [];
+
+  const uStart = Math.floor(umin / stepU) * stepU - stepU;
+  const uEnd = Math.ceil(umax / stepU) * stepU + stepU;
+  const vStart = Math.floor(vmin / stepV) * stepV - stepV;
+  const vEnd = Math.ceil(vmax / stepV) * stepV + stepV;
+
+  for (let iu = uStart; iu <= uEnd; iu += stepU) {
+    for (let iv = vStart; iv <= vEnd; iv += stepV) {
+      if (!clothPatchPointInPolygon2D(iu, iv, uvPoly)) continue;
+      const pos: [number, number, number] = [
+        O[0] + iu * uaxis[0] + iv * vaxis[0],
+        O[1] + iu * uaxis[1] + iv * vaxis[1],
+        O[2] + iu * uaxis[2] + iv * vaxis[2]
+      ];
+      const rx = Math.round(pos[0]);
+      const ry = Math.round(pos[1]);
+      const rz = Math.round(pos[2]);
+      const edgeTol = Math.max(0.55, 0.4 * Math.min(stepU, stepV));
+      const pinned =
+        boundaryKeys.has(`${rx},${ry},${rz}`) || minDistToPolyBoundary(iu, iv, uvPoly) <= edgeTol;
+      const key = `${iu},${iv}`;
+      const node: Node = { iu, iv, pos: [...pos] as [number, number, number], init: [...pos] as [number, number, number], pinned };
+      nodeMap.set(key, node);
+      nodes.push(node);
+    }
+  }
+
+  if (nodes.length === 0) return [];
+
+  type Edge = { a: number; b: number; rest: number };
+  const edges: Edge[] = [];
+  const idxOf = (iu: number, iv: number) => nodeMap.get(`${iu},${iv}`);
+  const neigh: [number, number][] = [
+    [stepU, 0],
+    [-stepU, 0],
+    [0, stepV],
+    [0, -stepV],
+    [stepU, stepV],
+    [stepU, -stepV],
+    [-stepU, stepV],
+    [-stepU, -stepV]
+  ];
+  for (let ni = 0; ni < nodes.length; ni++) {
+    const a = nodes[ni]!;
+    for (const [du, dv] of neigh) {
+      const b = idxOf(a.iu + du, a.iv + dv);
+      if (!b) continue;
+      const bj = nodes.indexOf(b);
+      if (bj <= ni) continue;
+      const rest = len(sub(b.init, a.init));
+      if (rest < 1e-9) continue;
+      edges.push({ a: ni, b: bj, rest });
+    }
+  }
+
+  const pos: [number, number, number][] = nodes.map((n) => [...n.pos] as [number, number, number]);
+  const pinnedArr = nodes.map((n) => n.pinned);
+  const init = nodes.map((n) => [...n.init] as [number, number, number]);
+
+  const t0 = Math.max(0, Math.min(1, tension));
+  const iterations = Math.round(14 + 32 * t0);
+  const relax = 0.18 + 0.78 * t0;
+  const cell = Math.max(stepU, stepV);
+  const down = norm(ropeGravityVector(gravityDirection));
+  const gravStep = cell * (0.02 + 0.2 * (1 - t0));
+
+  for (let it = 0; it < iterations; it++) {
+    for (let p = 0; p < pos.length; p++) {
+      if (!pinnedArr[p]) pos[p] = add(pos[p], scale(down, gravStep));
+    }
+    for (const { a: ia, b: ib, rest } of edges) {
+      if (pinnedArr[ia] && pinnedArr[ib]) continue;
+      const pa = pos[ia];
+      const pb = pos[ib];
+      const d = sub(pb, pa);
+      const dist = len(d);
+      if (dist < 1e-12) continue;
+      const diff = (dist - rest) / dist;
+      const correction = scale(d, diff * 0.5 * relax);
+      if (!pinnedArr[ia] && !pinnedArr[ib]) {
+        pos[ia] = add(pa, correction);
+        pos[ib] = sub(pb, correction);
+      } else if (pinnedArr[ia]) {
+        pos[ib] = sub(pb, scale(correction, 2));
+      } else {
+        pos[ia] = add(pa, scale(correction, 2));
+      }
+    }
+    for (let p = 0; p < pos.length; p++) {
+      if (pinnedArr[p]) pos[p] = [...init[p]!] as [number, number, number];
+    }
+  }
+
+  const nodeIdx = new Map<Node, number>();
+  nodes.forEach((node, i) => nodeIdx.set(node, i));
+
+  const byRow = new Map<number, Node[]>();
+  for (const node of nodes) {
+    const row = byRow.get(node.iv) ?? [];
+    row.push(node);
+    byRow.set(node.iv, row);
+  }
+  const ivList = [...byRow.keys()].sort((a, b) => a - b);
+
+  const path: [number, number, number][] = [];
+  const pathSeen = new Set<string>();
+  const pushPath = (p: [number, number, number]) => {
+    const key = `${p[0]},${p[1]},${p[2]}`;
+    if (!pathSeen.has(key)) {
+      pathSeen.add(key);
+      path.push(p);
+    }
+  };
+  let last: [number, number, number] | null = null;
+  let forwardRow = true;
+  for (const iv of ivList) {
+    let row = byRow.get(iv)!;
+    row = [...row].sort((a, b) => a.iu - b.iu);
+    if (!forwardRow) row.reverse();
+    forwardRow = !forwardRow;
+    for (const node of row) {
+      const p = pos[nodeIdx.get(node)!]!;
+      const q: [number, number, number] = [Math.round(p[0]), Math.round(p[1]), Math.round(p[2])];
+      if (last) {
+        for (const s of getBresenham3DLine(last, q)) pushPath(s);
+      } else {
+        pushPath(q);
+      }
+      last = q;
+    }
+  }
+
+  if (path.length === 0) {
+    for (const p of pos) {
+      pushPath([Math.round(p[0]), Math.round(p[1]), Math.round(p[2])]);
+    }
+  }
+
+  return path;
+}
+
 /** Projects a point onto the plane through planePoint with given normal; returns integer voxel coords. */
 export function projectPointOntoPlane(
   point: [number, number, number],
