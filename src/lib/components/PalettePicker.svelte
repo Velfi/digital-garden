@@ -172,7 +172,7 @@
 
 <h2>Palette</h2>
 <p class="palette-slug-hint">
-  <a href="https://lospec.com/palette-list" target="_blank" rel="noopener">Browse palettes</a> and enter
+  <a href="https://lospec.com/palette-list" target="_blank" rel="noopener">Browse Lospec palettes</a> and enter
   a slug (e.g. greyt-bit, apollo)
 </p>
 <div class="popular-palettes">

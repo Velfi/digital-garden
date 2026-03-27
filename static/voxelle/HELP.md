@@ -95,7 +95,7 @@ Fill and Spray have no second shape row; choosing them sets the mode directly.
 #### Plane options (Surface / Solid shapes that use a plane)
 
 - **Plane options** in the tool panel: **X / Y / Z** force orientation; **Auto** uses the face you clicked.
-- **Hollow (shell only)**: keep only the outer shell (edge of a plane, or walls of a box/cylinder).
+- **Hollow**: keep only the outer shell (edge of a plane, or walls of a box/cylinder).
 - **Tip**: while dragging many plane-based shapes, hold **Alt** and scroll to cycle X/Y/Z quickly.
 - **Solid** → **Cylinder**: **Taper** slider makes the column taper to a cone.
 

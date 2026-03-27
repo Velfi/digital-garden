@@ -122,7 +122,7 @@
           onchange={(e) => roofHollow.set((e.target as HTMLInputElement).checked)}
           title="Keep only surface voxels (hollow interior)"
         />
-        Hollow (shell only)
+        Hollow
       </label>
     </div>
     <div class="tool-panel-row tool-panel-row--roof-edge">

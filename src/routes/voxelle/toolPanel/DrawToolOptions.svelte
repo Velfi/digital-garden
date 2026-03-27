@@ -253,7 +253,7 @@
         type="checkbox"
         checked={$planeCuboidHollow}
         onchange={(e) => planeCuboidHollow.set((e.target as HTMLInputElement).checked)}
-        title="Hollow shell only along depth (walls only, same as Cube/Cylinder hollow)"
+        title="Hollow: keep only the outer shell"
       />
       Hollow
     </label>

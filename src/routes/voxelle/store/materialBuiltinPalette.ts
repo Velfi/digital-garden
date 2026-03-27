@@ -263,5 +263,5 @@ export const MATERIAL_BUILTIN_PALETTE_HEX = [
   '#263238',
 ] as const;
 
-/** Default brush: Material Blue 500. */
-export const VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX = '#2196f3';
+/** Default brush: Material Gray 500. */
+export const VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX = '#757575';

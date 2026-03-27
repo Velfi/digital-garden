@@ -248,7 +248,7 @@
       </div>
     {:else if $toolPane === 'hand'}
       <div role="tabpanel" class="fly-tab">
-        <p class="fly-hint">Drag anywhere on the canvas to orbit/pan without affecting voxels.</p>
+        <p class="fly-hint">Drag anywhere on the canvas to orbit/pan.</p>
       </div>
     {:else}
       <div role="tabpanel" class="fly-tab">
