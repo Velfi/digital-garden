@@ -18,7 +18,7 @@
   import ArtSidebar from '$lib/components/ArtSidebar.svelte';
   import ToolPicker from './sidebar/ToolPicker.svelte';
   import StrokeModePicker from './sidebar/StrokeModePicker.svelte';
-  import ClayModePicker from './sidebar/ClayModePicker.svelte';
+  import SculptModePicker from './sidebar/SculptModePicker.svelte';
   import GeneratorPicker from './sidebar/GeneratorPicker.svelte';
   import MoodPicker from './sidebar/MoodPicker.svelte';
   import SymmetrySection from './sidebar/SymmetrySection.svelte';
@@ -157,7 +157,7 @@
           toolPane.set('draw');
           tool.set(
             $lastDrawTool === 'fly' ||
-              $lastDrawTool === 'clay' ||
+              $lastDrawTool === 'sculpt' ||
               $lastDrawTool === 'hand' ||
               $lastDrawTool === 'rope' ||
               $lastDrawTool === 'cloth' ||
@@ -179,14 +179,14 @@
       <button
         type="button"
         role="tab"
-        class:active={$toolPane === 'clay'}
-        aria-selected={$toolPane === 'clay'}
+        class:active={$toolPane === 'sculpt'}
+        aria-selected={$toolPane === 'sculpt'}
         onclick={() => {
-          toolPane.set('clay');
-          tool.set('clay');
+          toolPane.set('sculpt');
+          tool.set('sculpt');
         }}
       >
-        Clay
+        Sculpt
       </button>
       <button
         type="button"
@@ -231,9 +231,9 @@
         <StrokeModePicker />
         <SymmetrySection />
       </div>
-    {:else if $toolPane === 'clay'}
+    {:else if $toolPane === 'sculpt'}
       <div role="tabpanel">
-        <ClayModePicker />
+        <SculptModePicker />
         <SymmetrySection />
       </div>
     {:else if $toolPane === 'generators'}

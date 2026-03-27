@@ -31,16 +31,18 @@ import {
   PUNCH_DEPTH_MAX,
   punchDepth,
   stampPunchOffsetFromNormal,
-  inflateStrength,
   smoothNeighborRadius,
   smoothAggressiveness,
-  meltMaxPasses,
-  meltStyle,
-  terrainClayOp,
+  sculptSmoothVariant,
+  smoothLaplacianIterations,
+  smoothLaplacianRelax,
+  terrainSculptOp,
   terrainBaseY,
   terrainStrength,
   terrainSmoothRadius,
-  clayBrushRadius,
+  sculptBrushRadius,
+  sculptBrushStrength,
+  sculptBrushFalloff,
   ensureGridFitsPositions,
   generateRockVoxels,
   generateAshlarVoxels,
@@ -148,7 +150,18 @@ import {
   insectaWingHindOffset,
   type InsectaSpeciesId
 } from '../store/index';
-import { applySmooth, applyLevel, applyMelt, applyInflate } from '../clayOps';
+import { applySmooth } from '../sculptOps';
+import { applyMeshLaplacianSmooth } from '../sculptMeshLaplacian';
+import { computeSculptVoxelWeights, filterPositionsBySculptBrush } from '../sculptBrushWeights';
+
+export type SculptStrokeBrushOptions = {
+  /** Terrain raise/lower: radial falloff path (see terrainClayOps). */
+  terrainFalloffPath?: [number, number, number][];
+  /** Thin stroke before thickening; soft brush falloff uses distance to this polyline. */
+  spinePath?: [number, number, number][];
+  /** Seed for strength stochastic pass (preview/apply should use same value per stroke). */
+  strokeSeed?: number;
+};
 import { applyTerrainStroke } from '../terrainClayOps';
 
 function getStampTargetForPlaceOnFace(
@@ -388,7 +401,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
         const key = coordKey(x, y, z);
         if (tool === 'remove') {
           v.delete(key);
-        } else if (tool === 'voxel' || tool === 'clay') {
+        } else if (tool === 'voxel' || tool === 'sculpt') {
           if (!v.has(key)) v.set(key, getCol());
         } else if (tool === 'paint') {
           if (v.has(key)) v.set(key, getCol());
@@ -404,40 +417,56 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     });
   }
 
-  function applyClayStroke(
+  function applySculptStroke(
     positions: [number, number, number][],
-    clayModeVal:
-      | 'bulk'
+    sculptModeVal:
+      | 'draw'
       | 'smooth'
-      | 'level'
       | 'gouge'
       | 'branch'
-      | 'melt'
       | 'rope'
       | 'cloth'
       | 'wall'
-      | 'inflate'
       | 'terrain',
-    levelY: number,
-    /** Pre-thicken clay path; used for terrain raise/lower radial falloff. */
-    terrainFalloffPath?: [number, number, number][]
+    brushOpts?: SculptStrokeBrushOptions
   ) {
-    ensureGridFitsPositions(positions);
-    const clayBoundsOrSize = getEffectiveBounds(ctx.getLiveVoxels(), 512);
+    const terrainFalloffPath = brushOpts?.terrainFalloffPath;
+    const fallW = get(sculptBrushFalloff) / 100;
+    const strW = get(sculptBrushStrength) / 100;
+    const brushR = get(sculptBrushRadius) * 0.5;
+    const seed = (brushOpts?.strokeSeed ?? 0) >>> 0;
+
+    let pos = positions;
+    if (fallW > 1e-6 || strW < 1 - 1e-6) {
+      let spine: [number, number, number][] =
+        brushOpts?.spinePath && brushOpts.spinePath.length > 0
+          ? brushOpts.spinePath
+          : terrainFalloffPath && terrainFalloffPath.length > 0
+            ? terrainFalloffPath
+            : [];
+      if (spine.length === 0 && pos.length > 0) {
+        spine = [pos[0]!];
+      }
+      const weights = computeSculptVoxelWeights(pos, spine, brushR, fallW);
+      pos = filterPositionsBySculptBrush(pos, weights, strW, seed);
+    }
+
+    ensureGridFitsPositions(pos);
+    const sculptBoundsOrSize = getEffectiveBounds(ctx.getLiveVoxels(), 512);
     const boundSize: number | undefined = undefined;
     const getCol = getPaintColorResolver();
     const v = ctx.getLiveVoxels();
-    if (clayModeVal === 'terrain') {
+    if (sculptModeVal === 'terrain') {
       const { toAdd, toRemove } = applyTerrainStroke(
         v,
-        positions,
-        clayBoundsOrSize,
+        pos,
+        sculptBoundsOrSize,
         {
-          op: get(terrainClayOp),
+          op: get(terrainSculptOp),
           terrainBaseY: get(terrainBaseY),
           strength: get(terrainStrength),
           smoothRadius: get(terrainSmoothRadius),
-          brushRadius: get(clayBrushRadius) * 0.5,
+          brushRadius: get(sculptBrushRadius) * 0.5,
           falloffPath: terrainFalloffPath
         },
         getCol
@@ -448,20 +477,9 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
       });
       return;
     }
-    if (clayModeVal === 'melt') {
-      const { toAdd, toRemove } = applyMelt(v, positions, clayBoundsOrSize, {
-        maxPassesCap: get(meltMaxPasses),
-        meltStyle: get(meltStyle)
-      });
+    if (sculptModeVal === 'gouge') {
       updateVoxelsInStroke((next) => {
-        for (const key of toRemove) next.delete(key);
-        for (const [key, c] of toAdd) next.set(key, c);
-      });
-      return;
-    }
-    if (clayModeVal === 'gouge') {
-      updateVoxelsInStroke((next) => {
-        for (const [x, y, z] of positions) {
+        for (const [x, y, z] of pos) {
           if (!inBounds(x, y, z, boundSize)) continue;
           next.delete(coordKey(x, y, z));
         }
@@ -469,14 +487,14 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
       return;
     }
     if (
-      clayModeVal === 'bulk' ||
-      clayModeVal === 'branch' ||
-      clayModeVal === 'rope' ||
-      clayModeVal === 'cloth' ||
-      clayModeVal === 'wall'
+      sculptModeVal === 'draw' ||
+      sculptModeVal === 'branch' ||
+      sculptModeVal === 'rope' ||
+      sculptModeVal === 'cloth' ||
+      sculptModeVal === 'wall'
     ) {
       updateVoxelsInStroke((next) => {
-        for (const [x, y, z] of positions) {
+        for (const [x, y, z] of pos) {
           if (!inBounds(x, y, z, boundSize)) continue;
           const key = coordKey(x, y, z);
           if (!next.has(key)) next.set(key, getCol());
@@ -484,36 +502,26 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
       });
       return;
     }
-    if (clayModeVal === 'smooth') {
-      const { toAdd, toRemove } = applySmooth(v, positions, clayBoundsOrSize, {
+    if (sculptModeVal === 'smooth') {
+      const majorityOpts = {
         neighborRadius: get(smoothNeighborRadius),
         aggressiveness: get(smoothAggressiveness)
-      });
+      };
+      const { toAdd, toRemove } =
+        get(sculptSmoothVariant) === 'meshLaplacian'
+          ? applyMeshLaplacianSmooth(v, pos, sculptBoundsOrSize, {
+              neighborMargin: get(smoothNeighborRadius) + 2,
+              iterations: get(smoothLaplacianIterations),
+              relaxPct: get(smoothLaplacianRelax),
+              majorityNeighborRadius: majorityOpts.neighborRadius,
+              majorityAggressiveness: majorityOpts.aggressiveness
+            }, getCol)
+          : applySmooth(v, pos, sculptBoundsOrSize, majorityOpts);
       updateVoxelsInStroke((next) => {
         for (const key of toRemove) next.delete(key);
         for (const [key, c] of toAdd) next.set(key, c);
       });
       return;
-    }
-    if (clayModeVal === 'inflate') {
-      const { toAdd, toRemove } = applyInflate(
-        v,
-        positions,
-        clayBoundsOrSize,
-        get(inflateStrength)
-      );
-      updateVoxelsInStroke((next) => {
-        for (const key of toRemove) next.delete(key);
-        for (const [key, c] of toAdd) next.set(key, c);
-      });
-      return;
-    }
-    if (clayModeVal === 'level') {
-      const { toAdd, toRemove } = applyLevel(v, positions, levelY, getCol, clayBoundsOrSize);
-      updateVoxelsInStroke((next) => {
-        for (const key of toRemove) next.delete(key);
-        for (const [key, c] of toAdd) next.set(key, c);
-      });
     }
   }
 
@@ -918,7 +926,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
 
   return {
     applyLineStroke,
-    applyClayStroke,
+    applySculptStroke,
     applySelectStroke,
     placeStamp,
     placePunch,

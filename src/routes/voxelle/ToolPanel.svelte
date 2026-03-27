@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tool, toolPane, strokeMode, selection, sidebarOpen, addPanelStore } from './store/index';
   import DrawToolOptions from './toolPanel/DrawToolOptions.svelte';
-  import ClayToolOptions from './toolPanel/ClayToolOptions.svelte';
+  import SculptToolOptions from './toolPanel/SculptToolOptions.svelte';
   import StampToolOptions from './toolPanel/StampToolOptions.svelte';
   import GeneratorToolOptions from './toolPanel/GeneratorToolOptions.svelte';
   import MoodToolOptions from './toolPanel/MoodToolOptions.svelte';
@@ -49,7 +49,7 @@
       <DrawToolOptions />
       <StampToolOptions />
       <GeneratorToolOptions />
-      <ClayToolOptions />
+      <SculptToolOptions />
       <MoodToolOptions />
     </div>
   </div>
@@ -183,7 +183,7 @@
     gap: 0.5rem;
   }
 
-  /* Clay: label full width, then 2×2 shape buttons so labels are not clipped in narrow panel */
+  /* Sculpt: label full width, then 2×2 shape buttons so labels are not clipped in narrow panel */
   .tool-panel :global(.tool-panel-row--brush-shape) {
     flex-direction: column;
     align-items: stretch;
@@ -193,7 +193,7 @@
     width: auto;
   }
 
-  .tool-panel :global(.clay-brush-shape-rows) {
+  .tool-panel :global(.sculpt-brush-shape-rows) {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;

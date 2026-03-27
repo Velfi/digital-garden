@@ -134,10 +134,4 @@
     width: 100%;
     min-width: 0;
   }
-
-  .selection-hint {
-    margin: 0;
-    font-size: 0.8rem;
-    line-height: 1.35;
-  }
 </style>

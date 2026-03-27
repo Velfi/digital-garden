@@ -30,9 +30,9 @@
     PLANE_CUBOID_HOLLOW_WALL_MAX,
     planeCuboidHollowWallThickness,
     planeCylinderTaperPct,
-    clayMode,
-    clayBrushRadius,
-    clayBrushShape,
+    sculptMode,
+    sculptBrushRadius,
+    sculptBrushShape,
     branchTaper,
     branchTaperStartSize,
     branchTaperEndSize,
@@ -267,7 +267,8 @@
   import { getRockPositions, getAshlarPositions } from './store/generators/rock';
   import {
     VOXELLE_MESH_MATERIAL_USERDATA_KEY,
-    voxelMaterialBaseEnvMapIntensity
+    voxelMaterialBaseEnvMapIntensity,
+    cloneVoxel
   } from './voxelMaterial';
   import { getGrassPositions } from './store/generators/grass';
   import { generateRoofVoxels } from './store/generators/roof';
@@ -302,6 +303,7 @@
     mergePyramidStampIntoSeen,
     type PathThickenParams
   } from './strokeGeometry';
+  import { isSculptDragPathMode, isSculptStrokePathMode } from './store/sculptModes';
   import {
     PREVIEW_BBOX_VOXEL_THRESHOLD,
     planeStrokeBounds,
@@ -732,7 +734,7 @@
   let nextInsectaPlacementSeed = $state(0);
   /** Next ashlar placement seed (preview and apply match). */
   let nextAshlarPlacementSeed = $state(0);
-  /** Clay bulk: last sampled position for path accumulation */
+  /** Sculpt path-follow: last sampled position for path accumulation */
   let lastBulkPos: [number, number, number] | null = null;
   /** Deterministic spray (no scatter / radius range): incremental droplet union per stroke */
   let sprayIncrementalSeen: Set<string> | null = null;
@@ -1636,7 +1638,7 @@
 
   const {
     applyLineStroke,
-    applyClayStroke,
+    applySculptStroke,
     applySelectStroke,
     placeStamp,
     placePunch,
@@ -2284,7 +2286,13 @@
     const radius = get(ropeBrushRadius) * 0.5;
     const positions = applyBrushAlongPath(centerline, shape, radius);
     if (positions.length > 0) {
-      runVoxelStroke(() => applyClayStroke(positions, 'rope', 0));
+      const ropeStrokeSeed = Math.floor(Math.random() * 0xffffffff);
+      runVoxelStroke(() =>
+        applySculptStroke(positions, 'rope', {
+          spinePath: centerline,
+          strokeSeed: ropeStrokeSeed
+        })
+      );
     }
     cancelRope();
     render();
@@ -2339,7 +2347,13 @@
     const radius = brushR;
     const positions = applyBrushAlongPath(centerline, shape, radius);
     if (positions.length > 0) {
-      runVoxelStroke(() => applyClayStroke(positions, 'cloth', 0));
+      const clothStrokeSeed = Math.floor(Math.random() * 0xffffffff);
+      runVoxelStroke(() =>
+        applySculptStroke(positions, 'cloth', {
+          spinePath: centerline,
+          strokeSeed: clothStrokeSeed
+        })
+      );
     }
     cancelCloth();
     render();
@@ -2753,16 +2767,18 @@
     const strokeModeAtPointerDown = get(effectiveStrokeMode);
     /** Prefer instanced corner handles over greedy voxel mesh (merged quads break voxel-center picks). */
     let hit: THREE.Intersection | null = null;
+    const cornerPickMesh = polygonPointsMesh;
+    const cornerPickCamera = camera;
     const tryPolygonCornerPick =
-      polygonPointsMesh &&
-      camera &&
-      polygonPointsMesh.count > 0 &&
+      cornerPickMesh &&
+      cornerPickCamera &&
+      cornerPickMesh.count > 0 &&
       ((strokeModeAtPointerDown === 'polygonHull' && polygonPhase) ||
         (strokeModeAtPointerDown === 'polygon' && solidPolygonPhase === 'placing') ||
         ($tool === 'cloth' && clothPhase === 'placing'));
     if (tryPolygonCornerPick) {
-      raycaster.setFromCamera(pointer, camera);
-      const cornerHits = raycaster.intersectObject(polygonPointsMesh, false);
+      raycaster.setFromCamera(pointer, cornerPickCamera);
+      const cornerHits = raycaster.intersectObject(cornerPickMesh, false);
       if (cornerHits.length > 0) hit = cornerHits[0]!;
     }
     if (!hit) {
@@ -3091,7 +3107,7 @@
     container.setPointerCapture(event.pointerId);
     dragPointerId = event.pointerId;
 
-    // Rope tool: two-click flow (before clay path modes)
+    // Rope tool: two-click flow (before sculpt path modes)
     if ($tool === 'rope') {
       const pos = getAddPosition(hit) ?? getVoxelPosition(hit);
       if (pos) {
@@ -3115,20 +3131,10 @@
       return;
     }
 
-    const mode = get(clayMode);
-    // Clay tool + path-following modes: start drag (bulk/smooth/level/gouge/melt/wall/terrain)
-    if (
-      $tool === 'clay' &&
-      (mode === 'bulk' ||
-        mode === 'smooth' ||
-        mode === 'level' ||
-        mode === 'gouge' ||
-        mode === 'melt' ||
-        mode === 'wall' ||
-        mode === 'inflate' ||
-        mode === 'terrain')
-    ) {
-      // Start on voxel (grab surface) or face of voxel (extend outward)
+    const mode = get(sculptMode);
+    // Sculpt path-following modes: start drag on surface (not branch — separate branch below)
+    if ($tool === 'sculpt' && isSculptDragPathMode(mode)) {
+      // Start on voxel surface or face of voxel (extend outward)
       const pos = getVoxelPosition(hit) ?? getAddPosition(hit);
       if (pos) {
         isVoxelDrag = true;
@@ -3143,9 +3149,9 @@
         updatePreviewMesh(
           thickenPathForStroke(pendingStrokePositions, {
             strokeMode: get(strokeMode),
-            clayMode: mode,
-            clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-            clayBrushShape: get(clayBrushShape),
+            sculptMode: mode,
+            sculptBrushRadius: (get(sculptBrushRadius) as number) * 0.5,
+            sculptBrushShape: get(sculptBrushShape),
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -3182,8 +3188,8 @@
       requestAnimationFrame(() => render());
       return;
     }
-    // Clay tool + branch mode: start drag (extrude into empty space)
-    if ($tool === 'clay' && mode === 'branch') {
+    // Sculpt branch mode: start drag (extrude into empty space)
+    if ($tool === 'sculpt' && mode === 'branch') {
       const pos = getAddPosition(hit) ?? getVoxelPosition(hit);
       if (pos) {
         isVoxelDrag = true;
@@ -3195,9 +3201,9 @@
         updatePreviewMesh(
           thickenPathForStroke(pendingStrokePositions, {
             strokeMode: get(strokeMode),
-            clayMode: 'branch',
-            clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-            clayBrushShape: get(clayBrushShape),
+            sculptMode: 'branch',
+            sculptBrushRadius: (get(sculptBrushRadius) as number) * 0.5,
+            sculptBrushShape: get(sculptBrushShape),
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -3634,27 +3640,19 @@
       lineOnFace || pa === 'auto' || sprayUseFaceNormal ? faceNormal : axisVector(pa);
     dragPlaneAxisOverride = null;
     pendingStrokePositions = [startPos];
-    const clayModeVal = get(clayMode);
-    const isClayPathFollow =
-      $tool === 'clay' &&
-      (clayModeVal === 'bulk' ||
-        clayModeVal === 'smooth' ||
-        clayModeVal === 'level' ||
-        clayModeVal === 'gouge' ||
-        clayModeVal === 'melt' ||
-        clayModeVal === 'wall' ||
-        clayModeVal === 'inflate' ||
-        clayModeVal === 'terrain');
-    if (isClayPathFollow) {
+    const sculptModeVal = get(sculptMode);
+    const isSculptDragPathFollow =
+      $tool === 'sculpt' && isSculptDragPathMode(sculptModeVal);
+    if (isSculptDragPathFollow) {
       lastBulkPos = startPos;
     } else if (get(effectiveStrokeMode) === 'spray') {
       lastBulkPos = startPos;
     }
     const strokeParams = {
       strokeMode: get(strokeMode),
-      clayMode: isClayPathFollow ? clayModeVal : undefined,
-      clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-      clayBrushShape: get(clayBrushShape),
+      sculptMode: isSculptDragPathFollow ? sculptModeVal : undefined,
+      sculptBrushRadius: (get(sculptBrushRadius) as number) * 0.5,
+      sculptBrushShape: get(sculptBrushShape),
       branchTaper: get(branchTaper),
       branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
       branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -3684,7 +3682,7 @@
       seed: currentStrokeSeed
     };
     if (
-      !isClayPathFollow &&
+      !isSculptDragPathFollow &&
       get(effectiveStrokeMode) === 'spray' &&
       canUseSprayIncrementalPuff()
     ) {
@@ -3840,8 +3838,8 @@
       }
       if (isVoxelDrag && dragStartPos) {
         if (event) refreshShiftPlaneSymmetryState(event.shiftKey);
-        const clayPathMode = get(clayMode);
-        if ($tool === 'clay' && clayPathMode === 'branch') {
+        const sculptPathMode = get(sculptMode);
+        if ($tool === 'sculpt' && sculptPathMode === 'branch') {
           // Branch: view-plane direction (drag up = grow up on screen, not into scene)
           const currX = event?.clientX ?? branchPointerDownX;
           const currY = event?.clientY ?? branchPointerDownY;
@@ -3873,9 +3871,9 @@
           updatePreviewMesh(
             thickenPathForStroke(pendingStrokePositions, {
               strokeMode: get(strokeMode),
-              clayMode: 'branch',
-              clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-              clayBrushShape: get(clayBrushShape),
+              sculptMode: 'branch',
+              sculptBrushRadius: (get(sculptBrushRadius) as number) * 0.5,
+              sculptBrushShape: get(sculptBrushShape),
               branchTaper: get(branchTaper),
               branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
               branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -3920,10 +3918,10 @@
           let currentPos: [number, number, number] | null = null;
           if (hit) {
             currentPos =
-              $tool === 'voxel' || $tool === 'clay' ? getAddPosition(hit) : getVoxelPosition(hit);
+              $tool === 'voxel' || $tool === 'sculpt' ? getAddPosition(hit) : getVoxelPosition(hit);
           }
           const strokeModeVal = get(effectiveStrokeMode);
-          const clayPathMode = get(clayMode);
+          const sculptPathMode = get(sculptMode);
           if (strokeModeVal === 'precise' && dragStartPos && preciseNormal && preciseAnchor) {
             if (event) updatePointerFromEvent(event);
             updatePreciseGuidePlane();
@@ -3966,22 +3964,13 @@
             return;
           }
           const isSprayPath = strokeModeVal === 'spray' && lastBulkPos;
-          const isClayPathFollow =
-            $tool === 'clay' &&
-            (clayPathMode === 'bulk' ||
-              clayPathMode === 'smooth' ||
-              clayPathMode === 'level' ||
-              clayPathMode === 'gouge' ||
-              clayPathMode === 'melt' ||
-              clayPathMode === 'wall' ||
-              clayPathMode === 'inflate' ||
-              clayPathMode === 'terrain') &&
-            lastBulkPos;
+          const isSculptDragPathFollow =
+            $tool === 'sculpt' && isSculptDragPathMode(sculptPathMode) && lastBulkPos;
           // Wall + lock start height: when cursor is in empty space, intersect ray with locked plane so path extends into thin air
           if (
             currentPos === null &&
-            isClayPathFollow &&
-            clayPathMode === 'wall' &&
+            isSculptDragPathFollow &&
+            sculptPathMode === 'wall' &&
             get(wallLockStartHeight) &&
             dragStartPos &&
             camera
@@ -4029,8 +4018,8 @@
           if (currentPos) {
             // Wall + lock start height: keep path on starting plane (for enclosed loops)
             if (
-              isClayPathFollow &&
-              clayPathMode === 'wall' &&
+              isSculptDragPathFollow &&
+              sculptPathMode === 'wall' &&
               get(wallLockStartHeight) &&
               dragStartPos
             ) {
@@ -4040,10 +4029,10 @@
                 currentPos[axis] = dragStartPos[axis];
               }
             }
-            if (isClayPathFollow || isSprayPath) {
+            if (isSculptDragPathFollow || isSprayPath) {
               if (
-                isClayPathFollow &&
-                clayPathMode === 'wall' &&
+                isSculptDragPathFollow &&
+                sculptPathMode === 'wall' &&
                 get(wallAxisAlign) &&
                 dragStartPos
               ) {
@@ -4105,7 +4094,7 @@
             }
             let strokeBboxHint: StrokePreviewBboxHint | null = null;
             if (
-              !isClayPathFollow &&
+              !isSculptDragPathFollow &&
               !isSprayPath &&
               dragStartPos &&
               (strokeModeVal === 'plane' ||
@@ -4144,15 +4133,15 @@
                 };
               }
             }
-            // Clay path modes: show thickened preview (brush radius); spray: droplet preview
+            // Sculpt path modes: show thickened preview (brush radius); spray: droplet preview
             const moveStrokeParams: PathThickenParams = {
               strokeMode:
-                isSprayPath && !isClayPathFollow
+                isSprayPath && !isSculptDragPathFollow
                   ? 'spray'
                   : (strokeModeVal ?? get(strokeMode)),
-              clayMode: isClayPathFollow ? clayPathMode : undefined,
-              clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-              clayBrushShape: get(clayBrushShape),
+              sculptMode: isSculptDragPathFollow ? sculptPathMode : undefined,
+              sculptBrushRadius: (get(sculptBrushRadius) as number) * 0.5,
+              sculptBrushShape: get(sculptBrushShape),
               branchTaper: get(branchTaper),
               branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
               branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -4183,13 +4172,13 @@
             };
             if (
               isSprayPath &&
-              !isClayPathFollow &&
+              !isSculptDragPathFollow &&
               canUseSprayIncrementalPuff()
             ) {
               extendSprayIncrementalPuff(pendingStrokePositions, moveStrokeParams);
               updatePreviewMesh(sprayIncrementalOut!, strokeBboxHint);
             } else {
-              if (isSprayPath && !isClayPathFollow) clearSprayIncrementalPuff();
+              if (isSprayPath && !isSculptDragPathFollow) clearSprayIncrementalPuff();
               updatePreviewMesh(
                 thickenPathForStroke(pendingStrokePositions, moveStrokeParams),
                 strokeBboxHint
@@ -4221,7 +4210,7 @@
         render();
         return;
       }
-      // Rope / cloth tension phase: idle clay path below calls updatePreviewMesh([]) every move — keep preview
+      // Rope / cloth tension phase: idle sculpt path below calls updatePreviewMesh([]) every move — keep preview
       if (ropePhase === 'tension' || clothPhase === 'tension') {
         rollOverMesh.visible = false;
         render();
@@ -4574,7 +4563,16 @@
         render();
         return;
       }
-      if ($tool !== 'voxel' && $tool !== 'clay' && $tool !== 'remove' && $tool !== 'paint') {
+      if (
+        $tool !== 'voxel' &&
+        $tool !== 'sculpt' &&
+        $tool !== 'remove' &&
+        $tool !== 'paint' &&
+        $tool !== 'select' &&
+        $tool !== 'selectByColor' &&
+        $tool !== 'selectCoplanar' &&
+        $tool !== 'selectCoplanarEmpty'
+      ) {
         rollOverMesh.visible = false;
         updatePreviewMesh([]);
         render();
@@ -4618,9 +4616,9 @@
           updatePreviewMesh(
             thickenPathForStroke([hoverPos], {
               strokeMode: 'spray',
-              clayMode: undefined,
-              clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-              clayBrushShape: get(clayBrushShape),
+              sculptMode: undefined,
+              sculptBrushRadius: (get(sculptBrushRadius) as number) * 0.5,
+              sculptBrushShape: get(sculptBrushShape),
               branchTaper: get(branchTaper),
               branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
               branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -4653,7 +4651,7 @@
         render();
         return;
       }
-      if ($tool === 'voxel' || $tool === 'clay') {
+      if ($tool === 'voxel' || $tool === 'sculpt') {
         const addPos = getAddPosition(hit);
         if (addPos && !$voxels.has(coordKey(addPos[0], addPos[1], addPos[2]))) {
           rollOverMesh.position.set(addPos[0], addPos[1], addPos[2]);
@@ -4835,20 +4833,11 @@
     if (event.button === 0 && isVoxelDrag) {
       updatePointerFromEvent(event);
       const mode = get(effectiveStrokeMode);
-      const clayModeVal = get(clayMode);
-      const isClayPath =
-        $tool === 'clay' &&
-        (clayModeVal === 'bulk' ||
-          clayModeVal === 'smooth' ||
-          clayModeVal === 'level' ||
-          clayModeVal === 'gouge' ||
-          clayModeVal === 'branch' ||
-          clayModeVal === 'melt' ||
-          clayModeVal === 'wall' ||
-          clayModeVal === 'inflate' ||
-          clayModeVal === 'terrain');
+      const sculptModeVal = get(sculptMode);
+      const isSculptStrokePath =
+        $tool === 'sculpt' && isSculptStrokePathMode(sculptModeVal);
       const normal = getEffectivePlaneNormal();
-      if (mode === 'precise' && dragStartPos && preciseNormal && !isClayPath) {
+      if (mode === 'precise' && dragStartPos && preciseNormal && !isSculptStrokePath) {
         const toApply = pendingStrokePositions.length > 0 ? pendingStrokePositions : [dragStartPos];
         if (toApply.length > 0) {
           if ($tool === 'select') {
@@ -4860,7 +4849,7 @@
         pendingStrokePositions = [];
         updatePreviewMesh([]);
         resetPreciseState(false);
-      } else if (mode === 'cuboid' && dragStartPos && normal && !isClayPath) {
+      } else if (mode === 'cuboid' && dragStartPos && normal && !isSculptStrokePath) {
         // Enter depth phase: drag plane, then scroll for depth
         let cornerB = dragStartPos;
         const planePoint = new THREE.Vector3(
@@ -4886,7 +4875,7 @@
         };
         cuboidDepth = 1;
         updateCuboidFromDepth();
-      } else if (mode === 'cylinder' && dragStartPos && normal && !isClayPath) {
+      } else if (mode === 'cylinder' && dragStartPos && normal && !isSculptStrokePath) {
         let edgePos = dragStartPos;
         const planePoint = new THREE.Vector3(
           dragStartPos[0] + 0.5,
@@ -4912,24 +4901,13 @@
         cylinderDepth = 1;
         updateCylinderFromDepth();
       } else {
-        // Apply the stroke on release (line/plane / clay modes)
+        // Apply the stroke on release (line/plane / sculpt modes)
         if (pendingStrokePositions.length > 0) {
-          const isClayPath =
-            $tool === 'clay' &&
-            (clayModeVal === 'bulk' ||
-              clayModeVal === 'smooth' ||
-              clayModeVal === 'level' ||
-              clayModeVal === 'gouge' ||
-              clayModeVal === 'branch' ||
-              clayModeVal === 'melt' ||
-              clayModeVal === 'wall' ||
-              clayModeVal === 'inflate' ||
-              clayModeVal === 'terrain');
           const toApply = thickenPathForStroke(pendingStrokePositions, {
             strokeMode: mode ?? get(strokeMode),
-            clayMode: isClayPath ? clayModeVal : undefined,
-            clayBrushRadius: (get(clayBrushRadius) as number) * 0.5,
-            clayBrushShape: get(clayBrushShape),
+            sculptMode: isSculptStrokePath ? sculptModeVal : undefined,
+            sculptBrushRadius: (get(sculptBrushRadius) as number) * 0.5,
+            sculptBrushShape: get(sculptBrushShape),
             branchTaper: get(branchTaper),
             branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
             branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
@@ -4960,14 +4938,14 @@
           });
           if ($tool === 'select') {
             applySelectStroke(toApply, selectionModeForCurrentGesture ?? get(selectionMode));
-          } else if (isClayPath) {
+          } else if (isSculptStrokePath) {
             runVoxelStroke(() =>
-              applyClayStroke(
-                toApply,
-                clayModeVal,
-                dragStartPos?.[1] ?? 0,
-                clayModeVal === 'terrain' ? pendingStrokePositions : undefined
-              )
+              applySculptStroke(toApply, sculptModeVal, {
+                terrainFalloffPath:
+                  sculptModeVal === 'terrain' ? pendingStrokePositions : undefined,
+                spinePath: pendingStrokePositions,
+                strokeSeed: currentStrokeSeed
+              })
             );
           } else {
             runVoxelStroke(() => applyLineStroke(toApply));

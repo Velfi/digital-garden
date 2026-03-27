@@ -1,12 +1,12 @@
 # Voxelle
 
-A 3D voxel sculpting tool that runs in the browser. Use **Add**, **Remove**, and **Paint**; selection method categories (**Stroke**, **Surface**, **Solid**, **Spray**, **Fill**); stamps and clay-style tools; export to GLTF or save/load `.voxelle` files.
+A 3D voxel sculpting tool that runs in the browser. Use **Add**, **Remove**, and **Paint**; selection method categories (**Stroke**, **Surface**, **Solid**, **Spray**, **Fill**); stamps and **Sculpt**-tab tools; export to GLTF or save/load `.voxelle` files.
 
 ## What it does
 
-- **Sculpt** – Draw, erase, fill, paint. Draw tab: **Add** (place voxels), Remove, Paint, Select, Stamp, Punch; clay, eyedropper, fly elsewhere.
+- **Sculpt** – Draw, erase, fill, paint. Draw tab: **Add** (place voxels), Remove, Paint, Select, Stamp, Punch; **Sculpt** tab, eyedropper, fly elsewhere.
 - **Selection method** – Sidebar: **Stroke**, **Surface**, **Solid**, **Spray**, **Fill**. Floating panel sets **Area shape** (e.g. Line, Plane, Cube, Cylinder, Polygon) and **Brush shape** (Cube, Sphere, Pyramid stamp). **Spray** = soft stroke along path; **Fill** = flood.
-- **Clay modes** – Bulk, smooth, level, gouge, branch, melt, rope, wall, inflate.
+- **Sculpt modes** – Blender-style names where it helps, on a voxel grid (see `static/voxelle/HELP.md`): Draw, Scrape, smooth; More: extrude, wall, terrain; rope/cloth under Generators.
 - **Scene** – Configurable grid, lighting, camera (orbit/fly), materials. Undo/redo, copy/paste, selection grow/shrink.
 - **Persistence** – Auto-save to browser storage; save/load `.voxelle` (gzipped BSON); share via URL; export to GLB.
 

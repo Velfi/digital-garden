@@ -53,7 +53,7 @@ export type Tool =
   | 'hand'
   | 'fly'
   | 'eyedropper'
-  | 'clay'
+  | 'sculpt'
   | 'rope'
   | 'cloth'
   | 'rocks'
@@ -68,19 +68,19 @@ export type Tool =
   | 'distanceTint'
   | 'grain';
 
-export type ClayMode =
-  | 'bulk'
+export type SculptMode =
+  | 'draw'
   | 'smooth'
-  | 'level'
   | 'gouge'
   | 'branch'
-  | 'melt'
   | 'wall'
-  | 'inflate'
   | 'terrain';
 
-/** Terrain clay: heightfield raise / lower / smooth (Y-up columns). */
-export type TerrainClayOp = 'raise' | 'lower' | 'smooth';
+/** Sculpt smooth: voxel majority vs local mesh Taubin/Laplacian + revoxelize. */
+export type SculptSmoothVariant = 'majority' | 'meshLaplacian';
+
+/** Terrain sculpt: heightfield raise / lower / smooth (Y-up columns). */
+export type TerrainSculptOp = 'raise' | 'lower' | 'smooth';
 
 export type RopeBrushShape = 'sphere' | 'cube';
 /** Rope mode: direction of gravity (sag). */
@@ -106,7 +106,7 @@ export type StrokeMode =
   | 'fill'
   | 'spray';
 
-/** Tools that use `strokeMode` (sidebar selection method). Clay/stamp/fly/eyedropper use their own flows. */
+/** Tools that use `strokeMode` (sidebar selection method). Sculpt/stamp/fly/eyedropper use their own flows. */
 export const STROKE_TOOLS: readonly Tool[] = [
   'voxel',
   'remove',
@@ -174,8 +174,8 @@ export function closeAddPanel(): void {
   addPanelStore.set({ ...defaultAddPanel });
 }
 
-/** Draw vs Clay vs Hand vs Fly vs Generators vs Mood tab pane. */
-export type ToolPane = 'draw' | 'clay' | 'hand' | 'fly' | 'generators' | 'mood';
+/** Draw vs Sculpt vs Hand vs Fly vs Generators vs Mood tab pane. */
+export type ToolPane = 'draw' | 'sculpt' | 'hand' | 'fly' | 'generators' | 'mood';
 
 // Stores
 export const gridSize = writable<GridSize>(32);
@@ -185,7 +185,7 @@ export const hiddenVoxels = writable<Map<string, Voxel>>(new Map());
 export const hasHiddenVoxels = derived(hiddenVoxels, (h) => h.size > 0);
 export const tool = writable<Tool>('voxel');
 export const toolPane = writable<ToolPane>('draw');
-/** Last selected draw tool, restored when switching from Clay back to Draw pane. */
+/** Last selected draw tool, restored when switching from Sculpt back to Draw pane. */
 export const lastDrawTool = writable<Tool>('remove');
 /** Tool active before entering eyedropper; restored after a successful voxel color pick. */
 export const toolBeforeEyedropper = writable<Tool>('voxel');
@@ -207,7 +207,7 @@ export const constrainToPlaneRef = writable<ConstrainToPlaneRef>('auto');
  */
 export const polygonOffsetFromNormal = writable<number>(1);
 export const strokeMode = writable<StrokeMode>('spray');
-/** `strokeMode` when the active tool uses the draw stroke pipeline; null for clay/stamp/fly/eyedropper. */
+/** `strokeMode` when the active tool uses the draw stroke pipeline; null for sculpt/stamp/fly/eyedropper. */
 export const effectiveStrokeMode = derived([tool, strokeMode], ([t, sm]) =>
   DRAW_TOOLS_USING_STROKE_MODE.includes(t) ? sm : null
 );
@@ -222,12 +222,12 @@ export const planeCuboidHollowWallThickness = writable<number>(1);
 /** Cylinder extrusion taper: 0 = right cylinder; 100 = linear taper to a point at the far end (cone). */
 export const PLANE_CYLINDER_TAPER_PCT_MAX = 100;
 export const planeCylinderTaperPct = writable<number>(0);
-export const clayMode = writable<ClayMode>('bulk');
-/** Clay brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
-export const clayBrushRadius = writable<number>(2);
-/** Bulk / smooth / melt: 2D stamp (square, circle) or 3D brush (cube, sphere) along the stroke. */
-export type ClayBrushShape = 'square' | 'circle' | 'cube' | 'sphere';
-export const clayBrushShape = writable<ClayBrushShape>('square');
+export const sculptMode = writable<SculptMode>('draw');
+/** Sculpt brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
+export const sculptBrushRadius = writable<number>(2);
+/** Sculpt stroke: 2D stamp (square, circle) or 3D brush (cube, sphere) along the stroke. */
+export type SculptBrushShape = 'square' | 'circle' | 'cube' | 'sphere';
+export const sculptBrushShape = writable<SculptBrushShape>('square');
 /** Branch mode: axis-aligned cube vs cylinder along the stroke polyline. */
 export type BranchBrushProfile = 'cube' | 'cylinder';
 export const branchBrushProfile = writable<BranchBrushProfile>('cube');
@@ -240,18 +240,22 @@ export const branchTaper = writable<boolean>(false);
 export const branchTaperStartSize = writable<number>(2);
 /** Branch taper: end size index 0..(MAX_BRUSH_SIZE-1) (when taper on). */
 export const branchTaperEndSize = writable<number>(0);
-/** Inflate mode: 0–1 probability of adding each empty face-neighbor (1=always). */
-export const inflateStrength = writable<number>(1);
 /** Smooth mode: Chebyshev neighborhood radius beyond face-only (0 = legacy 6-neighbor window). */
 export const smoothNeighborRadius = writable<number>(0);
 /** Smooth mode: 0 = gentle thresholds, 100 = same rule as legacy scaled to local neighbor count. */
 export const smoothAggressiveness = writable<number>(100);
-/** Melt mode: max gravity passes per stroke (0 = auto from grid/bounds only). */
-export const meltMaxPasses = writable<number>(0);
-/** Melt: fried-egg flatten vs legacy gravity flow inside brush. */
-export const meltStyle = writable<'friedEgg' | 'gravity'>('friedEgg');
-/** Terrain clay: raise, lower, or smooth column tops (heightfield). */
-export const terrainClayOp = writable<TerrainClayOp>('raise');
+/** Smooth mode: majority (voxel) vs mesh Taubin smoothing with revoxelization in a local ROI. */
+export const sculptSmoothVariant = writable<SculptSmoothVariant>('majority');
+/** Mesh smooth: Taubin iterations per stroke sample (1–20). */
+export const smoothLaplacianIterations = writable<number>(4);
+/** Mesh smooth: step scale 0–100 (higher = stronger λ/μ in Taubin). */
+export const smoothLaplacianRelax = writable<number>(50);
+/** Sculpt: 0–100; scales how many brush voxels apply (with falloff weights). 100 = full brush. */
+export const sculptBrushStrength = writable<number>(100);
+/** Sculpt: 0 = hard brush edge; 100 = soft falloff from stroke spine to brush radius. */
+export const sculptBrushFalloff = writable<number>(0);
+/** Terrain sculpt: raise, lower, or smooth column tops (heightfield). */
+export const terrainSculptOp = writable<TerrainSculptOp>('raise');
 /** Terrain: fill floor Y per column uses min(this, column min Y). */
 export const terrainBaseY = writable<number>(0);
 /** Terrain raise/lower: max voxels delta at brush center (falloff toward edge). */
@@ -308,7 +312,7 @@ export const drawBrushSize = writable<number>(0);
 export const drawBrushSnapToSurface = writable<boolean>(true);
 /** Default brush color; must appear in DEFAULT_PALETTE (Material Blue 500). */
 export const color = writable<string>(VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX);
-/** Active material for new paint / voxel / clay strokes. */
+/** Active material for new paint / voxel / sculpt strokes. */
 export const voxelMaterial = writable<VoxelMaterialId>('plastic');
 /** Palette colors selected for painting (shift+click). Empty = use color. */
 export const selectedColors = writable<string[]>([]);

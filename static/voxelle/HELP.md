@@ -121,35 +121,35 @@ Fill and Spray have no second shape row; choosing them sets the mode directly.
 
 ---
 
-## Clay Tools (Fast Sculpting)
+## Sculpt tools (fast sculpting)
 
-- **Bulk** - quickly build up mass
-- **Smooth** - soften rough areas
-- **Inflate** - push surface outward
-- **Level** - flatten to a height
-- **Gouge** - carve grooves
-- **Branch** - pull out branch-like shapes
-- **Puffy** - add soft blob shapes
-- **Melt** - spread blocks downward
-- **Rope** - draw a hanging rope between two points
-- **Wall** - draw raised walls along a path
+Open the **Sculpt** tab in the sidebar. Names are Blender-inspired, but everything runs on a **voxel grid**: brushes add/remove/move whole cells, not mesh vertices. Behavior matches the tooltips and the notes below.
 
-### Clay options explained
+- **Draw** (fill empty voxels along the stroke), **Scrape** (delete solid voxels in the brush), **Smooth** (majority fill/remove in the brush, or optional **Mesh** Taubin smooth on a local surface then revoxelize; see below), **Extrude** (add voxels along a view-based stroke), **Wall**, **Terrain** (heightfield on column tops; Y-up)
 
-#### Brush size (most clay modes)
+**Rope** (Generators tab) — draw a hanging rope between two points.
 
-- Used by **Bulk, Smooth, Inflate, Level, Gouge, Branch, Melt**.
+### Sculpt options explained
+
+#### Brush size (most sculpt modes)
+
+- Used by **Draw, Smooth, Scrape, Extrude**, and **Terrain**.
 - Bigger brush edits a wider area with each stroke.
 
-#### Inflate: Strength
+#### Brush strength & falloff (floating tool panel)
 
-- Controls how aggressively Inflate expands outward.
-- **Higher strength** = fills outward neighbors more often (faster inflation).
-- **Lower strength** = softer, noisier inflation.
+- **Strength** (1–100): how much of the brush footprint tends to apply on each stroke. Lower values thin the stroke using the same seed per drag so results stay repeatable.
+- **Falloff** (0–100): **0** = hard edge (uniform inside the brush shape). **Higher** = softer weights from the stroke path out toward the brush radius (Blender-like soft brush).
 
-#### Branch: Taper
+#### Smooth: Majority vs Mesh
 
-- When enabled, branches start thicker and end thinner.
+- **Majority** (default): counts solid neighbors in a 3D window and fills empty cells or removes thin spikes—pure voxel logic. **Reach** and **Strength** control neighborhood size and how aggressive the rule is.
+- **Mesh**: builds a **greedy mesh** of solid voxels in a box around the stroke (brush bounds plus **Reach** as extra margin), runs **Taubin** smoothing on mesh vertices (with boundary vertices on that box pinned), then treats each voxel cell as inside/outside the smoothed surface (primarily **+X ray parity** against the triangle soup, with a **padded vertex bounding box** fallback for cells that were solid in that region so merged quads do not drop interior voxels). Colors and materials are copied from the **nearest original voxel** in the box, so seams between materials may blend. **Passes** and **Relax** control iteration count and step strength.
+- **Caveats**: hollow cavities fully inside the edit box can classify oddly after remeshing; very large regions may fall back to **Majority** automatically for performance (ROI cell budget).
+
+#### Extrude (branch): Taper
+
+- When enabled, extrusions start thicker and end thinner.
 - Good for horns, roots, tree-like forms.
 
 #### Puffy: Size, Size range, Scatter
@@ -194,6 +194,10 @@ Use **X**, **Y**, and **Z** symmetry toggles to mirror edits across axes.
 
 - **Tool** and **Selection** are two columns with a divider between them: **Add**, **Remove**, and **Paint** on the left; **Select**, **Stamp**, and **Punch** on the right.
 - **Selection method**: top row **Stroke · Surface · Solid**; bottom row **Spray · Fill**. Choosing **Stroke**, **Surface**, or **Solid** unlocks **Area shape** buttons in the floating tool panel (bottom of the canvas).
+
+### Sculpt tab
+
+- **Sculpt mode** is a single row of mode buttons. The floating tool panel shows brush strength/falloff and mode-specific options when **Sculpt** is active.
 
 ### Color
 

@@ -2,7 +2,7 @@ import { coordKey, inBounds, inBoundsBox } from './coordUtils';
 import type { SelectionBounds } from './coordUtils';
 import type { Voxel } from './voxelMaterial';
 import { cloneVoxel } from './voxelMaterial';
-import type { TerrainClayOp } from './store/core';
+import type { TerrainSculptOp } from './store/core';
 
 function withinBounds(
   x: number,
@@ -96,7 +96,7 @@ function brushFalloff(
 }
 
 export type ApplyTerrainStrokeOptions = {
-  op: TerrainClayOp;
+  op: TerrainSculptOp;
   terrainBaseY: number;
   strength: number;
   smoothRadius: number;

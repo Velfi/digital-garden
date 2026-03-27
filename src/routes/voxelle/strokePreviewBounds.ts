@@ -442,7 +442,7 @@ export function expandStrokePreviewBoundsAroundCenter(
 
 /**
  * Conservative expansion for draw brush on plane/cuboid/line preview.
- * Clay / Spray / wall etc. should not use bbox preview path.
+ * Sculpt / Spray / wall etc. should not use bbox preview path.
  */
 export function inflateStrokePreviewBoundsForDrawBrush(
   b: SelectionBounds,

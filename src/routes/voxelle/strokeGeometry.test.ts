@@ -29,7 +29,7 @@ import type { StrokeMode } from './store/core';
 
 const defaultParams = {
   strokeMode: 'line' as StrokeMode,
-  clayBrushRadius: 1,
+  sculptBrushRadius: 1,
   branchTaper: false,
   sprayRadius: 1,
   sprayScatter: 0,
@@ -39,16 +39,16 @@ const defaultParams = {
 };
 
 describe('thickenPathForStroke', () => {
-  it('clay modes ignore stroke mode (e.g. spray) and use clay brush logic', () => {
-    // Bug: stroke mode was checked before clay mode, so clay tools (melt, smooth, etc.)
+  it('sculpt path modes ignore stroke mode (e.g. spray) and use sculpt brush logic', () => {
+    // Bug: stroke mode was checked before sculpt mode, so sculpt tools (smooth, draw, etc.)
     // incorrectly used Spray spherical expansion when strokeMode was still set to spray.
-    // Melt/smooth/bulk use surface-plane thickening: default Y layer, cube r=1 => 3×3.
+    // Smooth/draw use surface-plane thickening: default Y layer, cube r=1 => 3×3.
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const clayResult = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       strokeMode: 'spray',
-      clayMode: 'melt',
-      clayBrushRadius: 1
+      sculptMode: 'smooth',
+      sculptBrushRadius: 1
     });
     expect(clayResult.length).toBe(9);
     expect(new Set(clayResult.map(([, y]) => y)).size).toBe(1);
@@ -59,7 +59,7 @@ describe('thickenPathForStroke', () => {
     const sprayResult = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       strokeMode: 'spray',
-      clayBrushRadius: 1
+      sculptBrushRadius: 1
     });
     // Spray sphere: expandPathWithBrushStamps(..., 'sphere'); r=1 gives 7 voxels (center + 6 face neighbors)
     expect(sprayResult.length).toBe(7);
@@ -70,7 +70,7 @@ describe('thickenPathForStroke', () => {
     const cubeAir = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       strokeMode: 'spray',
-      clayBrushRadius: 1,
+      sculptBrushRadius: 1,
       sprayBrushShape: 'cube',
       sprayRadius: 1
     });
@@ -83,7 +83,7 @@ describe('thickenPathForStroke', () => {
     const pyramidAir = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       strokeMode: 'spray',
-      clayBrushRadius: 1,
+      sculptBrushRadius: 1,
       sprayBrushShape: 'pyramid',
       sprayRadius: 1
     });
@@ -129,33 +129,33 @@ describe('thickenPathForStroke', () => {
       ...defaultParams,
       strokeMode: 'line',
       drawBrushSize: 2,
-      clayMode: 'bulk',
-      clayBrushRadius: 1
+      sculptMode: 'draw',
+      sculptBrushRadius: 1
     });
     // Bulk: single layer in XZ when no face normal (default Y axis) => 3×3
     expect(result.length).toBe(9);
     expect(new Set(result.map(([, y]) => y)).size).toBe(1);
   });
 
-  it('bulk clay circle: flat disk in layer plane', () => {
+  it('draw sculpt circle: flat disk in layer plane', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      clayMode: 'bulk',
-      clayBrushRadius: 1,
-      clayBrushShape: 'circle'
+      sculptMode: 'draw',
+      sculptBrushRadius: 1,
+      sculptBrushShape: 'circle'
     });
     expect(result.length).toBe(5);
     expect(new Set(result.map(([, y]) => y)).size).toBe(1);
   });
 
-  it('bulk clay square with face normal keeps layer in plane perpendicular to normal', () => {
+  it('draw sculpt square with face normal keeps layer in plane perpendicular to normal', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      clayMode: 'bulk',
-      clayBrushRadius: 1,
-      clayBrushShape: 'square',
+      sculptMode: 'draw',
+      sculptBrushRadius: 1,
+      sculptBrushShape: 'square',
       drawBrushFaceNormal: { x: 0, y: 1, z: 0 }
     });
     expect(result.length).toBe(9);
@@ -164,13 +164,13 @@ describe('thickenPathForStroke', () => {
     }
   });
 
-  it('bulk clay circle with face normal stays in that plane', () => {
+  it('draw sculpt circle with face normal stays in that plane', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      clayMode: 'bulk',
-      clayBrushRadius: 1,
-      clayBrushShape: 'circle',
+      sculptMode: 'draw',
+      sculptBrushRadius: 1,
+      sculptBrushShape: 'circle',
       drawBrushFaceNormal: { x: 0, y: 1, z: 0 }
     });
     expect(result.length).toBe(5);
@@ -179,25 +179,25 @@ describe('thickenPathForStroke', () => {
     }
   });
 
-  it('bulk clay cube: 3D Chebyshev ball per path point', () => {
+  it('draw sculpt cube: 3D Chebyshev ball per path point', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      clayMode: 'bulk',
-      clayBrushRadius: 1,
-      clayBrushShape: 'cube'
+      sculptMode: 'draw',
+      sculptBrushRadius: 1,
+      sculptBrushShape: 'cube'
     });
     expect(result).toEqual(thickenPath(singlePoint, 1));
     expect(result.length).toBe(27);
   });
 
-  it('bulk clay sphere: 3D Euclidean ball per path point', () => {
+  it('draw sculpt sphere: 3D Euclidean ball per path point', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      clayMode: 'bulk',
-      clayBrushRadius: 1,
-      clayBrushShape: 'sphere'
+      sculptMode: 'draw',
+      sculptBrushRadius: 1,
+      sculptBrushShape: 'sphere'
     });
     expect(result).toEqual(expandPathWithBrushStamps(singlePoint, 'sphere', 1, 0));
     expect(result.length).toBe(7);
@@ -208,58 +208,58 @@ describe('thickenPathForStroke', () => {
     const withSpray = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       strokeMode: 'spray',
-      clayBrushRadius: 1
+      sculptBrushRadius: 1
       // clayMode intentionally omitted
     });
     expect(withSpray.length).toBe(7); // spray sphere
     const withClay = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       strokeMode: 'spray',
-      clayBrushRadius: 1,
-      clayMode: 'melt'
+      sculptBrushRadius: 1,
+      sculptMode: 'smooth'
     });
-    expect(withClay.length).toBe(9); // melt: in-plane cube brush
+    expect(withClay.length).toBe(9); // smooth: in-plane cube brush
   });
 
-  it('smooth with clay circle matches bulk circle thickening', () => {
+  it('smooth with clay circle matches draw circle thickening', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      clayMode: 'smooth',
-      clayBrushRadius: 1,
-      clayBrushShape: 'circle'
+      sculptMode: 'smooth',
+      sculptBrushRadius: 1,
+      sculptBrushShape: 'circle'
     });
     expect(result.length).toBe(5);
     expect(new Set(result.map(([, y]) => y)).size).toBe(1);
   });
 
-  it('melt with clay circle matches disk in layer plane', () => {
+  it('gouge with sculpt circle matches disk in layer plane', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      clayMode: 'melt',
-      clayBrushRadius: 1,
-      clayBrushShape: 'circle'
+      sculptMode: 'gouge',
+      sculptBrushRadius: 1,
+      sculptBrushShape: 'circle'
     });
     expect(result.length).toBe(5);
   });
 
-  it('gouge with clay circle matches bulk circle thickening', () => {
+  it('gouge with clay circle matches draw circle thickening', () => {
     const singlePoint: [number, number, number][] = [[0, 0, 0]];
-    const bulk = thickenPathForStroke(singlePoint, {
+    const drawFootprint = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      clayMode: 'bulk',
-      clayBrushRadius: 1,
-      clayBrushShape: 'circle'
+      sculptMode: 'draw',
+      sculptBrushRadius: 1,
+      sculptBrushShape: 'circle'
     });
     const gouge = thickenPathForStroke(singlePoint, {
       ...defaultParams,
-      clayMode: 'gouge',
-      clayBrushRadius: 1,
-      clayBrushShape: 'circle'
+      sculptMode: 'gouge',
+      sculptBrushRadius: 1,
+      sculptBrushShape: 'circle'
     });
-    expect(gouge.length).toBe(bulk.length);
-    expect(new Set(gouge.map((p) => p.join(',')))).toEqual(new Set(bulk.map((p) => p.join(','))));
+    expect(gouge.length).toBe(drawFootprint.length);
+    expect(new Set(gouge.map((p) => p.join(',')))).toEqual(new Set(drawFootprint.map((p) => p.join(','))));
   });
 
   it('clay wall with direction and wallHeight adds voxels along direction', () => {
@@ -267,8 +267,8 @@ describe('thickenPathForStroke', () => {
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       strokeMode: 'line',
-      clayMode: 'wall',
-      clayBrushRadius: 0,
+      sculptMode: 'wall',
+      sculptBrushRadius: 0,
       sprayDirection: 'down',
       wallHeight: 3
     });
@@ -285,8 +285,8 @@ describe('thickenPathForStroke', () => {
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       strokeMode: 'line',
-      clayMode: 'wall',
-      clayBrushRadius: 0,
+      sculptMode: 'wall',
+      sculptBrushRadius: 0,
       sprayDirection: 'auto',
       wallFaceNormal: { x: 0, y: -1, z: 0 },
       wallHeight: 2
@@ -302,8 +302,8 @@ describe('thickenPathForStroke', () => {
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       strokeMode: 'line',
-      clayMode: 'wall',
-      clayBrushRadius: 0,
+      sculptMode: 'wall',
+      sculptBrushRadius: 0,
       sprayDirection: 'none',
       wallHeight: 5
     });
@@ -315,8 +315,8 @@ describe('thickenPathForStroke', () => {
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       strokeMode: 'line',
-      clayMode: 'wall',
-      clayBrushRadius: 0,
+      sculptMode: 'wall',
+      sculptBrushRadius: 0,
       sprayDirection: 'down',
       wallWidth: 1,
       wallHeight: 2
@@ -334,8 +334,8 @@ describe('thickenPathForStroke', () => {
     const result = thickenPathForStroke(singlePoint, {
       ...defaultParams,
       strokeMode: 'line',
-      clayMode: 'wall',
-      clayBrushRadius: 0,
+      sculptMode: 'wall',
+      sculptBrushRadius: 0,
       sprayDirection: 'down',
       wallWidth: 2,
       wallHeight: 2
@@ -443,8 +443,8 @@ describe('thickenPathTapered', () => {
 describe('clay branch cylinder brush', () => {
   const branchBase = {
     ...defaultParams,
-    clayMode: 'branch' as const,
-    clayBrushRadius: 1,
+    sculptMode: 'branch' as const,
+    sculptBrushRadius: 1,
     branchTaper: false,
     branchBrushProfile: 'cylinder' as const,
     branchEndCap: 'flat' as const
@@ -496,8 +496,8 @@ describe('clay branch cylinder brush', () => {
     for (let i = 0; i <= 6; i++) path.push([i, 0, 0]);
     const result = thickenPathForStroke(path, {
       ...defaultParams,
-      clayMode: 'branch',
-      clayBrushRadius: 1,
+      sculptMode: 'branch',
+      sculptBrushRadius: 1,
       branchTaper: true,
       branchTaperStartRadius: 2,
       branchTaperEndRadius: 0,
@@ -518,8 +518,8 @@ describe('clay branch cylinder brush', () => {
     ];
     const cube = thickenPathForStroke(path, {
       ...defaultParams,
-      clayMode: 'branch',
-      clayBrushRadius: 1,
+      sculptMode: 'branch',
+      sculptBrushRadius: 1,
       branchTaper: true,
       branchTaperStartRadius: 1,
       branchTaperEndRadius: 0,

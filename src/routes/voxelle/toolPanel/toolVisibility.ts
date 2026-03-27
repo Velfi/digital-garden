@@ -70,8 +70,8 @@ export function stampVisible(tool: Tool): boolean {
   return tool === 'stamp' || tool === 'punch';
 }
 
-export function clayVisible(tool: Tool): boolean {
-  return tool === 'clay';
+export function sculptVisible(tool: Tool): boolean {
+  return tool === 'sculpt';
 }
 
 export function generatorOptionsVisible(tool: string): boolean {
@@ -113,7 +113,7 @@ export function toolPanelShellVisible(opts: {
     fillVisible(strokeMode, tool) ||
     (strokeModeUsesPolygonOffset(strokeMode) && isStrokeTool(tool)) ||
     stampVisible(tool) ||
-    clayVisible(tool) ||
+    sculptVisible(tool) ||
     generatorOptionsVisible(tool) ||
     moodOptionsVisible(tool)
   );

@@ -13,7 +13,7 @@
 
 <h2>Material</h2>
 <p class="hint">
-  Material for new voxels, paint, and clay strokes. Eyedropper picks both color and material.
+  Material for new voxels, paint, and sculpt strokes. Eyedropper picks both color and material.
 </p>
 <div class="material-grid" role="group" aria-label="Voxel material">
   {#each VOXEL_MATERIAL_IDS as id (id)}

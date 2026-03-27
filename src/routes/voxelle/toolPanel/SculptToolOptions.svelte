@@ -1,14 +1,16 @@
 <script lang="ts">
   import {
     tool,
-    clayMode,
-    clayBrushRadius,
-    clayBrushShape,
-    inflateStrength,
+    sculptMode,
+    sculptBrushRadius,
+    sculptBrushShape,
     smoothNeighborRadius,
     smoothAggressiveness,
-    meltMaxPasses,
-    meltStyle,
+    sculptSmoothVariant,
+    smoothLaplacianIterations,
+    smoothLaplacianRelax,
+    sculptBrushStrength,
+    sculptBrushFalloff,
     branchTaper,
     branchTaperStartSize,
     branchTaperEndSize,
@@ -20,21 +22,29 @@
     wallLockStartHeight,
     wallAxisAlign,
     MAX_BRUSH_SIZE,
-    terrainClayOp,
+    terrainSculptOp,
     terrainBaseY,
     terrainStrength,
     terrainSmoothRadius
   } from '../store/index';
   import type { SprayDirection } from '../store/index';
-  import { SMOOTH_NEIGHBOR_RADIUS_MAX } from '../clayOps';
+  import { SMOOTH_NEIGHBOR_RADIUS_MAX } from '../sculptOps';
 
   const BRUSH_SIZE_MAX = MAX_BRUSH_SIZE - 1;
-  const clayVisible = $derived($tool === 'clay');
+  const sculptPanelVisible = $derived($tool === 'sculpt');
+
+  const MODES_WITH_BRUSH = new Set([
+    'draw',
+    'smooth',
+    'gouge',
+    'branch',
+    'terrain'
+  ]);
 </script>
 
-{#if clayVisible}
-  <section class="tool-panel-section tool-panel-clay" aria-label="Clay">
-    {#if ['bulk', 'smooth', 'level', 'gouge', 'branch', 'melt', 'inflate', 'terrain'].includes($clayMode)}
+{#if sculptPanelVisible}
+  <section class="tool-panel-section tool-panel-sculpt" aria-label="Sculpt">
+    {#if MODES_WITH_BRUSH.has($sculptMode)}
       <div class="tool-panel-row">
         <span class="tool-panel-label">Brush</span>
         <input
@@ -42,29 +52,55 @@
           min="0"
           max={BRUSH_SIZE_MAX}
           step="1"
-          value={$clayBrushRadius}
-          oninput={(e) => clayBrushRadius.set(Number((e.target as HTMLInputElement).value))}
+          value={$sculptBrushRadius}
+          oninput={(e) => sculptBrushRadius.set(Number((e.target as HTMLInputElement).value))}
           title="Brush size (1–{MAX_BRUSH_SIZE} voxels)"
         />
-        <span class="tool-panel-value">{$clayBrushRadius + 1}</span>
+        <span class="tool-panel-value">{$sculptBrushRadius + 1}</span>
       </div>
-      {#if $clayMode === 'bulk' || $clayMode === 'smooth' || $clayMode === 'melt' || $clayMode === 'gouge'}
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Strength</span>
+        <input
+          type="range"
+          min="1"
+          max="100"
+          step="1"
+          value={$sculptBrushStrength}
+          oninput={(e) => sculptBrushStrength.set(Number((e.target as HTMLInputElement).value))}
+          title="How much of the brush footprint applies (with falloff weights); lower = sparser stroke"
+        />
+        <span class="tool-panel-value">{$sculptBrushStrength}</span>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Falloff</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value={$sculptBrushFalloff}
+          oninput={(e) => sculptBrushFalloff.set(Number((e.target as HTMLInputElement).value))}
+          title="0 = hard edge; higher = softer falloff from stroke path toward brush radius"
+        />
+        <span class="tool-panel-value">{$sculptBrushFalloff}</span>
+      </div>
+      {#if $sculptMode === 'draw' || $sculptMode === 'smooth' || $sculptMode === 'gouge'}
         <div class="tool-panel-row tool-panel-row--brush-shape">
           <span class="tool-panel-label">Brush shape</span>
-          <div class="clay-brush-shape-rows" role="group" aria-label="Clay brush shape">
+          <div class="sculpt-brush-shape-rows" role="group" aria-label="Sculpt brush shape">
             <div class="stroke-buttons">
               <button
                 type="button"
-                class:active={$clayBrushShape === 'square'}
-                onclick={() => clayBrushShape.set('square')}
+                class:active={$sculptBrushShape === 'square'}
+                onclick={() => sculptBrushShape.set('square')}
                 title="Flat square in the surface plane (single layer)"
               >
                 Square
               </button>
               <button
                 type="button"
-                class:active={$clayBrushShape === 'circle'}
-                onclick={() => clayBrushShape.set('circle')}
+                class:active={$sculptBrushShape === 'circle'}
+                onclick={() => sculptBrushShape.set('circle')}
                 title="Flat circle in the surface plane (single layer)"
               >
                 Circle
@@ -73,16 +109,16 @@
             <div class="stroke-buttons">
               <button
                 type="button"
-                class:active={$clayBrushShape === 'cube'}
-                onclick={() => clayBrushShape.set('cube')}
+                class:active={$sculptBrushShape === 'cube'}
+                onclick={() => sculptBrushShape.set('cube')}
                 title="3D axis-aligned cube (Chebyshev) along the stroke"
               >
                 Cube
               </button>
               <button
                 type="button"
-                class:active={$clayBrushShape === 'sphere'}
-                onclick={() => clayBrushShape.set('sphere')}
+                class:active={$sculptBrushShape === 'sphere'}
+                onclick={() => sculptBrushShape.set('sphere')}
                 title="3D Euclidean sphere along the stroke"
               >
                 Sphere
@@ -91,22 +127,22 @@
           </div>
         </div>
       {/if}
-      {#if $clayMode === 'terrain'}
+      {#if $sculptMode === 'terrain'}
         <div class="tool-panel-row tool-panel-row--brush-shape">
           <span class="tool-panel-label">Brush shape</span>
           <div class="stroke-buttons" role="group" aria-label="Terrain brush shape (horizontal XZ)">
             <button
               type="button"
-              class:active={$clayBrushShape === 'square' || $clayBrushShape === 'cube'}
-              onclick={() => clayBrushShape.set('square')}
+              class:active={$sculptBrushShape === 'square' || $sculptBrushShape === 'cube'}
+              onclick={() => sculptBrushShape.set('square')}
               title="Square footprint in XZ (world horizontal)"
             >
               Square
             </button>
             <button
               type="button"
-              class:active={$clayBrushShape === 'circle' || $clayBrushShape === 'sphere'}
-              onclick={() => clayBrushShape.set('circle')}
+              class:active={$sculptBrushShape === 'circle' || $sculptBrushShape === 'sphere'}
+              onclick={() => sculptBrushShape.set('circle')}
               title="Circular footprint in XZ (cube/sphere also use this for terrain)"
             >
               Circle
@@ -118,24 +154,24 @@
           <div class="stroke-buttons" role="group" aria-label="Terrain operation">
             <button
               type="button"
-              class:active={$terrainClayOp === 'raise'}
-              onclick={() => terrainClayOp.set('raise')}
+              class:active={$terrainSculptOp === 'raise'}
+              onclick={() => terrainSculptOp.set('raise')}
               title="Raise surface height under the brush"
             >
               Raise
             </button>
             <button
               type="button"
-              class:active={$terrainClayOp === 'lower'}
-              onclick={() => terrainClayOp.set('lower')}
+              class:active={$terrainSculptOp === 'lower'}
+              onclick={() => terrainSculptOp.set('lower')}
               title="Lower surface height (valleys)"
             >
               Lower
             </button>
             <button
               type="button"
-              class:active={$terrainClayOp === 'smooth'}
-              onclick={() => terrainClayOp.set('smooth')}
+              class:active={$terrainSculptOp === 'smooth'}
+              onclick={() => terrainSculptOp.set('smooth')}
               title="Blur heights in XZ (rolling hills)"
             >
               Smooth
@@ -157,7 +193,7 @@
               )}
           />
         </div>
-        {#if $terrainClayOp === 'raise' || $terrainClayOp === 'lower'}
+        {#if $terrainSculptOp === 'raise' || $terrainSculptOp === 'lower'}
           <div class="tool-panel-row">
             <span class="tool-panel-label">Strength</span>
             <input
@@ -172,7 +208,7 @@
             <span class="tool-panel-value">{$terrainStrength}</span>
           </div>
         {/if}
-        {#if $terrainClayOp === 'smooth'}
+        {#if $terrainSculptOp === 'smooth'}
           <div class="tool-panel-row">
             <span class="tool-panel-label">Smooth reach</span>
             <input
@@ -188,45 +224,7 @@
           </div>
         {/if}
       {/if}
-      {#if $clayMode === 'melt'}
-        <div class="tool-panel-row">
-          <span class="tool-panel-label">Style</span>
-          <div class="stroke-buttons" role="group" aria-label="Melt style">
-            <button
-              type="button"
-              class:active={$meltStyle === 'friedEgg'}
-              onclick={() => meltStyle.set('friedEgg')}
-              title="Flatten orb into a puddle with a thicker center (yolk)"
-            >
-              Fried egg
-            </button>
-            <button
-              type="button"
-              class:active={$meltStyle === 'gravity'}
-              onclick={() => meltStyle.set('gravity')}
-              title="Voxels flow downhill inside the brush until settled"
-            >
-              Gravity
-            </button>
-          </div>
-        </div>
-        {#if $meltStyle === 'gravity'}
-          <div class="tool-panel-row">
-            <span class="tool-panel-label">Passes</span>
-            <input
-              type="range"
-              min="0"
-              max="256"
-              step="1"
-              value={$meltMaxPasses}
-              oninput={(e) => meltMaxPasses.set(Number((e.target as HTMLInputElement).value))}
-              title="Max gravity steps per stroke (0 = auto from model height)"
-            />
-            <span class="tool-panel-value">{$meltMaxPasses === 0 ? 'Auto' : $meltMaxPasses}</span>
-          </div>
-        {/if}
-      {/if}
-      {#if $clayMode === 'branch'}
+      {#if $sculptMode === 'branch'}
         <div class="tool-panel-row tool-panel-row--brush-shape">
           <span class="tool-panel-label">Profile</span>
           <div class="stroke-buttons" role="group" aria-label="Branch brush profile">
@@ -320,51 +318,100 @@
           </div>
         {/if}
       {/if}
-      {#if $clayMode === 'smooth'}
+      {#if $sculptMode === 'smooth'}
         <div class="tool-panel-row">
-          <span class="tool-panel-label">Reach</span>
-          <input
-            type="range"
-            min="0"
-            max={SMOOTH_NEIGHBOR_RADIUS_MAX}
-            step="1"
-            value={$smoothNeighborRadius}
-            oninput={(e) => smoothNeighborRadius.set(Number((e.target as HTMLInputElement).value))}
-            title="Neighborhood size: 0 = face-adjacent only; higher = wider smoothing for large models"
-          />
-          <span class="tool-panel-value">{$smoothNeighborRadius}</span>
+          <span class="tool-panel-label">Smooth</span>
+          <div class="stroke-buttons" role="group" aria-label="Smooth algorithm">
+            <button
+              type="button"
+              class:active={$sculptSmoothVariant === 'majority'}
+              onclick={() => sculptSmoothVariant.set('majority')}
+              title="Voxel majority: fill pockets and remove isolated voxels in the brush"
+            >
+              Majority
+            </button>
+            <button
+              type="button"
+              class:active={$sculptSmoothVariant === 'meshLaplacian'}
+              onclick={() => sculptSmoothVariant.set('meshLaplacian')}
+              title="Mesh Taubin smooth in a box around the brush, then snap back to voxels (see Help)"
+            >
+              Mesh
+            </button>
+          </div>
         </div>
-        <div class="tool-panel-row">
-          <span class="tool-panel-label">Strength</span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value={$smoothAggressiveness}
-            oninput={(e) => smoothAggressiveness.set(Number((e.target as HTMLInputElement).value))}
-            title="0 = gentle; 100 = strongest fill/remove (legacy behavior at reach 0)"
-          />
-          <span class="tool-panel-value">{$smoothAggressiveness}</span>
-        </div>
-      {/if}
-      {#if $clayMode === 'inflate'}
-        <div class="tool-panel-row">
-          <span class="tool-panel-label">Strength</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={$inflateStrength}
-            oninput={(e) => inflateStrength.set(Number((e.target as HTMLInputElement).value))}
-            title="Probability of adding each outward voxel (0–100%)"
-          />
-          <span class="tool-panel-value">{Math.round($inflateStrength * 100)}%</span>
-        </div>
+        {#if $sculptSmoothVariant === 'majority'}
+          <div class="tool-panel-row">
+            <span class="tool-panel-label">Reach</span>
+            <input
+              type="range"
+              min="0"
+              max={SMOOTH_NEIGHBOR_RADIUS_MAX}
+              step="1"
+              value={$smoothNeighborRadius}
+              oninput={(e) => smoothNeighborRadius.set(Number((e.target as HTMLInputElement).value))}
+              title="Neighborhood size: 0 = face-adjacent only; higher = wider smoothing for large models"
+            />
+            <span class="tool-panel-value">{$smoothNeighborRadius}</span>
+          </div>
+          <div class="tool-panel-row">
+            <span class="tool-panel-label">Strength</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={$smoothAggressiveness}
+              oninput={(e) => smoothAggressiveness.set(Number((e.target as HTMLInputElement).value))}
+              title="0 = gentle; 100 = strongest fill/remove (legacy behavior at reach 0)"
+            />
+            <span class="tool-panel-value">{$smoothAggressiveness}</span>
+          </div>
+        {:else}
+          <div class="tool-panel-row">
+            <span class="tool-panel-label">Reach</span>
+            <input
+              type="range"
+              min="0"
+              max={SMOOTH_NEIGHBOR_RADIUS_MAX}
+              step="1"
+              value={$smoothNeighborRadius}
+              oninput={(e) => smoothNeighborRadius.set(Number((e.target as HTMLInputElement).value))}
+              title="Extra margin around the brush for the mesh smooth region (larger = wider ROI)"
+            />
+            <span class="tool-panel-value">{$smoothNeighborRadius}</span>
+          </div>
+          <div class="tool-panel-row">
+            <span class="tool-panel-label">Passes</span>
+            <input
+              type="range"
+              min="1"
+              max="20"
+              step="1"
+              value={$smoothLaplacianIterations}
+              oninput={(e) =>
+                smoothLaplacianIterations.set(Number((e.target as HTMLInputElement).value))}
+              title="Taubin smoothing iterations (each pass is λ then μ)"
+            />
+            <span class="tool-panel-value">{$smoothLaplacianIterations}</span>
+          </div>
+          <div class="tool-panel-row">
+            <span class="tool-panel-label">Relax</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={$smoothLaplacianRelax}
+              oninput={(e) => smoothLaplacianRelax.set(Number((e.target as HTMLInputElement).value))}
+              title="0 = almost no move; 100 = full Taubin step scale"
+            />
+            <span class="tool-panel-value">{$smoothLaplacianRelax}</span>
+          </div>
+        {/if}
       {/if}
     {/if}
-    {#if $clayMode === 'wall'}
+    {#if $sculptMode === 'wall'}
       <div class="tool-panel-row">
         <span class="tool-panel-label">Direction</span>
         <select

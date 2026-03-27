@@ -16,7 +16,7 @@ Voxelle is a 3D building and sculpting tool made of little cubes (voxels).
 ## Most Useful Controls
 
 - **Draw tab**: **Add**, **Remove**, **Paint**, and **Selection** tools (**Select** / **Stamp** / **Punch**)
-- **Clay tab**: looser sculpting tools
+- **Sculpt tab**: Draw, Scrape, smooth, extrude, wall, terrain
 - **Fly tab**: first-person camera (WASD, E/Q, Shift, mouse)
 - **F**: enter fullscreen mode. Press F or Escape to exit.
 - **Escape**: close dialogs, exit fly mode, cancel in-progress polygon, rope, or **Solid**-shape strokes

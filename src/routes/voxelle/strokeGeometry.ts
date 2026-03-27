@@ -2,11 +2,12 @@ import * as THREE from 'three';
 import type {
   BranchEndCap,
   BranchBrushProfile,
-  ClayBrushShape,
-  ClayMode,
+  SculptBrushShape,
+  SculptMode,
   DrawBrushShape,
   StrokeMode
 } from './store/core';
+import { SCULPT_PATH_THICKEN_MODES } from './store/sculptModes';
 import { ConvexHull } from 'three/addons/math/ConvexHull.js';
 import { parseCoordKey } from './coordUtils';
 
@@ -941,10 +942,10 @@ function directionalStreakFromPath(
 /** Params for path thickening; used by both preview and apply to avoid divergence. */
 export interface PathThickenParams {
   strokeMode: StrokeMode;
-  clayMode?: ClayMode;
-  clayBrushRadius: number;
+  sculptMode?: SculptMode;
+  sculptBrushRadius: number;
   branchTaper: boolean;
-  /** When branch+taper: start radius (optional; falls back to clayBrushRadius). */
+  /** When branch+taper: start radius (optional; falls back to sculptBrushRadius). */
   branchTaperStartRadius?: number;
   /** When branch+taper: end radius (optional; falls back to 0). */
   branchTaperEndRadius?: number;
@@ -977,43 +978,31 @@ export interface PathThickenParams {
   /** When true and drawBrushFaceNormal set, offset brush by radius*normal so it sits on surface */
   drawBrushSnapToSurface?: boolean;
   drawBrushFaceNormal?: { x: number; y: number; z: number };
-  /** Bulk / smooth / melt / gouge: square|circle = tangent plane; cube|sphere = 3D along stroke. */
-  clayBrushShape?: ClayBrushShape;
-  /** Clay branch: axis-aligned cube vs cylinder along the stroke polyline. */
+  /** Draw / smooth / gouge: square|circle = tangent plane; cube|sphere = 3D along stroke. */
+  sculptBrushShape?: SculptBrushShape;
+  /** Sculpt branch: axis-aligned cube vs cylinder along the stroke polyline. */
   branchBrushProfile?: BranchBrushProfile;
-  /** Clay branch cylinder: flat ends, capsule-style rounded ends, or conical tips. */
+  /** Sculpt branch cylinder: flat ends, capsule-style rounded ends, or conical tips. */
   branchEndCap?: BranchEndCap;
   /** Optional seed for deterministic scatter/radius in expandPathWithBrushStamps (preview and apply use same seed per stroke). */
   seed?: number;
 }
 
-/** Clay modes that use path thickening in thickenPathForStroke (excludes e.g. rope). */
-const CLAY_PATH_THICKEN_MODES = new Set<ClayMode>([
-  'bulk',
-  'smooth',
-  'level',
-  'gouge',
-  'branch',
-  'melt',
-  'wall',
-  'inflate',
-  'terrain'
-]);
-
 /**
- * Thickens a path according to stroke/clay mode. Single source of truth for preview and apply.
- * Priority: Spray stroke > clay branch+taper > clay thicken > raw.
+ * Thickens a path according to stroke/sculpt mode. Single source of truth for preview and apply.
+ * Priority: Spray stroke > sculpt branch+taper > sculpt thicken > raw.
  */
 export function thickenPathForStroke(
   positions: [number, number, number][],
   params: PathThickenParams
 ): [number, number, number][] {
   if (positions.length === 0) return [];
-  const isClayPath = params.clayMode !== undefined && CLAY_PATH_THICKEN_MODES.has(params.clayMode);
+  const isSculptPath =
+    params.sculptMode !== undefined && SCULPT_PATH_THICKEN_MODES.has(params.sculptMode);
   const rng = params.seed != null ? createSeededRng(params.seed) : undefined;
 
-  // Clay modes take precedence; stroke mode (e.g. Spray) only applies to Draw tools
-  if (isClayPath && params.clayMode === 'wall') {
+  // Sculpt modes take precedence; stroke mode (e.g. Spray) only applies to Draw tools
+  if (isSculptPath && params.sculptMode === 'wall') {
     const dir = params.sprayDirection ?? 'auto';
     const dirVec = getSprayDirectionVector(dir, params.wallFaceNormal ?? undefined);
     if (!dirVec) return positions;
@@ -1047,10 +1036,10 @@ export function thickenPathForStroke(
     directionalStreakFromPath(basePositions, dirVec, height, seen, result);
     return result;
   }
-  if (isClayPath && params.clayMode === 'branch') {
+  if (isSculptPath && params.sculptMode === 'branch') {
     const profile = params.branchBrushProfile ?? 'cube';
     const cap = params.branchEndCap ?? 'flat';
-    const r = params.clayBrushRadius;
+    const r = params.sculptBrushRadius;
     if (params.branchTaper) {
       const startR = params.branchTaperStartRadius ?? r;
       const endR = params.branchTaperEndRadius ?? 0;
@@ -1066,25 +1055,24 @@ export function thickenPathForStroke(
     return thickenBranchUniformCylinder(positions, r, cap);
   }
   // Terrain: columns are (x,z) only; expand brush in the horizontal plane (world Y up).
-  if (isClayPath && params.clayMode === 'terrain' && params.clayBrushRadius > 0) {
-    const shape = params.clayBrushShape ?? 'square';
-    const r = params.clayBrushRadius;
+  if (isSculptPath && params.sculptMode === 'terrain' && params.sculptBrushRadius > 0) {
+    const shape = params.sculptBrushShape ?? 'square';
+    const r = params.sculptBrushRadius;
     if (shape === 'circle' || shape === 'sphere') {
       return diskPathInPlane(positions, r, 1);
     }
     return thickenPathInPlane(positions, r, 1);
   }
-  // Bulk, smooth, melt, gouge: four brush shapes (2D in tangent plane vs 3D volumetric).
+  // Draw, smooth, gouge: four brush shapes (2D in tangent plane vs 3D volumetric).
   if (
-    isClayPath &&
-    (params.clayMode === 'bulk' ||
-      params.clayMode === 'smooth' ||
-      params.clayMode === 'melt' ||
-      params.clayMode === 'gouge') &&
-    params.clayBrushRadius > 0
+    isSculptPath &&
+    (params.sculptMode === 'draw' ||
+      params.sculptMode === 'smooth' ||
+      params.sculptMode === 'gouge') &&
+    params.sculptBrushRadius > 0
   ) {
-    const shape = params.clayBrushShape ?? 'square';
-    const r = params.clayBrushRadius;
+    const shape = params.sculptBrushShape ?? 'square';
+    const r = params.sculptBrushRadius;
     const axis = faceNormalToLayerAxis(params.drawBrushFaceNormal);
     switch (shape) {
       case 'square':
@@ -1097,10 +1085,10 @@ export function thickenPathForStroke(
         return expandPathWithBrushStamps(positions, 'sphere', r, 0);
     }
   }
-  if (isClayPath && params.clayBrushRadius > 0) {
-    return thickenPath(positions, params.clayBrushRadius);
+  if (isSculptPath && params.sculptBrushRadius > 0) {
+    return thickenPath(positions, params.sculptBrushRadius);
   }
-  if (isClayPath) return positions;
+  if (isSculptPath) return positions;
   if (params.strokeMode === 'spray') {
     const shape = params.sprayBrushShape ?? 'sphere';
     const rMin = params.sprayRadiusRange ? params.sprayRadiusMin : undefined;

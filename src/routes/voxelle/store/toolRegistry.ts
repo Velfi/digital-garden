@@ -10,7 +10,7 @@ export type ToolCategory =
   | 'stamp'
   | 'navigation'
   | 'utility'
-  | 'clay'
+  | 'sculpt'
   | 'generator'
   | 'mood';
 
@@ -109,11 +109,11 @@ const DESCRIPTORS: ToolDescriptor[] = [
     defaultPane: 'draw'
   },
   {
-    id: 'clay',
-    category: 'clay',
-    label: 'Clay',
-    title: 'Sculpt with clay modes',
-    defaultPane: 'clay'
+    id: 'sculpt',
+    category: 'sculpt',
+    label: 'Sculpt',
+    title: 'Sculpt modes: draw, scrape, smooth, extrude, wall, terrain',
+    defaultPane: 'sculpt'
   },
   {
     id: 'rope',
