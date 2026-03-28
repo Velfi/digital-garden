@@ -17,8 +17,17 @@ import {
 import type { VoxelRayTraceParams } from './voxelRayShared';
 import {
   GLOW_BLOOM_LINEAR_SCALE,
+  GLOW_EMISSIVE_LIGHT_INTENSITY,
+  GLOW_EMISSIVE_LIGHT_RADIUS,
+  GLOW_EMISSIVE_PROXIMITY_FILL,
+  GLOW_SELF_EMISSIVE_SCALE,
+  GLOW_EMISSIVE_SHADOW_END_BIAS,
+  GLOW_EMISSIVE_LIGHT_SOFTNESS,
+  GLOW_VISIBILITY_OCCLUSION_SAMPLES,
+  GLOW_VISIBILITY_SURFACE_OFFSET,
   GLASS_IOR,
   GLASS_MIN_TRANSMITTANCE,
+  MAX_RAY_GLOW_EMITTERS,
   WATER_IOR
 } from './voxelRayShared';
 import { GLASS_ABSORPTION_PER_UNIT } from './voxelRayDda';
@@ -42,14 +51,12 @@ export type VoxelRayGpuTracePipeline = {
   dispose(): void;
 };
 
+const PLASTIC_MAT = 0;
 const METAL_MAT = 1;
+const RUBBER_MAT = 2;
 const GLASS_MAT = 3;
 const WATER_MAT = 4;
 const GLOW_MAT = 5;
-const MAX_RAY_GLOW_EMITTERS = 64;
-const GLOW_EMISSIVE_LIGHT_RADIUS = 5;
-const GLOW_EMISSIVE_LIGHT_INTENSITY = 2.4;
-const GLOW_EMISSIVE_LIGHT_SOFTNESS = 0.18;
 
 function makePlaceholderVolumeTexture(): Data3DTexture {
   const u32 = new Uint32Array(8);
@@ -204,12 +211,18 @@ export async function createVoxelRayGpuTracePipeline(
 
   const TSL_TWO_PI = float(2 * Math.PI);
   const TSL_GOLDEN = float(GOLDEN_ANGLE);
+  const GLOW_PROX_FILL = float(GLOW_EMISSIVE_PROXIMITY_FILL);
+  const GLOW_SELF_SCALE = float(GLOW_SELF_EMISSIVE_SCALE);
+  const GLOW_VIS_OFF = float(GLOW_VISIBILITY_SURFACE_OFFSET);
+  const GLOW_VIS_N = float(GLOW_VISIBILITY_OCCLUSION_SAMPLES);
   const GLASS_IOR_F = float(GLASS_IOR);
   const WATER_IOR_F = float(WATER_IOR);
   const GLASS_MIN_T = float(GLASS_MIN_TRANSMITTANCE);
   const GLASS_ABS = float(GLASS_ABSORPTION_PER_UNIT);
   const DDA_HIT_EPS = float(1e-5);
   const GLASS_CELL_NUDGE = float(1e-6);
+  /** Float32-safe DDA origin nudge; avoids boundary jitter at larger world coords. */
+  const DDA_RAY_ORIGIN_EPS = float(1e-4);
   const SHADOW_SURFACE_EPS = float(2e-4);
   const WATER_WAVE_AMP1 = float(0.18);
   const WATER_WAVE_AMP2 = float(0.12);
@@ -266,6 +279,46 @@ export async function createVoxelRayGpuTracePipeline(
   const isTransmissiveIdx = (matIdx: ReturnType<typeof uint>) =>
     or(matIdx.equal(uint(GLASS_MAT)), matIdx.equal(uint(WATER_MAT)));
 
+  /** Plastic / metal / rubber — matches `emptyBlockedByCornerWalls` on CPU (glow visibility). */
+  const isOpaqueNonGlowIdx = (matIdx: ReturnType<typeof uint>) =>
+    or(
+      matIdx.equal(uint(PLASTIC_MAT)),
+      or(matIdx.equal(uint(METAL_MAT)), matIdx.equal(uint(RUBBER_MAT)))
+    );
+
+  const opaqueNonGlowFromPacked = (pk: ReturnType<typeof uint>) => {
+    const me = shiftRight(pk, uint(24));
+    const mid = uint(me.sub(uint(1)));
+    return and(greaterThan(me, uint(0)), isOpaqueNonGlowIdx(mid));
+  };
+
+  /** Empty cell blocked when two perpendicular face neighbors are opaque non-glow. */
+  const cornerSealEmptyCell = (
+    ix: ReturnType<typeof int>,
+    iy: ReturnType<typeof int>,
+    iz: ReturnType<typeof int>
+  ) => {
+    const opPx = opaqueNonGlowFromPacked(fetchPacked(ix.add(int(1)), iy, iz));
+    const opNx = opaqueNonGlowFromPacked(fetchPacked(ix.sub(int(1)), iy, iz));
+    const opPy = opaqueNonGlowFromPacked(fetchPacked(ix, iy.add(int(1)), iz));
+    const opNy = opaqueNonGlowFromPacked(fetchPacked(ix, iy.sub(int(1)), iz));
+    const opPz = opaqueNonGlowFromPacked(fetchPacked(ix, iy, iz.add(int(1))));
+    const opNz = opaqueNonGlowFromPacked(fetchPacked(ix, iy, iz.sub(int(1))));
+    const xy = or(
+      or(and(opPx, opPy), and(opPx, opNy)),
+      or(and(opNx, opPy), and(opNx, opNy))
+    );
+    const xz = or(
+      or(and(opPx, opPz), and(opPx, opNz)),
+      or(and(opNx, opPz), and(opNx, opNz))
+    );
+    const yz = or(
+      or(and(opPy, opPz), and(opPy, opNz)),
+      or(and(opNy, opPz), and(opNy, opNz))
+    );
+    return or(or(xy, xz), yz);
+  };
+
   const iorFromMatIdx = (matIdx: ReturnType<typeof uint>) =>
     select(
       matIdx.equal(uint(WATER_MAT)),
@@ -320,6 +373,57 @@ export async function createVoxelRayGpuTracePipeline(
     });
   };
 
+  /** Like `applyShadowSegment`, but glow voxels do not occlude (glow-light visibility rays). */
+  const applyShadowSegmentGlowEmitter = (
+    fr: ReturnType<typeof float> & { value?: unknown },
+    fg: ReturnType<typeof float> & { value?: unknown },
+    fb: ReturnType<typeof float> & { value?: unknown },
+    pk: ReturnType<typeof uint>,
+    segLen: ReturnType<typeof float>,
+    ix: ReturnType<typeof int>,
+    iy: ReturnType<typeof int>,
+    iz: ReturnType<typeof int>
+  ) => {
+    const me = shiftRight(pk, uint(24));
+    If(segLen.greaterThan(float(0)), () => {
+      If(equal(me, uint(0)), () => {
+        If(cornerSealEmptyCell(ix, iy, iz), () => {
+          fr.assign(float(0));
+          fg.assign(float(0));
+          fb.assign(float(0));
+        });
+      }).Else(() => {
+        const mid = uint(me.sub(uint(1)));
+        If(isTransmissiveIdx(mid), () => {
+          const isW = mid.equal(uint(WATER_MAT));
+          const absR = select(isW, float(0.03), GLASS_ABS);
+          const absG = select(isW, float(0.012), GLASS_ABS);
+          const absB = select(isW, float(0.006), GLASS_ABS);
+          const attR = max(GLASS_MIN_T, exp(absR.negate().mul(segLen)));
+          const attG = max(GLASS_MIN_T, exp(absG.negate().mul(segLen)));
+          const attB = max(GLASS_MIN_T, exp(absB.negate().mul(segLen)));
+          const rgbLin = unpackLinearRgb(pk);
+          const tR = select(isW, float(1), rgbLin.x);
+          const tG = select(isW, float(1), rgbLin.y);
+          const tB = select(isW, float(1), rgbLin.z);
+          fr.assign(fr.mul(tR).mul(attR));
+          fg.assign(fg.mul(tG).mul(attG));
+          fb.assign(fb.mul(tB).mul(attB));
+        })
+          .ElseIf(mid.equal(uint(GLOW_MAT)), () => {
+            fr.assign(fr);
+            fg.assign(fg);
+            fb.assign(fb);
+          })
+          .Else(() => {
+            fr.assign(float(0));
+            fg.assign(float(0));
+            fb.assign(float(0));
+          });
+      });
+    });
+  };
+
   /**
    * RGB shadow factor along one light direction — mirrors `traceShadowRayDda` (Beer–Lambert + tint).
    */
@@ -339,10 +443,9 @@ export async function createVoxelRayGpuTracePipeline(
     rdx.assign(rdx.div(len));
     rdy.assign(rdy.div(len));
     rdz.assign(rdz.div(len));
-    const eps = float(1e-9);
-    const oxp = ox.add(rdx.mul(eps));
-    const oyp = oy.add(rdy.mul(eps));
-    const ozp = oz.add(rdz.mul(eps));
+    const oxp = ox.add(rdx.mul(DDA_RAY_ORIGIN_EPS));
+    const oyp = oy.add(rdy.mul(DDA_RAY_ORIGIN_EPS));
+    const ozp = oz.add(rdz.mul(DDA_RAY_ORIGIN_EPS));
     const x = int(floor(oxp)).toVar();
     const y = int(floor(oyp)).toVar();
     const z = int(floor(ozp)).toVar();
@@ -474,6 +577,160 @@ export async function createVoxelRayGpuTracePipeline(
     return vec3(max(fr, float(0)), max(fg, float(0)), max(fb, float(0)));
   };
 
+  /**
+   * Like `traceShadowTransmissionRgb`, but glow voxels never occlude — used only for glow-light
+   * visibility (see `traceShadowRayDdaForGlowEmitterVisibility` on CPU).
+   */
+  const traceGlowEmitterVisibilityTransmissionRgb = (
+    ox: ReturnType<typeof float>,
+    oy: ReturnType<typeof float>,
+    oz: ReturnType<typeof float>,
+    ldx: ReturnType<typeof float>,
+    ldy: ReturnType<typeof float>,
+    ldz: ReturnType<typeof float>,
+    maxDist: ReturnType<typeof float>
+  ) => {
+    const rdx = ldx.toVar();
+    const rdy = ldy.toVar();
+    const rdz = ldz.toVar();
+    const len = rdx.mul(rdx).add(rdy.mul(rdy)).add(rdz.mul(rdz)).sqrt().max(float(1e-9));
+    rdx.assign(rdx.div(len));
+    rdy.assign(rdy.div(len));
+    rdz.assign(rdz.div(len));
+    const oxp = ox.add(rdx.mul(DDA_RAY_ORIGIN_EPS));
+    const oyp = oy.add(rdy.mul(DDA_RAY_ORIGIN_EPS));
+    const ozp = oz.add(rdz.mul(DDA_RAY_ORIGIN_EPS));
+    const x = int(floor(oxp)).toVar();
+    const y = int(floor(oyp)).toVar();
+    const z = int(floor(ozp)).toVar();
+    const stepX = int(0).toVar();
+    const stepY = int(0).toVar();
+    const stepZ = int(0).toVar();
+    If(greaterThan(rdx, float(1e-9)), () => stepX.assign(int(1)));
+    If(lessThan(rdx, float(-1e-9)), () => stepX.assign(int(-1)));
+    If(greaterThan(rdy, float(1e-9)), () => stepY.assign(int(1)));
+    If(lessThan(rdy, float(-1e-9)), () => stepY.assign(int(-1)));
+    If(greaterThan(rdz, float(1e-9)), () => stepZ.assign(int(1)));
+    If(lessThan(rdz, float(-1e-9)), () => stepZ.assign(int(-1)));
+    const big = float(1e30);
+    const tDeltaX = select(equal(stepX, int(0)), big, float(1).div(abs(rdx)));
+    const tDeltaY = select(equal(stepY, int(0)), big, float(1).div(abs(rdy)));
+    const tDeltaZ = select(equal(stepZ, int(0)), big, float(1).div(abs(rdz)));
+    const tMaxX = float(0).toVar();
+    const tMaxY = float(0).toVar();
+    const tMaxZ = float(0).toVar();
+    If(greaterThan(stepX, int(0)), () => tMaxX.assign(float(x.add(int(1)).sub(oxp)).div(rdx)));
+    If(lessThan(stepX, int(0)), () => tMaxX.assign(float(x.sub(oxp)).div(rdx)));
+    If(equal(stepX, int(0)), () => tMaxX.assign(big));
+    If(greaterThan(stepY, int(0)), () => tMaxY.assign(float(y.add(int(1)).sub(oyp)).div(rdy)));
+    If(lessThan(stepY, int(0)), () => tMaxY.assign(float(y.sub(oyp)).div(rdy)));
+    If(equal(stepY, int(0)), () => tMaxY.assign(big));
+    If(greaterThan(stepZ, int(0)), () => tMaxZ.assign(float(z.add(int(1)).sub(ozp)).div(rdz)));
+    If(lessThan(stepZ, int(0)), () => tMaxZ.assign(float(z.sub(ozp)).div(rdz)));
+    If(equal(stepZ, int(0)), () => tMaxZ.assign(big));
+
+    const fr = float(1).toVar();
+    const fg = float(1).toVar();
+    const fb = float(1).toVar();
+    const tPrev = float(0).toVar();
+    const skipShadowMarch = float(0).toVar();
+    const pkStart = fetchPacked(x, y, z);
+    const me0 = shiftRight(pkStart, uint(24));
+
+    If(greaterThan(me0, uint(0)), () => {
+      const mid0 = uint(me0.sub(uint(1)));
+      If(or(isTransmissiveIdx(mid0), mid0.equal(uint(GLOW_MAT))), () => {
+        const tFirst = min(tMaxX, min(tMaxY, tMaxZ));
+        const seg0 = min(max(float(0), tFirst), maxDist);
+        applyShadowSegmentGlowEmitter(fr, fg, fb, pkStart, seg0, x, y, z);
+        If(tFirst.greaterThanEqual(maxDist), () => skipShadowMarch.assign(float(1)));
+        If(
+          and(
+            tFirst.lessThan(maxDist),
+            skipShadowMarch.lessThan(float(0.5)),
+            or(
+              fr.greaterThan(float(1e-8)),
+              or(fg.greaterThan(float(1e-8)), fb.greaterThan(float(1e-8)))
+            )
+          ),
+          () => {
+            If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
+              tPrev.assign(tMaxX);
+              tMaxX.addAssign(tDeltaX);
+              x.addAssign(stepX);
+            })
+              .ElseIf(tMaxY.lessThanEqual(tMaxZ), () => {
+                tPrev.assign(tMaxY);
+                tMaxY.addAssign(tDeltaY);
+                y.addAssign(stepY);
+              })
+              .Else(() => {
+                tPrev.assign(tMaxZ);
+                tMaxZ.addAssign(tDeltaZ);
+                z.addAssign(stepZ);
+              });
+          }
+        );
+      }).Else(() => {
+        fr.assign(float(0));
+        fg.assign(float(0));
+        fb.assign(float(0));
+        skipShadowMarch.assign(float(1));
+      });
+    });
+
+    Loop({ start: int(0), end: int(512), type: 'int', condition: '<' }, () => {
+      If(skipShadowMarch.greaterThan(float(0.5)), () => Break());
+      If(
+        and(
+          fr.lessThanEqual(float(1e-8)),
+          fg.lessThanEqual(float(1e-8)),
+          fb.lessThanEqual(float(1e-8))
+        ),
+        () => Break()
+      );
+      const tHit = float(0).toVar();
+      const axis = int(0).toVar();
+      If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
+        axis.assign(int(0));
+        tHit.assign(tMaxX);
+        tMaxX.addAssign(tDeltaX);
+      })
+        .ElseIf(tMaxY.lessThanEqual(tMaxZ), () => {
+          axis.assign(int(1));
+          tHit.assign(tMaxY);
+          tMaxY.addAssign(tDeltaY);
+        })
+        .Else(() => {
+          axis.assign(int(2));
+          tHit.assign(tMaxZ);
+          tMaxZ.addAssign(tDeltaZ);
+        });
+      const x0 = x;
+      const y0 = y;
+      const z0 = z;
+      const seg = min(tHit, maxDist).sub(tPrev);
+      If(seg.greaterThan(float(0)), () => {
+        applyShadowSegmentGlowEmitter(fr, fg, fb, fetchPacked(x0, y0, z0), seg, x0, y0, z0);
+      });
+      If(
+        and(
+          fr.lessThanEqual(float(1e-8)),
+          fg.lessThanEqual(float(1e-8)),
+          fb.lessThanEqual(float(1e-8))
+        ),
+        () => Break()
+      );
+      If(tHit.greaterThan(maxDist), () => Break());
+      If(axis.equal(int(0)), () => x.addAssign(stepX))
+        .ElseIf(axis.equal(int(1)), () => y.addAssign(stepY))
+        .Else(() => z.addAssign(stepZ));
+      tPrev.assign(tHit);
+    });
+
+    return vec3(max(fr, float(0)), max(fg, float(0)), max(fb, float(0)));
+  };
+
   const shadowDiskBasis = (
     lx: ReturnType<typeof float>,
     ly: ReturnType<typeof float>,
@@ -548,6 +805,93 @@ export async function createVoxelRayGpuTracePipeline(
     return vec3(accR.div(inv), accG.div(inv), accB.div(inv));
   };
 
+  /**
+   * Small offsets in the plane perpendicular to the shading normal (Vogel disk, same spiral as
+   * `shadowDiskBasis`) so glow occlusion is not locked to one DDA column — avoids banding when
+   * corner-seal toggles across voxel boundaries.
+   */
+  const glowVisibilityTangentDisk = (
+    nx: ReturnType<typeof float>,
+    ny: ReturnType<typeof float>,
+    nz: ReturnType<typeof float>,
+    fi: ReturnType<typeof float>
+  ) => {
+    const fn = GLOW_VIS_N.max(float(1));
+    const r = sqrt(fi.div(fn.sub(float(0.5))));
+    const angle = fract(fi.mul(TSL_GOLDEN).div(TSL_TWO_PI)).mul(TSL_TWO_PI);
+    const scale = GLOW_VIS_OFF.mul(r);
+    const upHx = float(0).toVar();
+    const upHy = float(0).toVar();
+    const upHz = float(1).toVar();
+    If(abs(nz).greaterThan(float(0.95)), () => {
+      upHx.assign(float(1));
+      upHy.assign(float(0));
+      upHz.assign(float(0));
+    });
+    const tx = upHy.mul(nz).sub(upHz.mul(ny)).toVar();
+    const ty = upHz.mul(nx).sub(upHx.mul(nz)).toVar();
+    const tz = upHx.mul(ny).sub(upHy.mul(nx)).toVar();
+    const tLen = sqrt(tx.mul(tx).add(ty.mul(ty)).add(tz.mul(tz))).toVar();
+    If(tLen.lessThan(float(1e-8)), () => {
+      upHx.assign(float(0));
+      upHy.assign(float(1));
+      upHz.assign(float(0));
+      tx.assign(upHy.mul(nz).sub(upHz.mul(ny)));
+      ty.assign(upHz.mul(nx).sub(upHx.mul(nz)));
+      tz.assign(upHx.mul(ny).sub(upHy.mul(nx)));
+      tLen.assign(sqrt(tx.mul(tx).add(ty.mul(ty)).add(tz.mul(tz))).max(float(1e-9)));
+    });
+    tx.assign(tx.div(tLen));
+    ty.assign(ty.div(tLen));
+    tz.assign(tz.div(tLen));
+    const bx = ny.mul(tz).sub(nz.mul(ty));
+    const by = nz.mul(tx).sub(nx.mul(tz));
+    const bz = nx.mul(ty).sub(ny.mul(tx));
+    const ca = cos(angle);
+    const sa = sin(angle);
+    return vec3(
+      scale.mul(ca.mul(tx).add(sa.mul(bx))),
+      scale.mul(ca.mul(ty).add(sa.mul(by))),
+      scale.mul(ca.mul(tz).add(sa.mul(bz)))
+    );
+  };
+
+  const averagedGlowEmitterVisibilityTransmissionRgb = (
+    sx: ReturnType<typeof float>,
+    sy: ReturnType<typeof float>,
+    sz: ReturnType<typeof float>,
+    nx: ReturnType<typeof float>,
+    ny: ReturnType<typeof float>,
+    nz: ReturnType<typeof float>,
+    ldx: ReturnType<typeof float>,
+    ldy: ReturnType<typeof float>,
+    ldz: ReturnType<typeof float>,
+    maxDist: ReturnType<typeof float>
+  ) => {
+    const accR = float(0).toVar();
+    const accG = float(0).toVar();
+    const accB = float(0).toVar();
+    Loop(
+      { start: int(0), end: int(GLOW_VISIBILITY_OCCLUSION_SAMPLES), type: 'int', condition: '<' },
+      ({ i }) => {
+        const off = glowVisibilityTangentDisk(nx, ny, nz, float(i));
+        const s = traceGlowEmitterVisibilityTransmissionRgb(
+          sx.add(off.x),
+          sy.add(off.y),
+          sz.add(off.z),
+          ldx,
+          ldy,
+          ldz,
+          maxDist
+        );
+        accR.addAssign(s.x);
+        accG.addAssign(s.y);
+        accB.addAssign(s.z);
+      }
+    );
+    return vec3(accR.div(GLOW_VIS_N), accG.div(GLOW_VIS_N), accB.div(GLOW_VIS_N));
+  };
+
   const accumulateGlowDirect = (
     sx: ReturnType<typeof float>,
     sy: ReturnType<typeof float>,
@@ -579,10 +923,14 @@ export async function createVoxelRayGpuTracePipeline(
             const ldx = dx.mul(invDist);
             const ldy = dy.mul(invDist);
             const ldz = dz.mul(invDist);
-            const nDotL = max(float(0), nx.mul(ldx).add(ny.mul(ldy)).add(nz.mul(ldz)));
-            If(nDotL.greaterThan(float(1e-5)), () => {
-              const t = float(1).sub(dist.div(float(GLOW_EMISSIVE_LIGHT_RADIUS)));
-              const window = t.mul(t);
+            const rawNdot = nx.mul(ldx).add(ny.mul(ldy)).add(nz.mul(ldz));
+            const hl = rawNdot.mul(float(0.5)).add(float(0.5));
+            const hlClamped = clamp(hl, float(0), float(1));
+            const ndSoft = hlClamped.mul(hlClamped);
+            const u = clamp(float(1).sub(dist.div(float(GLOW_EMISSIVE_LIGHT_RADIUS))), float(0), float(1));
+            const window = u.mul(u).mul(float(3).sub(u.mul(float(2))));
+            const ndComb = ndSoft.add(GLOW_PROX_FILL.mul(window).mul(hlClamped));
+            If(ndComb.greaterThan(float(1e-6)), () => {
               const atten = window
                 .mul(float(GLOW_EMISSIVE_LIGHT_INTENSITY))
                 .div(float(1).add(d2.mul(float(GLOW_EMISSIVE_LIGHT_SOFTNESS))));
@@ -590,15 +938,26 @@ export async function createVoxelRayGpuTracePipeline(
               const visG = float(1).toVar();
               const visB = float(1).toVar();
               If(uEnableShadows.greaterThan(float(0.5)), () => {
-                const reach = max(float(0), min(maxT, dist.sub(SHADOW_SURFACE_EPS)));
-                const tr = traceShadowTransmissionRgb(sx, sy, sz, ldx, ldy, ldz, reach);
+                const reach = max(float(0), min(maxT, dist.sub(float(GLOW_EMISSIVE_SHADOW_END_BIAS))));
+                const tr = averagedGlowEmitterVisibilityTransmissionRgb(
+                  sx,
+                  sy,
+                  sz,
+                  nx,
+                  ny,
+                  nz,
+                  ldx,
+                  ldy,
+                  ldz,
+                  reach
+                );
                 visR.assign(tr.x);
                 visG.assign(tr.y);
                 visB.assign(tr.z);
               });
-              addR.addAssign(colSample.x.mul(atten).mul(nDotL).mul(visR));
-              addG.addAssign(colSample.y.mul(atten).mul(nDotL).mul(visG));
-              addB.addAssign(colSample.z.mul(atten).mul(nDotL).mul(visB));
+              addR.addAssign(colSample.x.mul(atten).mul(ndComb).mul(visR));
+              addG.addAssign(colSample.y.mul(atten).mul(ndComb).mul(visG));
+              addB.addAssign(colSample.z.mul(atten).mul(ndComb).mul(visB));
             });
           });
         }
@@ -999,9 +1358,9 @@ export async function createVoxelRayGpuTracePipeline(
     remDist.assign(remDist.sub(stepTot));
     mediumIor.assign(float(1));
     const pkMedN = fetchPacked(
-      int(floor(oox.add(rdx.mul(float(1e-9))))),
-      int(floor(ooy.add(rdy.mul(float(1e-9))))),
-      int(floor(ooz.add(rdz.mul(float(1e-9)))))
+      int(floor(oox.add(rdx.mul(DDA_RAY_ORIGIN_EPS)))),
+      int(floor(ooy.add(rdy.mul(DDA_RAY_ORIGIN_EPS)))),
+      int(floor(ooz.add(rdz.mul(DDA_RAY_ORIGIN_EPS))))
     );
     const meMed = shiftRight(pkMedN, uint(24));
     const midMed = uint(meMed.sub(uint(1)));
@@ -1037,9 +1396,9 @@ export async function createVoxelRayGpuTracePipeline(
     const tb = float(1).toVar();
     const mediumIor = float(1).toVar();
     const pki0 = fetchPacked(
-      int(floor(ro.x.add(rdx.mul(float(1e-9))))),
-      int(floor(ro.y.add(rdy.mul(float(1e-9))))),
-      int(floor(ro.z.add(rdz.mul(float(1e-9)))))
+      int(floor(ro.x.add(rdx.mul(DDA_RAY_ORIGIN_EPS)))),
+      int(floor(ro.y.add(rdy.mul(DDA_RAY_ORIGIN_EPS)))),
+      int(floor(ro.z.add(rdz.mul(DDA_RAY_ORIGIN_EPS))))
     );
     const mei0 = shiftRight(pki0, uint(24));
     If(greaterThan(mei0, uint(0)), () => {
@@ -1072,10 +1431,9 @@ export async function createVoxelRayGpuTracePipeline(
         Break();
       });
 
-      const eps = float(1e-9);
-      const oxp = oox.add(rdx.mul(eps));
-      const oyp = ooy.add(rdy.mul(eps));
-      const ozp = ooz.add(rdz.mul(eps));
+      const oxp = oox.add(rdx.mul(DDA_RAY_ORIGIN_EPS));
+      const oyp = ooy.add(rdy.mul(DDA_RAY_ORIGIN_EPS));
+      const ozp = ooz.add(rdz.mul(DDA_RAY_ORIGIN_EPS));
       const x = int(floor(oxp)).toVar();
       const y = int(floor(oyp)).toVar();
       const z = int(floor(ozp)).toVar();
@@ -1222,9 +1580,9 @@ export async function createVoxelRayGpuTracePipeline(
           const dFinalR = select(isMetal, dMetalR, dr).add(eAdd.x);
           const dFinalG = select(isMetal, dMetalG, dg).add(eAdd.y);
           const dFinalB = select(isMetal, dMetalB, db).add(eAdd.z);
-          const addR = cr.mul(float(0.85));
-          const addG = cg.mul(float(0.85));
-          const addB = cb.mul(float(0.85));
+          const addR = cr.mul(GLOW_SELF_SCALE);
+          const addG = cg.mul(GLOW_SELF_SCALE);
+          const addB = cb.mul(GLOW_SELF_SCALE);
           const surfR = dFinalR.add(select(isGlow, addR, float(0)));
           const surfG = dFinalG.add(select(isGlow, addG, float(0)));
           const surfB = dFinalB.add(select(isGlow, addB, float(0)));
@@ -1361,9 +1719,9 @@ export async function createVoxelRayGpuTracePipeline(
               const dFinalR = select(isMetal, dMetalR, dr).add(eAdd.x);
               const dFinalG = select(isMetal, dMetalG, dg).add(eAdd.y);
               const dFinalB = select(isMetal, dMetalB, db).add(eAdd.z);
-              const addR = cr.mul(float(0.85));
-              const addG = cg.mul(float(0.85));
-              const addB = cb.mul(float(0.85));
+              const addR = cr.mul(GLOW_SELF_SCALE);
+              const addG = cg.mul(GLOW_SELF_SCALE);
+              const addB = cb.mul(GLOW_SELF_SCALE);
               const surfR = dFinalR.add(select(isGlow, addR, float(0)));
               const surfG = dFinalG.add(select(isGlow, addG, float(0)));
               const surfB = dFinalB.add(select(isGlow, addB, float(0)));

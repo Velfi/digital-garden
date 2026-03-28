@@ -157,8 +157,8 @@ export class VoxelRayTsl {
         res.denseTexture,
         res.origin,
         res.dims,
-        null,
-        0,
+        res.glowEmitterTexture,
+        res.glowEmitterCount,
         params,
         maxDist
       );

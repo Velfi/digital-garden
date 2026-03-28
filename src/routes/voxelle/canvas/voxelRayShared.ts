@@ -24,7 +24,41 @@ export function fresnelSchlickReflectance(cosI: number, etaI: number, etaT: numb
 }
 export const SHADOW_SURFACE_EPS = 2e-4;
 /** Bloom source: scale glow emissive so float linear values cross typical bloom thresholds. */
-export const GLOW_BLOOM_LINEAR_SCALE = 2.8;
+export const GLOW_BLOOM_LINEAR_SCALE = 2.2;
+/** Max glow emitters sampled per shaded point in ray mode (CPU + GPU). */
+export const MAX_RAY_GLOW_EMITTERS = 64;
+/** World-space radius for direct glow emissive contribution (large voxels → need generous range). */
+export const GLOW_EMISSIVE_LIGHT_RADIUS = 36;
+/** Scalar boost for glow emissive direct lighting. */
+export const GLOW_EMISSIVE_LIGHT_INTENSITY = 7;
+/** Denominator softening for glow light falloff (larger = softer/shorter). */
+export const GLOW_EMISSIVE_LIGHT_SOFTNESS = 0.08;
+/** Shadow-ray stop bias for emissive voxels to avoid self-occluding the emitter cell. */
+export const GLOW_EMISSIVE_SHADOW_END_BIAS = 0.9;
+/**
+ * Extra diffuse-weighted fill so coplanar / near-coplanar neighbors pick up emitter color (pure
+ * directional terms read as white on bright plastic + sun). Scaled by half-Lambert `hl` so backfaces
+ * stay dark.
+ */
+export const GLOW_EMISSIVE_PROXIMITY_FILL = 0.14;
+/** Extra linear RGB added on glow material hits (besides sun/ambient); keep moderate to avoid HDR clip → “white blob”. */
+export const GLOW_SELF_EMISSIVE_SCALE = 0.38;
+/**
+ * Glow occlusion rays are jittered on the shading tangent plane (Vogel disk) so binary DDA +
+ * corner-seal does not produce visible horizontal/vertical banding on large surfaces.
+ */
+export const GLOW_VISIBILITY_OCCLUSION_SAMPLES = 4;
+/** World-space disk radius scale for those offsets (fraction of a voxel). */
+export const GLOW_VISIBILITY_SURFACE_OFFSET = 0.38;
+
+export type RayGlowEmitter = {
+  x: number;
+  y: number;
+  z: number;
+  r: number;
+  g: number;
+  b: number;
+};
 
 export type VoxelRayTraceParams = {
   /** Unit vector from surface toward the directional light (world). */

@@ -21,6 +21,49 @@ function isTransmissiveMaterial(material: Voxel['material']): boolean {
   return material === 'glass' || material === 'water';
 }
 
+/** Opaque, non-glow solids — used to “seal” empty cells bordered by perpendicular walls (diagonal leak fix). */
+function opaqueNonGlowCornerSeal(v: Voxel | null): boolean {
+  if (!v) return false;
+  const m = v.material;
+  return m === 'plastic' || m === 'metal' || m === 'rubber';
+}
+
+/**
+ * True if this empty cell should block glow visibility rays: some pair of perpendicular face
+ * neighbors are both opaque non-glow (edge/corner contact reads as solid for lighting).
+ */
+function emptyBlockedByCornerWalls(
+  cx: number,
+  cy: number,
+  cz: number,
+  accel: GpuVoxelAccel | null | undefined,
+  voxels: Map<string, Voxel>
+): boolean {
+  const W = (xi: number, yi: number, zi: number) => lookupVoxelAccel(accel, voxels, xi, yi, zi);
+  const px = W(cx + 1, cy, cz);
+  const nx = W(cx - 1, cy, cz);
+  const py = W(cx, cy + 1, cz);
+  const ny = W(cx, cy - 1, cz);
+  const pz = W(cx, cy, cz + 1);
+  const nz = W(cx, cy, cz - 1);
+  const seal = (a: Voxel | null, b: Voxel | null) =>
+    opaqueNonGlowCornerSeal(a) && opaqueNonGlowCornerSeal(b);
+  return (
+    seal(px, py) ||
+    seal(px, ny) ||
+    seal(nx, py) ||
+    seal(nx, ny) ||
+    seal(px, pz) ||
+    seal(px, nz) ||
+    seal(nx, pz) ||
+    seal(nx, nz) ||
+    seal(py, pz) ||
+    seal(py, nz) ||
+    seal(ny, pz) ||
+    seal(ny, nz)
+  );
+}
+
 function absorptionPerUnit(material: Voxel['material']): number {
   return material === 'water' ? GLASS_ABSORPTION_PER_UNIT * 0.09 : GLASS_ABSORPTION_PER_UNIT;
 }
@@ -350,6 +393,165 @@ export function traceShadowRayDda(
     const seg = Math.min(t, maxT) - tPrev;
     if (seg > 0) {
       applySegment(W(x0, y0, z0), seg);
+      if (fr <= 0 && fg <= 0 && fb <= 0) return [0, 0, 0];
+    }
+
+    if (t > maxT) break;
+
+    if (axis === 0) x += stepX;
+    else if (axis === 1) y += stepY;
+    else z += stepZ;
+
+    tPrev = t;
+  }
+
+  return [Math.max(0, fr), Math.max(0, fg), Math.max(0, fb)];
+}
+
+/**
+ * Visibility toward a glow emitter (ray-mode emissive lighting only).
+ * Same DDA as `traceShadowRayDda`, but **glow voxels never occlude** — otherwise a ray from a face
+ * nudged into an adjacent emitter cell, or passing through emitter volume, would read as fully
+ * shadowed (black) even though the light is there.
+ */
+export function traceShadowRayDdaForGlowEmitterVisibility(
+  ox: number,
+  oy: number,
+  oz: number,
+  dx: number,
+  dy: number,
+  dz: number,
+  voxels: Map<string, Voxel>,
+  maxDistance: number,
+  accel?: GpuVoxelAccel | null
+): [number, number, number] {
+  const W = (xi: number, yi: number, zi: number) => lookupVoxelAccel(accel, voxels, xi, yi, zi);
+  const len = Math.hypot(dx, dy, dz);
+  if (len < EPS) return [1, 1, 1];
+  const rdx = dx / len;
+  const rdy = dy / len;
+  const rdz = dz / len;
+
+  const oxp = ox + EPS * rdx;
+  const oyp = oy + EPS * rdy;
+  const ozp = oz + EPS * rdz;
+
+  let x = Math.floor(oxp);
+  let y = Math.floor(oyp);
+  let z = Math.floor(ozp);
+
+  const stepX = signAxis(rdx);
+  const stepY = signAxis(rdy);
+  const stepZ = signAxis(rdz);
+
+  const tDeltaX = stepX === 0 ? Infinity : Math.abs(1 / rdx);
+  const tDeltaY = stepY === 0 ? Infinity : Math.abs(1 / rdy);
+  const tDeltaZ = stepZ === 0 ? Infinity : Math.abs(1 / rdz);
+
+  let tMaxX: number;
+  if (stepX > 0) tMaxX = (x + 1 - oxp) / rdx;
+  else if (stepX < 0) tMaxX = (x - oxp) / rdx;
+  else tMaxX = Infinity;
+
+  let tMaxY: number;
+  if (stepY > 0) tMaxY = (y + 1 - oyp) / rdy;
+  else if (stepY < 0) tMaxY = (y - oyp) / rdy;
+  else tMaxY = Infinity;
+
+  let tMaxZ: number;
+  if (stepZ > 0) tMaxZ = (z + 1 - ozp) / rdz;
+  else if (stepZ < 0) tMaxZ = (z - ozp) / rdz;
+  else tMaxZ = Infinity;
+
+  if (tMaxX < 0) tMaxX = 0;
+  if (tMaxY < 0) tMaxY = 0;
+  if (tMaxZ < 0) tMaxZ = 0;
+
+  let fr = 1;
+  let fg = 1;
+  let fb = 1;
+  let tPrev = 0;
+  const maxT = maxDistance;
+
+  const applySegment = (v: Voxel | null, segLen: number, cx: number, cy: number, cz: number) => {
+    if (segLen <= 0) return;
+    if (!v) {
+      if (emptyBlockedByCornerWalls(cx, cy, cz, accel, voxels)) {
+        fr = 0;
+        fg = 0;
+        fb = 0;
+      }
+      return;
+    }
+    if (v.material === 'glow') return;
+    const [absR, absG, absB] = absorptionRgbPerUnit(v.material);
+    const attR = Math.exp(-absR * segLen);
+    const attG = Math.exp(-absG * segLen);
+    const attB = Math.exp(-absB * segLen);
+    if (isTransmissiveMaterial(v.material)) {
+      const [tr, tg, tb] = transmissiveTint(v.material, v.color);
+      fr *= tr * attR;
+      fg *= tg * attG;
+      fb *= tb * attB;
+    } else {
+      fr = 0;
+      fg = 0;
+      fb = 0;
+    }
+  };
+
+  const hitStart = W(x, y, z);
+  if (hitStart) {
+    if (!isTransmissiveMaterial(hitStart.material) && hitStart.material !== 'glow') {
+      return [0, 0, 0];
+    }
+    const tFirst = Math.min(tMaxX, tMaxY, tMaxZ);
+    const seg0 = Math.min(Math.max(0, tFirst), maxT);
+    applySegment(hitStart, seg0, x, y, z);
+    if (fr <= 0 && fg <= 0 && fb <= 0) return [0, 0, 0];
+    if (tFirst >= maxT) {
+      return [Math.max(0, fr), Math.max(0, fg), Math.max(0, fb)];
+    }
+    if (tMaxX <= tMaxY && tMaxX <= tMaxZ) {
+      tPrev = tMaxX;
+      tMaxX += tDeltaX;
+      x += stepX;
+    } else if (tMaxY <= tMaxZ) {
+      tPrev = tMaxY;
+      tMaxY += tDeltaY;
+      y += stepY;
+    } else {
+      tPrev = tMaxZ;
+      tMaxZ += tDeltaZ;
+      z += stepZ;
+    }
+  }
+
+  while (tPrev <= maxT) {
+    if (fr <= 0 && fg <= 0 && fb <= 0) return [0, 0, 0];
+
+    let axis: 0 | 1 | 2;
+    let t: number;
+    if (tMaxX <= tMaxY && tMaxX <= tMaxZ) {
+      axis = 0;
+      t = tMaxX;
+      tMaxX += tDeltaX;
+    } else if (tMaxY <= tMaxZ) {
+      axis = 1;
+      t = tMaxY;
+      tMaxY += tDeltaY;
+    } else {
+      axis = 2;
+      t = tMaxZ;
+      tMaxZ += tDeltaZ;
+    }
+
+    const x0 = x;
+    const y0 = y;
+    const z0 = z;
+    const seg = Math.min(t, maxT) - tPrev;
+    if (seg > 0) {
+      applySegment(W(x0, y0, z0), seg, x0, y0, z0);
       if (fr <= 0 && fg <= 0 && fb <= 0) return [0, 0, 0];
     }
 

@@ -12,22 +12,34 @@ import {
   lookupVoxelAccel,
   maxRayDistanceForVoxels,
   traceRayDda,
-  traceShadowRayDda
+  traceShadowRayDda,
+  traceShadowRayDdaForGlowEmitterVisibility
 } from './voxelRayDda';
 import {
   clampShadowSamples,
+  GOLDEN_ANGLE,
   shadowConeTanFromRadians,
   softShadowDiskStratified
 } from './gpuSoftShadow';
 import {
   GLOW_BLOOM_LINEAR_SCALE,
+  GLOW_EMISSIVE_LIGHT_INTENSITY,
+  GLOW_EMISSIVE_LIGHT_RADIUS,
+  GLOW_EMISSIVE_PROXIMITY_FILL,
+  GLOW_SELF_EMISSIVE_SCALE,
+  GLOW_EMISSIVE_SHADOW_END_BIAS,
+  GLOW_EMISSIVE_LIGHT_SOFTNESS,
+  GLOW_VISIBILITY_OCCLUSION_SAMPLES,
+  GLOW_VISIBILITY_SURFACE_OFFSET,
   GLASS_IOR,
   GLASS_MIN_TRANSMITTANCE,
+  MAX_RAY_GLOW_EMITTERS,
   MAX_GLASS_DEPTH,
   MAX_TEMPORAL_SAMPLES,
   SHADOW_SURFACE_EPS,
   WATER_IOR,
   fresnelSchlickReflectance,
+  type RayGlowEmitter,
   type VoxelRayTraceParams,
   hexToLinearRgb
 } from './voxelRayShared';
@@ -348,6 +360,23 @@ function configureRayDataTexture(tex: THREE.DataTexture): void {
   tex.magFilter = THREE.LinearFilter;
 }
 
+function collectRayGlowEmitters(voxels: Map<string, Voxel>): RayGlowEmitter[] {
+  const emitters: RayGlowEmitter[] = [];
+  for (const [key, v] of voxels) {
+    if (emitters.length >= MAX_RAY_GLOW_EMITTERS) break;
+    if (v.material !== 'glow') continue;
+    const parts = key.split(',');
+    if (parts.length !== 3) continue;
+    const x = Number(parts[0]);
+    const y = Number(parts[1]);
+    const z = Number(parts[2]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    const [r, g, b] = hexToLinearRgb(v.color & 0xffffff);
+    emitters.push({ x: x + 0.5, y: y + 0.5, z: z + 0.5, r, g, b });
+  }
+  return emitters;
+}
+
 function orthonormalTangentBasis(
   lx: number,
   ly: number,
@@ -453,6 +482,130 @@ function traceSoftShadowTransmission(
   return [sr * inv, sg * inv, sb * inv];
 }
 
+/** Matches `glowVisibilityTangentDisk` in `voxelRayGpuTslTrace.ts` (Vogel disk on tangent plane). */
+function glowVisibilityTangentOffsetCpu(
+  nx: number,
+  ny: number,
+  nz: number,
+  sampleIndex: number
+): [number, number, number] {
+  const n = GLOW_VISIBILITY_OCCLUSION_SAMPLES;
+  const fi = sampleIndex;
+  const fn = Math.max(1, n - 0.5);
+  const r = Math.sqrt(fi / fn);
+  const angle = (((fi * GOLDEN_ANGLE) / (2 * Math.PI)) % 1) * (2 * Math.PI);
+  const scale = GLOW_VISIBILITY_SURFACE_OFFSET * r;
+  let upx = 0;
+  let upy = 0;
+  let upz = 1;
+  if (Math.abs(nz) > 0.95) {
+    upx = 1;
+    upy = 0;
+    upz = 0;
+  }
+  let tx = upy * nz - upz * ny;
+  let ty = upz * nx - upx * nz;
+  let tz = upx * ny - upy * nx;
+  let tLen = Math.hypot(tx, ty, tz);
+  if (tLen < 1e-8) {
+    upx = 0;
+    upy = 1;
+    upz = 0;
+    tx = upy * nz - upz * ny;
+    ty = upz * nx - upx * nz;
+    tz = upx * ny - upy * nx;
+    tLen = Math.hypot(tx, ty, tz) || 1e-9;
+  }
+  tx /= tLen;
+  ty /= tLen;
+  tz /= tLen;
+  const bx = ny * tz - nz * ty;
+  const by = nz * tx - nx * tz;
+  const bz = nx * ty - ny * tx;
+  const ca = Math.cos(angle);
+  const sa = Math.sin(angle);
+  return [scale * (ca * tx + sa * bx), scale * (ca * ty + sa * by), scale * (ca * tz + sa * bz)];
+}
+
+function accumulateGlowDirectCpu(
+  hitPoint: [number, number, number],
+  faceNormal: [number, number, number],
+  maxShadowDist: number,
+  params: VoxelRayTraceParams,
+  voxels: Map<string, Voxel>,
+  emitters: readonly RayGlowEmitter[],
+  accel: GpuVoxelAccel | null | undefined
+): [number, number, number] {
+  if (emitters.length === 0) return [0, 0, 0];
+  const [hx, hy, hz] = hitPoint;
+  const [nx, ny, nz] = faceNormal;
+  const ox = hx + nx * SHADOW_SURFACE_EPS;
+  const oy = hy + ny * SHADOW_SURFACE_EPS;
+  const oz = hz + nz * SHADOW_SURFACE_EPS;
+  const radiusSq = GLOW_EMISSIVE_LIGHT_RADIUS * GLOW_EMISSIVE_LIGHT_RADIUS;
+  let addR = 0;
+  let addG = 0;
+  let addB = 0;
+  for (const e of emitters) {
+    const dx = e.x - ox;
+    const dy = e.y - oy;
+    const dz = e.z - oz;
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 <= 1e-8 || d2 >= radiusSq) continue;
+    const dist = Math.max(1e-4, Math.sqrt(d2));
+    const invDist = 1 / dist;
+    const ldx = dx * invDist;
+    const ldy = dy * invDist;
+    const ldz = dz * invDist;
+    const rawNdot = nx * ldx + ny * ldy + nz * ldz;
+    const hl = rawNdot * 0.5 + 0.5;
+    const hlClamped = Math.max(0, Math.min(1, hl));
+    const ndSoft = hlClamped * hlClamped;
+    const u = Math.max(0, Math.min(1, 1 - dist / GLOW_EMISSIVE_LIGHT_RADIUS));
+    const window = u * u * (3 - 2 * u);
+    const ndComb = ndSoft + GLOW_EMISSIVE_PROXIMITY_FILL * window * hlClamped;
+    if (ndComb <= 1e-6) continue;
+    const atten =
+      (window * GLOW_EMISSIVE_LIGHT_INTENSITY) / (1 + d2 * GLOW_EMISSIVE_LIGHT_SOFTNESS);
+    let visR = 1;
+    let visG = 1;
+    let visB = 1;
+    if (params.enableShadows) {
+      const reach = Math.max(0, Math.min(maxShadowDist, dist - GLOW_EMISSIVE_SHADOW_END_BIAS));
+      if (reach > 0) {
+        let ar = 0;
+        let ag = 0;
+        let ab = 0;
+        const inv = 1 / GLOW_VISIBILITY_OCCLUSION_SAMPLES;
+        for (let si = 0; si < GLOW_VISIBILITY_OCCLUSION_SAMPLES; si++) {
+          const [jx, jy, jz] = glowVisibilityTangentOffsetCpu(nx, ny, nz, si);
+          const [vr, vg, vb] = traceShadowRayDdaForGlowEmitterVisibility(
+            ox + jx,
+            oy + jy,
+            oz + jz,
+            ldx,
+            ldy,
+            ldz,
+            voxels,
+            reach,
+            accel
+          );
+          ar += vr;
+          ag += vg;
+          ab += vb;
+        }
+        visR = ar * inv;
+        visG = ag * inv;
+        visB = ab * inv;
+      }
+    }
+    addR += e.r * atten * ndComb * visR;
+    addG += e.g * atten * ndComb * visG;
+    addB += e.b * atten * ndComb * visB;
+  }
+  return [addR, addG, addB];
+}
+
 function shadeOpaqueSurface(
   voxel: Voxel,
   faceNormal: [number, number, number],
@@ -461,6 +614,7 @@ function shadeOpaqueSurface(
   params: VoxelRayTraceParams,
   voxels: Map<string, Voxel>,
   maxShadowDist: number,
+  glowEmitters: readonly RayGlowEmitter[],
   accel: GpuVoxelAccel | null | undefined
 ): { rgb: [number, number, number]; bloom: [number, number, number] } {
   const [nx, ny, nz] = faceNormal;
@@ -494,6 +648,18 @@ function shadeOpaqueSurface(
   let dr = cr * params.ambientR + cr * params.sunDiffuseR * ndotl * sr;
   let dg = cg * params.ambientG + cg * params.sunDiffuseG * ndotl * sg;
   let db = cb * params.ambientB + cb * params.sunDiffuseB * ndotl * sb;
+  const [er, eg, eb] = accumulateGlowDirectCpu(
+    hitPoint,
+    faceNormal,
+    maxShadowDist,
+    params,
+    voxels,
+    glowEmitters,
+    accel
+  );
+  dr += er;
+  dg += eg;
+  db += eb;
 
   let bloomR = 0;
   let bloomG = 0;
@@ -513,9 +679,9 @@ function shadeOpaqueSurface(
     db += sp * params.sunDiffuseB * sb;
   } else if (voxel.material === 'glow') {
     const [gr, gg, gb] = hexToLinearRgb(voxel.color & 0xffffff);
-    const addR = gr * 0.85;
-    const addG = gg * 0.85;
-    const addB = gb * 0.85;
+    const addR = gr * GLOW_SELF_EMISSIVE_SCALE;
+    const addG = gg * GLOW_SELF_EMISSIVE_SCALE;
+    const addB = gb * GLOW_SELF_EMISSIVE_SCALE;
     dr += addR;
     dg += addG;
     db += addB;
@@ -608,6 +774,7 @@ function traceAndShade(
   params: VoxelRayTraceParams,
   screenV: number,
   bufH: number,
+  glowEmitters: readonly RayGlowEmitter[],
   accel: GpuVoxelAccel | null | undefined
 ): { rgb: [number, number, number]; bloom: [number, number, number] } {
   let oox = ox;
@@ -649,6 +816,7 @@ function traceAndShade(
         params,
         voxels,
         maxShadowDist,
+        glowEmitters,
         accel
       );
       return {
@@ -1049,6 +1217,7 @@ export class VoxelRayProgressive {
       Math.max(1, Math.floor(tickOptions?.maxTemporalSamples ?? MAX_TEMPORAL_SAMPLES))
     );
     const accel = tickOptions?.accel ?? null;
+    const glowEmitters = collectRayGlowEmitters(voxels);
 
     let bufW = Math.max(1, Math.round(width * dpr));
     let bufH = Math.max(1, Math.round(height * dpr));
@@ -1181,6 +1350,7 @@ export class VoxelRayProgressive {
         shadeParams,
         v,
         bufH,
+        glowEmitters,
         accel
       );
       const [lr, lg, lb] = applyRayPostMood(rgb, maxDist * 0.5, shadeParams, u / bufW, v / bufH);
