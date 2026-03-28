@@ -63,6 +63,7 @@ export type Tool =
   | 'flora'
   | 'piscina'
   | 'insecta'
+  | 'fauna'
   | 'atmosphere'
   | 'sunShafts'
   | 'distanceTint'
@@ -311,6 +312,9 @@ export const wallHeight = writable<number>(2);
 export const wallLockStartHeight = writable<boolean>(false);
 /** Wall: when true, base path is axis-aligned from stroke start (like draw line); when false, freeform Bresenham polyline. */
 export const wallAxisAlign = writable<boolean>(false);
+/** Wall footprint: freehand stroke, drag a disk on the clicked face, or click polygon corners then Done. */
+export type WallAreaShape = 'brush' | 'circle' | 'polygon';
+export const wallAreaShape = writable<WallAreaShape>('brush');
 /** Draw tool brush shape (sphere, cube, pyramid). */
 export const drawBrushShape = writable<DrawBrushShape>('sphere');
 /** Draw brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */

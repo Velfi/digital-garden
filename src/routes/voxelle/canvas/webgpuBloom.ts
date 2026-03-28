@@ -3,7 +3,17 @@
  * `viewportOpaqueMipTexture` for transmission), glow-only pass → second HalfFloat RT + depth (same as WebGL
  * stash), then `RenderPipeline` composites `beauty + bloom(glow)`.
  */
-import { Color, Matrix4, Vector3, type Camera, type ColorSpace, type Scene } from 'three';
+import {
+  Color,
+  Matrix4,
+  Vector3,
+  OrthographicCamera,
+  Scene as ThreeScene,
+  type Camera,
+  type ColorSpace,
+  type Scene,
+  type Texture
+} from 'three';
 import { atmospherePlaneSoftness } from '../atmosphereMath';
 
 /** Glow-only RT → TSL bloom; strength ~ WebGL `UnrealBloomPass` × mix shader factor. */
@@ -25,7 +35,8 @@ type WebGPURendererLike = {
 
 export type WebGPUBloomPipeline = {
   renderPipeline: { render(): void; dispose(): void; needsUpdate: boolean };
-  bloomPass: { dispose(): void };
+  /** Lazy until first greedy / atmosphere composite; null in a ray-only session until mode switches. */
+  bloomPass: { dispose(): void } | null;
   /** HalfFloat beauty pass (transmission + depth). */
   sceneRenderTarget: { setSize: (w: number, h: number, d?: number) => void; dispose: () => void };
   /** HalfFloat glow-only pass (same size; depth test matches beauty pass so sort is not view-dependent). */
@@ -37,10 +48,24 @@ export type WebGPUBloomPipeline = {
   renderSceneToTarget(renderer: WebGPURendererLike, scene: Scene, camera: Camera): void;
   /** After non-glow materials are blacked out → bloom source RT (cleared each call). */
   renderBloomSourceToTarget(renderer: WebGPURendererLike, scene: Scene, camera: Camera): void;
+  /**
+   * Ray mode: blit ray trace outputs into bloom HalfFloat RTs (shader resolve — `copyTextureToTexture`
+   * requires matching WGPU formats; progressive RGBA8 / GPU RGBA16F / RGBA32F sources are all handled here).
+   */
+  blitRayTexturesToBloomTargets(
+    renderer: WebGPURendererLike,
+    beautySrc: Texture,
+    bloomSrc: Texture
+  ): void;
   setSize(width: number, height: number, pixelRatio: number): void;
   dispose(): void;
   /** Planar atmosphere (greedy / marchingCubes; not ray). */
   setPlanarAtmosphereEnabled: (on: boolean) => void;
+  /**
+   * Ray mode: use `beauty + strength * bloomSource` instead of `BloomNode` (blur pyramid can trip
+   * async WebGPU validation; ray traces already emit a glow mask in the bloom RT).
+   */
+  setRayBloomDirectComposite: (on: boolean) => void;
   updatePlanarAtmosphereUniforms: (opts: {
     camera: Camera;
     fogColorHex: string;
@@ -85,7 +110,13 @@ export async function createWebGPUBloomPipeline(
   _camera: Camera,
   width: number,
   height: number,
-  pixelRatio: number
+  pixelRatio: number,
+  /**
+   * When true, the first `RenderPipeline` output is `rayCombined` (no BloomNode TSL).
+   * Otherwise the initial graph is `combined` (BloomNode) — that can compile before the first
+   * frame calls `setRayBloomDirectComposite(true)` and trigger async WebGPU fragment validation errors in ray mode.
+   */
+  initialRayBloomDirect = false
 ): Promise<WebGPUBloomPipeline> {
   const [webgpuMod, tslMod, bloomMod] = await Promise.all([
     import('three/webgpu'),
@@ -100,10 +131,13 @@ export async function createWebGPUBloomPipeline(
     RGBAFormat,
     LinearFilter,
     NoToneMapping,
-    ColorManagement
+    ColorManagement,
+    MeshBasicNodeMaterial,
+    QuadMesh
   } = webgpuMod;
   const {
     texture,
+    uniformTexture,
     Fn,
     screenUV,
     uniform,
@@ -169,15 +203,29 @@ export async function createWebGPUBloomPipeline(
   bloomSourceRenderTarget.texture.name = 'voxelleBloomSource';
   bloomSourceRenderTarget.depthTexture = bloomSourceDepthTexture;
 
+  /** Fullscreen blit for ray → bloom RTs (format-agnostic vs `copyTextureToTexture`). */
+  const uRayBlitTexture = uniformTexture(sceneRenderTarget.texture);
+  /** Progressive CPU ray uses `DataTexture` + `flipY`; `screenUV` on the blit quad is opposite — flip V. */
+  const rayBlitUv = vec2(screenUV.x, float(1).sub(screenUV.y));
+  const rayBlitMaterial = new MeshBasicNodeMaterial();
+  rayBlitMaterial.colorNode = uRayBlitTexture.sample(rayBlitUv);
+  rayBlitMaterial.toneMapped = false;
+  rayBlitMaterial.depthTest = false;
+  rayBlitMaterial.depthWrite = false;
+  const rayBlitQuad = new QuadMesh(rayBlitMaterial);
+  const rayBlitScene = new ThreeScene();
+  rayBlitScene.name = 'voxelleRayBlit';
+  rayBlitScene.add(rayBlitQuad);
+  const rayBlitCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
   const beautyColor = texture(sceneRenderTarget.texture);
   const bloomSourceColor = texture(bloomSourceRenderTarget.texture);
-  const bloomPass = bloom(
-    bloomSourceColor,
-    WEBGPU_BLOOM_STRENGTH,
-    WEBGPU_BLOOM_RADIUS,
-    WEBGPU_BLOOM_THRESHOLD
-  );
-  const combined = beautyColor.add(bloomPass);
+  /** Ray trace bloom RT is pre-authored glow; skip {@link bloom} blur passes for a smaller WGSL graph. */
+  const rayCombined = beautyColor.add(bloomSourceColor.mul(float(WEBGPU_BLOOM_STRENGTH)));
+
+  let bloomPass: ReturnType<typeof bloom> | null = null;
+  let combined: ReturnType<typeof beautyColor.add> | null = null;
+  let outputWithAtmosphere: typeof rayCombined | null = null;
 
   const uFogColor = uniform(new Vector3(0.78, 0.83, 0.88));
   const uFogDensity = uniform(0.85);
@@ -219,9 +267,21 @@ export async function createWebGPUBloomPipeline(
 
   const depthTexNode = texture(sceneRenderTarget.depthTexture);
 
-  const outputWithAtmosphere = Fn(() => {
+  function buildGreedyBloomGraphSync(): void {
+    if (combined) return;
+    bloomPass = bloom(
+      bloomSourceColor,
+      WEBGPU_BLOOM_STRENGTH,
+      WEBGPU_BLOOM_RADIUS,
+      WEBGPU_BLOOM_THRESHOLD
+    );
+    combined = beautyColor.add(bloomPass);
+    const combinedNode = combined;
+
+    const outputWithAtmosphereVar = vec4(0, 0, 0, 1).toVar();
+    Fn(() => {
     const suv = screenUV;
-    const base = combined.context({ getUV: () => suv });
+    const base = combinedNode.context({ getUV: () => suv });
     const depth = depthTexNode.sample(suv).x;
     const ndcx = suv.x.mul(2).sub(1);
     const ndcy = suv.y.mul(2).sub(1);
@@ -324,7 +384,7 @@ export async function createWebGPUBloomPipeline(
         const sampSky = greaterThanEqual(ds, float(0.9992));
         const skyLeak = select(curSky, float(1), select(sampSky, float(0.16), float(1)));
         const occW = vzOcc.mul(skyLeak).mul(sunGate);
-        const sampleCol = combined.context({ getUV: () => cuv });
+        const sampleCol = combinedNode.context({ getUV: () => cuv });
         const luma = dot(sampleCol.xyz, vec3(0.2126, 0.7152, 0.0722));
         const skyBlend = smoothstep(float(0.9986), float(1.0), ds);
         const geoScatter = pow(max(luma, float(0.025)), float(0.58)).mul(float(1.85));
@@ -383,18 +443,46 @@ export async function createWebGPUBloomPipeline(
     const grainApplied = vec4(fogged.xyz.add(grainRgb.mul(uGrainStrength).mul(grainMul)), fogged.w);
     const withGrain = select(uGrainEnabled.greaterThan(float(0.5)), grainApplied, fogged);
     const skyMask = step(float(0.99999), depth);
-    return mix(withGrain, base, skyMask);
+    outputWithAtmosphereVar.assign(mix(withGrain, base, skyMask));
   })();
+    outputWithAtmosphere = outputWithAtmosphereVar;
+  }
+
+  if (!initialRayBloomDirect) {
+    buildGreedyBloomGraphSync();
+  }
 
   const renderPipeline = new RenderPipeline(
     renderer as ConstructorParameters<typeof RenderPipeline>[0]
   );
-  renderPipeline.outputNode = combined;
-  renderPipeline.needsUpdate = true;
+
+  let atmosphereGraphEnabled = false;
+  let rayBloomDirectEnabled = initialRayBloomDirect;
+
+  function refreshRenderPipelineOutputNode(): void {
+    if (rayBloomDirectEnabled) {
+      renderPipeline.outputNode = rayCombined;
+    } else if (atmosphereGraphEnabled) {
+      buildGreedyBloomGraphSync();
+      renderPipeline.outputNode = outputWithAtmosphere!;
+    } else {
+      buildGreedyBloomGraphSync();
+      renderPipeline.outputNode = combined!;
+    }
+    renderPipeline.needsUpdate = true;
+  }
+
+  refreshRenderPipelineOutputNode();
 
   function setPlanarAtmosphereEnabled(on: boolean): void {
-    renderPipeline.outputNode = on ? outputWithAtmosphere : combined;
-    renderPipeline.needsUpdate = true;
+    atmosphereGraphEnabled = on;
+    refreshRenderPipelineOutputNode();
+  }
+
+  function setRayBloomDirectComposite(on: boolean): void {
+    if (rayBloomDirectEnabled === on) return;
+    rayBloomDirectEnabled = on;
+    refreshRenderPipelineOutputNode();
   }
 
   function updatePlanarAtmosphereUniforms(opts: {
@@ -511,6 +599,35 @@ export async function createWebGPUBloomPipeline(
     r.outputColorSpace = prevCs;
   }
 
+  function blitRayTexturesToBloomTargets(
+    r: WebGPURendererLike,
+    beautySrc: Texture,
+    bloomSrc: Texture
+  ) {
+    const prevTarget = r.getRenderTarget();
+    const prevMrt = r.getMRT();
+    const prevTm = r.toneMapping;
+    const prevCs = r.outputColorSpace;
+    r.setMRT(null);
+    r.toneMapping = NoToneMapping;
+    r.outputColorSpace = ColorManagement.workingColorSpace;
+
+    uRayBlitTexture.value = beautySrc;
+    r.setRenderTarget(sceneRenderTarget);
+    r.clear(true, true, false);
+    r.render(rayBlitScene, rayBlitCamera);
+
+    uRayBlitTexture.value = bloomSrc;
+    r.setRenderTarget(bloomSourceRenderTarget);
+    r.clear(true, true, false);
+    r.render(rayBlitScene, rayBlitCamera);
+
+    r.setRenderTarget(prevTarget);
+    r.setMRT(prevMrt);
+    r.toneMapping = prevTm;
+    r.outputColorSpace = prevCs;
+  }
+
   let lastBloomCw = -1;
   let lastBloomCh = -1;
 
@@ -521,7 +638,9 @@ export async function createWebGPUBloomPipeline(
     bloomSourceRenderTarget,
     renderSceneToTarget,
     renderBloomSourceToTarget,
+    blitRayTexturesToBloomTargets,
     setPlanarAtmosphereEnabled,
+    setRayBloomDirectComposite,
     updatePlanarAtmosphereUniforms,
     setSize(nw: number, nh: number, pr: number) {
       const cw = Math.max(1, Math.floor(nw * pr));
@@ -534,9 +653,10 @@ export async function createWebGPUBloomPipeline(
       renderPipeline.needsUpdate = true;
     },
     dispose() {
+      rayBlitMaterial.dispose();
       sceneRenderTarget.dispose();
       bloomSourceRenderTarget.dispose();
-      bloomPass.dispose();
+      bloomPass?.dispose();
       renderPipeline.dispose();
     }
   };

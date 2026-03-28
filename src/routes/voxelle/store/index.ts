@@ -82,6 +82,7 @@ export {
   wallHeight,
   wallLockStartHeight,
   wallAxisAlign,
+  wallAreaShape,
   drawBrushShape,
   drawBrushSize,
   drawBrushSnapToSurface,
@@ -198,6 +199,29 @@ export {
   insectaWingHindSpread,
   insectaWingHindPitch,
   insectaWingHindOffset,
+  faunaStance,
+  faunaArchetype,
+  faunaAutoFootPlacement,
+  faunaAnchorOffsetU,
+  faunaAnchorOffsetV,
+  faunaBodyYaw,
+  faunaBodyArch,
+  faunaSpineSegments,
+  faunaBodyDims,
+  faunaNeckDims,
+  faunaHeadDims,
+  faunaTailLength,
+  faunaShoulderOffsetForward,
+  faunaHipOffsetForward,
+  faunaFrontUpperLength,
+  faunaFrontLowerLength,
+  faunaHindUpperLength,
+  faunaHindLowerLength,
+  faunaLimbTargets,
+  faunaLimbPoles,
+  faunaLimbMids,
+  faunaLimbDistals,
+  faunaSpinePose,
   type FloraPresetId,
   type PiscinaPresetId,
   roofSelectionMethod,
@@ -382,6 +406,7 @@ export type {
   DrawBrushShape,
   SprayBrushShape,
   SprayDirection,
+  WallAreaShape,
   FaceNormal,
   AddPanelState,
   AddPanelMode,
@@ -590,6 +615,36 @@ export type {
   InsectaSpeciesId,
   LegFrameOffset
 } from './generators/insecta';
+export {
+  generateFaunaVoxels,
+  getFaunaPositions,
+  FAUNA_DEFAULTS,
+  FAUNA_VOXEL_CAP,
+  clampFaunaOptions,
+  getFaunaCenterLift,
+  getFaunaResolvedLimbHandlesWorld,
+  getFaunaResolvedSpineHandlesWorld,
+  getFaunaMorphBoneOriginsWorld,
+  faunaLocalDeltaWorld,
+  faunaWorldDeltaToLocal,
+  FAUNA_SPINE_POSE_ZERO,
+  solveTwoBoneIk,
+  solveThreeBoneFabrik
+} from './generators/fauna';
+export type {
+  FaunaResolvedLimbHandlesWorld,
+  GenerateFaunaOptions,
+  FaunaArchetypeId,
+  FaunaStanceId,
+  FaunaLimbId,
+  FaunaPoseTargets,
+  FaunaPosePoles,
+  FaunaPoseMids,
+  FaunaPoseDistals,
+  FaunaSectionDims,
+  FaunaSpinePose
+} from './generators/fauna';
 export { cloneArticulatedLeg2 } from './generators/articulatedLeg';
+export { buildInsectaBodyFrame } from './generators/creatureSkeleton';
 export { generateRoofVoxels } from './generators/roof';
 export type { GenerateRoofOptions } from './generators/roof';

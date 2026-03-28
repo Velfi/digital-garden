@@ -26,6 +26,10 @@
       $sceneEnvironmentIntensity === p.sceneEnvironmentIntensity
     );
   }
+
+  const FALLBACK_HEX = '#ffffff';
+  const HEX6 = /^#[0-9a-fA-F]{6}$/;
+  const safeHexColor = (value: string): string => (HEX6.test(value) ? value : FALLBACK_HEX);
 </script>
 
 <div class="light-heading-row">
@@ -93,7 +97,7 @@
   <input
     id="light-color"
     type="color"
-    value={$lightColor}
+    value={safeHexColor($lightColor)}
     oninput={(e) => lightColor.set((e.target as HTMLInputElement).value)}
   />
 </div>

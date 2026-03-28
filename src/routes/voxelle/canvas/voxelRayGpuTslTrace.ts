@@ -1,12 +1,12 @@
 /**
- * WebGPU TSL full-screen voxel ray trace (dense 3D uint texture only).
+ * WebGPU TSL full-screen voxel ray trace (dense 3D volume; packed uint32 per texel in R32Float).
  * Parity targets: `voxelRayProgressive` / `voxelRayDda` (glass/water stack, tinted shadow rays).
  */
 import {
   Data3DTexture,
   Matrix4,
-  RedIntegerFormat,
-  UnsignedIntType,
+  RedFormat,
+  FloatType,
   Vector3,
   NearestFilter,
   type ColorSpace,
@@ -44,9 +44,10 @@ const WATER_MAT = 4;
 const GLOW_MAT = 5;
 
 function makePlaceholderVolumeTexture(): Data3DTexture {
-  const t = new Data3DTexture(new Uint32Array(8), 2, 2, 2);
-  t.type = UnsignedIntType;
-  t.format = RedIntegerFormat;
+  const u32 = new Uint32Array(8);
+  const t = new Data3DTexture(new Float32Array(u32.buffer, u32.byteOffset, u32.length), 2, 2, 2);
+  t.type = FloatType;
+  t.format = RedFormat;
   t.minFilter = NearestFilter;
   t.magFilter = NearestFilter;
   t.generateMipmaps = false;
@@ -77,6 +78,7 @@ export async function createVoxelRayGpuTracePipeline(
   const {
     Fn,
     float,
+    floatBitsToUint,
     int,
     uint,
     vec3,
@@ -87,6 +89,7 @@ export async function createVoxelRayGpuTracePipeline(
     Break,
     If,
     texture3D,
+    textureLoad,
     abs,
     min,
     max,
@@ -124,8 +127,7 @@ export async function createVoxelRayGpuTracePipeline(
     colorSpace: ColorManagement.workingColorSpace as ColorSpace,
     generateMipmaps: false
   });
-  beautyTarget.texture.name = 'voxelleRayGpuBeauty';
-
+  beautyTarget.texture.name = 'beauty';
   const bloomTarget = new RenderTarget(w, h, {
     type: HalfFloatType,
     depthBuffer: false,
@@ -135,7 +137,7 @@ export async function createVoxelRayGpuTracePipeline(
     colorSpace: ColorManagement.workingColorSpace as ColorSpace,
     generateMipmaps: false
   });
-  bloomTarget.texture.name = 'voxelleRayGpuBloom';
+  bloomTarget.texture.name = 'bloom';
 
   let lastRayTargetW = w;
   let lastRayTargetH = h;
@@ -161,8 +163,8 @@ export async function createVoxelRayGpuTracePipeline(
   const uShadowSamples = uniform(8);
   /** tan(cone half-angle) toward the light; from `shadowConeTanFromRadians(params.shadowSoftnessRadians)`. */
   const uShadowTanHalf = uniform(0);
-  const uPassBloom = uniform(0);
   const uBufH = uniform(h);
+  const uPassBloom = uniform(0);
   const volTex = makePlaceholderVolumeTexture();
 
   const TSL_TWO_PI = float(2 * Math.PI);
@@ -202,7 +204,7 @@ export async function createVoxelRayGpuTracePipeline(
     ix: ReturnType<typeof int>,
     iy: ReturnType<typeof int>,
     iz: ReturnType<typeof int>
-  ) => {
+  ): ReturnType<typeof uint> => {
     const ox = int(floor(uOrigin.x));
     const oy = int(floor(uOrigin.y));
     const oz = int(floor(uOrigin.z));
@@ -216,11 +218,9 @@ export async function createVoxelRayGpuTracePipeline(
       or(or(lx.lessThan(int(0)), ly.lessThan(int(0))), lz.lessThan(int(0))),
       or(or(lx.greaterThanEqual(dx), ly.greaterThanEqual(dy)), lz.greaterThanEqual(dz))
     );
-    // TSL's `ivec3` constructor expects a single argument (a `vec3`).
     const coord = ivec3(vec3(lx, ly, lz));
-    const sample = volAcc.load(coord).r;
-    // Ensure we always return a uint node (not a float|uint union) for downstream bit ops.
-    return select(oob, uint(0), uint(sample));
+    const sample = floatBitsToUint(textureLoad(volAcc, coord, int(0)).r);
+    return select(oob, uint(0), sample) as ReturnType<typeof uint>;
   };
 
   const isTransmissiveIdx = (matIdx: ReturnType<typeof uint>) =>
@@ -772,10 +772,12 @@ export async function createVoxelRayGpuTracePipeline(
     );
   };
 
-  const shadeOutput = Fn(() => {
+  const shadeOutput = vec4(0, 0, 0, 1).toVar();
+  const shadeOutputFn = Fn(() => {
     const suv = uv();
     const ndcX = suv.x.mul(float(2)).sub(float(1));
-    const ndcY = suv.y.mul(float(2)).sub(float(1));
+    // Match CPU path (`VoxelRayProgressive.setRayFromPixel`): NDC Y is flipped.
+    const ndcY = float(1).sub(suv.y.mul(float(2)));
     const clip = vec4(ndcX, ndcY, float(0.5), float(1));
     const pw = uClipToWorld.mul(clip);
     const pWorld = pw.xyz.div(pw.w.max(float(1e-6)));
@@ -943,9 +945,9 @@ export async function createVoxelRayGpuTracePipeline(
           const shG = float(1).toVar();
           const shB = float(1).toVar();
           If(uEnableShadows.greaterThan(float(0.5)), () => {
-            const hx = float(x).add(nx.mul(SHADOW_SURFACE_EPS));
-            const hy = float(y).add(ny.mul(SHADOW_SURFACE_EPS));
-            const hz = float(z).add(nz.mul(SHADOW_SURFACE_EPS));
+            const hx = oox.add(nx.mul(SHADOW_SURFACE_EPS));
+            const hy = ooy.add(ny.mul(SHADOW_SURFACE_EPS));
+            const hz = ooz.add(nz.mul(SHADOW_SURFACE_EPS));
             const st = averagedShadowTransmission(hx, hy, hz, lx, ly, lz, maxT);
             shR.assign(st.x);
             shG.assign(st.y);
@@ -1072,9 +1074,9 @@ export async function createVoxelRayGpuTracePipeline(
               const shG = float(1).toVar();
               const shB = float(1).toVar();
               If(uEnableShadows.greaterThan(float(0.5)), () => {
-                const hx = float(x).add(nx.mul(SHADOW_SURFACE_EPS));
-                const hy = float(y).add(ny.mul(SHADOW_SURFACE_EPS));
-                const hz = float(z).add(nz.mul(SHADOW_SURFACE_EPS));
+                const hx = hpx.add(nx.mul(SHADOW_SURFACE_EPS));
+                const hy = hpy.add(ny.mul(SHADOW_SURFACE_EPS));
+                const hz = hpz.add(nz.mul(SHADOW_SURFACE_EPS));
                 const st = averagedShadowTransmission(hx, hy, hz, lx, ly, lz, maxT);
                 shR.assign(st.x);
                 shG.assign(st.y);
@@ -1155,8 +1157,9 @@ export async function createVoxelRayGpuTracePipeline(
 
     const bloomOut = vec4(bloomR, bloomG, bloomB, float(1));
     const beautyOut = vec4(outR, outG, outB, float(1));
-    return select(uPassBloom.greaterThan(float(0.5)), bloomOut, beautyOut);
-  })();
+    shadeOutput.assign(select(uPassBloom.greaterThan(float(0.5)), bloomOut, beautyOut));
+  });
+  shadeOutputFn();
 
   const material = new NodeMaterial();
   material.fragmentNode = shadeOutput;
@@ -1250,15 +1253,18 @@ export async function createVoxelRayGpuTracePipeline(
       renderer.outputColorSpace = ColorManagement.workingColorSpace as ColorSpace;
 
       const prevT = renderer.getRenderTarget();
-      uPassBloom.value = 0;
+      const prevMrt = renderer.getMRT();
+      renderer.setMRT(null);
       renderer.setRenderTarget(beautyTarget);
       renderer.clear(true, false, false);
+      uPassBloom.value = 0;
       renderer.render(scene, ortho);
-      uPassBloom.value = 1;
       renderer.setRenderTarget(bloomTarget);
       renderer.clear(true, false, false);
+      uPassBloom.value = 1;
       renderer.render(scene, ortho);
       renderer.setRenderTarget(prevT);
+      renderer.setMRT(prevMrt);
 
       renderer.toneMapping = prevTm;
       renderer.outputColorSpace = prevCs;

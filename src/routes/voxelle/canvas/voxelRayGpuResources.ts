@@ -23,9 +23,13 @@ export type VoxelRayGpuResources = {
 
 function makeDenseTexture(data: Uint32Array, dims: [number, number, number]): THREE.Data3DTexture {
   const [dx, dy, dz] = dims;
-  const tex = new THREE.Data3DTexture(data, dx, dy, dz);
-  tex.type = THREE.UnsignedIntType;
-  tex.format = THREE.RedIntegerFormat;
+  // WebGPU always declares 3D texture bindings as `texture_3d<f32>` (three.js r183), while
+  // integer formats make TSL infer `uvec4` from `textureLoad` — a WGSL type mismatch. Store the
+  // same uint32 bits in R32Float and recover with `floatBitsToUint` in the ray shader.
+  const floatView = new Float32Array(data.buffer, data.byteOffset, data.length);
+  const tex = new THREE.Data3DTexture(floatView, dx, dy, dz);
+  tex.type = THREE.FloatType;
+  tex.format = THREE.RedFormat;
   tex.minFilter = THREE.NearestFilter;
   tex.magFilter = THREE.NearestFilter;
   tex.unpackAlignment = 1;

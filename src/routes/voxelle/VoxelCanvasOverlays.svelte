@@ -31,6 +31,10 @@
     polygonPointCount: number;
     commitPolygon: () => void;
     cancelPolygon: () => void;
+    wallPolygonPhase: 'placing' | null;
+    wallPolygonPointCount: number;
+    commitWallPolygon: () => void;
+    cancelWallPolygon: () => void;
     solidPolygonPhase: 'placing' | 'depth' | null;
     solidPolygonPointCount: number;
     solidPolygonExtrudable: boolean;
@@ -51,6 +55,9 @@
     insectaPhase: 'pick' | 'shape';
     commitInsectaPlacement: () => void;
     pickAgainInsecta: () => void;
+    faunaPhase: 'pick' | 'shape';
+    commitFaunaPlacement: () => void;
+    pickAgainFauna: () => void;
     ropePhase: 'placing' | 'tension' | null;
     commitRope: () => void;
     cancelRope: () => void;
@@ -101,6 +108,10 @@
     polygonPointCount,
     commitPolygon,
     cancelPolygon,
+    wallPolygonPhase,
+    wallPolygonPointCount,
+    commitWallPolygon,
+    cancelWallPolygon,
     solidPolygonPhase,
     solidPolygonPointCount,
     solidPolygonExtrudable,
@@ -120,6 +131,9 @@
     insectaPhase,
     commitInsectaPlacement,
     pickAgainInsecta,
+    faunaPhase,
+    commitFaunaPlacement,
+    pickAgainFauna,
     ropePhase,
     commitRope,
     cancelRope,
@@ -454,6 +468,30 @@
     </button>
   </div>
 {/if}
+{#if wallPolygonPhase === 'placing' && wallPolygonPointCount >= 2}
+  <div class="polygon-actions" data-voxelle-no-passthrough>
+    <button
+      type="button"
+      class="polygon-done-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => commitWallPolygon()}
+      title="Extrude wall along the polygon outline"
+      aria-label="Apply wall polygon"
+    >
+      Done
+    </button>
+    <button
+      type="button"
+      class="polygon-cancel-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => cancelWallPolygon()}
+      title="Cancel"
+      aria-label="Cancel wall polygon"
+    >
+      Cancel
+    </button>
+  </div>
+{/if}
 {#if solidPolygonPhase === 'placing' && solidPolygonPointCount >= 2}
   <div class="polygon-actions" data-voxelle-no-passthrough>
     <button
@@ -549,6 +587,30 @@
       onclick={() => pickAgainInsecta()}
       title="Cancel"
       aria-label="Cancel"
+    >
+      Cancel
+    </button>
+  </div>
+{/if}
+{#if $tool === 'fauna' && faunaPhase === 'shape'}
+  <div class="polygon-actions" data-voxelle-no-passthrough>
+    <button
+      type="button"
+      class="polygon-done-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => commitFaunaPlacement()}
+      title="Stamp the creature as voxels and exit pose mode"
+      aria-label="Place creature"
+    >
+      Done
+    </button>
+    <button
+      type="button"
+      class="polygon-cancel-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => pickAgainFauna()}
+      title="Discard pose and pick a different face"
+      aria-label="Pick another face"
     >
       Cancel
     </button>

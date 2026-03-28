@@ -13,6 +13,10 @@
       renderingMode.set('greedy');
     }
   });
+
+  const FALLBACK_HEX = '#000000';
+  const HEX6 = /^#[0-9a-fA-F]{6}$/;
+  const safeHexColor = (value: string): string => (HEX6.test(value) ? value : FALLBACK_HEX);
 </script>
 
 <h2>Scene</h2>
@@ -55,7 +59,7 @@
   <input
     id="background-color"
     type="color"
-    value={$backgroundColor}
+    value={safeHexColor($backgroundColor)}
     oninput={(e) => backgroundColor.set((e.target as HTMLInputElement).value)}
   />
 </div>

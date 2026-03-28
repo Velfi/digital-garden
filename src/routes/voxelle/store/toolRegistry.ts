@@ -179,6 +179,13 @@ const DESCRIPTORS: ToolDescriptor[] = [
     defaultPane: 'generators'
   },
   {
+    id: 'fauna',
+    category: 'generator',
+    label: 'Fauna',
+    title: 'Creatures: click a face, shape trunk/neck/head and limbs in the panel, drag pose handles, Done to place',
+    defaultPane: 'generators'
+  },
+  {
     id: 'atmosphere',
     category: 'mood',
     label: 'Atmosphere',

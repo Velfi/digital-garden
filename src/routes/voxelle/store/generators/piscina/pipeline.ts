@@ -16,6 +16,13 @@ import type {
   PiscinaPectoralParams,
   PiscinaTailParams
 } from './types';
+import {
+  buildCreatureAnchorCenter,
+  creatureForwardSideFromNormal,
+  makePiscinaSpineStationBone,
+  unpackCreatureBoneScalars,
+  type ResolvedCreatureBone
+} from '../creatureSkeleton';
 import { clampInt, cross3, normalize3, rotateAroundAxis, smoothstep } from './mathUtils';
 
 export const PISCINA_VOXEL_CAP_MIN = 2200;
@@ -37,34 +44,6 @@ export function computePiscinaVoxelCap(L: number, W: number, T: number): number 
     PISCINA_VOXEL_CAP_MIN,
     Math.min(PISCINA_VOXEL_CAP_MAX, Math.ceil((bodyEst + finEst) * 1.12))
   );
-}
-
-function getTangentVectors(normal: FaceNormal): [FaceNormal, FaceNormal] {
-  const [nx, ny] = normal;
-  if (nx !== 0)
-    return [
-      [0, 1, 0],
-      [0, 0, 1]
-    ];
-  if (ny !== 0)
-    return [
-      [1, 0, 0],
-      [0, 0, 1]
-    ];
-  return [
-    [1, 0, 0],
-    [0, 1, 0]
-  ];
-}
-
-/**
- * `getTangentVectors` returns an arbitrary orthonormal pair in the face plane.
- * Use **second** tangent as nose–tail so horizontal floors (+Y) get spine along **Z** (depth),
- * with **first** tangent as lateral width — matches typical “fish along view depth” placement.
- */
-function piscinaForwardSide(normal: FaceNormal): { forward: FaceNormal; side: FaceNormal } {
-  const [t1, t2] = getTangentVectors(normal);
-  return { forward: t2, side: t1 };
 }
 
 function createRng(seed: number): () => number {
@@ -318,11 +297,8 @@ export function buildPiscinaFrame(
   options: GeneratePiscinaOptions
 ): PiscinaFrame {
   const o = clampOptions(options);
-  const { forward: f, side: s } = piscinaForwardSide(normal);
-  const [px, py, pz] = place;
-  const cx = px + o.anchorOffsetU * f[0] + o.anchorOffsetV * s[0];
-  const cy = py + o.anchorOffsetU * f[1] + o.anchorOffsetV * s[1];
-  const cz = pz + o.anchorOffsetU * f[2] + o.anchorOffsetV * s[2];
+  const { forward: f, side: s } = creatureForwardSideFromNormal(normal);
+  const [cx, cy, cz] = buildCreatureAnchorCenter(place, f, s, o.anchorOffsetU, o.anchorOffsetV);
   return {
     forward: f,
     side: s,
@@ -530,6 +506,8 @@ function collectFishVoxels(
   const maxSkewStepHi = Math.max(0.22, (0.18 * Math.min(L, 24)) / Math.max(L - 1, 1));
   let prevSkewAmt = 0;
 
+  const spineBoneByStation = new Map<string, ResolvedCreatureBone>();
+
   for (let k = 0; k < L; k++) {
     const t = L <= 1 ? 0 : k / (L - 1);
     const px = pxArr[k]!;
@@ -556,6 +534,24 @@ function collectFishVoxels(
     const bx = px + skewAmt * tx;
     const by = py + skewAmt * ty;
     const bz = pz + skewAmt * tz;
+
+    const spineBone = makePiscinaSpineStationBone(
+      k,
+      bx,
+      by,
+      bz,
+      tx,
+      ty,
+      tz,
+      sx,
+      sy,
+      sz,
+      ux,
+      uy,
+      uz
+    );
+    spineBoneByStation.set(spineBone.id, spineBone);
+    const fr = unpackCreatureBoneScalars(spineBone);
 
     const wLim = Math.max(sec.halfSide, sec.halfSidePos, sec.halfSideNeg);
     const tLim = Math.max(sec.halfDorsal, sec.halfVentral);
@@ -624,12 +620,12 @@ function collectFishVoxels(
     );
     const dorsalReach = maxDwD > 0 ? maxDwD + FIN_ROOT_SKIN_NUDGE : sec.halfDorsal;
     const ventralReach = minDwV < 0 ? minDwV - FIN_ROOT_SKIN_NUDGE : -sec.halfVentral;
-    const dorsalRootX = bx + dorsalReach * ux;
-    const dorsalRootY = by + dorsalReach * uy;
-    const dorsalRootZ = bz + dorsalReach * uz;
-    const ventralRootX = bx + ventralReach * ux;
-    const ventralRootY = by + ventralReach * uy;
-    const ventralRootZ = bz + ventralReach * uz;
+    const dorsalRootX = fr.bx + dorsalReach * fr.ux;
+    const dorsalRootY = fr.by + dorsalReach * fr.uy;
+    const dorsalRootZ = fr.bz + dorsalReach * fr.uz;
+    const ventralRootX = fr.bx + ventralReach * fr.ux;
+    const ventralRootY = fr.by + ventralReach * fr.uy;
+    const ventralRootZ = fr.bz + ventralReach * fr.uz;
 
     if (o.showFinDorsal && out.size < voxelCap) {
       const dMin = finB.dorsal.min;
@@ -648,17 +644,17 @@ function collectFishVoxels(
         const envMode = medianFinHeightEnvelope(envH, o.finDorsalMode);
         const finH = Math.max(1, Math.ceil(envMode * dorsalHeightRef(W, T) * 0.44 * mulD));
         const peak = dorsalBaseWing(mulD);
-        let d0x = ux,
-          d0y = uy,
-          d0z = uz;
-        [d0x, d0y, d0z] = rotateAroundAxis(d0x, d0y, d0z, sx, sy, sz, dorsalPitchR);
-        [d0x, d0y, d0z] = rotateAroundAxis(d0x, d0y, d0z, tx, ty, tz, dorsalSweepR);
+        let d0x = fr.ux,
+          d0y = fr.uy,
+          d0z = fr.uz;
+        [d0x, d0y, d0z] = rotateAroundAxis(d0x, d0y, d0z, fr.sx, fr.sy, fr.sz, dorsalPitchR);
+        [d0x, d0y, d0z] = rotateAroundAxis(d0x, d0y, d0z, fr.tx, fr.ty, fr.tz, dorsalSweepR);
         for (let layer = 1; layer <= finH; layer++) {
           const wing = medianFinLateralWing(layer, peak, o.finDorsalMode);
           for (let j = -wing; j <= wing; j++) {
-            const ox = j * sx * 0.9 + layer * d0x;
-            const oy = j * sy * 0.9 + layer * d0y;
-            const oz = j * sz * 0.9 + layer * d0z;
+            const ox = j * fr.sx * 0.9 + layer * d0x;
+            const oy = j * fr.sy * 0.9 + layer * d0y;
+            const oz = j * fr.sz * 0.9 + layer * d0z;
             tryAdd(dorsalRootX + ox, dorsalRootY + oy, dorsalRootZ + oz);
           }
         }
@@ -671,9 +667,9 @@ function collectFishVoxels(
       let finAH = Math.max(1, Math.ceil(envA * 2.85 * mulAd));
       if (o.finAdiposeMode === 'rounded') finAH = Math.max(finAH, Math.ceil(finAH * 1.08));
       if (o.finAdiposeMode === 'ribbon') finAH = Math.ceil(finAH * 1.32);
-      const a0x = ux,
-        a0y = uy,
-        a0z = uz;
+      const a0x = fr.ux,
+        a0y = fr.uy,
+        a0z = fr.uz;
       const peakAd = dorsalBaseWing(mulAd);
       for (let layer = 1; layer <= finAH; layer++) {
         let wing: number;
@@ -684,9 +680,9 @@ function collectFishVoxels(
         }
         for (let j = -wing; j <= wing; j++) {
           tryAdd(
-            dorsalRootX + j * sx * 0.8 + layer * a0x * 0.86,
-            dorsalRootY + j * sy * 0.8 + layer * a0y * 0.86,
-            dorsalRootZ + j * sz * 0.8 + layer * a0z * 0.86
+            dorsalRootX + j * fr.sx * 0.8 + layer * a0x * 0.86,
+            dorsalRootY + j * fr.sy * 0.8 + layer * a0y * 0.86,
+            dorsalRootZ + j * fr.sz * 0.8 + layer * a0z * 0.86
           );
         }
       }
@@ -705,19 +701,19 @@ function collectFishVoxels(
       } else {
         const envMode = medianFinHeightEnvelope(envA, o.finAnalMode);
         const finH = Math.ceil(envMode * Math.min(W + T * 0.35, 22) * 0.28 * mulA);
-        let d0x = -ux,
-          d0y = -uy,
-          d0z = -uz;
-        [d0x, d0y, d0z] = rotateAroundAxis(d0x, d0y, d0z, sx, sy, sz, -analPitchR);
+        let d0x = -fr.ux,
+          d0y = -fr.uy,
+          d0z = -fr.uz;
+        [d0x, d0y, d0z] = rotateAroundAxis(d0x, d0y, d0z, fr.sx, fr.sy, fr.sz, -analPitchR);
         const finHLimited = Math.max(1, finH);
         const peakA = dorsalBaseWing(mulA);
         for (let layer = 1; layer <= finHLimited; layer++) {
           const wing = medianFinLateralWing(layer, peakA, o.finAnalMode);
           for (let j = -wing; j <= wing; j++) {
             tryAdd(
-              ventralRootX + j * sx * 0.85 + layer * d0x,
-              ventralRootY + j * sy * 0.85 + layer * d0y,
-              ventralRootZ + j * sz * 0.85 + layer * d0z
+              ventralRootX + j * fr.sx * 0.85 + layer * d0x,
+              ventralRootY + j * fr.sy * 0.85 + layer * d0y,
+              ventralRootZ + j * fr.sz * 0.85 + layer * d0z
             );
           }
         }
@@ -728,18 +724,18 @@ function collectFishVoxels(
       placeCaudalFinVoxels({
         t,
         tailP,
-        bx,
-        by,
-        bz,
-        tx,
-        ty,
-        tz,
-        ux,
-        uy,
-        uz,
-        sx,
-        sy,
-        sz,
+        bx: fr.bx,
+        by: fr.by,
+        bz: fr.bz,
+        tx: fr.tx,
+        ty: fr.ty,
+        tz: fr.tz,
+        ux: fr.ux,
+        uy: fr.uy,
+        uz: fr.uz,
+        sx: fr.sx,
+        sy: fr.sy,
+        sz: fr.sz,
         L,
         W,
         mulC,
@@ -767,22 +763,22 @@ function collectFishVoxels(
         for (const dir of [-1, 1] as const) {
           const sSkin = dir > 0 ? sec.halfSidePos : sec.halfSideNeg;
           const latMul = pecShape.lateralAttachMul;
-          let pecRx = bx + dir * sSkin * latMul * sx;
-          let pecRy = by + dir * sSkin * latMul * sy;
-          let pecRz = bz + dir * sSkin * latMul * sz;
+          let pecRx = fr.bx + dir * sSkin * latMul * fr.sx;
+          let pecRy = fr.by + dir * sSkin * latMul * fr.sy;
+          let pecRz = fr.bz + dir * sSkin * latMul * fr.sz;
           const belly = pecShape.rootBellyBias + pecShape.ventralDropAdd;
-          pecRx -= ux * belly * 0.46;
-          pecRy -= uy * belly * 0.46;
-          pecRz -= uz * belly * 0.46;
-          let lx = sx,
-            ly = sy,
-            lz = sz;
-          [lx, ly, lz] = rotateAroundAxis(lx, ly, lz, tx, ty, tz, dir * pectoralCantR);
-          [lx, ly, lz] = rotateAroundAxis(lx, ly, lz, ux, uy, uz, dir * pectoralSweepR);
+          pecRx -= fr.ux * belly * 0.46;
+          pecRy -= fr.uy * belly * 0.46;
+          pecRz -= fr.uz * belly * 0.46;
+          let lx = fr.sx,
+            ly = fr.sy,
+            lz = fr.sz;
+          [lx, ly, lz] = rotateAroundAxis(lx, ly, lz, fr.tx, fr.ty, fr.tz, dir * pectoralCantR);
+          [lx, ly, lz] = rotateAroundAxis(lx, ly, lz, fr.ux, fr.uy, fr.uz, dir * pectoralSweepR);
           const hb = pecShape.hangBackDeg * toRad;
           const hd = pecShape.hangDownDeg * toRad;
-          [lx, ly, lz] = rotateAroundAxis(lx, ly, lz, tx, ty, tz, hb);
-          [lx, ly, lz] = rotateAroundAxis(lx, ly, lz, sx, sy, sz, hd);
+          [lx, ly, lz] = rotateAroundAxis(lx, ly, lz, fr.tx, fr.ty, fr.tz, hb);
+          [lx, ly, lz] = rotateAroundAxis(lx, ly, lz, fr.sx, fr.sy, fr.sz, hd);
           for (let a = 1; a <= pecSteps; a++) {
             /** Half of a sin^π envelope along the outboard ray → corn-kernel / elongated oval. */
             const sAlong = a / (pecSteps + 1);
@@ -795,9 +791,9 @@ function collectFishVoxels(
               const uOff = (b - mid) * uStep * kernelW;
               const trail = (b * pecShape.trailPerRow + a * pecShape.trailAlongStep) * kernelW;
               tryAdd(
-                pecRx + dir * a * 0.9 * lx + uOff * ux - trail * tx,
-                pecRy + dir * a * 0.9 * ly + uOff * uy - trail * ty,
-                pecRz + dir * a * 0.9 * lz + uOff * uz - trail * tz
+                pecRx + dir * a * 0.9 * lx + uOff * fr.ux - trail * fr.tx,
+                pecRy + dir * a * 0.9 * ly + uOff * fr.uy - trail * fr.ty,
+                pecRz + dir * a * 0.9 * lz + uOff * fr.uz - trail * fr.tz
               );
             }
           }
@@ -841,12 +837,12 @@ function collectFishVoxels(
         if (dwAtLat >= 0) {
           dvUse = 0;
         }
-        const px0 = bx + dvUse * sx + dwSkin * ux;
-        const py0 = by + dvUse * sy + dwSkin * uy;
-        const pz0 = bz + dvUse * sz + dwSkin * uz;
-        let d0x = -ux * 0.78 + dir * sx * 0.45;
-        let d0y = -uy * 0.78 + dir * sy * 0.45;
-        let d0z = -uz * 0.78 + dir * sz * 0.45;
+        const px0 = fr.bx + dvUse * fr.sx + dwSkin * fr.ux;
+        const py0 = fr.by + dvUse * fr.sy + dwSkin * fr.uy;
+        const pz0 = fr.bz + dvUse * fr.sz + dwSkin * fr.uz;
+        let d0x = -fr.ux * 0.78 + dir * fr.sx * 0.45;
+        let d0y = -fr.uy * 0.78 + dir * fr.sy * 0.45;
+        let d0z = -fr.uz * 0.78 + dir * fr.sz * 0.45;
         [d0x, d0y, d0z] = normalize3(d0x, d0y, d0z);
         for (let layer = 1; layer <= Math.max(1, finPH); layer++) {
           let wing = medianFinLateralWing(layer, peakPv, o.finPelvicMode);
@@ -855,15 +851,17 @@ function collectFishVoxels(
             wing = Math.max(wing, Math.min(2, peakPv));
           for (let j = -wing; j <= wing; j++) {
             tryAdd(
-              px0 + j * sx * 0.52 + layer * d0x * 0.92,
-              py0 + j * sy * 0.52 + layer * d0y * 0.92,
-              pz0 + j * sz * 0.52 + layer * d0z * 0.92
+              px0 + j * fr.sx * 0.52 + layer * d0x * 0.92,
+              py0 + j * fr.sy * 0.52 + layer * d0y * 0.92,
+              pz0 + j * fr.sz * 0.52 + layer * d0z * 0.92
             );
           }
         }
       }
     }
   }
+
+  void spineBoneByStation;
 }
 
 type CaudalCtx = {

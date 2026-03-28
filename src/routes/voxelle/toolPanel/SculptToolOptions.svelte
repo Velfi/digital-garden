@@ -22,17 +22,32 @@
     wallHeight,
     wallLockStartHeight,
     wallAxisAlign,
+    wallAreaShape,
     MAX_BRUSH_SIZE,
     terrainSculptOp,
     terrainBaseY,
     terrainStrength,
     terrainSmoothRadius
   } from '../store/index';
-  import type { SprayDirection } from '../store/index';
+  import type { SprayDirection, WallAreaShape } from '../store/index';
   import { SMOOTH_NEIGHBOR_RADIUS_MAX } from '../sculptOps';
 
   const BRUSH_SIZE_MAX = MAX_BRUSH_SIZE - 1;
   const sculptPanelVisible = $derived($tool === 'sculpt');
+
+  const WALL_AREA_OPTIONS: { id: WallAreaShape; label: string; title: string }[] = [
+    { id: 'brush', label: 'Brush', title: 'Drag a freehand stroke on the surface' },
+    {
+      id: 'circle',
+      label: 'Circle',
+      title: 'Drag from center to edge: hollow ring on the face, extruded into a wall'
+    },
+    {
+      id: 'polygon',
+      label: 'Polygon',
+      title: 'Click corners for a closed outline on the surface, then Done'
+    }
+  ];
 
   const MODES_WITH_BRUSH = new Set([
     'draw',
@@ -458,6 +473,21 @@
       {/if}
     {/if}
     {#if $sculptMode === 'wall'}
+      <div class="tool-panel-row tool-panel-row--section-heading">
+        <span class="tool-panel-label">Area shape</span>
+      </div>
+      <div class="stroke-buttons" role="group" aria-label="Wall area shape">
+        {#each WALL_AREA_OPTIONS as opt (opt.id)}
+          <button
+            type="button"
+            class:active={$wallAreaShape === opt.id}
+            onclick={() => wallAreaShape.set(opt.id)}
+            title={opt.title}
+          >
+            {opt.label}
+          </button>
+        {/each}
+      </div>
       <div class="tool-panel-row">
         <span class="tool-panel-label">Direction</span>
         <select

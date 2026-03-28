@@ -3,12 +3,22 @@ import type { FaceNormal } from '../../core';
 import type { Voxel } from '../../../voxelMaterial';
 import { cloneVoxel } from '../../../voxelMaterial';
 import { clampArticulatedLeg2 } from '../articulatedLeg';
+import {
+  attachArticulatedLegPairVoxels,
+  buildInsectaBodyFrame,
+  buildInsectaLegSkeletonMap,
+  buildInsectaThoraxBone,
+  mergeCreatureBoneMaps,
+  walkDirectedLegSegment,
+  type CreatureVec3,
+  type ResolvedCreatureBone
+} from '../creatureSkeleton';
 import type { ArticulatedLeg2, GenerateInsectaOptions, InsectaSpeciesId } from './types';
 import { INSECTA_INITIAL_LEGS } from './insectaInitialLegs';
 
 export const INSECTA_VOXEL_CAP = 10000;
 
-type Vec3 = [number, number, number];
+type Vec3 = CreatureVec3;
 
 const VALID_SPECIES = new Set<InsectaSpeciesId>([
   'bee',
@@ -17,34 +27,6 @@ const VALID_SPECIES = new Set<InsectaSpeciesId>([
   'fly',
   'junebug'
 ]);
-
-function getTangentVectors(normal: FaceNormal): [FaceNormal, FaceNormal] {
-  const [nx, ny] = normal;
-  if (nx !== 0)
-    return [
-      [0, 1, 0],
-      [0, 0, 1]
-    ];
-  if (ny !== 0)
-    return [
-      [1, 0, 0],
-      [0, 0, 1]
-    ];
-  return [
-    [1, 0, 0],
-    [0, 1, 0]
-  ];
-}
-
-/** Match piscina: second tangent = head→abdomen axis. */
-function forwardSideUp(normal: FaceNormal): { f: Vec3; s: Vec3; u: Vec3 } {
-  const [t1, t2] = getTangentVectors(normal);
-  return {
-    f: [t2[0], t2[1], t2[2]],
-    s: [t1[0], t1[1], t1[2]],
-    u: [normal[0], normal[1], normal[2]]
-  };
-}
 
 function add3(a: Vec3, b: Vec3): Vec3 {
   return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -65,15 +47,6 @@ function normalize3(a: Vec3): Vec3 {
 
 function cross3(a: Vec3, b: Vec3): Vec3 {
   return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-}
-
-function rotateYawInPlane(f: Vec3, s: Vec3, yawDeg: number): { f: Vec3; s: Vec3 } {
-  const rad = (yawDeg * Math.PI) / 180;
-  const c = Math.cos(rad);
-  const si = Math.sin(rad);
-  const nf: Vec3 = [f[0] * c + s[0] * si, f[1] * c + s[1] * si, f[2] * c + s[2] * si];
-  const ns: Vec3 = [s[0] * c - f[0] * si, s[1] * c - f[1] * si, s[2] * c - f[2] * si];
-  return { f: normalize3(nf), s: normalize3(ns) };
 }
 
 function roundP(p: Vec3): [number, number, number] {
@@ -243,84 +216,6 @@ function fillSlice(
   }
 }
 
-/** Step along a world-space direction. Optional rib = second voxel
- * offset along ±s for a thicker femur. Returns the float end point for chaining segments. */
-function walkDirectedLeg(
-  set: Set<string>,
-  start: Vec3,
-  s: Vec3,
-  u: Vec3,
-  dir: Vec3,
-  length: number,
-  cap: number,
-  sideSign: number,
-  rib: boolean
-): Vec3 {
-  if (length <= 0) return start;
-  const d = normalize3(dir);
-  for (let i = 1; i <= length && set.size < cap; i++) {
-    const p = add3(start, scale3(d, i));
-    const [x, y, z] = roundP(p);
-    tryAdd(set, x, y, z, cap);
-    if (rib && set.size < cap) {
-      const q = add3(p, scale3(s, sideSign));
-      const [qx, qy, qz] = roundP(q);
-      tryAdd(set, qx, qy, qz, cap);
-    }
-  }
-  return add3(start, scale3(d, length));
-}
-
-function frameOffsetToWorld(
-  f: Vec3,
-  s: Vec3,
-  u: Vec3,
-  off: readonly [number, number, number],
-  sideSign: number
-): Vec3 {
-  return add3(add3(scale3(f, off[0]), scale3(s, off[1] * sideSign)), scale3(u, off[2]));
-}
-
-/** Final chain tip (float) per mirrored leg; used to equalize ground contact after rest shift. */
-function attachArticulatedLegPair(
-  set: Set<string>,
-  thoraxCenter: Vec3,
-  f: Vec3,
-  s: Vec3,
-  u: Vec3,
-  leg: ArticulatedLeg2,
-  cap: number
-): [Vec3, Vec3] | null {
-  if (!leg.enabled || set.size >= cap) return null;
-  const hip = add3(thoraxCenter, add3(scale3(f, leg.hipU), scale3(s, leg.hipV)));
-  const ends: Vec3[] = [];
-  for (const sideSign of [1, -1] as const) {
-    const wKnee = frameOffsetToWorld(f, s, u, leg.knee, sideSign);
-    const wFoot = frameOffsetToWorld(f, s, u, leg.foot, sideSign);
-    let cursor = hip;
-    const nk = Math.max(0, Math.round(len3(wKnee)));
-    if (nk >= 1) {
-      const d1 = normalize3(wKnee);
-      cursor = walkDirectedLeg(set, cursor, s, u, d1, nk, cap, sideSign, leg.femurRib ?? false);
-    }
-    const nf = Math.max(0, Math.round(len3(wFoot)));
-    if (nf >= 1) {
-      const d2 = normalize3(wFoot);
-      cursor = walkDirectedLeg(set, cursor, s, u, d2, nf, cap, sideSign, false);
-    }
-    if (leg.tarsus) {
-      const wTar = frameOffsetToWorld(f, s, u, leg.tarsus, sideSign);
-      const nt = Math.max(0, Math.round(len3(wTar)));
-      if (nt >= 1) {
-        const d3 = normalize3(wTar);
-        cursor = walkDirectedLeg(set, cursor, s, u, d3, nt, cap, sideSign, false);
-      }
-    }
-    ends.push(cursor);
-  }
-  return [ends[0]!, ends[1]!];
-}
-
 function walkAntenna(
   set: Set<string>,
   root: Vec3,
@@ -429,17 +324,16 @@ function collectInsectaPositionKeys(
   const thoraxLen = Math.max(2, Math.round((L * o.thoraxRatio) / sumR));
   const abdomenLen = Math.max(2, L - headLen - thoraxLen);
 
-  const fsu = forwardSideUp(normal);
-  let { f, s } = fsu;
-  const u = fsu.u;
-  ({ f, s } = rotateYawInPlane(f, s, o.bodyYaw));
-
-  const anchor = add3(
+  const { center: thoraxCenter, forward: f, side: s, up: u } = buildInsectaBodyFrame(
     [place[0], place[1], place[2]],
-    add3(scale3(f, o.anchorOffsetU), scale3(s, o.anchorOffsetV))
+    normal,
+    o.anchorOffsetU,
+    o.anchorOffsetV,
+    o.bodyYaw
   );
 
-  const thoraxCenter = anchor;
+  const thoraxBone = buildInsectaThoraxBone(thoraxCenter, f, s, u);
+  let creatureBoneMap = new Map<string, ResolvedCreatureBone>([[thoraxBone.id, thoraxBone]]);
   const headFront = add3(thoraxCenter, scale3(f, -(thoraxLen / 2 + headLen)));
   const totalSteps = headLen + thoraxLen + abdomenLen;
   const headShape01 = o.headShape / 100;
@@ -494,8 +388,16 @@ function collectInsectaPositionKeys(
   }
 
   const legTips: Vec3[] = [];
-  for (const leg of [o.legFront, o.legMid, o.legHind] as const) {
-    const ends = attachArticulatedLegPair(set, thoraxCenter, f, s, u, leg, cap);
+  for (const [leg, role] of [
+    [o.legFront, 'front'],
+    [o.legMid, 'mid'],
+    [o.legHind, 'hind']
+  ] as const) {
+    creatureBoneMap = mergeCreatureBoneMaps(
+      creatureBoneMap,
+      buildInsectaLegSkeletonMap(thoraxBone, leg, role)
+    );
+    const ends = attachArticulatedLegPairVoxels(set, thoraxCenter, f, s, u, leg, cap);
     if (ends) {
       legTips.push(ends[0], ends[1]);
     }
@@ -511,7 +413,7 @@ function collectInsectaPositionKeys(
     for (const tip of legTips) {
       const extra = Math.max(0, Math.round(dotU(tip) - minTipDot));
       if (extra > 0) {
-        walkDirectedLeg(set, tip, s, u, downDir, extra, cap, 1, false);
+        walkDirectedLegSegment(set, tip, s, downDir, extra, cap, 1, false);
       }
     }
   }
@@ -639,6 +541,7 @@ function collectInsectaPositionKeys(
 
   shiftInsectaKeysAlongOutwardNormal(set, place, u);
 
+  void creatureBoneMap;
   return set;
 }
 

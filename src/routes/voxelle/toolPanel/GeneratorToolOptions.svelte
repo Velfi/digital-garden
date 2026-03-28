@@ -7,6 +7,7 @@
   import FloraOptions from './FloraOptions.svelte';
   import PiscinaOptions from './PiscinaOptions.svelte';
   import InsectaOptions from './InsectaOptions.svelte';
+  import FaunaOptions from './FaunaOptions.svelte';
   import RoofOptions from './RoofOptions.svelte';
   import RopeClothGeneratorOptions from './RopeClothGeneratorOptions.svelte';
 
@@ -21,5 +22,6 @@
   <FloraOptions />
   <PiscinaOptions />
   <InsectaOptions />
+  <FaunaOptions />
   <RoofOptions />
 {/if}

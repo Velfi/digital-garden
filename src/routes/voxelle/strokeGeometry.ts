@@ -2310,6 +2310,34 @@ export function getPolygonVoxels(points: [number, number, number][]): [number, n
   return positions;
 }
 
+/**
+ * Closed polyline along `points` (last edge connects to first). For walls / outlines, not area fill.
+ */
+export function getPolygonClosedOutlineVoxels(
+  points: [number, number, number][]
+): [number, number, number][] {
+  if (points.length === 0) return [];
+  if (points.length === 1) return [points[0]!];
+  if (points.length === 2) {
+    return getBresenham3DLine(points[0]!, points[1]!);
+  }
+  const seen = new Set<string>();
+  const out: [number, number, number][] = [];
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    const a = points[i]!;
+    const b = points[(i + 1) % n]!;
+    for (const p of getBresenham3DLine(a, b)) {
+      const k = `${p[0]},${p[1]},${p[2]}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        out.push(p);
+      }
+    }
+  }
+  return out;
+}
+
 function projectPointOntoPlaneThroughOrigin(
   p: [number, number, number],
   planeOrigin: [number, number, number],

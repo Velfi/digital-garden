@@ -188,6 +188,38 @@ Open the **Sculpt** tab in the sidebar. Names are Blender-inspired, but everythi
 
 ---
 
+## Generators (sidebar **Generators** tab)
+
+Face-click tools: click a face to anchor a preview, tune options in the floating tool panel, then use **Done** on the canvas (or **Enter** in many flows) to place voxels. **Cancel** / pick-again returns to choosing a face. Other generators (e.g. rocks, grass) use their own click or stroke flows—see tooltips in the app.
+
+### Fauna (creatures)
+
+Procedural **bipeds** and **quadrupeds**: trunk, neck, head, and four limbs with IK-based posing.
+
+**Workflow**
+
+1. Choose **Fauna** in Generators, then **click a face** to plant the creature.
+2. Adjust **Creature type** (stance, foot style), **placement on the surface** (angle and slides), **body shape** (spine pieces; trunk, neck, and head length / width / depth; tail), and **limb bone lengths** in the tool panel.
+3. **Drag the colored handles** on the preview: **Chest**, **Neck**, **Head** for the spine; **Tip**, **Elbow/Knee**, **Wrist/Ankle** for each leg (labels match stance). Poles are optional advanced handles if enabled in code.
+4. **Done** stamps the creature; **Enter** also commits in shape phase. Handles hide after placement.
+
+**Sizes**
+
+- **Length** is along the spine (head–tail).
+- **Width** and **Depth** are **half**-thickness in voxels (from the body center out to each side and up/down), so the panel numbers match the generator’s internal `halfWidth` / `halfHeight`.
+
+**Quadruped · Auto feet** (off by default)
+
+- When **Auto feet** is on, foot targets are computed from body measurements so hooves stay under shoulders/hips. **Tip** (foot target) handles are **hidden** while it is on—pose feet using **Elbow/Knee** and **Wrist/Ankle** instead. Turn it off to drag **Tip** handles manually.
+
+**Foot style** (archetype)
+
+- **Plantigrade** — whole foot on the ground.
+- **Digitigrade** — on toes (e.g. dog/walk).
+- **Ungulate** — hooves.
+
+---
+
 ## Symmetry
 
 Use **X**, **Y**, and **Z** symmetry toggles to mirror edits across axes.
@@ -204,6 +236,10 @@ Use **X**, **Y**, and **Z** symmetry toggles to mirror edits across axes.
 ### Sculpt tab
 
 - **Sculpt mode** is a single row of mode buttons. The floating tool panel shows brush strength/falloff and mode-specific options when **Sculpt** is active.
+
+### Generators tab
+
+- Pick a generator (**Rocks**, **Grass**, **Fauna**, **Piscina**, etc.), then follow the tool panel and on-canvas prompts. Face-placement tools (including **Fauna**) use **Done** / **Cancel** at the bottom of the canvas while in shape mode. See **Generators** above for the Fauna workflow.
 
 ### Color
 

@@ -8,7 +8,8 @@ export const GENERATOR_TOOLS = [
   'roof',
   'flora',
   'piscina',
-  'insecta'
+  'insecta',
+  'fauna'
 ] as const;
 
 export type GeneratorToolId = (typeof GENERATOR_TOOLS)[number];
@@ -22,7 +23,8 @@ export const GENERATOR_FACE_CLICK_TOOLS = [
   'ashlar',
   'flora',
   'piscina',
-  'insecta'
+  'insecta',
+  'fauna'
 ] as const;
 
 const FACE_CLICK_SET = new Set<string>(GENERATOR_FACE_CLICK_TOOLS);

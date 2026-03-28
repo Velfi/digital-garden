@@ -14,6 +14,7 @@ import {
   getAxisAlignedCylinder,
   getAxisAlignedCuboid,
   getPolygonVoxels,
+  getPolygonClosedOutlineVoxels,
   getSolidPolygonBasePositions,
   getSolidPolygonStrokeVoxels,
   getRayDirectionPath,
@@ -827,6 +828,34 @@ describe('getPolygonVoxels', () => {
     }
     // Slab bug would fill many voxels (full column per (u,v)); thin triangle should be small
     expect(result.length).toBeLessThanOrEqual(10);
+  });
+});
+
+describe('getPolygonClosedOutlineVoxels', () => {
+  it('empty and single point', () => {
+    expect(getPolygonClosedOutlineVoxels([])).toEqual([]);
+    expect(getPolygonClosedOutlineVoxels([[1, 2, 3]])).toEqual([[1, 2, 3]]);
+  });
+
+  it('two points: open segment only (no duplicate return)', () => {
+    const r = getPolygonClosedOutlineVoxels([
+      [0, 0, 0],
+      [2, 0, 0]
+    ]);
+    expect(r).toHaveLength(3);
+  });
+
+  it('square: outline is smaller than fill', () => {
+    const corners: [number, number, number][] = [
+      [0, 0, 0],
+      [2, 0, 0],
+      [2, 0, 2],
+      [0, 0, 2]
+    ];
+    const outline = getPolygonClosedOutlineVoxels(corners);
+    const fill = getPolygonVoxels(corners);
+    expect(outline.length).toBeLessThan(fill.length);
+    expect(outline.length).toBeGreaterThan(0);
   });
 });
 

@@ -10,6 +10,7 @@ export interface VoxelGeneratorRmbBridge {
   getTool: () => string;
   getPiscinaPhase: () => 'pick' | 'shape';
   getInsectaPhase: () => 'pick' | 'shape';
+  getFaunaPhase: () => 'pick' | 'shape';
   render: () => void;
   randomSeed32: () => number;
   setNextRockSeed: (n: number) => void;
@@ -17,6 +18,7 @@ export interface VoxelGeneratorRmbBridge {
   setNextFloraSeed: (n: number) => void;
   setNextPiscinaSeed: (n: number) => void;
   setNextInsectaSeed: (n: number) => void;
+  setNextFaunaSeed: (n: number) => void;
   setNextAshlarSeed: (n: number) => void;
   getAshlarPlacementSeed: () => number;
   getIntersection: () => Intersection | null | undefined;
@@ -33,6 +35,7 @@ export function buildVoxelGeneratorRmbDeps(b: VoxelGeneratorRmbBridge): Generato
     tool: b.getTool(),
     piscinaPhase: b.getPiscinaPhase(),
     insectaPhase: b.getInsectaPhase(),
+    faunaPhase: b.getFaunaPhase(),
     render: b.render,
     randomSeed32: b.randomSeed32,
     setNextRockSeed: b.setNextRockSeed,
@@ -40,6 +43,7 @@ export function buildVoxelGeneratorRmbDeps(b: VoxelGeneratorRmbBridge): Generato
     setNextFloraSeed: b.setNextFloraSeed,
     setNextPiscinaSeed: b.setNextPiscinaSeed,
     setNextInsectaSeed: b.setNextInsectaSeed,
+    setNextFaunaSeed: b.setNextFaunaSeed,
     setNextAshlarSeed: b.setNextAshlarSeed,
     getAshlarPlacementSeed: b.getAshlarPlacementSeed,
     getIntersection: b.getIntersection,
@@ -57,6 +61,7 @@ export interface VoxelGeneratorPrimaryPointerUpBridge {
   getAddPanelOpen: () => boolean;
   getPiscinaPhase: () => 'pick' | 'shape';
   getInsectaPhase: () => 'pick' | 'shape';
+  getFaunaPhase: () => 'pick' | 'shape';
   getIntersection: () => Intersection | null | undefined;
   updatePointerFromEvent: (e: PointerEvent) => void;
   getAddPosition: (hit: Intersection) => [number, number, number] | null;
@@ -80,6 +85,9 @@ export interface VoxelGeneratorPrimaryPointerUpBridge {
   getNextInsectaSeed: () => number;
   setNextInsectaSeed: (n: number) => void;
   commitInsectaSurfacePick: (place: [number, number, number], normal: FaceNormal) => void;
+  getNextFaunaSeed: () => number;
+  setNextFaunaSeed: (n: number) => void;
+  commitFaunaSurfacePick: (place: [number, number, number], normal: FaceNormal) => void;
   scheduleRender: () => void;
 }
 
@@ -91,6 +99,7 @@ export function buildVoxelGeneratorPrimaryPointerUpDeps(
     addPanelOpen: b.getAddPanelOpen(),
     piscinaPhase: b.getPiscinaPhase(),
     insectaPhase: b.getInsectaPhase(),
+    faunaPhase: b.getFaunaPhase(),
     getIntersection: b.getIntersection,
     updatePointerFromEvent: b.updatePointerFromEvent,
     getAddPosition: b.getAddPosition,
@@ -114,6 +123,9 @@ export function buildVoxelGeneratorPrimaryPointerUpDeps(
     getNextInsectaSeed: b.getNextInsectaSeed,
     setNextInsectaSeed: b.setNextInsectaSeed,
     commitInsectaSurfacePick: b.commitInsectaSurfacePick,
+    getNextFaunaSeed: b.getNextFaunaSeed,
+    setNextFaunaSeed: b.setNextFaunaSeed,
+    commitFaunaSurfacePick: b.commitFaunaSurfacePick,
     scheduleRender: b.scheduleRender
   };
 }

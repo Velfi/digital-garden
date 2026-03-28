@@ -15,6 +15,7 @@ import {
   type GenerateFloraOptions,
   type GeneratePiscinaOptions,
   type GenerateInsectaOptions,
+  type GenerateFaunaOptions,
   type FishSpeciesId,
   type VoxelUpdaterMap,
   commitUndoAfter,
@@ -50,6 +51,7 @@ import {
   generateFloraVoxels,
   generatePiscinaVoxels,
   generateInsectaVoxels,
+  generateFaunaVoxels,
   rockSize,
   rockRoughness,
   rockCount,
@@ -148,6 +150,29 @@ import {
   insectaWingHindSpread,
   insectaWingHindPitch,
   insectaWingHindOffset,
+  faunaStance,
+  faunaArchetype,
+  faunaAutoFootPlacement,
+  faunaAnchorOffsetU,
+  faunaAnchorOffsetV,
+  faunaBodyYaw,
+  faunaBodyArch,
+  faunaSpineSegments,
+  faunaBodyDims,
+  faunaNeckDims,
+  faunaHeadDims,
+  faunaTailLength,
+  faunaShoulderOffsetForward,
+  faunaHipOffsetForward,
+  faunaFrontUpperLength,
+  faunaFrontLowerLength,
+  faunaHindUpperLength,
+  faunaHindLowerLength,
+  faunaLimbTargets,
+  faunaLimbPoles,
+  faunaLimbMids,
+  faunaLimbDistals,
+  faunaSpinePose,
   type InsectaSpeciesId
 } from '../store/index';
 import { applySmooth } from '../sculptOps';
@@ -332,6 +357,34 @@ export function buildInsectaOptionsFromStores(): GenerateInsectaOptions {
     wingHindSpread: get(insectaWingHindSpread) as number,
     wingHindPitch: get(insectaWingHindPitch) as number,
     wingHindOffset: get(insectaWingHindOffset) as number
+  };
+}
+
+export function buildFaunaOptionsFromStores(): GenerateFaunaOptions {
+  return {
+    stance: get(faunaStance),
+    archetype: get(faunaArchetype),
+    autoFootPlacement: get(faunaAutoFootPlacement),
+    anchorOffsetU: get(faunaAnchorOffsetU) as number,
+    anchorOffsetV: get(faunaAnchorOffsetV) as number,
+    bodyYaw: get(faunaBodyYaw) as number,
+    bodyArch: get(faunaBodyArch) as number,
+    spineSegments: get(faunaSpineSegments) as number,
+    bodyDims: get(faunaBodyDims),
+    neckDims: get(faunaNeckDims),
+    headDims: get(faunaHeadDims),
+    tailLength: get(faunaTailLength) as number,
+    shoulderOffsetForward: get(faunaShoulderOffsetForward) as number,
+    hipOffsetForward: get(faunaHipOffsetForward) as number,
+    frontUpperLength: get(faunaFrontUpperLength) as number,
+    frontLowerLength: get(faunaFrontLowerLength) as number,
+    hindUpperLength: get(faunaHindUpperLength) as number,
+    hindLowerLength: get(faunaHindLowerLength) as number,
+    limbTargets: get(faunaLimbTargets),
+    limbPoles: get(faunaLimbPoles),
+    limbMids: get(faunaLimbMids),
+    limbDistals: get(faunaLimbDistals),
+    spinePose: get(faunaSpinePose)
   };
 }
 
@@ -810,6 +863,30 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     });
   }
 
+  function placeFauna(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
+    const getCol = getPaintColorResolver();
+    const options = buildFaunaOptionsFromStores();
+    const map = generateFaunaVoxels(placementSeed, place, normal, options, () => getCol());
+    const allPositions: [number, number, number][] = [];
+    const allVoxelsFauna: Voxel[] = [];
+    for (const [key, vx] of map) {
+      allPositions.push(parseCoordKey(key) as [number, number, number]);
+      allVoxelsFauna.push(vx);
+    }
+    if (allPositions.length === 0) return;
+    ctx.playPlaceSound();
+    ensureGridFitsPositions(allPositions);
+    const boundSize: number | undefined = undefined;
+    runVoxelStroke(() => {
+      updateVoxelsInStroke((v) => {
+        allPositions.forEach(([x, y, z], i) => {
+          if (!inBounds(x, y, z, boundSize)) return;
+          v.set(coordKey(x, y, z), allVoxelsFauna[i]!);
+        });
+      });
+    });
+  }
+
   function placePiscina(
     place: [number, number, number],
     normal: FaceNormal,
@@ -935,6 +1012,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     placeGrass,
     placePiscina,
     placeInsecta,
+    placeFauna,
     placeFlora,
     getPunchPositionsForFace,
     getStampPositionsForFace

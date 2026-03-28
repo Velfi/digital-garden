@@ -20,6 +20,7 @@ export interface GeneratorRmbDeps {
   tool: string;
   piscinaPhase: 'pick' | 'shape';
   insectaPhase: 'pick' | 'shape';
+  faunaPhase: 'pick' | 'shape';
   render: () => void;
   randomSeed32: () => number;
   setNextRockSeed: (n: number) => void;
@@ -27,6 +28,7 @@ export interface GeneratorRmbDeps {
   setNextFloraSeed: (n: number) => void;
   setNextPiscinaSeed: (n: number) => void;
   setNextInsectaSeed: (n: number) => void;
+  setNextFaunaSeed: (n: number) => void;
   setNextAshlarSeed: (n: number) => void;
   /** Seed used for ashlar RMB preview (matches placement semantics). */
   getAshlarPlacementSeed: () => number;
@@ -72,6 +74,14 @@ export function tryHandleGeneratorToolRmb(ctx: GeneratorRmbDeps, event: PointerE
   if (ctx.tool === 'insecta') {
     if (ctx.insectaPhase === 'shape') {
       ctx.setNextInsectaSeed(ctx.randomSeed32());
+    }
+    event.preventDefault();
+    ctx.render();
+    return true;
+  }
+  if (ctx.tool === 'fauna') {
+    if (ctx.faunaPhase === 'shape') {
+      ctx.setNextFaunaSeed(ctx.randomSeed32());
     }
     event.preventDefault();
     ctx.render();
@@ -140,6 +150,7 @@ export interface GeneratorPrimaryPointerUpDeps {
   addPanelOpen: boolean;
   piscinaPhase: 'pick' | 'shape';
   insectaPhase: 'pick' | 'shape';
+  faunaPhase: 'pick' | 'shape';
   getIntersection: () => Intersection | null | undefined;
   updatePointerFromEvent: (e: PointerEvent) => void;
   getAddPosition: (hit: Intersection) => [number, number, number] | null;
@@ -163,6 +174,9 @@ export interface GeneratorPrimaryPointerUpDeps {
   getNextInsectaSeed: () => number;
   setNextInsectaSeed: (n: number) => void;
   commitInsectaSurfacePick: (place: [number, number, number], normal: FaceNormal) => void;
+  getNextFaunaSeed: () => number;
+  setNextFaunaSeed: (n: number) => void;
+  commitFaunaSurfacePick: (place: [number, number, number], normal: FaceNormal) => void;
   scheduleRender: () => void;
 }
 
@@ -247,6 +261,21 @@ export function applyGeneratorFaceClickPointerDown(
       ctx.setNextInsectaSeed(ctx.randomSeed32());
     }
     ctx.commitInsectaSurfacePick(place, normal);
+    ctx.scheduleRender();
+    return;
+  }
+  if (ctx.tool === 'fauna') {
+    ctx.updatePointerFromEvent(event);
+    if (ctx.faunaPhase !== 'pick') return;
+    const hit = ctx.getIntersection();
+    if (!hit) return;
+    const place = ctx.getAddPosition(hit);
+    const normal = ctx.getFaceNormalFromHit(hit);
+    if (!place || !normal) return;
+    if (ctx.getNextFaunaSeed() === 0) {
+      ctx.setNextFaunaSeed(ctx.randomSeed32());
+    }
+    ctx.commitFaunaSurfacePick(place, normal);
     ctx.scheduleRender();
   }
 }

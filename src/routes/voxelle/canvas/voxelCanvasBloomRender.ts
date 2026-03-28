@@ -139,24 +139,15 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
 
   if (webgpuBloomPipeline && isWebGPURenderer(renderer)) {
     const webgpuAtm = prepareWebGPUBloomAtmosphere?.() ?? false;
+    /** Ray: avoid BloomNode TSL (async WebGPU fragment validation errors); glow RT is already traced. */
+    webgpuBloomPipeline.setRayBloomDirectComposite(renderingMode === 'ray' && rayRenderer != null);
     if (rayBloomEligible && rayOut) {
-      scene.background = rayOut.beautyTexture;
-      webgpuBloomPipeline.renderSceneToTarget(
-        renderer as Parameters<WebGPUBloomPipeline['renderSceneToTarget']>[0],
-        scene,
-        camera
+      /** HalfFloat ray textures: avoid `scene.background` + `render()` — WebGPU background shader can fail (invalid fragment module). */
+      webgpuBloomPipeline.blitRayTexturesToBloomTargets(
+        renderer as Parameters<WebGPUBloomPipeline['blitRayTexturesToBloomTargets']>[0],
+        rayOut.beautyTexture,
+        rayOut.bloomTexture
       );
-      const savedWebGpuBloomBg = scene.background;
-      try {
-        scene.background = rayOut.bloomTexture;
-        webgpuBloomPipeline.renderBloomSourceToTarget(
-          renderer as Parameters<WebGPUBloomPipeline['renderBloomSourceToTarget']>[0],
-          scene,
-          camera
-        );
-      } finally {
-        scene.background = savedWebGpuBloomBg;
-      }
       webgpuBloomPipeline.renderPipeline.render();
     } else if (renderingMode !== 'ray') {
       const rw = renderer as Parameters<WebGPUBloomPipeline['renderSceneToTarget']>[0];

@@ -12,6 +12,18 @@ import type { ArticulatedLeg2 } from './generators/articulatedLeg';
 import { cloneArticulatedLeg2 } from './generators/articulatedLeg';
 import { INSECTA_INITIAL_LEGS } from './generators/insecta/insectaInitialLegs';
 import type { PiscinaCaudalTailModeSetting } from './generators/piscina/types';
+import { FAUNA_DEFAULTS } from './generators/fauna/presets';
+import type {
+  FaunaArchetypeId,
+  FaunaLimbId,
+  FaunaPoseDistals,
+  FaunaPoseMids,
+  FaunaPosePoles,
+  FaunaPoseTargets,
+  FaunaSectionDims,
+  FaunaSpinePose,
+  FaunaStanceId
+} from './generators/fauna';
 
 /** Rocks generator: nominal radius (1–8 voxels). */
 export const rockSize = writable<number>(3);
@@ -205,6 +217,48 @@ export const insectaWingHindWidth = writable<number>(3);
 export const insectaWingHindSpread = writable<number>(72);
 export const insectaWingHindPitch = writable<number>(4);
 export const insectaWingHindOffset = writable<number>(-1);
+
+/** Fauna: biped / quadruped mammal-style generator. */
+export type {
+  FaunaArchetypeId,
+  FaunaStanceId,
+  FaunaLimbId,
+  FaunaPoseTargets,
+  FaunaPosePoles,
+  FaunaPoseMids,
+  FaunaPoseDistals
+};
+export const faunaStance = writable<FaunaStanceId>('quadruped');
+export const faunaArchetype = writable<FaunaArchetypeId>(FAUNA_DEFAULTS.quadruped.archetype);
+export const faunaAutoFootPlacement = writable<boolean>(FAUNA_DEFAULTS.quadruped.autoFootPlacement);
+export const faunaAnchorOffsetU = writable<number>(0);
+export const faunaAnchorOffsetV = writable<number>(0);
+export const faunaBodyYaw = writable<number>(0);
+export const faunaBodyArch = writable<number>(FAUNA_DEFAULTS.quadruped.bodyArch);
+export const faunaSpineSegments = writable<number>(FAUNA_DEFAULTS.quadruped.spineSegments);
+export const faunaBodyDims = writable<FaunaSectionDims>({ ...FAUNA_DEFAULTS.quadruped.bodyDims });
+export const faunaNeckDims = writable<FaunaSectionDims>({ ...FAUNA_DEFAULTS.quadruped.neckDims });
+export const faunaHeadDims = writable<FaunaSectionDims>({ ...FAUNA_DEFAULTS.quadruped.headDims });
+export const faunaTailLength = writable<number>(FAUNA_DEFAULTS.quadruped.tailLength);
+export const faunaShoulderOffsetForward = writable<number>(FAUNA_DEFAULTS.quadruped.shoulderOffsetForward);
+export const faunaHipOffsetForward = writable<number>(FAUNA_DEFAULTS.quadruped.hipOffsetForward);
+export const faunaFrontUpperLength = writable<number>(FAUNA_DEFAULTS.quadruped.frontUpperLength);
+export const faunaFrontLowerLength = writable<number>(FAUNA_DEFAULTS.quadruped.frontLowerLength);
+export const faunaHindUpperLength = writable<number>(FAUNA_DEFAULTS.quadruped.hindUpperLength);
+export const faunaHindLowerLength = writable<number>(FAUNA_DEFAULTS.quadruped.hindLowerLength);
+export const faunaLimbTargets = writable<FaunaPoseTargets>({
+  ...FAUNA_DEFAULTS.quadruped.limbTargets
+});
+export const faunaLimbPoles = writable<FaunaPosePoles>({
+  ...FAUNA_DEFAULTS.quadruped.limbPoles
+});
+export const faunaLimbMids = writable<FaunaPoseMids>({
+  ...FAUNA_DEFAULTS.quadruped.limbMids
+});
+export const faunaLimbDistals = writable<FaunaPoseDistals>({
+  ...FAUNA_DEFAULTS.quadruped.limbDistals
+});
+export const faunaSpinePose = writable<FaunaSpinePose>({ ...FAUNA_DEFAULTS.quadruped.spinePose });
 
 /** Roof generator: how the footprint is chosen on the voxel surface. */
 export type RoofSelectionMethodId = 'polygon' | 'circle' | 'square';

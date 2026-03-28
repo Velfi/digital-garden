@@ -57,6 +57,7 @@
     wallHeight,
     wallLockStartHeight,
     wallAxisAlign,
+    wallAreaShape,
     drawBrushShape,
     drawBrushSize,
     drawBrushSnapToSurface,
@@ -210,8 +211,40 @@
     insectaWingHindSpread,
     insectaWingHindPitch,
     insectaWingHindOffset,
+    faunaStance,
+    faunaArchetype,
+    faunaAutoFootPlacement,
+    faunaAnchorOffsetU,
+    faunaAnchorOffsetV,
+    faunaBodyYaw,
+    faunaBodyArch,
+    faunaSpineSegments,
+    faunaBodyDims,
+    faunaNeckDims,
+    faunaHeadDims,
+    faunaTailLength,
+    faunaShoulderOffsetForward,
+    faunaHipOffsetForward,
+    faunaFrontUpperLength,
+    faunaFrontLowerLength,
+    faunaHindUpperLength,
+    faunaHindLowerLength,
+    faunaLimbTargets,
+    faunaLimbPoles,
+    faunaLimbMids,
+    faunaLimbDistals,
+    faunaSpinePose,
     getPiscinaPositions,
     getInsectaPositions,
+    getFaunaPositions,
+    getFaunaResolvedLimbHandlesWorld,
+    getFaunaResolvedSpineHandlesWorld,
+    getFaunaMorphBoneOriginsWorld,
+    faunaLocalDeltaWorld,
+    faunaWorldDeltaToLocal,
+    clampFaunaOptions,
+    getFaunaCenterLift,
+    buildInsectaBodyFrame,
     projectOpenLoading,
     LARGE_PROJECT_OPEN_VOXEL_THRESHOLD,
     beginProjectOpenLoading,
@@ -289,6 +322,7 @@
     getAxisAlignedCylinder,
     getAxisAlignedCuboid,
     getPolygonVoxels,
+    getPolygonClosedOutlineVoxels,
     getSolidPolygonBasePositions,
     getSolidPolygonDepthDeltaDisplay,
     extrudeSolidPolygonBaseAlongNormal,
@@ -434,7 +468,8 @@
     nextRockClusterRng,
     buildFloraOptionsFromStores,
     buildPiscinaOptionsFromStores,
-    buildInsectaOptionsFromStores
+    buildInsectaOptionsFromStores,
+    buildFaunaOptionsFromStores
   } from './canvas/voxelCanvasStrokeCommit';
   import VoxelCanvasOverlays from './VoxelCanvasOverlays.svelte';
 
@@ -547,6 +582,50 @@
     'sprayConstrainToPlane' | 'sprayPlaneAxis' | 'sprayPlaneNormal'
   > {
     return sprayPlaneParamsForFaceNormal(dragFaceNormal);
+  }
+
+  /** Path-thicken params for sculpt wall (preview + commit); `faceNormal` from clicked face. */
+  function pathThickenParamsForWallAtFace(
+    faceNormal: THREE.Vector3 | null,
+    seed: number
+  ): PathThickenParams {
+    const n = faceNormal;
+    return {
+      strokeMode: get(strokeMode),
+      sculptMode: 'wall',
+      sculptBrushRadius: (get(sculptBrushRadius) as number) * 0.5,
+      sculptBrushShape: get(sculptBrushShape),
+      branchTaper: get(branchTaper),
+      branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
+      branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
+      branchBrushProfile: get(branchBrushProfile),
+      branchEndCap: get(branchEndCap),
+      sprayRadius: (get(sprayRadius) as number) * 0.5,
+      sprayScatter: get(sprayScatter),
+      sprayRadiusRange: get(sprayRadiusRange),
+      sprayRadiusMin: get(sprayRadiusMin) * 0.5,
+      sprayRadiusMax: get(sprayRadiusMax) * 0.5,
+      sprayBrushShape: get(sprayBrushShape),
+      ...sprayPlaneParamsForFaceNormal(n),
+      planeAxis: get(planeAxis),
+      sprayDirection: get(sprayDirection),
+      sprayStreakLength: get(sprayStreakLength),
+      wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
+      wallHeight: get(wallHeight),
+      wallFaceNormal: n ? { x: n.x, y: n.y, z: n.z } : undefined,
+      drawBrushShape: get(drawBrushShape),
+      drawBrushSize: get(drawBrushSize) * 0.5,
+      drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+      spraySnapToSurface: get(spraySnapToSurface),
+      drawBrushFaceNormal: n ? { x: n.x, y: n.y, z: n.z } : undefined,
+      seed
+    };
+  }
+
+  /** In-plane shell thickness for hollow wall circle (matches wall width slider, min 1 voxel). */
+  function wallHollowFootprintThickness(): number {
+    const w = get(wallWidth);
+    return Math.max(1, w === 0 ? 1 : w + 1);
   }
 
   function getSprayConstrainPlaneNormalWorld(): THREE.Vector3 | null {
@@ -735,6 +814,8 @@
   let nextPiscinaPlacementSeed = $state(0);
   /** Next insecta placement seed (preview and apply match). */
   let nextInsectaPlacementSeed = $state(0);
+  /** Next fauna placement seed (preview and apply match). */
+  let nextFaunaPlacementSeed = $state(0);
   /** Next ashlar placement seed (preview and apply match). */
   let nextAshlarPlacementSeed = $state(0);
   /** Sculpt path-follow: last sampled position for path accumulation */
@@ -795,6 +876,11 @@
   let polygonPointsMaterial: THREE.MeshBasicMaterial | null = null;
   /** Face normal from the latest polygon anchor click; used with polygon offset along that axis. */
   let polygonPlacementNormal = $state<FaceNormal | null>(null);
+
+  // Sculpt wall + polygon area: click corners, Done (reuses polygon corner mesh / lines)
+  let wallPolygonPoints = $state<[number, number, number][]>([]);
+  let wallPolygonPhase = $state<'placing' | null>(null);
+  let wallPolygonPlacementNormal = $state<FaceNormal | null>(null);
 
   // Solid polygon: place corner loop (projected onto first-click plane), Set depth → depth phase like cuboid
   let solidPolygonPoints = $state<[number, number, number][]>([]);
@@ -867,6 +953,16 @@
   let insectaLockedNormal = $state<FaceNormal | null>(null);
   let insectaHoverPlace = $state<[number, number, number] | null>(null);
   let insectaHoverNormal = $state<FaceNormal | null>(null);
+  /** Fauna shape phase includes draggable IK handles. */
+  let faunaPhase = $state<'pick' | 'shape'>('pick');
+  let faunaLockedPlace = $state<[number, number, number] | null>(null);
+  let faunaLockedNormal = $state<FaceNormal | null>(null);
+  let faunaHoverPlace = $state<[number, number, number] | null>(null);
+  let faunaHoverNormal = $state<FaceNormal | null>(null);
+  let faunaHandleGroup: THREE.Group | null = null;
+  let faunaHandleDragId: string | null = null;
+  let faunaHandleDragPointerId: number | null = null;
+  let faunaHandleDragPlane: THREE.Plane | null = null;
 
   let gridGroup: THREE.Group | null = null;
   let gridLineMaterial: InstanceType<typeof LineMaterial> | THREE.LineBasicMaterial | null = null;
@@ -1650,6 +1746,7 @@
     placeGrass,
     placePiscina,
     placeInsecta,
+    placeFauna,
     placeFlora,
     getPunchPositionsForFace,
     getStampPositionsForFace
@@ -1715,6 +1812,370 @@
     nextInsectaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
     resetInsectaPlacementFlow();
     render();
+  }
+
+  function resetFaunaPlacementFlow() {
+    faunaPhase = 'pick';
+    faunaLockedPlace = null;
+    faunaLockedNormal = null;
+    faunaHoverPlace = null;
+    faunaHoverNormal = null;
+    faunaHandleDragId = null;
+    faunaHandleDragPointerId = null;
+    faunaHandleDragPlane = null;
+    updatePreviewMesh([]);
+    syncFaunaPoseHandles();
+  }
+
+  function pickAgainFauna() {
+    resetFaunaPlacementFlow();
+    render();
+  }
+
+  function commitFaunaPlacement() {
+    if (faunaPhase !== 'shape' || !faunaLockedPlace || !faunaLockedNormal) return;
+    const seed =
+      nextFaunaPlacementSeed === 0 ? Math.floor(Math.random() * 0xffffffff) : nextFaunaPlacementSeed;
+    placeFauna(faunaLockedPlace, faunaLockedNormal, seed);
+    nextFaunaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+    resetFaunaPlacementFlow();
+    render();
+  }
+
+  function getFaunaFrameLocked():
+    | {
+        center: readonly [number, number, number];
+        forward: readonly [number, number, number];
+        side: readonly [number, number, number];
+        up: readonly [number, number, number];
+      }
+    | null {
+    if (!faunaLockedPlace || !faunaLockedNormal) return null;
+    const base = buildInsectaBodyFrame(
+      faunaLockedPlace,
+      faunaLockedNormal,
+      get(faunaAnchorOffsetU),
+      get(faunaAnchorOffsetV),
+      get(faunaBodyYaw)
+    );
+    const lift = getFaunaCenterLift(buildFaunaOptionsFromStores());
+    return {
+      ...base,
+      center: [
+        base.center[0] + base.up[0] * lift,
+        base.center[1] + base.up[1] * lift,
+        base.center[2] + base.up[2] * lift
+      ] as readonly [number, number, number]
+    };
+  }
+
+  function faunaLocalToWorld(
+    frame: {
+      center: readonly [number, number, number];
+      forward: readonly [number, number, number];
+      side: readonly [number, number, number];
+      up: readonly [number, number, number];
+    },
+    local: [number, number, number]
+  ): [number, number, number] {
+    return [
+      frame.center[0] + local[0] * frame.forward[0] + local[1] * frame.side[0] + local[2] * frame.up[0],
+      frame.center[1] + local[0] * frame.forward[1] + local[1] * frame.side[1] + local[2] * frame.up[1],
+      frame.center[2] + local[0] * frame.forward[2] + local[1] * frame.side[2] + local[2] * frame.up[2]
+    ];
+  }
+
+  function faunaWorldToLocal(
+    frame: {
+      center: readonly [number, number, number];
+      forward: readonly [number, number, number];
+      side: readonly [number, number, number];
+      up: readonly [number, number, number];
+    },
+    world: [number, number, number]
+  ): [number, number, number] {
+    const dx = world[0] - frame.center[0];
+    const dy = world[1] - frame.center[1];
+    const dz = world[2] - frame.center[2];
+    return [
+      dx * frame.forward[0] + dy * frame.forward[1] + dz * frame.forward[2],
+      dx * frame.side[0] + dy * frame.side[1] + dz * frame.side[2],
+      dx * frame.up[0] + dy * frame.up[1] + dz * frame.up[2]
+    ];
+  }
+
+  const faunaLabelOffsetRight = new THREE.Vector3();
+  const faunaLabelOffsetUp = new THREE.Vector3();
+  const SHOW_FAUNA_POLE_HANDLES = false;
+
+  function faunaHandleKeyFromIntersectedObject(obj: THREE.Object3D): string | null {
+    let o: THREE.Object3D | null = obj;
+    while (o) {
+      const n = o.name;
+      const mSp = n.match(/^spine:(chest|neck|head)(?::|$)/);
+      if (mSp) {
+        return `spine:${mSp[1]}`;
+      }
+      const m = n.match(/^(target|pole|mid|distal):[^:]+/);
+      if (m) {
+        const key = m[0]!;
+        if (!SHOW_FAUNA_POLE_HANDLES && key.startsWith('pole:')) return null;
+        if (
+          key.startsWith('target:') &&
+          get(faunaStance) === 'quadruped' &&
+          get(faunaAutoFootPlacement)
+        ) {
+          return null;
+        }
+        return key;
+      }
+      o = o.parent;
+    }
+    return null;
+  }
+
+  function createFaunaHandleLabelSprite(text: string, fillHex: string): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    const pad = 5;
+    const fs = 26;
+    const ctx = canvas.getContext('2d')!;
+    ctx.font = `600 ${fs}px system-ui, ui-sans-serif, sans-serif`;
+    const tw = Math.ceil(ctx.measureText(text).width);
+    canvas.width = Math.max(4, tw + pad * 2);
+    canvas.height = fs + pad * 2;
+    ctx.font = `600 ${fs}px system-ui, ui-sans-serif, sans-serif`;
+    ctx.fillStyle = 'rgba(10,10,14,0.78)';
+    if (typeof ctx.roundRect === 'function') {
+      ctx.beginPath();
+      ctx.roundRect(0, 0, canvas.width, canvas.height, 4);
+      ctx.fill();
+    } else {
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    ctx.fillStyle = fillHex;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, pad, canvas.height / 2);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+      sizeAttenuation: true
+    });
+    const sprite = new THREE.Sprite(mat);
+    const sc = 0.011;
+    sprite.scale.set(canvas.width * sc, canvas.height * sc, 1);
+    sprite.renderOrder = 1001;
+    sprite.raycast = () => {};
+    return sprite;
+  }
+
+  function ensureFaunaHandleGroup(
+    key: string,
+    sphereColor: number,
+    radius: number,
+    labelText: string,
+    labelFillHex: string
+  ): THREE.Group {
+    const root = faunaHandleGroup!;
+    let g = root.getObjectByName(key) as THREE.Group | undefined;
+    if (!g) {
+      g = new THREE.Group();
+      g.name = key;
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(radius, 12, 12),
+        new THREE.MeshBasicMaterial({
+          color: sphereColor,
+          depthTest: false,
+          transparent: true,
+          opacity: 0.9
+        })
+      );
+      mesh.name = `${key}:sphere`;
+      mesh.renderOrder = 1000;
+      const sprite = createFaunaHandleLabelSprite(labelText, labelFillHex);
+      sprite.name = `${key}:label`;
+      g.add(mesh);
+      g.add(sprite);
+      root.add(g);
+    }
+    return g;
+  }
+
+  function positionFaunaHandleGroup(
+    group: THREE.Group,
+    wx: number,
+    wy: number,
+    wz: number,
+    cam: THREE.PerspectiveCamera | THREE.OrthographicCamera
+  ): void {
+    group.position.set(wx, wy, wz);
+    const sprite = group.children.find((c): c is THREE.Sprite => c instanceof THREE.Sprite);
+    if (!sprite) return;
+    faunaLabelOffsetRight.set(1, 0, 0).applyQuaternion(cam.quaternion);
+    faunaLabelOffsetUp.set(0, 1, 0).applyQuaternion(cam.quaternion);
+    const s = 0.4;
+    const u = 0.28;
+    sprite.position.set(
+      faunaLabelOffsetRight.x * s + faunaLabelOffsetUp.x * u,
+      faunaLabelOffsetRight.y * s + faunaLabelOffsetUp.y * u,
+      faunaLabelOffsetRight.z * s + faunaLabelOffsetUp.z * u
+    );
+  }
+
+  function faunaHandleLabelText(kind: 'target' | 'pole' | 'mid' | 'distal', limb: string): string {
+    if (kind === 'target') return 'Tip';
+    if (kind === 'pole') return 'Pole';
+    if (kind === 'mid') return limb.startsWith('front') ? 'Elbow' : 'Knee';
+    return limb.startsWith('front') ? 'Wrist' : 'Ankle';
+  }
+
+  function setFaunaPoseValueFromWorld(
+    key: string,
+    world: [number, number, number],
+    frame: {
+      center: readonly [number, number, number];
+      forward: readonly [number, number, number];
+      side: readonly [number, number, number];
+      up: readonly [number, number, number];
+    }
+  ): void {
+    if (key.startsWith('spine:')) {
+      if (!faunaLockedPlace || !faunaLockedNormal) return;
+      const o = clampFaunaOptions(buildFaunaOptionsFromStores());
+      const morph = getFaunaMorphBoneOriginsWorld(faunaLockedPlace, faunaLockedNormal, o);
+      const f = morph.forward;
+      const s = morph.side;
+      const u = morph.up;
+      const pose = get(faunaSpinePose);
+      const part = key.slice('spine:'.length);
+      const clampL = (v: [number, number, number]): [number, number, number] => [
+        Math.max(-24, Math.min(24, v[0])),
+        Math.max(-24, Math.min(24, v[1])),
+        Math.max(-24, Math.min(24, v[2]))
+      ];
+      if (part === 'chest') {
+        const dw: [number, number, number] = [
+          world[0] - morph.chest[0],
+          world[1] - morph.chest[1],
+          world[2] - morph.chest[2]
+        ];
+        faunaSpinePose.set({ ...pose, chest: clampL(faunaWorldDeltaToLocal(f, s, u, dw)) });
+      } else if (part === 'neck') {
+        const ldC = faunaLocalDeltaWorld(f, s, u, pose.chest);
+        const neckBase: [number, number, number] = [
+          morph.neck[0] + ldC[0],
+          morph.neck[1] + ldC[1],
+          morph.neck[2] + ldC[2]
+        ];
+        const dw: [number, number, number] = [
+          world[0] - neckBase[0],
+          world[1] - neckBase[1],
+          world[2] - neckBase[2]
+        ];
+        faunaSpinePose.set({ ...pose, neck: clampL(faunaWorldDeltaToLocal(f, s, u, dw)) });
+      } else if (part === 'head') {
+        const ldC = faunaLocalDeltaWorld(f, s, u, pose.chest);
+        const ldN = faunaLocalDeltaWorld(f, s, u, pose.neck);
+        const headBase: [number, number, number] = [
+          morph.head[0] + ldC[0] + ldN[0],
+          morph.head[1] + ldC[1] + ldN[1],
+          morph.head[2] + ldC[2] + ldN[2]
+        ];
+        const dw: [number, number, number] = [
+          world[0] - headBase[0],
+          world[1] - headBase[1],
+          world[2] - headBase[2]
+        ];
+        faunaSpinePose.set({ ...pose, head: clampL(faunaWorldDeltaToLocal(f, s, u, dw)) });
+      }
+      return;
+    }
+    const local = faunaWorldToLocal(frame, world);
+    const [kind, limb] = key.split(':') as [
+      'target' | 'pole' | 'mid' | 'distal',
+      'frontLeft' | 'frontRight' | 'hindLeft' | 'hindRight'
+    ];
+    if (kind === 'target') {
+      const next = { ...get(faunaLimbTargets), [limb]: local };
+      faunaLimbTargets.set(next);
+    } else if (kind === 'pole') {
+      const next = { ...get(faunaLimbPoles), [limb]: local };
+      faunaLimbPoles.set(next);
+    } else if (kind === 'mid') {
+      const next = { ...get(faunaLimbMids), [limb]: local };
+      faunaLimbMids.set(next);
+    } else {
+      const next = { ...get(faunaLimbDistals), [limb]: local };
+      faunaLimbDistals.set(next);
+    }
+  }
+
+  function syncFaunaPoseHandles(): void {
+    if (!faunaHandleGroup) return;
+    const frame = getFaunaFrameLocked();
+    const enabled = $tool === 'fauna' && faunaPhase === 'shape' && !!frame;
+    faunaHandleGroup.visible = enabled;
+    if (!enabled || !frame || !faunaLockedPlace || !faunaLockedNormal) return;
+    const resolved = getFaunaResolvedLimbHandlesWorld(
+      faunaLockedPlace,
+      faunaLockedNormal,
+      buildFaunaOptionsFromStores()
+    );
+    const ids: ('frontLeft' | 'frontRight' | 'hindLeft' | 'hindRight')[] = [
+      'frontLeft',
+      'frontRight',
+      'hindLeft',
+      'hindRight'
+    ];
+    for (const child of faunaHandleGroup.children) child.visible = false;
+    const cam = camera;
+    const autoFeetHidesTips = get(faunaStance) === 'quadruped' && get(faunaAutoFootPlacement);
+    for (const id of ids) {
+      const targetKey = `target:${id}`;
+      const midKey = `mid:${id}`;
+      const distalKey = `distal:${id}`;
+      const w = resolved[id];
+      const t = w.tip;
+      const m = w.mid;
+      const d = w.distal;
+      const tg = ensureFaunaHandleGroup(targetKey, 0x40e0ff, 0.45, faunaHandleLabelText('target', id), '#c8f4ff');
+      const mg = ensureFaunaHandleGroup(midKey, 0x55ee88, 0.38, faunaHandleLabelText('mid', id), '#d8ffe8');
+      const dg = ensureFaunaHandleGroup(distalKey, 0xee66ff, 0.38, faunaHandleLabelText('distal', id), '#ffd8ff');
+      if (cam) {
+        positionFaunaHandleGroup(tg, t[0], t[1], t[2], cam);
+        positionFaunaHandleGroup(mg, m[0], m[1], m[2], cam);
+        positionFaunaHandleGroup(dg, d[0], d[1], d[2], cam);
+      } else {
+        tg.position.set(t[0], t[1], t[2]);
+        mg.position.set(m[0], m[1], m[2]);
+        dg.position.set(d[0], d[1], d[2]);
+      }
+      tg.visible = !autoFeetHidesTips;
+      mg.visible = true;
+      dg.visible = true;
+    }
+    const spine = getFaunaResolvedSpineHandlesWorld(
+      faunaLockedPlace,
+      faunaLockedNormal,
+      buildFaunaOptionsFromStores()
+    );
+    const spineEntries: [string, [number, number, number], string, string, number][] = [
+      ['spine:chest', spine.chest, 'Chest', '#ffe8a8', 0xffcc44],
+      ['spine:neck', spine.neck, 'Neck', '#fff0cc', 0xffaa66],
+      ['spine:head', spine.head, 'Head', '#fff8e8', 0xffdd88]
+    ];
+    for (const [sk, pos, label, hex, col] of spineEntries) {
+      const g = ensureFaunaHandleGroup(sk, col, 0.4, label, hex);
+      if (cam) {
+        positionFaunaHandleGroup(g, pos[0], pos[1], pos[2], cam);
+      } else {
+        g.position.set(pos[0], pos[1], pos[2]);
+      }
+      g.visible = true;
+    }
   }
 
   function strokePreviewSymmetryExpansionFactor(): number {
@@ -2127,6 +2588,41 @@
     updatePreviewMesh([]);
   }
 
+  function cancelWallPolygon() {
+    wallPolygonPoints = [];
+    wallPolygonPhase = null;
+    wallPolygonPlacementNormal = null;
+    updatePolygonPreview([]);
+    updatePreviewMesh([]);
+  }
+
+  function commitWallPolygon() {
+    if (wallPolygonPoints.length < 2) return;
+    let positions = applyPolygonNormalOffset(
+      getPolygonClosedOutlineVoxels(wallPolygonPoints),
+      wallPolygonPlacementNormal,
+      get(polygonOffsetFromNormal)
+    );
+    if (positions.length === 0) {
+      cancelWallPolygon();
+      return;
+    }
+    const seed = Math.floor(Math.random() * 0xffffffff);
+    const fn = wallPolygonPlacementNormal;
+    const nVec = fn ? new THREE.Vector3(fn[0], fn[1], fn[2]) : null;
+    const toApply = thickenPathForStroke(positions, pathThickenParamsForWallAtFace(nVec, seed));
+    if (toApply.length > 0) {
+      runVoxelStroke(() =>
+        applySculptStroke(toApply, 'wall', {
+          spinePath: positions,
+          strokeSeed: seed
+        })
+      );
+    }
+    cancelWallPolygon();
+    render();
+  }
+
   function cancelRoof() {
     if (isRoofShapeDrag && container && dragPointerId !== null) {
       try {
@@ -2511,6 +3007,9 @@
     if (polygonPhase) {
       cancelPolygon();
     }
+    if (wallPolygonPhase) {
+      cancelWallPolygon();
+    }
     if (solidPolygonPhase) {
       cancelSolidPolygon();
     }
@@ -2579,6 +3078,7 @@
     getTool: () => get(tool),
     getPiscinaPhase: () => piscinaPhase,
     getInsectaPhase: () => insectaPhase,
+    getFaunaPhase: () => faunaPhase,
     render,
     randomSeed32: () => Math.floor(Math.random() * 0xffffffff),
     setNextRockSeed: (n) => {
@@ -2596,6 +3096,9 @@
     setNextInsectaSeed: (n) => {
       nextInsectaPlacementSeed = n;
     },
+    setNextFaunaSeed: (n) => {
+      nextFaunaPlacementSeed = n;
+    },
     setNextAshlarSeed: (n) => {
       nextAshlarPlacementSeed = n;
     },
@@ -2610,11 +3113,13 @@
     shouldCancelActiveGesture: () =>
       !!(
         isVoxelDrag ||
+        faunaHandleDragPointerId !== null ||
         selectionGizmo?.isGizmoDrag ||
         isSegmentedStrokeGestureActive({
           cuboidPhase,
           cylinderPhase,
           polygonPhase,
+          wallPolygonPhase,
           solidPolygonPhase,
           roofPhase,
           ropePhase,
@@ -2629,6 +3134,7 @@
     getAddPanelOpen: () => get(addPanelStore).open,
     getPiscinaPhase: () => piscinaPhase,
     getInsectaPhase: () => insectaPhase,
+    getFaunaPhase: () => faunaPhase,
     getIntersection,
     updatePointerFromEvent,
     getAddPosition,
@@ -2676,6 +3182,17 @@
       insectaHoverNormal = null;
       insectaPhase = 'shape';
     },
+    getNextFaunaSeed: () => nextFaunaPlacementSeed,
+    setNextFaunaSeed: (n) => {
+      nextFaunaPlacementSeed = n;
+    },
+    commitFaunaSurfacePick: (place, normal) => {
+      faunaLockedPlace = place;
+      faunaLockedNormal = normal;
+      faunaHoverPlace = null;
+      faunaHoverNormal = null;
+      faunaPhase = 'shape';
+    },
     scheduleRender: () => requestAnimationFrame(() => markCanvasDirty())
   };
 
@@ -2696,6 +3213,7 @@
           cuboidPhase,
           cylinderPhase,
           polygonPhase,
+          wallPolygonPhase,
           solidPolygonPhase,
           roofPhase,
           ropePhase,
@@ -2716,6 +3234,30 @@
       );
     }
     if ($tool === 'hand' || isMoodTool($tool)) return;
+
+    if ($tool === 'fauna' && faunaPhase === 'shape' && faunaHandleGroup && camera) {
+      updatePointerFromEvent(event);
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(faunaHandleGroup.children, true);
+      if (hits.length > 0) {
+        const hit = hits[0]!;
+        const key = faunaHandleKeyFromIntersectedObject(hit.object);
+        if (key) {
+          const viewNormal = new THREE.Vector3();
+          camera.getWorldDirection(viewNormal);
+          faunaHandleDragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+            viewNormal,
+            hit.point
+          );
+          faunaHandleDragId = key;
+          faunaHandleDragPointerId = event.pointerId;
+          container.setPointerCapture(event.pointerId);
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
+    }
 
     // Cuboid depth phase: pointer down starts drag-to-adjust-depth (anywhere on canvas)
     if (
@@ -2783,7 +3325,11 @@
       cornerPickMesh.count > 0 &&
       ((strokeModeAtPointerDown === 'polygonHull' && polygonPhase) ||
         (strokeModeAtPointerDown === 'polygon' && solidPolygonPhase === 'placing') ||
-        ($tool === 'cloth' && clothPhase === 'placing'));
+        ($tool === 'cloth' && clothPhase === 'placing') ||
+        ($tool === 'sculpt' &&
+          get(sculptMode) === 'wall' &&
+          get(wallAreaShape) === 'polygon' &&
+          wallPolygonPhase));
     if (tryPolygonCornerPick) {
       raycaster.setFromCamera(pointer, cornerPickCamera);
       const cornerHits = raycaster.intersectObject(cornerPickMesh, false);
@@ -2952,6 +3498,41 @@
                 )
               : fill
           );
+        }
+      }
+      requestAnimationFrame(() => render());
+      return;
+    }
+
+    if (
+      $tool === 'sculpt' &&
+      get(sculptMode) === 'wall' &&
+      get(wallAreaShape) === 'polygon'
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (hit.object === polygonPointsMesh && typeof hit.instanceId === 'number') {
+        const idx = hit.instanceId;
+        if (idx >= 0 && idx < wallPolygonPoints.length) {
+          wallPolygonPoints = wallPolygonPoints.filter((_, i) => i !== idx);
+          wallPolygonPhase = wallPolygonPoints.length > 0 ? 'placing' : null;
+          updatePolygonPreview(wallPolygonPoints);
+        }
+      } else {
+        const pos = getVoxelPosition(hit);
+        if (pos) {
+          const existingIdx = wallPolygonPoints.findIndex(
+            ([x, y, z]) => x === pos[0] && y === pos[1] && z === pos[2]
+          );
+          if (existingIdx >= 0) {
+            wallPolygonPoints = wallPolygonPoints.filter((_, i) => i !== existingIdx);
+            wallPolygonPhase = wallPolygonPoints.length > 0 ? 'placing' : null;
+          } else {
+            wallPolygonPhase = 'placing';
+            wallPolygonPoints = [...wallPolygonPoints, pos];
+            wallPolygonPlacementNormal = getFaceNormalFromHit(hit);
+          }
+          updatePolygonPreview(wallPolygonPoints);
         }
       }
       requestAnimationFrame(() => render());
@@ -3140,8 +3721,13 @@
     }
 
     const mode = get(sculptMode);
-    // Sculpt path-following modes: start drag on surface (not branch — separate branch below)
-    if ($tool === 'sculpt' && isSculptDragPathMode(mode)) {
+    // Sculpt path-following modes: start drag on surface (not branch — separate branch below).
+    // Wall circle uses the same drag-to-shape path as draw tools (falls through below).
+    if (
+      $tool === 'sculpt' &&
+      isSculptDragPathMode(mode) &&
+      !(mode === 'wall' && get(wallAreaShape) !== 'brush')
+    ) {
       // Start on voxel surface or face of voxel (extend outward)
       const pos = getVoxelPosition(hit) ?? getAddPosition(hit);
       if (pos) {
@@ -3725,10 +4311,31 @@
       if ($tool === 'hand' || isMoodTool($tool)) {
         resetPiscinaPlacementFlow();
         resetInsectaPlacementFlow();
+        resetFaunaPlacementFlow();
         selectionGizmo?.clearGizmoHoverCursor();
         rollOverMesh.visible = false;
         updatePreviewMesh([]);
         return;
+      }
+      if (
+        event &&
+        faunaHandleDragPointerId === event.pointerId &&
+        faunaHandleDragId &&
+        faunaHandleDragPlane &&
+        camera
+      ) {
+        updatePointerFromEvent(event);
+        raycaster.setFromCamera(pointer, camera);
+        const p = new THREE.Vector3();
+        if (raycaster.ray.intersectPlane(faunaHandleDragPlane, p)) {
+          const frame = getFaunaFrameLocked();
+          if (frame) {
+            setFaunaPoseValueFromWorld(faunaHandleDragId, [p.x, p.y, p.z], frame);
+            syncFaunaPoseHandles();
+            render();
+            return;
+          }
+        }
       }
       if (selectionGizmo?.handlePointerMove(event)) return;
       // Add shape panel: only add-preview ghost; hide active-tool rollover + meshManager preview
@@ -3988,7 +4595,10 @@
               strokeModeVal === 'circle' ||
               strokeModeVal === 'cuboid' ||
               strokeModeVal === 'cylinder' ||
-              isAxisAlignedLine) &&
+              isAxisAlignedLine ||
+              (isSculptDragPathFollow &&
+                sculptPathMode === 'wall' &&
+                get(wallAreaShape) === 'circle')) &&
             dragStartPos
           ) {
             const planeNormal = getEffectivePlaneNormal();
@@ -4051,6 +4661,23 @@
             }
             if (isSculptDragPathFollow || isSprayPath) {
               if (
+                isSculptDragPathFollow &&
+                sculptPathMode === 'wall' &&
+                get(wallAreaShape) === 'circle' &&
+                dragStartPos
+              ) {
+                const n = getEffectivePlaneNormal();
+                if (n) {
+                  pendingStrokePositions = getAxisAlignedCircleFromNormal(
+                    dragStartPos,
+                    currentPos,
+                    n,
+                    true,
+                    wallHollowFootprintThickness()
+                  );
+                  lastBulkPos = currentPos;
+                }
+              } else if (
                 isSculptDragPathFollow &&
                 sculptPathMode === 'wall' &&
                 get(wallAxisAlign) &&
@@ -4233,7 +4860,13 @@
         return;
       }
       // Polygon hull / solid polygon placing / roof / cloth pins: preserve point loop preview, show rollOver for next point
-      if (polygonPhase || solidPolygonPhase === 'placing' || roofPhase || clothPhase === 'placing') {
+      if (
+        polygonPhase ||
+        wallPolygonPhase ||
+        solidPolygonPhase === 'placing' ||
+        roofPhase ||
+        clothPhase === 'placing'
+      ) {
         const hit = getIntersection();
         if (hit && hit.object !== polygonPointsMesh) {
           const pos = $tool === 'voxel' ? getAddPosition(hit) : getVoxelPosition(hit);
@@ -4455,6 +5088,48 @@
           } else {
             insectaHoverPlace = null;
             insectaHoverNormal = null;
+            updatePreviewMesh([]);
+          }
+          rollOverMesh.visible = false;
+        } else {
+          updatePreviewMesh([]);
+          rollOverMesh.visible = false;
+        }
+        render();
+        return;
+      }
+      if ($tool === 'fauna') {
+        if (faunaPhase === 'shape' && faunaLockedPlace && faunaLockedNormal) {
+          if (nextFaunaPlacementSeed === 0) {
+            nextFaunaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+          }
+          const place = faunaLockedPlace;
+          const normal = faunaLockedNormal;
+          const opts = buildFaunaOptionsFromStores();
+          updatePreviewMesh(getFaunaPositions(nextFaunaPlacementSeed, place, normal, opts));
+          syncFaunaPoseHandles();
+          rollOverMesh.visible = false;
+        } else if (faunaPhase === 'pick') {
+          const hit = getIntersection();
+          if (hit) {
+            const place = getAddPosition(hit);
+            const normal = getFaceNormalFromHit(hit);
+            if (place && normal) {
+              if (nextFaunaPlacementSeed === 0) {
+                nextFaunaPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+              }
+              faunaHoverPlace = place;
+              faunaHoverNormal = normal;
+              const opts = buildFaunaOptionsFromStores();
+              updatePreviewMesh(getFaunaPositions(nextFaunaPlacementSeed, place, normal, opts));
+            } else {
+              faunaHoverPlace = null;
+              faunaHoverNormal = null;
+              updatePreviewMesh([]);
+            }
+          } else {
+            faunaHoverPlace = null;
+            faunaHoverNormal = null;
             updatePreviewMesh([]);
           }
           rollOverMesh.visible = false;
@@ -4760,6 +5435,18 @@
 
   async function onPointerUp(event: PointerEvent) {
     if (handleFlyPointerUp(pointerHandlerContext, event)) return;
+    if (faunaHandleDragPointerId === event.pointerId) {
+      try {
+        container.releasePointerCapture(event.pointerId);
+      } catch {
+        /* ignore */
+      }
+      faunaHandleDragPointerId = null;
+      faunaHandleDragId = null;
+      faunaHandleDragPlane = null;
+      render();
+      return;
+    }
     if (depthAdjustPointerId === event.pointerId) {
       try {
         container.releasePointerCapture(event.pointerId);
@@ -4796,6 +5483,7 @@
         cuboidPhase ||
         cylinderPhase ||
         polygonPhase ||
+        wallPolygonPhase ||
         solidPolygonPhase ||
         roofPhase)
     ) {
@@ -5015,6 +5703,11 @@
       render();
       e.preventDefault();
     }
+    if (e.key === 'Escape' && wallPolygonPhase) {
+      cancelWallPolygon();
+      render();
+      e.preventDefault();
+    }
     if (e.key === 'Escape' && solidPolygonPhase) {
       cancelSolidPolygon();
       render();
@@ -5038,6 +5731,10 @@
       pickAgainInsecta();
       e.preventDefault();
     }
+    if (e.key === 'Escape' && get(tool) === 'fauna' && faunaPhase === 'shape') {
+      pickAgainFauna();
+      e.preventDefault();
+    }
     if (e.key === 'Enter' && get(tool) === 'piscina' && piscinaPhase === 'shape') {
       const active = document.activeElement;
       const tag = active?.tagName;
@@ -5051,6 +5748,14 @@
       const tag = active?.tagName;
       if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
         commitInsectaPlacement();
+        e.preventDefault();
+      }
+    }
+    if (e.key === 'Enter' && get(tool) === 'fauna' && faunaPhase === 'shape') {
+      const active = document.activeElement;
+      const tag = active?.tagName;
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+        commitFaunaPlacement();
         e.preventDefault();
       }
     }
@@ -5546,7 +6251,7 @@
     const wantsFog = wantsAtmosphere && !isRay;
     const wantsDistanceTint = get(distanceTintEnabled);
     const wantsGrain = get(grainEnabled);
-    const wantsSunShafts = get(sunShaftsEnabled);
+    const wantsSunShafts = get(sunShaftsEnabled) && !isRay;
     const postDistanceTint = wantsDistanceTint && !isRay;
     const postGrain = wantsGrain && !isRay;
     const wanted = wantsFog || postDistanceTint || postGrain || wantsSunShafts;
@@ -5647,7 +6352,8 @@
         camera,
         container.clientWidth,
         container.clientHeight,
-        renderer.getPixelRatio()
+        renderer.getPixelRatio(),
+        get(renderingMode) === 'ray'
       );
     } catch (e) {
       console.warn('Voxelle: WebGPU TSL bloom disabled', e);
@@ -6059,6 +6765,45 @@
   });
 
   $effect(() => {
+    if (!wallPolygonPhase || wallPolygonPoints.length < 2) return;
+    void wallPolygonPoints;
+    void wallPolygonPlacementNormal;
+    void $wallWidth;
+    void $wallHeight;
+    void $sprayDirection;
+    const syncWallPolyPreview = () => {
+      const outline = getPolygonClosedOutlineVoxels(wallPolygonPoints);
+      const offset =
+        wallPolygonPlacementNormal != null
+          ? applyPolygonNormalOffset(
+              outline,
+              wallPolygonPlacementNormal,
+              get(polygonOffsetFromNormal)
+            )
+          : outline;
+      const fn = wallPolygonPlacementNormal;
+      const nVec = fn ? new THREE.Vector3(fn[0], fn[1], fn[2]) : null;
+      updatePreviewMesh(
+        thickenPathForStroke(offset, pathThickenParamsForWallAtFace(nVec, 0))
+      );
+    };
+    syncWallPolyPreview();
+    return polygonOffsetFromNormal.subscribe(() => syncWallPolyPreview());
+  });
+
+  $effect(() => {
+    void $tool;
+    void $sculptMode;
+    void $wallAreaShape;
+    if (
+      wallPolygonPhase &&
+      (get(tool) !== 'sculpt' || get(sculptMode) !== 'wall' || get(wallAreaShape) !== 'polygon')
+    ) {
+      cancelWallPolygon();
+    }
+  });
+
+  $effect(() => {
     void $voxels;
     void $gridSize;
     void $aoStrength;
@@ -6222,6 +6967,41 @@
     if (!place || !normal) return;
     const opts = buildInsectaOptionsFromStores();
     updatePreviewMesh(getInsectaPositions(nextInsectaPlacementSeed, place, normal, opts));
+    markCanvasDirty();
+  });
+
+  $effect(() => {
+    void $faunaStance;
+    void $faunaArchetype;
+    void $faunaAutoFootPlacement;
+    void $faunaAnchorOffsetU;
+    void $faunaAnchorOffsetV;
+    void $faunaBodyYaw;
+    void $faunaBodyArch;
+    void $faunaSpineSegments;
+    void $faunaBodyDims;
+    void $faunaNeckDims;
+    void $faunaHeadDims;
+    void $faunaTailLength;
+    void $faunaShoulderOffsetForward;
+    void $faunaHipOffsetForward;
+    void $faunaFrontUpperLength;
+    void $faunaFrontLowerLength;
+    void $faunaHindUpperLength;
+    void $faunaHindLowerLength;
+    void $faunaLimbTargets;
+    void $faunaLimbPoles;
+    void $faunaLimbMids;
+    void $faunaLimbDistals;
+    void $faunaSpinePose;
+    void $tool;
+    if ($tool !== 'fauna' || nextFaunaPlacementSeed === 0) return;
+    const place = faunaPhase === 'shape' ? faunaLockedPlace : faunaHoverPlace;
+    const normal = faunaPhase === 'shape' ? faunaLockedNormal : faunaHoverNormal;
+    if (!place || !normal) return;
+    const opts = buildFaunaOptionsFromStores();
+    updatePreviewMesh(getFaunaPositions(nextFaunaPlacementSeed, place, normal, opts));
+    syncFaunaPoseHandles();
     markCanvasDirty();
   });
 
@@ -6443,12 +7223,15 @@
         cuboidPhase !== null ||
         cylinderPhase !== null ||
         polygonPhase !== null ||
+        wallPolygonPhase !== null ||
         solidPolygonPhase !== null ||
         roofPhase !== null ||
         ropePhase !== null ||
         clothPhase !== null ||
         (get(tool) === 'piscina' && piscinaPhase === 'shape') ||
-        (get(tool) === 'insecta' && insectaPhase === 'shape'),
+        (get(tool) === 'insecta' && insectaPhase === 'shape') ||
+        (get(tool) === 'fauna' && faunaPhase === 'shape') ||
+        faunaHandleDragPointerId !== null,
       getSelection: () => get(selection),
       getPointer: () => pointer,
       getCamera: () => camera ?? null,
@@ -6466,6 +7249,9 @@
     moveGizmoGroup = selectionGizmo.createMoveGizmo();
     rotateGizmoGroup = selectionGizmo.createRotateGizmo();
     scene.add(moveGizmoGroup, rotateGizmoGroup, moveDragLine);
+    faunaHandleGroup = new THREE.Group();
+    faunaHandleGroup.name = 'fauna-pose-handles';
+    scene.add(faunaHandleGroup);
 
     window.addEventListener('keydown', handleFlyKeyDown, true);
     window.addEventListener('keydown', onEscapeKeyDown, true);
@@ -6601,6 +7387,12 @@
     if (prevTool !== null && prevTool !== 'insecta' && t === 'insecta') {
       resetInsectaPlacementFlow();
     }
+    if (prevTool === 'fauna' && t !== 'fauna') {
+      resetFaunaPlacementFlow();
+    }
+    if (prevTool !== null && prevTool !== 'fauna' && t === 'fauna') {
+      resetFaunaPlacementFlow();
+    }
     orbitControls.enabled = shouldEnableOrbitControls(t, false);
     flyControls.enabled = isFly;
     document.removeEventListener('mousemove', onFlyPointerMove);
@@ -6625,6 +7417,7 @@
         cuboidPhase,
         cylinderPhase,
         polygonPhase,
+        wallPolygonPhase,
         solidPolygonPhase,
         roofPhase,
         ropePhase,
@@ -6638,6 +7431,7 @@
     if (isHand) {
       resetPiscinaPlacementFlow();
       resetInsectaPlacementFlow();
+      resetFaunaPlacementFlow();
       selectionGizmo?.clearGizmoHoverCursor();
       rollOverMesh.visible = false;
       if (paintHoverMesh) paintHoverMesh.visible = false;
@@ -6648,6 +7442,7 @@
           cuboidPhase,
           cylinderPhase,
           polygonPhase,
+          wallPolygonPhase,
           solidPolygonPhase,
           roofPhase,
           ropePhase,
@@ -6934,6 +7729,10 @@
     polygonPointCount={polygonPoints.length}
     {commitPolygon}
     {cancelPolygon}
+    {wallPolygonPhase}
+    wallPolygonPointCount={wallPolygonPoints.length}
+    {commitWallPolygon}
+    {cancelWallPolygon}
     {solidPolygonPhase}
     solidPolygonPointCount={solidPolygonPoints.length}
     {solidPolygonExtrudable}
@@ -6958,6 +7757,9 @@
     insectaPhase={insectaPhase}
     commitInsectaPlacement={commitInsectaPlacement}
     pickAgainInsecta={pickAgainInsecta}
+    faunaPhase={faunaPhase}
+    commitFaunaPlacement={commitFaunaPlacement}
+    pickAgainFauna={pickAgainFauna}
     {ropePhase}
     {commitRope}
     {cancelRope}

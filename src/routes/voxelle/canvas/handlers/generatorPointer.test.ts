@@ -8,6 +8,7 @@ function baseRmbCtx(over: Partial<GeneratorRmbDeps> = {}): GeneratorRmbDeps {
     tool: 'voxel',
     piscinaPhase: 'pick',
     insectaPhase: 'pick',
+    faunaPhase: 'pick',
     render: vi.fn(),
     randomSeed32: () => 0x12345678,
     setNextRockSeed: vi.fn(),
@@ -15,6 +16,7 @@ function baseRmbCtx(over: Partial<GeneratorRmbDeps> = {}): GeneratorRmbDeps {
     setNextFloraSeed: vi.fn(),
     setNextPiscinaSeed: vi.fn(),
     setNextInsectaSeed: vi.fn(),
+    setNextFaunaSeed: vi.fn(),
     setNextAshlarSeed: vi.fn(),
     getAshlarPlacementSeed: () => 0,
     getIntersection: () => null,
@@ -70,6 +72,7 @@ function baseGeneratorFaceClickCtx(
     addPanelOpen: false,
     piscinaPhase: 'pick',
     insectaPhase: 'pick',
+    faunaPhase: 'pick',
     getIntersection: () => null,
     updatePointerFromEvent: vi.fn(),
     getAddPosition: () => null,
@@ -93,6 +96,9 @@ function baseGeneratorFaceClickCtx(
     getNextInsectaSeed: () => 0,
     setNextInsectaSeed: vi.fn(),
     commitInsectaSurfacePick: vi.fn(),
+    getNextFaunaSeed: () => 0,
+    setNextFaunaSeed: vi.fn(),
+    commitFaunaSurfacePick: vi.fn(),
     scheduleRender: vi.fn(),
     ...over
   };
