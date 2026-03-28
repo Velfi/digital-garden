@@ -17,14 +17,14 @@ export function isRendererBackendPreference(v: unknown): v is RendererBackendPre
 
 export const DEFAULT_RENDERER_BACKEND: RendererBackendPreference = 'auto';
 
-/** Ray trace: GPU TSL when eligible, else CPU progressive. */
-export type RayTraceBackendPreference = 'auto' | 'gpu' | 'cpu';
+/** Ray trace backend selection (explicit, no auto mode). */
+export type RayTraceBackendPreference = 'gpu' | 'cpu';
 
 export function isRayTraceBackendPreference(v: unknown): v is RayTraceBackendPreference {
-  return v === 'auto' || v === 'gpu' || v === 'cpu';
+  return v === 'gpu' || v === 'cpu';
 }
 
-export const DEFAULT_RAY_TRACE_BACKEND: RayTraceBackendPreference = 'auto';
+export const DEFAULT_RAY_TRACE_BACKEND: RayTraceBackendPreference = 'gpu';
 
 export type VoxellePreferences = {
   /** Δx,Δy,Δz tooltip following the pointer during sculpt strokes (branch, depth adjust, etc.). */
@@ -44,10 +44,7 @@ export type VoxellePreferences = {
   showFpsCounter: boolean;
   /** Optional cap for internal render pixel ratio. 0 uses full device pixel ratio. */
   maxPixelRatio: number;
-  /**
-   * Ray mode: `gpu` uses WebGPU TSL when the model is dense-only and has no glass/water; `cpu` always
-   * uses progressive CPU trace; `auto` picks GPU when eligible.
-   */
+  /** Ray mode: `gpu` runs GPU TSL only; `cpu` runs progressive CPU only. */
   rayTraceBackend: RayTraceBackendPreference;
   /** Ray mode: max main-thread ms per frame for CPU progressive (4–32). */
   rayTickBudgetMs: number;
@@ -103,9 +100,12 @@ export function loadPreferences(): VoxellePreferences {
         o.maxPixelRatio >= 0
           ? o.maxPixelRatio
           : DEFAULTS.maxPixelRatio,
-      rayTraceBackend: isRayTraceBackendPreference(o.rayTraceBackend)
-        ? o.rayTraceBackend
-        : DEFAULTS.rayTraceBackend,
+      rayTraceBackend:
+        o.rayTraceBackend === 'auto'
+          ? 'gpu'
+          : isRayTraceBackendPreference(o.rayTraceBackend)
+            ? o.rayTraceBackend
+            : DEFAULTS.rayTraceBackend,
       rayTickBudgetMs:
         typeof o.rayTickBudgetMs === 'number' &&
         Number.isFinite(o.rayTickBudgetMs) &&

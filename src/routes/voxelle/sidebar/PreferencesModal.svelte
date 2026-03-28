@@ -154,8 +154,8 @@
       </label>
       <h4 class="prefs-section-title">Ray mode</h4>
       <p class="field-hint prefs-section-hint">
-        Applies in Scene → Ray (WebGPU). GPU path is used for dense models without glass/water when
-        set to Auto or GPU.
+        Applies in Scene → Ray (WebGPU). Backend selection is explicit: GPU does not fall back to
+        CPU.
       </p>
       <label class="select-label">
         <span class="select-label-text">Ray trace backend</span>
@@ -165,8 +165,7 @@
           onchange={(e) =>
             onRayTraceBackendChange(e.currentTarget.value as RayTraceBackendPreference)}
         >
-          <option value="auto">Auto (GPU when eligible)</option>
-          <option value="gpu">GPU (fallback to CPU if ineligible)</option>
+          <option value="gpu">GPU only</option>
           <option value="cpu">CPU progressive only</option>
         </select>
       </label>

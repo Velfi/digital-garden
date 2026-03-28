@@ -43,6 +43,7 @@ export class VoxelRayTsl {
   private resources: VoxelRayGpuResources | null = null;
   private gpuPipeline: VoxelRayGpuTracePipeline | null = null;
   private gpuInitPromise: Promise<void> | null = null;
+  private gpuUnavailableWarned = false;
   /** Last frame used GPU trace (output textures differ from progressive). */
   private outputIsGpu = false;
 
@@ -109,16 +110,27 @@ export class VoxelRayTsl {
     }
 
     const rayDpr = Math.min(dpr, 1);
-    const backend = tickContext?.rayTraceBackend ?? 'auto';
+    const backend = tickContext?.rayTraceBackend ?? 'gpu';
     const wantGpuTry =
-      backend !== 'cpu' &&
+      backend === 'gpu' &&
       tickContext?.webgpuRenderer &&
       isWebGPURenderer(tickContext.webgpuRenderer) &&
       this.resources &&
       this.resources.mode === 1 &&
       this.resources.denseTexture !== null;
+    const wantGpu = wantGpuTry;
 
-    const wantGpu = wantGpuTry && (backend === 'gpu' || backend === 'auto');
+    if (backend === 'gpu' && !wantGpu) {
+      if (!this.gpuUnavailableWarned) {
+        console.warn(
+          'Voxelle: Ray backend is set to GPU only, but GPU ray tracing is currently ineligible (requires WebGPU renderer + dense acceleration).'
+        );
+        this.gpuUnavailableWarned = true;
+      }
+      this.outputIsGpu = false;
+      return;
+    }
+    this.gpuUnavailableWarned = false;
 
     if (wantGpu) {
       this.scheduleGpuPipelineInit(width, height, rayDpr);
@@ -145,6 +157,8 @@ export class VoxelRayTsl {
         res.denseTexture,
         res.origin,
         res.dims,
+        null,
+        0,
         params,
         maxDist
       );

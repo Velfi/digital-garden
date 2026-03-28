@@ -4,8 +4,10 @@
  */
 import {
   Data3DTexture,
+  DataTexture,
   Matrix4,
   RedFormat,
+  RGBAFormat,
   FloatType,
   Vector3,
   NearestFilter,
@@ -32,6 +34,8 @@ export type VoxelRayGpuTracePipeline = {
     volTex: Data3DTexture,
     origin: readonly [number, number, number],
     dims: readonly [number, number, number],
+    glowEmitterTex: DataTexture | null,
+    glowEmitterCount: number,
     params: VoxelRayTraceParams,
     maxDist: number
   ): void;
@@ -42,12 +46,26 @@ const METAL_MAT = 1;
 const GLASS_MAT = 3;
 const WATER_MAT = 4;
 const GLOW_MAT = 5;
+const MAX_RAY_GLOW_EMITTERS = 64;
+const GLOW_EMISSIVE_LIGHT_RADIUS = 5;
+const GLOW_EMISSIVE_LIGHT_INTENSITY = 2.4;
+const GLOW_EMISSIVE_LIGHT_SOFTNESS = 0.18;
 
 function makePlaceholderVolumeTexture(): Data3DTexture {
   const u32 = new Uint32Array(8);
   const t = new Data3DTexture(new Float32Array(u32.buffer, u32.byteOffset, u32.length), 2, 2, 2);
   t.type = FloatType;
   t.format = RedFormat;
+  t.minFilter = NearestFilter;
+  t.magFilter = NearestFilter;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
+  return t;
+}
+
+function makePlaceholderGlowTexture(): DataTexture {
+  const data = new Float32Array(8);
+  const t = new DataTexture(data, 2, 1, RGBAFormat, FloatType);
   t.minFilter = NearestFilter;
   t.magFilter = NearestFilter;
   t.generateMipmaps = false;
@@ -89,6 +107,7 @@ export async function createVoxelRayGpuTracePipeline(
     Break,
     If,
     texture3D,
+    texture,
     textureLoad,
     abs,
     min,
@@ -106,11 +125,13 @@ export async function createVoxelRayGpuTracePipeline(
     bitAnd,
     shiftRight,
     ivec3,
+    ivec2,
     greaterThan,
     lessThan,
     lessThanEqual,
     or,
     and,
+    not,
     equal,
     exp
   } = tslMod;
@@ -165,7 +186,21 @@ export async function createVoxelRayGpuTracePipeline(
   const uShadowTanHalf = uniform(0);
   const uBufH = uniform(h);
   const uPassBloom = uniform(0);
+  const uGlowEmitterCount = uniform(0);
+  const uDistanceTintEnabled = uniform(0);
+  const uDistanceTintNear = uniform(new Vector3(1, 1, 1));
+  const uDistanceTintMid = uniform(new Vector3(1, 1, 1));
+  const uDistanceTintFar = uniform(new Vector3(1, 1, 1));
+  const uDistanceTintNearDist = uniform(16);
+  const uDistanceTintFarDist = uniform(140);
+  const uDistanceTintStrength = uniform(0);
+  const uGrainEnabled = uniform(0);
+  const uGrainStrength = uniform(0);
+  const uGrainAnimated = uniform(1);
+  const uGrainSpeed = uniform(1);
+  const uGrainColorful = uniform(1);
   const volTex = makePlaceholderVolumeTexture();
+  const glowTex = makePlaceholderGlowTexture();
 
   const TSL_TWO_PI = float(2 * Math.PI);
   const TSL_GOLDEN = float(GOLDEN_ANGLE);
@@ -176,8 +211,13 @@ export async function createVoxelRayGpuTracePipeline(
   const DDA_HIT_EPS = float(1e-5);
   const GLASS_CELL_NUDGE = float(1e-6);
   const SHADOW_SURFACE_EPS = float(2e-4);
+  const WATER_WAVE_AMP1 = float(0.18);
+  const WATER_WAVE_AMP2 = float(0.12);
+  const WATER_WAVE_F1 = float(1.1);
+  const WATER_WAVE_F2 = float(1.75);
 
   const volAcc = texture3D(volTex);
+  const glowAcc = texture(glowTex);
 
   const srgbChannel = (c: ReturnType<typeof float>) => {
     const x = clamp(c, float(0), float(1));
@@ -508,6 +548,65 @@ export async function createVoxelRayGpuTracePipeline(
     return vec3(accR.div(inv), accG.div(inv), accB.div(inv));
   };
 
+  const accumulateGlowDirect = (
+    sx: ReturnType<typeof float>,
+    sy: ReturnType<typeof float>,
+    sz: ReturnType<typeof float>,
+    nx: ReturnType<typeof float>,
+    ny: ReturnType<typeof float>,
+    nz: ReturnType<typeof float>,
+    maxT: ReturnType<typeof float>
+  ) => {
+    const addR = float(0).toVar();
+    const addG = float(0).toVar();
+    const addB = float(0).toVar();
+    If(uGlowEmitterCount.greaterThan(float(0.5)), () => {
+      Loop(
+        { start: int(0), end: int(MAX_RAY_GLOW_EMITTERS), type: 'int', condition: '<' },
+        ({ i }) => {
+          If(float(i).greaterThanEqual(uGlowEmitterCount), () => Break());
+          const idx = int(i).mul(int(2));
+          const posSample = textureLoad(glowAcc, ivec2(idx, int(0)), int(0));
+          const colSample = textureLoad(glowAcc, ivec2(idx.add(int(1)), int(0)), int(0));
+          const dx = posSample.x.sub(sx);
+          const dy = posSample.y.sub(sy);
+          const dz = posSample.z.sub(sz);
+          const d2 = dx.mul(dx).add(dy.mul(dy)).add(dz.mul(dz));
+          const radiusSq = float(GLOW_EMISSIVE_LIGHT_RADIUS * GLOW_EMISSIVE_LIGHT_RADIUS);
+          If(and(d2.greaterThan(float(1e-8)), d2.lessThan(radiusSq)), () => {
+            const dist = sqrt(d2).max(float(1e-4));
+            const invDist = float(1).div(dist);
+            const ldx = dx.mul(invDist);
+            const ldy = dy.mul(invDist);
+            const ldz = dz.mul(invDist);
+            const nDotL = max(float(0), nx.mul(ldx).add(ny.mul(ldy)).add(nz.mul(ldz)));
+            If(nDotL.greaterThan(float(1e-5)), () => {
+              const t = float(1).sub(dist.div(float(GLOW_EMISSIVE_LIGHT_RADIUS)));
+              const window = t.mul(t);
+              const atten = window
+                .mul(float(GLOW_EMISSIVE_LIGHT_INTENSITY))
+                .div(float(1).add(d2.mul(float(GLOW_EMISSIVE_LIGHT_SOFTNESS))));
+              const visR = float(1).toVar();
+              const visG = float(1).toVar();
+              const visB = float(1).toVar();
+              If(uEnableShadows.greaterThan(float(0.5)), () => {
+                const reach = max(float(0), min(maxT, dist.sub(SHADOW_SURFACE_EPS)));
+                const tr = traceShadowTransmissionRgb(sx, sy, sz, ldx, ldy, ldz, reach);
+                visR.assign(tr.x);
+                visG.assign(tr.y);
+                visB.assign(tr.z);
+              });
+              addR.addAssign(colSample.x.mul(atten).mul(nDotL).mul(visR));
+              addG.addAssign(colSample.y.mul(atten).mul(nDotL).mul(visG));
+              addB.addAssign(colSample.z.mul(atten).mul(nDotL).mul(visB));
+            });
+          });
+        }
+      );
+    });
+    return vec3(addR, addG, addB);
+  };
+
   const envReflectDir = (
     reflX: ReturnType<typeof float>,
     reflY: ReturnType<typeof float>,
@@ -631,9 +730,148 @@ export async function createVoxelRayGpuTracePipeline(
     return select(tM.greaterThanEqual(float(1e20)), float(4e-9), tM);
   };
 
+  const waterWaveNormal = (
+    px: ReturnType<typeof float>,
+    pz: ReturnType<typeof float>,
+    signY: ReturnType<typeof float>
+  ) => {
+    const ph1 = WATER_WAVE_F1.mul(px.mul(float(0.85)).add(pz.mul(float(1.05)))).add(
+      uTimeSeconds.mul(float(1.45))
+    );
+    const ph2 = WATER_WAVE_F2.mul(px.mul(float(1.2)).sub(pz.mul(float(0.65)))).add(
+      uTimeSeconds.mul(float(1.05))
+    );
+    const dhdx = WATER_WAVE_AMP1.mul(float(0.85)).mul(WATER_WAVE_F1).mul(cos(ph1)).add(
+      WATER_WAVE_AMP2.mul(float(1.2)).mul(WATER_WAVE_F2).mul(cos(ph2))
+    );
+    const dhdz = WATER_WAVE_AMP1.mul(float(1.05)).mul(WATER_WAVE_F1).mul(cos(ph1)).sub(
+      WATER_WAVE_AMP2.mul(float(0.65)).mul(WATER_WAVE_F2).mul(cos(ph2))
+    );
+    const sy = select(signY.greaterThan(float(0)), float(1), float(-1));
+    const nx = dhdx.negate().mul(sy);
+    const ny = sy;
+    const nz = dhdz.negate().mul(sy);
+    const inv = float(1).div(sqrt(nx.mul(nx).add(ny.mul(ny)).add(nz.mul(nz))).max(float(1e-8)));
+    return vec3(nx.mul(inv), ny.mul(inv), nz.mul(inv));
+  };
+
+  const transmissiveShadingNormal = (
+    matIdx: ReturnType<typeof uint>,
+    ix: ReturnType<typeof int>,
+    iy: ReturnType<typeof int>,
+    iz: ReturnType<typeof int>,
+    hpx: ReturnType<typeof float>,
+    hpz: ReturnType<typeof float>,
+    nx: ReturnType<typeof float>,
+    ny: ReturnType<typeof float>,
+    nz: ReturnType<typeof float>
+  ) => {
+    const sx = nx.toVar();
+    const sy = ny.toVar();
+    const sz = nz.toVar();
+    If(matIdx.equal(uint(WATER_MAT)), () => {
+      const axisAlignedTopBottom = and(abs(sy).greaterThanEqual(float(0.8)), and(equal(sx, float(0)), equal(sz, float(0))));
+      If(axisAlignedTopBottom, () => {
+        const neigh = fetchPacked(ix.add(int(sx)), iy.add(int(sy)), iz.add(int(sz)));
+        const neighMatEnc = shiftRight(neigh, uint(24));
+        const neighWater = and(
+          greaterThan(neighMatEnc, uint(0)),
+          uint(neighMatEnc.sub(uint(1))).equal(uint(WATER_MAT))
+        );
+        If(not(neighWater), () => {
+          const wN = waterWaveNormal(hpx, hpz, sy);
+          sx.assign(wN.x);
+          sy.assign(wN.y);
+          sz.assign(wN.z);
+        });
+      });
+    });
+    return vec3(sx, sy, sz);
+  };
+
+  const applyRayPostMood = (
+    inR: ReturnType<typeof float>,
+    inG: ReturnType<typeof float>,
+    inB: ReturnType<typeof float>,
+    su: ReturnType<typeof float>,
+    sv: ReturnType<typeof float>,
+    travelDist: ReturnType<typeof float>
+  ) => {
+    const pr = inR.toVar();
+    const pg = inG.toVar();
+    const pb = inB.toVar();
+    If(uDistanceTintEnabled.greaterThan(float(0.5)), () => {
+      const nearT = clamp(
+        travelDist.div(max(float(0.001), uDistanceTintNearDist)),
+        float(0),
+        float(1)
+      );
+      const farSpan = max(float(1), uDistanceTintFarDist.sub(uDistanceTintNearDist));
+      const farT = clamp(travelDist.sub(uDistanceTintNearDist).div(farSpan), float(0), float(1));
+      const tintA = vec3(
+        mix(uDistanceTintNear.x, uDistanceTintMid.x, nearT),
+        mix(uDistanceTintNear.y, uDistanceTintMid.y, nearT),
+        mix(uDistanceTintNear.z, uDistanceTintMid.z, nearT)
+      );
+      const tint = vec3(
+        mix(tintA.x, uDistanceTintFar.x, farT),
+        mix(tintA.y, uDistanceTintFar.y, farT),
+        mix(tintA.z, uDistanceTintFar.z, farT)
+      );
+      const s = clamp(uDistanceTintStrength, float(0), float(1));
+      pr.assign(mix(pr, tint.x, s));
+      pg.assign(mix(pg, tint.y, s));
+      pb.assign(mix(pb, tint.z, s));
+    });
+    If(and(uGrainEnabled.greaterThan(float(0.5)), uGrainStrength.greaterThan(float(0))), () => {
+      const tt = select(
+        uGrainAnimated.greaterThan(float(0.5)),
+        uTimeSeconds.mul(uGrainSpeed),
+        float(0)
+      );
+      const s = uGrainStrength;
+      const fract01 = (x: ReturnType<typeof float>) => fract(x);
+      If(uGrainColorful.greaterThan(float(0.5)), () => {
+        const n1 = fract01(
+          sin(su.add(tt.mul(float(0.37))).mul(float(12.9898)).add(sv.add(tt.mul(float(0.19))).mul(float(78.233)))).mul(float(43758.5453))
+        );
+        const n2 = fract01(
+          sin(
+            su
+              .add(tt.mul(float(0.41)))
+              .add(float(19.19))
+              .mul(float(93.9898))
+              .add(sv.add(tt.mul(float(0.23))).add(float(73.73)).mul(float(67.345)))
+          ).mul(float(24634.6345))
+        );
+        const n3 = fract01(
+          sin(
+            su
+              .add(tt.mul(float(0.29)))
+              .add(float(47.77))
+              .mul(float(27.123))
+              .add(sv.add(tt.mul(float(0.31))).add(float(11.13)).mul(float(98.456)))
+          ).mul(float(56445.2345))
+        );
+        pr.addAssign(n1.sub(float(0.5)).mul(s));
+        pg.addAssign(n2.sub(float(0.5)).mul(s));
+        pb.addAssign(n3.sub(float(0.5)).mul(s));
+      }).Else(() => {
+        const n = fract01(
+          sin(su.add(tt.mul(float(0.37))).mul(float(12.9898)).add(sv.add(tt.mul(float(0.19))).mul(float(78.233)))).mul(float(43758.5453))
+        );
+        const gn = n.sub(float(0.5)).mul(s);
+        pr.addAssign(gn);
+        pg.addAssign(gn);
+        pb.addAssign(gn);
+      });
+    });
+    return vec3(pr, pg, pb);
+  };
+
   /**
    * One transmissive slab traversal: entry/exit Fresnel, Beer–Lambert column merge, advance ray origin.
-   * Aligns with `traceAndShade` / `voxelRayProgressive` (no water cap-wave normal on GPU yet — face normal).
+   * Aligns with `traceAndShade` / `voxelRayProgressive` (including exposed top/bottom water wave normal).
    */
   const accumulateGlassInterface = (
     matIdx: ReturnType<typeof uint>,
@@ -772,12 +1010,11 @@ export async function createVoxelRayGpuTracePipeline(
     );
   };
 
-  const shadeOutput = vec4(0, 0, 0, 1).toVar();
   const shadeOutputFn = Fn(() => {
     const suv = uv();
     const ndcX = suv.x.mul(float(2)).sub(float(1));
-    // Match CPU path (`VoxelRayProgressive.setRayFromPixel`): NDC Y is flipped.
-    const ndcY = float(1).sub(suv.y.mul(float(2)));
+    // Quad UVs are bottom-left origin here; map directly to clip-space Y to match CPU rays.
+    const ndcY = suv.y.mul(float(2)).sub(float(1));
     const clip = vec4(ndcX, ndcY, float(0.5), float(1));
     const pw = uClipToWorld.mul(clip);
     const pWorld = pw.xyz.div(pw.w.max(float(1e-6)));
@@ -892,15 +1129,16 @@ export async function createVoxelRayGpuTracePipeline(
             .Else(() => {
               nz0.assign(select(greaterThan(rdz.negate(), float(0)), float(1), float(-1)));
             });
+          const sN0 = transmissiveShadingNormal(matIdx, x, y, z, oox, ooz, nx0, ny0, nz0);
           accumulateGlassInterface(
             matIdx,
             pkStart,
             x,
             y,
             z,
-            nx0,
-            ny0,
-            nz0,
+            sN0.x,
+            sN0.y,
+            sN0.z,
             float(0),
             oox,
             ooy,
@@ -959,6 +1197,15 @@ export async function createVoxelRayGpuTracePipeline(
           const dr = cr.mul(uAmbient.x).add(cr.mul(uSunDiffuse.x).mul(ndotl).mul(shR));
           const dg = cg.mul(uAmbient.y).add(cg.mul(uSunDiffuse.y).mul(ndotl).mul(shG));
           const db = cb.mul(uAmbient.z).add(cb.mul(uSunDiffuse.z).mul(ndotl).mul(shB));
+          const eAdd = accumulateGlowDirect(
+            oox.add(nx.mul(SHADOW_SURFACE_EPS)),
+            ooy.add(ny.mul(SHADOW_SURFACE_EPS)),
+            ooz.add(nz.mul(SHADOW_SURFACE_EPS)),
+            nx,
+            ny,
+            nz,
+            maxT
+          );
           const isMetal = matIdx.equal(uint(METAL_MAT));
           const isGlow = matIdx.equal(uint(GLOW_MAT));
           const vx = rdx.negate();
@@ -972,9 +1219,9 @@ export async function createVoxelRayGpuTracePipeline(
           const dMetalR = dr.add(sp.mul(uSunDiffuse.x).mul(shR));
           const dMetalG = dg.add(sp.mul(uSunDiffuse.y).mul(shG));
           const dMetalB = db.add(sp.mul(uSunDiffuse.z).mul(shB));
-          const dFinalR = select(isMetal, dMetalR, dr);
-          const dFinalG = select(isMetal, dMetalG, dg);
-          const dFinalB = select(isMetal, dMetalB, db);
+          const dFinalR = select(isMetal, dMetalR, dr).add(eAdd.x);
+          const dFinalG = select(isMetal, dMetalG, dg).add(eAdd.y);
+          const dFinalB = select(isMetal, dMetalB, db).add(eAdd.z);
           const addR = cr.mul(float(0.85));
           const addG = cg.mul(float(0.85));
           const addB = cb.mul(float(0.85));
@@ -1034,15 +1281,16 @@ export async function createVoxelRayGpuTracePipeline(
                 nz.assign(select(greaterThan(stepZ, int(0)), float(-1), float(1)));
               });
             If(isTransmissiveIdx(matIdx), () => {
+              const sN = transmissiveShadingNormal(matIdx, x, y, z, hpx, hpz, nx, ny, nz);
               accumulateGlassInterface(
                 matIdx,
                 pk,
                 x,
                 y,
                 z,
-                nx,
-                ny,
-                nz,
+                sN.x,
+                sN.y,
+                sN.z,
                 tHit,
                 hpx,
                 hpy,
@@ -1088,6 +1336,15 @@ export async function createVoxelRayGpuTracePipeline(
               const dr = cr.mul(uAmbient.x).add(cr.mul(uSunDiffuse.x).mul(ndotl).mul(shR));
               const dg = cg.mul(uAmbient.y).add(cg.mul(uSunDiffuse.y).mul(ndotl).mul(shG));
               const db = cb.mul(uAmbient.z).add(cb.mul(uSunDiffuse.z).mul(ndotl).mul(shB));
+              const eAdd = accumulateGlowDirect(
+                hpx.add(nx.mul(SHADOW_SURFACE_EPS)),
+                hpy.add(ny.mul(SHADOW_SURFACE_EPS)),
+                hpz.add(nz.mul(SHADOW_SURFACE_EPS)),
+                nx,
+                ny,
+                nz,
+                maxT
+              );
               const isMetal = matIdx.equal(uint(METAL_MAT));
               const isGlow = matIdx.equal(uint(GLOW_MAT));
               const vx = rdx.negate();
@@ -1101,9 +1358,9 @@ export async function createVoxelRayGpuTracePipeline(
               const dMetalR = dr.add(sp.mul(uSunDiffuse.x).mul(shR));
               const dMetalG = dg.add(sp.mul(uSunDiffuse.y).mul(shG));
               const dMetalB = db.add(sp.mul(uSunDiffuse.z).mul(shB));
-              const dFinalR = select(isMetal, dMetalR, dr);
-              const dFinalG = select(isMetal, dMetalG, dg);
-              const dFinalB = select(isMetal, dMetalB, db);
+              const dFinalR = select(isMetal, dMetalR, dr).add(eAdd.x);
+              const dFinalG = select(isMetal, dMetalG, dg).add(eAdd.y);
+              const dFinalB = select(isMetal, dMetalB, db).add(eAdd.z);
               const addR = cr.mul(float(0.85));
               const addG = cg.mul(float(0.85));
               const addB = cb.mul(float(0.85));
@@ -1155,14 +1412,21 @@ export async function createVoxelRayGpuTracePipeline(
       outB.assign(accB.add(tb.mul(miss.z)));
     });
 
+    const post = applyRayPostMood(
+      outR,
+      outG,
+      outB,
+      suv.x,
+      suv.y,
+      uMaxDist.mul(float(0.5))
+    );
     const bloomOut = vec4(bloomR, bloomG, bloomB, float(1));
-    const beautyOut = vec4(outR, outG, outB, float(1));
-    shadeOutput.assign(select(uPassBloom.greaterThan(float(0.5)), bloomOut, beautyOut));
+    const beautyOut = vec4(post.x, post.y, post.z, float(1));
+    return select(uPassBloom.greaterThan(float(0.5)), bloomOut, beautyOut);
   });
-  shadeOutputFn();
 
   const material = new NodeMaterial();
-  material.fragmentNode = shadeOutput;
+  material.fragmentNode = shadeOutputFn();
   material.toneMapped = false;
   material.depthTest = false;
   material.depthWrite = false;
@@ -1192,10 +1456,14 @@ export async function createVoxelRayGpuTracePipeline(
       volTex: Data3DTexture,
       origin: readonly [number, number, number],
       dims: readonly [number, number, number],
+      glowEmitterTex: DataTexture | null,
+      glowEmitterCount: number,
       params: VoxelRayTraceParams,
       maxDist: number
     ) {
       volAcc.value = volTex;
+      glowAcc.value = glowEmitterTex ?? glowTex;
+      uGlowEmitterCount.value = Math.max(0, Math.min(MAX_RAY_GLOW_EMITTERS, glowEmitterCount | 0));
       clipToWorldScratch.multiplyMatrices(camera.matrixWorld, camera.projectionMatrixInverse);
       uClipToWorld.value.copy(clipToWorldScratch);
       uCamPos.value.setFromMatrixPosition(camera.matrixWorld);
@@ -1210,6 +1478,30 @@ export async function createVoxelRayGpuTracePipeline(
       uMaxDist.value = maxDist;
       uShadowSamples.value = clampShadowSamples(params.shadowRaySamples);
       uShadowTanHalf.value = shadowConeTanFromRadians(params.shadowSoftnessRadians);
+      uDistanceTintEnabled.value = params.distanceTintEnabled ? 1 : 0;
+      uDistanceTintNear.value.set(
+        params.distanceTintNearColor[0],
+        params.distanceTintNearColor[1],
+        params.distanceTintNearColor[2]
+      );
+      uDistanceTintMid.value.set(
+        params.distanceTintMidColor[0],
+        params.distanceTintMidColor[1],
+        params.distanceTintMidColor[2]
+      );
+      uDistanceTintFar.value.set(
+        params.distanceTintFarColor[0],
+        params.distanceTintFarColor[1],
+        params.distanceTintFarColor[2]
+      );
+      uDistanceTintNearDist.value = params.distanceTintNearDist;
+      uDistanceTintFarDist.value = params.distanceTintFarDist;
+      uDistanceTintStrength.value = params.distanceTintStrength;
+      uGrainEnabled.value = params.grainEnabled ? 1 : 0;
+      uGrainStrength.value = params.grainStrength;
+      uGrainAnimated.value = params.grainAnimated ? 1 : 0;
+      uGrainSpeed.value = params.grainSpeed;
+      uGrainColorful.value = params.grainColorful ? 1 : 0;
       const sky = 0x9ec8f0;
       const grnd = 0x4a5568;
       const tr = ((sky >> 16) & 255) / 255;
@@ -1274,6 +1566,7 @@ export async function createVoxelRayGpuTracePipeline(
       bloomTarget.dispose();
       material.dispose();
       volAcc.value.dispose();
+      glowAcc.value.dispose();
     }
   };
 }
