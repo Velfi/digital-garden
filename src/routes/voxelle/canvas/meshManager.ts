@@ -91,7 +91,7 @@ export interface MeshManagerCallbacks {
 const CHUNK_THRESHOLD = 50000;
 const LARGE_REBUILD_DEFER_THRESHOLD = 150000;
 const SPINNER_DELAY_MS = 2000;
-const INCREMENTAL_REBUILD_MAX_DIRTY_KEYS = 2048;
+const INCREMENTAL_REBUILD_MAX_DIRTY_CHUNKS = 256;
 const INCREMENTAL_GRID_MAX_DIRTY_KEYS = 256;
 const SELECTION_OVERLAY_HEX = 0x3399ff;
 const GRID_SURFACE_LIFT = 0.01;
@@ -101,6 +101,19 @@ const PREVIEW_BORDER_HEX = 0x0f172a;
 const PREVIEW_BORDER_OPACITY = 0.88;
 const PREVIEW_PROXY_CYLINDER_SEGMENTS = 40;
 const SELECTION_PROXY_MIN_RADIUS = 0.25;
+
+/** Sampled rolling hash for preview dedupe (collision possible but very unlikely). */
+function quickPreviewPositionsHash(positions: [number, number, number][]): number {
+  let h = positions.length | 0;
+  const step = Math.max(1, Math.floor(positions.length / 64));
+  for (let i = 0; i < positions.length; i += step) {
+    const p = positions[i]!;
+    h = Math.imul(h, 31) + p[0];
+    h = Math.imul(h, 31) + p[1];
+    h = Math.imul(h, 31) + p[2];
+  }
+  return h | 0;
+}
 
 /**
  * Max linear-depth bias in the shadow pass when net transmittance is 1 (non-reversed Z: pushes clip z
@@ -302,6 +315,14 @@ export function createMeshManager(
   let previewBorderLines: THREE.LineSegments | null = null;
   let previewBorderMaterial: THREE.LineBasicMaterial | null = null;
   let spinnerTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  let lastPreviewMeshDedupe: {
+    len: number;
+    posHash: number;
+    existingRef: Map<string, Voxel> | undefined;
+    overlap: PreviewOverlapShading;
+    optsSig: string;
+  } | null = null;
 
   const workerRequestStartByGen = new Map<number, number>();
   const gridEdgeSegments = new Map<string, [number, number, number, number, number, number]>();
@@ -703,8 +724,20 @@ export function createMeshManager(
       callbacks.onSpinnerChange(true);
     }, SPINNER_DELAY_MS);
     const chunkSize = v.size >= CHUNK_THRESHOLD ? 32 : 0;
+    let dirtyChunkIds: string[] = [];
+    let haloChunkIds: string[] = [];
+    if (chunkSize >= 16 && dirtyKeys.size > 0) {
+      const derived = deriveDirtyAndHaloChunkIds(dirtyKeys, chunkSize, {
+        aoStrength: opts.aoStrength,
+        highScaleScene: v.size >= 500000
+      });
+      dirtyChunkIds = derived.dirtyChunkIds;
+      haloChunkIds = derived.haloChunkIds;
+    }
     const useIncrementalDirty =
-      chunkSize >= 16 && dirtyKeys.size > 0 && dirtyKeys.size <= INCREMENTAL_REBUILD_MAX_DIRTY_KEYS;
+      chunkSize >= 16 &&
+      dirtyChunkIds.length > 0 &&
+      dirtyChunkIds.length <= INCREMENTAL_REBUILD_MAX_DIRTY_CHUNKS;
     const postToWorker = () => {
       if (!meshWorker || gen !== meshRebuildGen) return;
       const tPack = voxellePerfEnabled() ? perfNow() : 0;
@@ -712,10 +745,6 @@ export function createMeshManager(
       markEditMeshRequested(requestStart);
       workerRequestStartByGen.set(gen, requestStart);
       if (useIncrementalDirty) {
-        const { dirtyChunkIds, haloChunkIds } = deriveDirtyAndHaloChunkIds(dirtyKeys, chunkSize, {
-          aoStrength: opts.aoStrength,
-          highScaleScene: v.size >= 500000
-        });
         markEditTransferStats({
           dirtyChunkCount: dirtyChunkIds.length,
           haloChunkCount: haloChunkIds.length
@@ -1090,6 +1119,7 @@ export function createMeshManager(
     voxel: Voxel,
     cylVol?: CylinderPreviewVolume | null
   ) {
+    lastPreviewMeshDedupe = null;
     if (!previewMesh || !previewMaterial) return;
     applyPreviewSurfaceStyle('ghost');
     const wx = bounds.maxX - bounds.minX + 1;
@@ -1152,6 +1182,18 @@ export function createMeshManager(
     squishyVoxelShellEdges?: boolean;
   };
 
+  function previewOptsSignature(previewOpts?: StrokePreviewOpts): string {
+    if (!previewOpts) return '';
+    return [
+      previewOpts.showGridOverlay ?? '',
+      previewOpts.solidAsPlaced ?? '',
+      previewOpts.previewAoStrength ?? '',
+      previewOpts.squishyVoxelShellEdges ?? '',
+      previewOpts.planeOverlap ? 1 : 0,
+      previewOpts.occlusionVoxels?.size ?? 0
+    ].join(',');
+  }
+
   function updatePreviewMesh(
     positions: [number, number, number][],
     voxel: PreviewVoxelSource,
@@ -1161,6 +1203,7 @@ export function createMeshManager(
   ) {
     if (!previewMesh || !previewMaterial || !previewOccludedMesh || !previewOccludedMaterial) return;
     if (positions.length === 0) {
+      lastPreviewMeshDedupe = null;
       previewMesh.visible = false;
       previewOccludedMesh.visible = false;
       breakPreviewOccludedSharedGeometry();
@@ -1173,6 +1216,25 @@ export function createMeshManager(
       hideSquishyPreviewShellEdges();
       return;
     }
+    const posHash = quickPreviewPositionsHash(positions);
+    const optsSig = previewOptsSignature(previewOpts);
+    if (
+      lastPreviewMeshDedupe &&
+      lastPreviewMeshDedupe.len === positions.length &&
+      lastPreviewMeshDedupe.posHash === posHash &&
+      lastPreviewMeshDedupe.existingRef === existingVoxels &&
+      lastPreviewMeshDedupe.overlap === overlapShading &&
+      lastPreviewMeshDedupe.optsSig === optsSig
+    ) {
+      return;
+    }
+    lastPreviewMeshDedupe = {
+      len: positions.length,
+      posHash,
+      existingRef: existingVoxels,
+      overlap: overlapShading,
+      optsSig
+    };
     previewMesh.visible = false;
     previewOccludedMesh.visible = false;
     resetPreviewMeshTransform(previewMesh);

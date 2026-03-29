@@ -4,6 +4,10 @@
     ropeBrushShape,
     ropeBrushRadius,
     ropeGravityDirection,
+    clothSimGravityPct,
+    clothSimStiffnessPct,
+    clothSimIterations,
+    clothSimConstraintPasses,
     MAX_BRUSH_SIZE
   } from '../store/index';
 
@@ -60,6 +64,65 @@
         title="Brush size (1–{MAX_BRUSH_SIZE} voxels)"
       />
       <span class="tool-panel-value">{$ropeBrushRadius + 1}</span>
+    </div>
+  </section>
+{/if}
+
+{#if $tool === 'cloth'}
+  <section class="tool-panel-section" aria-label="Cloth simulation">
+    <div class="tool-panel-row">
+      <span class="tool-panel-label">Sim gravity</span>
+      <input
+        type="range"
+        min="50"
+        max="200"
+        step="5"
+        value={$clothSimGravityPct}
+        oninput={(e) => clothSimGravityPct.set(Number((e.target as HTMLInputElement).value))}
+        title="Gravity strength for the draping pass (percent of built-in scale)"
+      />
+      <span class="tool-panel-value">{$clothSimGravityPct}%</span>
+    </div>
+    <div class="tool-panel-row">
+      <span class="tool-panel-label">Stiffness</span>
+      <input
+        type="range"
+        min="50"
+        max="150"
+        step="5"
+        value={$clothSimStiffnessPct}
+        oninput={(e) => clothSimStiffnessPct.set(Number((e.target as HTMLInputElement).value))}
+        title="How strongly edge constraints resist stretch (percent)"
+      />
+      <span class="tool-panel-value">{$clothSimStiffnessPct}%</span>
+    </div>
+    <div class="tool-panel-row">
+      <span class="tool-panel-label">Iterations</span>
+      <input
+        type="range"
+        min="0"
+        max="64"
+        step="1"
+        value={$clothSimIterations}
+        oninput={(e) => clothSimIterations.set(Number((e.target as HTMLInputElement).value))}
+        title="0 = automatic from tension; otherwise fixed PBD outer iterations"
+      />
+      <span class="tool-panel-value"
+        >{$clothSimIterations === 0 ? 'Auto' : String($clothSimIterations)}</span
+      >
+    </div>
+    <div class="tool-panel-row">
+      <span class="tool-panel-label">Passes</span>
+      <input
+        type="range"
+        min="1"
+        max="6"
+        step="1"
+        value={$clothSimConstraintPasses}
+        oninput={(e) => clothSimConstraintPasses.set(Number((e.target as HTMLInputElement).value))}
+        title="Constraint projection passes per outer iteration"
+      />
+      <span class="tool-panel-value">{$clothSimConstraintPasses}</span>
     </div>
   </section>
 {/if}

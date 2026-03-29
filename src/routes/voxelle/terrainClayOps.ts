@@ -113,6 +113,10 @@ function xzKey(x: number, z: number): string {
   return `${x},${z}`;
 }
 
+function voxelMatches(a: Voxel | undefined, template: Voxel): boolean {
+  return a !== undefined && a.color === template.color && a.material === template.material;
+}
+
 function uniqueColumns(
   brushPositions: [number, number, number][],
   gridSizeOrBounds: number | SelectionBounds
@@ -219,15 +223,16 @@ export function applyTerrainStroke(
   for (const [k, meta] of colMeta) {
     const { x, z, yFill, template } = meta;
     const h = newH.get(k)!;
+    const wantStack = h >= yFill;
     for (let y = y0; y <= y1; y++) {
       if (!withinBounds(x, y, z, gridSizeOrBounds)) continue;
       const key = coordKey(x, y, z);
-      if (v.has(key)) toRemove.add(key);
-    }
-    if (h >= yFill) {
-      for (let y = yFill; y <= h; y++) {
-        if (!withinBounds(x, y, z, gridSizeOrBounds)) continue;
-        toAdd.set(coordKey(x, y, z), cloneVoxel(template));
+      const had = v.has(key);
+      const want = wantStack && y >= yFill && y <= h;
+      if (had && !want) {
+        toRemove.add(key);
+      } else if (want && !voxelMatches(v.get(key), template)) {
+        toAdd.set(key, cloneVoxel(template));
       }
     }
   }

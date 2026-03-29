@@ -35,7 +35,6 @@
     solidPolygonExtrudable: boolean;
     beginSolidPolygonDepth: () => void;
     solidPolygonDepth: number;
-    updateSolidPolygonFromDepth: () => void;
     commitSolidPolygon: () => void;
     cancelSolidPolygon: () => void;
     roofPhase: 'placing' | null;
@@ -92,7 +91,6 @@
     solidPolygonExtrudable,
     beginSolidPolygonDepth,
     solidPolygonDepth = $bindable(),
-    updateSolidPolygonFromDepth,
     commitSolidPolygon,
     cancelSolidPolygon,
     roofPhase,
@@ -361,7 +359,6 @@
         if (depthSliderPointerId !== e.pointerId) return;
         const dy = depthSliderStartY - e.clientY;
         solidPolygonDepth = Math.max(-256, Math.min(256, depthSliderStartDepth + Math.round(dy / 10)));
-        updateSolidPolygonFromDepth();
       }}
       onpointerup={(e) => {
         if (depthSliderPointerId === e.pointerId) depthSliderPointerId = null;
@@ -382,7 +379,6 @@
         onpointerdown={(e) => e.stopPropagation()}
         onclick={() => {
           solidPolygonDepth = Math.max(-256, solidPolygonDepth - 1);
-          updateSolidPolygonFromDepth();
         }}
         aria-label="Decrease depth">−</button
       >
@@ -393,7 +389,6 @@
         onpointerdown={(e) => e.stopPropagation()}
         onclick={() => {
           solidPolygonDepth = Math.min(256, solidPolygonDepth + 1);
-          updateSolidPolygonFromDepth();
         }}
         aria-label="Increase depth">+</button
       >

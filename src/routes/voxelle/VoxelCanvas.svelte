@@ -7,7 +7,7 @@
   import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
   import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
   import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
   import {
@@ -40,6 +40,10 @@
     branchExtrudeRef,
     ropeTension,
     clothTension,
+    clothSimGravityPct,
+    clothSimStiffnessPct,
+    clothSimIterations,
+    clothSimConstraintPasses,
     ropeBrushShape,
     ropeBrushRadius,
     ropeGravityDirection,
@@ -343,6 +347,7 @@
     thickenPathForStroke,
     getRopeCurveVoxels,
     getClothPatchFromPinsVoxels,
+    type ClothSimOptions,
     applyBrushAlongPath,
     getSprayDirectionVector,
     mergeSphereStampIntoSeen,
@@ -821,6 +826,39 @@
   let clothPoints = $state<[number, number, number][]>([]);
   let clothPlacementNormal = $state<FaceNormal | null>(null);
   let clothPhase = $state<'placing' | 'tension' | null>(null);
+  /** Coalesces store-driven cloth preview updates to one frame (tension slider). */
+  let clothTensionUpdateRaf: number | null = null;
+  /** Skip redundant cloth tension preview rebuilds when pins/tension/brushes and voxel map ref are unchanged. */
+  let lastClothTensionPreviewKey = '';
+  let lastClothPreviewVoxelsRef: Map<string, Voxel> | null = null;
+
+  function resetClothTensionPreviewCache() {
+    lastClothTensionPreviewKey = '';
+    lastClothPreviewVoxelsRef = null;
+  }
+
+  function computeClothTensionPreviewKey(): string {
+    const pins = clothPoints.map(([x, y, z]) => `${x},${y},${z}`).join('|');
+    const t = get(clothTension);
+    const g = get(ropeGravityDirection);
+    const shape = get(ropeBrushShape);
+    const r = get(ropeBrushRadius);
+    const sg = get(clothSimGravityPct);
+    const ss = get(clothSimStiffnessPct);
+    const it = get(clothSimIterations);
+    const cp = get(clothSimConstraintPasses);
+    return `${pins}|${t}|${g}|${shape}|${r}|${sg}|${ss}|${it}|${cp}`;
+  }
+
+  function getClothSimOptions(): ClothSimOptions {
+    const iter = get(clothSimIterations);
+    return {
+      gravityScale: get(clothSimGravityPct) / 100,
+      stiffnessScale: get(clothSimStiffnessPct) / 100,
+      ...(iter > 0 ? { iterations: iter } : {}),
+      constraintPasses: get(clothSimConstraintPasses)
+    };
+  }
   let ropePointsMesh: THREE.InstancedMesh | null = null;
   let ropePointsMaterial: THREE.MeshBasicMaterial | null = null;
   let previewMesh: THREE.Mesh | null = null;
@@ -1400,6 +1438,8 @@
     const sz = get(gridSize);
     const useSky = get(enableSky);
     const renderingModeVal = get(renderingMode);
+    const isWebGpuRenderer = isWebGPURenderer(renderer);
+    const backgroundHex = hexToInt(get(backgroundColor));
     updateDirLightPosition(get(lightAngle), get(lightElevation), sz);
     updateShadowCamera(sz);
     if (dirLight) {
@@ -1410,14 +1450,27 @@
     updateSkyLightingColors();
     if (scene) {
       if (renderingModeVal === 'ray') {
-        scene.background =
-          rayRenderer?.output.beautyTexture ?? new THREE.Color(hexToInt(get(backgroundColor)));
+        scene.background = rayRenderer?.output.beautyTexture ?? new THREE.Color(backgroundHex);
       } else {
-        scene.background = useSky ? null : new THREE.Color(hexToInt(get(backgroundColor)));
+        // WebGPU + reverse-Z can drop scene geometry when clearing with a flat scene.background color.
+        // Keep scene.background null there and let the sky mesh carry the solid background color.
+        scene.background =
+          useSky || isWebGpuRenderer ? null : new THREE.Color(backgroundHex);
       }
     }
     if (sky) {
-      sky.visible = useSky && renderingModeVal !== 'ray';
+      const showSkyCarrier =
+        renderingModeVal !== 'ray' && (useSky || (isWebGpuRenderer && sky instanceof THREE.Mesh));
+      sky.visible = showSkyCarrier;
+      if (
+        !useSky &&
+        isWebGpuRenderer &&
+        sky instanceof THREE.Mesh &&
+        sky.material instanceof THREE.MeshBasicMaterial
+      ) {
+        sky.material.color.setHex(backgroundHex);
+        sky.material.needsUpdate = true;
+      }
       if (useSky && dirLight && sky instanceof Sky) {
         (sky.material as THREE.ShaderMaterial).uniforms['sunPosition'].value.copy(
           dirLight.position
@@ -2965,6 +3018,11 @@
   }
 
   function cancelCloth() {
+    if (clothTensionUpdateRaf !== null) {
+      cancelAnimationFrame(clothTensionUpdateRaf);
+      clothTensionUpdateRaf = null;
+    }
+    resetClothTensionPreviewCache();
     clothPoints = [];
     clothPlacementNormal = null;
     clothPhase = null;
@@ -2991,10 +3049,17 @@
 
   function updateClothFromTension() {
     if (clothPoints.length < 3) return;
+    const clothKey = computeClothTensionPreviewKey();
+    const voxRef = get(voxels);
+    if (clothKey === lastClothTensionPreviewKey && voxRef === lastClothPreviewVoxelsRef) {
+      return;
+    }
+    lastClothTensionPreviewKey = clothKey;
+    lastClothPreviewVoxelsRef = voxRef;
     const t = get(clothTension);
     const gravity = get(ropeGravityDirection);
-    const brushR = get(ropeBrushRadius) * 0.5;
-    const centerline = getClothPatchFromPinsVoxels(clothPoints, t, gravity, brushR);
+    const brushR = Math.max(1.5, get(ropeBrushRadius) * 0.5);
+    const centerline = getClothPatchFromPinsVoxels(clothPoints, t, gravity, brushR, getClothSimOptions());
     const shape = get(ropeBrushShape);
     const radius = brushR;
     const positions = applyBrushAlongPath(centerline, shape, radius);
@@ -3003,12 +3068,20 @@
     render();
   }
 
+  function scheduleClothFromTension() {
+    if (clothTensionUpdateRaf !== null) return;
+    clothTensionUpdateRaf = requestAnimationFrame(() => {
+      clothTensionUpdateRaf = null;
+      updateClothFromTension();
+    });
+  }
+
   function commitCloth() {
     if (clothPoints.length < 3) return;
     const t = get(clothTension);
     const gravity = get(ropeGravityDirection);
-    const brushR = get(ropeBrushRadius) * 0.5;
-    const centerline = getClothPatchFromPinsVoxels(clothPoints, t, gravity, brushR);
+    const brushR = Math.max(1.5, get(ropeBrushRadius) * 0.5);
+    const centerline = getClothPatchFromPinsVoxels(clothPoints, t, gravity, brushR, getClothSimOptions());
     const shape = get(ropeBrushShape);
     const radius = brushR;
     const positions = applyBrushAlongPath(centerline, shape, radius);
@@ -3076,7 +3149,16 @@
     const vec = solidPolygonNormalVec();
     if (!vec) return;
     const positions = buildSolidPolygonStrokePositions();
-    deltaDisplay = getSolidPolygonDepthDeltaDisplay(vec, solidPolygonDepth);
+    const nextDelta = getSolidPolygonDepthDeltaDisplay(vec, solidPolygonDepth);
+    const prev = deltaDisplay;
+    if (
+      !prev ||
+      prev.dx !== nextDelta.dx ||
+      prev.dy !== nextDelta.dy ||
+      prev.dz !== nextDelta.dz
+    ) {
+      deltaDisplay = nextDelta;
+    }
     pendingStrokePositions = positions;
     updatePreviewMesh(positions);
     render();
@@ -3664,6 +3746,7 @@
           if (clothPoints.length === 0) {
             clothPhase = null;
             clothPlacementNormal = null;
+            resetClothTensionPreviewCache();
           } else {
             clothPhase = 'placing';
           }
@@ -3690,6 +3773,7 @@
             if (clothPoints.length === 0) {
               clothPhase = null;
               clothPlacementNormal = null;
+              resetClothTensionPreviewCache();
             }
           } else {
             clothPhase = 'placing';
@@ -7033,14 +7117,6 @@
   });
 
   $effect(() => {
-    void $planeCuboidHollow;
-    void $planeCuboidHollowWallThickness;
-    if (solidPolygonPhase === 'depth') {
-      updateSolidPolygonFromDepth();
-    }
-  });
-
-  $effect(() => {
     const t = $tool;
     if (t !== 'rope' && ropePhase) {
       cancelRope();
@@ -7067,17 +7143,35 @@
 
   $effect(() => {
     if (clothPhase !== 'tension') return;
-    updateClothFromTension();
-    const unsubT = clothTension.subscribe(() => updateClothFromTension());
-    const unsubS = ropeBrushShape.subscribe(() => updateClothFromTension());
-    const unsubR = ropeBrushRadius.subscribe(() => updateClothFromTension());
-    const unsubG = ropeGravityDirection.subscribe(() => updateClothFromTension());
+    const unsubT = clothTension.subscribe(() => scheduleClothFromTension());
+    const unsubS = ropeBrushShape.subscribe(() => scheduleClothFromTension());
+    const unsubR = ropeBrushRadius.subscribe(() => scheduleClothFromTension());
+    const unsubG = ropeGravityDirection.subscribe(() => scheduleClothFromTension());
+    const unsubGg = clothSimGravityPct.subscribe(() => scheduleClothFromTension());
+    const unsubGs = clothSimStiffnessPct.subscribe(() => scheduleClothFromTension());
+    const unsubGi = clothSimIterations.subscribe(() => scheduleClothFromTension());
+    const unsubGc = clothSimConstraintPasses.subscribe(() => scheduleClothFromTension());
     return () => {
+      if (clothTensionUpdateRaf !== null) {
+        cancelAnimationFrame(clothTensionUpdateRaf);
+        clothTensionUpdateRaf = null;
+      }
       unsubT();
       unsubS();
       unsubR();
       unsubG();
+      unsubGg();
+      unsubGs();
+      unsubGi();
+      unsubGc();
     };
+  });
+
+  $effect(() => {
+    if (clothPhase !== 'tension') return;
+    /** Overlap shading depends on $voxels; map identity changes on each edit. */
+    void $voxels;
+    updateClothFromTension();
   });
 
   $effect(() => {
@@ -7173,13 +7267,15 @@
     void polygonPoints;
     void polygonPlacementNormal;
     const syncPolygonFillPreview = () => {
-      updatePreviewMesh(
-        applyPolygonNormalOffset(
-          getPolygonVoxels(polygonPoints),
-          polygonPlacementNormal,
-          get(polygonOffsetFromNormal)
-        )
-      );
+      untrack(() => {
+        updatePreviewMesh(
+          applyPolygonNormalOffset(
+            getPolygonVoxels(polygonPoints),
+            polygonPlacementNormal,
+            get(polygonOffsetFromNormal)
+          )
+        );
+      });
     };
     syncPolygonFillPreview();
     return polygonOffsetFromNormal.subscribe(() => syncPolygonFillPreview());
@@ -7190,12 +7286,17 @@
     void solidPolygonPhase;
     void solidPolygonPoints;
     void solidPolygonInitialNormal;
+    void solidPolygonDepth;
+    void $planeCuboidHollow;
+    void $planeCuboidHollowWallThickness;
     const syncSolidPolygonOffsetPreview = () => {
-      if (solidPolygonPhase === 'placing') {
-        updatePreviewMesh(getSolidPolygonPlacingFillPreview());
-      } else if (solidPolygonPhase === 'depth') {
-        updateSolidPolygonFromDepth();
-      }
+      untrack(() => {
+        if (solidPolygonPhase === 'placing') {
+          updatePreviewMesh(getSolidPolygonPlacingFillPreview());
+        } else if (solidPolygonPhase === 'depth') {
+          updateSolidPolygonFromDepth();
+        }
+      });
     };
     syncSolidPolygonOffsetPreview();
     return polygonOffsetFromNormal.subscribe(() => syncSolidPolygonOffsetPreview());
@@ -7985,8 +8086,16 @@
         dragPointerId = null;
       }
     }
-    if (!$squishySelectedId || !$squishyMetaballs.some((b) => b.id === $squishySelectedId)) {
-      if ($squishySelectedId !== null) squishySelectedId.set(null);
+    const selId = $squishySelectedId;
+    const ballsForSel = $squishyMetaballs;
+    if (!selId || !ballsForSel.some((b) => b.id === selId)) {
+      if (selId !== null) {
+        queueMicrotask(() => {
+          const s = get(squishySelectedId);
+          const b = get(squishyMetaballs);
+          if (!s || !b.some((x) => x.id === s)) squishySelectedId.set(null);
+        });
+      }
     }
     syncSquishyPickMeshes();
     syncSquishyPreviewMesh();
@@ -7998,10 +8107,20 @@
   $effect(() => {
     void $squishyAddSnapToSurface;
     void $squishyDefaultRadius;
+    void $tool;
+    void $squishyMode;
     if ($tool !== 'squishy' || $squishyMode !== 'add') return;
     const hit = getIntersection();
     const pos = hit ? getSquishyAddCellFromHit(hit) : null;
-    squishyAddPreviewCenter = pos ? [pos[0], pos[1], pos[2]] : null;
+    const nextCenter: [number, number, number] | null = pos ? [pos[0], pos[1], pos[2]] : null;
+    const centerChanged =
+      (squishyAddPreviewCenter === null) !== (nextCenter === null) ||
+      (squishyAddPreviewCenter !== null &&
+        nextCenter !== null &&
+        (squishyAddPreviewCenter[0] !== nextCenter[0] ||
+          squishyAddPreviewCenter[1] !== nextCenter[1] ||
+          squishyAddPreviewCenter[2] !== nextCenter[2]));
+    if (centerChanged) squishyAddPreviewCenter = nextCenter;
     syncSquishyPickMeshes();
     syncSquishyPreviewMesh();
     markCanvasDirty();
@@ -8333,7 +8452,6 @@
     {solidPolygonExtrudable}
     {beginSolidPolygonDepth}
     bind:solidPolygonDepth
-    {updateSolidPolygonFromDepth}
     {commitSolidPolygon}
     {cancelSolidPolygon}
     {roofPhase}

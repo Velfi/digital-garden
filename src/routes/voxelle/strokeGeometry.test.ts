@@ -1052,6 +1052,35 @@ describe('getClothPatchFromPinsVoxels', () => {
     const result = getClothPatchFromPinsVoxels(tri, 0.5, 'down', brushR);
     expect(result.length).toBeGreaterThan(8);
   });
+
+  it('skew quad: output includes every pin voxel (corners snapped to clicks)', () => {
+    const skew: [number, number, number][] = [
+      [0, 20, 0],
+      [12, 20, 0],
+      [12, 20, 12],
+      [0, 24, 4]
+    ];
+    const r = getClothPatchFromPinsVoxels(skew, 0.5, 'down', brushR);
+    const keys = new Set(r.map(([x, y, z]) => `${x},${y},${z}`));
+    for (const p of skew) {
+      expect(keys.has(`${p[0]},${p[1]},${p[2]}`)).toBe(true);
+    }
+  });
+
+  it('large pin bounding box completes quickly with bounded path length', () => {
+    const big: [number, number, number][] = [
+      [0, 0, 0],
+      [12000, 0, 0],
+      [6000, 9000, 0]
+    ];
+    const t0 = performance.now();
+    const result = getClothPatchFromPinsVoxels(big, 0.5, 'down', brushR);
+    const dt = performance.now() - t0;
+    expect(dt).toBeLessThan(1000);
+    expect(result.length).toBeGreaterThan(0);
+    /** Per-node voxels + edge Bresenham; stays well below multi-million voxel blowups. */
+    expect(result.length).toBeLessThan(400_000);
+  });
 });
 
 describe('applyBrushAlongPath', () => {

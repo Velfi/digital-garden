@@ -1420,38 +1420,6 @@ export function getRopeCurveVoxels(
 const CLOTH_PATCH_MAX_CELLS = 2200;
 const CLOTH_PATCH_MAX_DIM = 46;
 
-function distPointToSegment2D(
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number
-): number {
-  const abx = bx - ax;
-  const aby = by - ay;
-  const apx = px - ax;
-  const apy = py - ay;
-  const ab2 = abx * abx + aby * aby;
-  if (ab2 < 1e-12) return Math.hypot(apx, apy);
-  let t = (apx * abx + apy * aby) / ab2;
-  t = Math.max(0, Math.min(1, t));
-  const qx = ax + t * abx;
-  const qy = ay + t * aby;
-  return Math.hypot(px - qx, py - qy);
-}
-
-function minDistToPolyBoundary(px: number, py: number, poly: { x: number; y: number }[]): number {
-  let d = Infinity;
-  const n = poly.length;
-  for (let i = 0; i < n; i++) {
-    const p = poly[i]!;
-    const q = poly[(i + 1) % n]!;
-    d = Math.min(d, distPointToSegment2D(px, py, p.x, p.y, q.x, q.y));
-  }
-  return d;
-}
-
 function clothPatchPointInPolygon2D(px: number, py: number, poly: { x: number; y: number }[]): boolean {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -1467,6 +1435,18 @@ function clothPatchPointInPolygon2D(px: number, py: number, poly: { x: number; y
   return inside;
 }
 
+/** Optional tuning for cloth PBD (defaults match prior hard-coded behavior when omitted). */
+export type ClothSimOptions = {
+  /** Multiplier on gravity step (default 1). */
+  gravityScale?: number;
+  /** Multiplier on distance-constraint relaxation (default 1). */
+  stiffnessScale?: number;
+  /** Solver iterations; if omitted, uses `round(28 + 22 * tension)`. */
+  iterations?: number;
+  /** Constraint projection passes per outer iteration (default 2). */
+  constraintPasses?: number;
+};
+
 /**
  * Closed polygon of 3+ pin voxels in 3D, filled with a plane grid, relaxed with PBD + gravity.
  * Pins are the polygon boundary (Bresenham edges between consecutive pins, closed).
@@ -1476,7 +1456,8 @@ export function getClothPatchFromPinsVoxels(
   pins: [number, number, number][],
   tension: number,
   gravityDirection: RopeGravityDirection,
-  _brushRadiusVoxels: number
+  _brushRadiusVoxels: number,
+  simOptions?: ClothSimOptions
 ): [number, number, number][] {
   const sub = (p: [number, number, number], q: [number, number, number]): [number, number, number] => [
     p[0] - q[0],
@@ -1568,24 +1549,29 @@ export function getClothPatchFromPinsVoxels(
     vmax = Math.max(vmax, q.y);
   }
 
-  const boundaryKeys = new Set<string>();
-  const nPin = raw.length;
-  for (let i = 0; i < nPin; i++) {
-    const seg = getBresenham3DLine(raw[i]!, raw[(i + 1) % nPin]!);
-    for (const p of seg) boundaryKeys.add(`${p[0]},${p[1]},${p[2]}`);
-  }
-
   const ur = Math.max(1, umax - umin);
   const vr = Math.max(1, vmax - vmin);
-  let stepU = 1;
-  let stepV = 1;
-  for (let guard = 0; guard < 48; guard++) {
+  /** Minimum steps so ceil(ur/step)+3 and ceil(vr/step)+3 stay within CLOTH_PATCH_MAX_DIM. */
+  const dimSlack = CLOTH_PATCH_MAX_DIM - 3;
+  let stepU = Math.max(1, Math.ceil(ur / dimSlack));
+  let stepV = Math.max(1, Math.ceil(vr / dimSlack));
+  for (let guard = 0; guard < 512; guard++) {
     const nu0 = Math.ceil(ur / stepU) + 3;
     const nv0 = Math.ceil(vr / stepV) + 3;
     if (nu0 * nv0 <= CLOTH_PATCH_MAX_CELLS && Math.max(nu0, nv0) <= CLOTH_PATCH_MAX_DIM) break;
-    if (stepU >= 32 && stepV >= 32) break;
     if (ur / stepU >= vr / stepV) stepU++;
     else stepV++;
+  }
+  {
+    let nu0 = Math.ceil(ur / stepU) + 3;
+    let nv0 = Math.ceil(vr / stepV) + 3;
+    for (let safety = 0; safety < 10000; safety++) {
+      if (nu0 * nv0 <= CLOTH_PATCH_MAX_CELLS && Math.max(nu0, nv0) <= CLOTH_PATCH_MAX_DIM) break;
+      if (ur / stepU >= vr / stepV) stepU++;
+      else stepV++;
+      nu0 = Math.ceil(ur / stepU) + 3;
+      nv0 = Math.ceil(vr / stepV) + 3;
+    }
   }
 
   type Node = {
@@ -1593,9 +1579,11 @@ export function getClothPatchFromPinsVoxels(
     iv: number;
     pos: [number, number, number];
     init: [number, number, number];
+    /** Unsnapped point on the fitted plane; rest lengths use this so corner snaps don't distort springs. */
+    planeInit: [number, number, number];
     pinned: boolean;
   };
-  const nodeMap = new Map<string, Node>();
+  const nodeIndexByKey = new Map<string, number>();
   const nodes: Node[] = [];
 
   const uStart = Math.floor(umin / stepU) * stepU - stepU;
@@ -1603,24 +1591,82 @@ export function getClothPatchFromPinsVoxels(
   const vStart = Math.floor(vmin / stepV) * stepV - stepV;
   const vEnd = Math.ceil(vmax / stepV) * stepV + stepV;
 
+  /**
+   * For each user pin, find the closest grid (iu,iv) that is inside the polygon;
+   * only that node gets pinned + snapped to the real 3D click position.
+   */
+  const pinnedGridKeys = new Map<string, number>();
+  for (let j = 0; j < uvPoly.length; j++) {
+    const uvp = uvPoly[j]!;
+    const baseIU = Math.round(uvp.x / stepU) * stepU;
+    const baseIV = Math.round(uvp.y / stepV) * stepV;
+    let bestKey: string | null = null;
+    let bestD2 = Infinity;
+    for (let diu = -stepU; diu <= stepU; diu += stepU) {
+      for (let div = -stepV; div <= stepV; div += stepV) {
+        const ciu = baseIU + diu;
+        const civ = baseIV + div;
+        if (!clothPatchPointInPolygon2D(ciu, civ, uvPoly)) continue;
+        const du = ciu - uvp.x;
+        const dv = civ - uvp.y;
+        const d2 = du * du + dv * dv;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          bestKey = `${ciu},${civ}`;
+        }
+      }
+    }
+    if (bestKey !== null) pinnedGridKeys.set(bestKey, j);
+  }
+
+  /**
+   * Interpolate initial 3D position from pin vertices using inverse-distance weighting in UV.
+   * This ensures the starting surface passes through every pin, not just through the plane of pins 0–2.
+   */
+  function interpolateFromPins(iu: number, iv: number): [number, number, number] {
+    let wSum = 0;
+    let wx = 0, wy = 0, wz = 0;
+    for (let j = 0; j < uvPoly.length; j++) {
+      const uvp = uvPoly[j]!;
+      const du = iu - uvp.x;
+      const dv = iv - uvp.y;
+      const d2 = du * du + dv * dv;
+      if (d2 < 0.01) return [raw[j]![0], raw[j]![1], raw[j]![2]];
+      const w = 1 / d2;
+      wSum += w;
+      wx += w * raw[j]![0];
+      wy += w * raw[j]![1];
+      wz += w * raw[j]![2];
+    }
+    return [wx / wSum, wy / wSum, wz / wSum];
+  }
+
   for (let iu = uStart; iu <= uEnd; iu += stepU) {
     for (let iv = vStart; iv <= vEnd; iv += stepV) {
       if (!clothPatchPointInPolygon2D(iu, iv, uvPoly)) continue;
-      const pos: [number, number, number] = [
+      const planeInit: [number, number, number] = [
         O[0] + iu * uaxis[0] + iv * vaxis[0],
         O[1] + iu * uaxis[1] + iv * vaxis[1],
         O[2] + iu * uaxis[2] + iv * vaxis[2]
       ];
-      const rx = Math.round(pos[0]);
-      const ry = Math.round(pos[1]);
-      const rz = Math.round(pos[2]);
-      const edgeTol = Math.max(0.55, 0.4 * Math.min(stepU, stepV));
-      const pinned =
-        boundaryKeys.has(`${rx},${ry},${rz}`) || minDistToPolyBoundary(iu, iv, uvPoly) <= edgeTol;
-      const key = `${iu},${iv}`;
-      const node: Node = { iu, iv, pos: [...pos] as [number, number, number], init: [...pos] as [number, number, number], pinned };
-      nodeMap.set(key, node);
+      const gk = `${iu},${iv}`;
+      const pinIdx = pinnedGridKeys.get(gk);
+      const pinned = pinIdx !== undefined;
+      const pos: [number, number, number] = pinned
+        ? [raw[pinIdx]![0], raw[pinIdx]![1], raw[pinIdx]![2]]
+        : interpolateFromPins(iu, iv);
+      const key = gk;
+      const node: Node = {
+        iu,
+        iv,
+        pos: [...pos] as [number, number, number],
+        init: [...pos] as [number, number, number],
+        planeInit: [...planeInit] as [number, number, number],
+        pinned
+      };
+      const ni = nodes.length;
       nodes.push(node);
+      nodeIndexByKey.set(key, ni);
     }
   }
 
@@ -1628,25 +1674,21 @@ export function getClothPatchFromPinsVoxels(
 
   type Edge = { a: number; b: number; rest: number };
   const edges: Edge[] = [];
-  const idxOf = (iu: number, iv: number) => nodeMap.get(`${iu},${iv}`);
+  /** Cardinal springs only (no diagonals). Diagonal shear constraints on a coarse grid fight each other and cause buckling spikes. */
   const neigh: [number, number][] = [
     [stepU, 0],
     [-stepU, 0],
     [0, stepV],
-    [0, -stepV],
-    [stepU, stepV],
-    [stepU, -stepV],
-    [-stepU, stepV],
-    [-stepU, -stepV]
+    [0, -stepV]
   ];
   for (let ni = 0; ni < nodes.length; ni++) {
     const a = nodes[ni]!;
     for (const [du, dv] of neigh) {
-      const b = idxOf(a.iu + du, a.iv + dv);
-      if (!b) continue;
-      const bj = nodes.indexOf(b);
+      const bj = nodeIndexByKey.get(`${a.iu + du},${a.iv + dv}`);
+      if (bj === undefined) continue;
       if (bj <= ni) continue;
-      const rest = len(sub(b.init, a.init));
+      const b = nodes[bj]!;
+      const rest = len(sub(b.planeInit, a.planeInit));
       if (rest < 1e-9) continue;
       edges.push({ a: ni, b: bj, rest });
     }
@@ -1657,32 +1699,41 @@ export function getClothPatchFromPinsVoxels(
   const init = nodes.map((n) => [...n.init] as [number, number, number]);
 
   const t0 = Math.max(0, Math.min(1, tension));
-  const iterations = Math.round(14 + 32 * t0);
-  const relax = 0.18 + 0.78 * t0;
+  const opt = simOptions ?? {};
+  const gravityScale = Math.max(0, opt.gravityScale ?? 1);
+  const stiffnessScale = Math.max(0.05, Math.min(2, opt.stiffnessScale ?? 1));
+  const iterations =
+    opt.iterations !== undefined
+      ? Math.max(4, Math.min(96, Math.round(opt.iterations)))
+      : Math.round(28 + 22 * t0);
+  const relax = Math.min(0.99, (0.35 + 0.6 * t0) * stiffnessScale);
   const cell = Math.max(stepU, stepV);
   const down = norm(ropeGravityVector(gravityDirection));
-  const gravStep = cell * (0.02 + 0.2 * (1 - t0));
+  const gravStep = cell * (0.02 + 0.18 * (1 - t0)) * gravityScale;
 
+  const constraintPasses = Math.max(1, Math.min(6, Math.round(opt.constraintPasses ?? 2)));
   for (let it = 0; it < iterations; it++) {
     for (let p = 0; p < pos.length; p++) {
       if (!pinnedArr[p]) pos[p] = add(pos[p], scale(down, gravStep));
     }
-    for (const { a: ia, b: ib, rest } of edges) {
-      if (pinnedArr[ia] && pinnedArr[ib]) continue;
-      const pa = pos[ia];
-      const pb = pos[ib];
-      const d = sub(pb, pa);
-      const dist = len(d);
-      if (dist < 1e-12) continue;
-      const diff = (dist - rest) / dist;
-      const correction = scale(d, diff * 0.5 * relax);
-      if (!pinnedArr[ia] && !pinnedArr[ib]) {
-        pos[ia] = add(pa, correction);
-        pos[ib] = sub(pb, correction);
-      } else if (pinnedArr[ia]) {
-        pos[ib] = sub(pb, scale(correction, 2));
-      } else {
-        pos[ia] = add(pa, scale(correction, 2));
+    for (let pass = 0; pass < constraintPasses; pass++) {
+      for (const { a: ia, b: ib, rest } of edges) {
+        if (pinnedArr[ia] && pinnedArr[ib]) continue;
+        const pa = pos[ia];
+        const pb = pos[ib];
+        const d = sub(pb, pa);
+        const dist = len(d);
+        if (dist < 1e-12) continue;
+        const diff = (dist - rest) / dist;
+        const correction = scale(d, diff * 0.5 * relax);
+        if (!pinnedArr[ia] && !pinnedArr[ib]) {
+          pos[ia] = add(pa, correction);
+          pos[ib] = sub(pb, correction);
+        } else if (pinnedArr[ia]) {
+          pos[ib] = sub(pb, scale(correction, 2));
+        } else {
+          pos[ia] = add(pa, scale(correction, 2));
+        }
       }
     }
     for (let p = 0; p < pos.length; p++) {
@@ -1690,48 +1741,82 @@ export function getClothPatchFromPinsVoxels(
     }
   }
 
-  const nodeIdx = new Map<Node, number>();
-  nodes.forEach((node, i) => nodeIdx.set(node, i));
-
-  const byRow = new Map<number, Node[]>();
-  for (const node of nodes) {
-    const row = byRow.get(node.iv) ?? [];
-    row.push(node);
-    byRow.set(node.iv, row);
-  }
-  const ivList = [...byRow.keys()].sort((a, b) => a - b);
-
+  /**
+   * Rounded node centers + Bresenham bridges along UV neighbors. Cardinal edges span the quad grid;
+   * diagonal bridges (path only, not PBD) close **diamond** gaps. Skip chords mostly parallel to
+   * gravity to avoid vertical spikes.
+   */
   const path: [number, number, number][] = [];
   const pathSeen = new Set<string>();
-  const pushPath = (p: [number, number, number]) => {
-    const key = `${p[0]},${p[1]},${p[2]}`;
+  const pushPath = (q: [number, number, number]) => {
+    const key = `${q[0]},${q[1]},${q[2]}`;
     if (!pathSeen.has(key)) {
       pathSeen.add(key);
-      path.push(p);
+      path.push(q);
     }
   };
-  let last: [number, number, number] | null = null;
-  let forwardRow = true;
-  for (const iv of ivList) {
-    let row = byRow.get(iv)!;
-    row = [...row].sort((a, b) => a.iu - b.iu);
-    if (!forwardRow) row.reverse();
-    forwardRow = !forwardRow;
-    for (const node of row) {
-      const p = pos[nodeIdx.get(node)!]!;
-      const q: [number, number, number] = [Math.round(p[0]), Math.round(p[1]), Math.round(p[2])];
-      if (last) {
-        for (const s of getBresenham3DLine(last, q)) pushPath(s);
-      } else {
-        pushPath(q);
-      }
-      last = q;
-    }
+  for (let i = 0; i < pos.length; i++) {
+    const p = pos[i]!;
+    pushPath([Math.round(p[0]), Math.round(p[1]), Math.round(p[2])]);
+  }
+  const gDir = down;
+  const maxBridgeCardinal = 36;
+  const maxBridgeDiag = 24;
+  const maxVerticalAlign = 0.92;
+
+  const bridgeChord = (
+    pa: [number, number, number],
+    pb: [number, number, number],
+    maxCheb: number
+  ) => {
+    const dx = pb[0] - pa[0];
+    const dy = pb[1] - pa[1];
+    const dz = pb[2] - pa[2];
+    const cheb = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz));
+    if (cheb <= 1) return;
+    if (cheb > maxCheb) return;
+    const dist = Math.hypot(dx, dy, dz);
+    if (dist < 1e-9) return;
+    const align = Math.abs(dx * gDir[0] + dy * gDir[1] + dz * gDir[2]) / dist;
+    if (align > maxVerticalAlign) return;
+    for (const s of getBresenham3DLine(pa, pb)) pushPath(s);
+  };
+
+  for (const { a: ia, b: ib } of edges) {
+    const pa: [number, number, number] = [
+      Math.round(pos[ia]![0]),
+      Math.round(pos[ia]![1]),
+      Math.round(pos[ia]![2])
+    ];
+    const pb: [number, number, number] = [
+      Math.round(pos[ib]![0]),
+      Math.round(pos[ib]![1]),
+      Math.round(pos[ib]![2])
+    ];
+    bridgeChord(pa, pb, maxBridgeCardinal);
   }
 
-  if (path.length === 0) {
-    for (const p of pos) {
-      pushPath([Math.round(p[0]), Math.round(p[1]), Math.round(p[2])]);
+  const pathDiagNeigh: [number, number][] = [
+    [stepU, stepV],
+    [stepU, -stepV],
+    [-stepU, stepV],
+    [-stepU, -stepV]
+  ];
+  for (let ni = 0; ni < nodes.length; ni++) {
+    for (const [du, dv] of pathDiagNeigh) {
+      const bj = nodeIndexByKey.get(`${nodes[ni]!.iu + du},${nodes[ni]!.iv + dv}`);
+      if (bj === undefined || bj <= ni) continue;
+      const pa: [number, number, number] = [
+        Math.round(pos[ni]![0]),
+        Math.round(pos[ni]![1]),
+        Math.round(pos[ni]![2])
+      ];
+      const pb: [number, number, number] = [
+        Math.round(pos[bj]![0]),
+        Math.round(pos[bj]![1]),
+        Math.round(pos[bj]![2])
+      ];
+      bridgeChord(pa, pb, maxBridgeDiag);
     }
   }
 

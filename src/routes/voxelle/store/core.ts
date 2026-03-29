@@ -279,6 +279,14 @@ export const terrainSmoothRadius = writable<number>(1);
 export const ropeTension = writable<number>(0.5);
 /** Cloth mode: tension 0–1 (0=loose/drapy, 1=stiff). */
 export const clothTension = writable<number>(0.5);
+/** Cloth PBD: gravity step multiplier as percent of built-in scale (50–200, default 100). */
+export const clothSimGravityPct = writable<number>(100);
+/** Cloth PBD: stiffness multiplier for distance constraints (50–150, default 100). */
+export const clothSimStiffnessPct = writable<number>(100);
+/** Cloth PBD: solver iterations; 0 = automatic from tension (28 + 22×tension). */
+export const clothSimIterations = writable<number>(0);
+/** Cloth PBD: constraint projection passes per outer step (1–6, default 2). */
+export const clothSimConstraintPasses = writable<number>(2);
 /** Rope mode: brush shape (sphere or cube). */
 export const ropeBrushShape = writable<RopeBrushShape>('sphere');
 /** Rope brush size index 0..(MAX_BRUSH_SIZE-1) => 1..MAX_BRUSH_SIZE voxels (radius index*0.5). */
