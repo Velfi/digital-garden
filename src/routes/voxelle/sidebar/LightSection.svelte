@@ -12,6 +12,7 @@
     applyLightPreset,
     type LightPresetId
   } from '../store/index';
+  import { safeColorInputValue } from '$lib/colorInput';
 
   function matchesPreset(id: LightPresetId): boolean {
     const p = LIGHT_PRESETS.find((x) => x.id === id);
@@ -28,8 +29,6 @@
   }
 
   const FALLBACK_HEX = '#ffffff';
-  const HEX6 = /^#[0-9a-fA-F]{6}$/;
-  const safeHexColor = (value: string): string => (HEX6.test(value) ? value : FALLBACK_HEX);
 </script>
 
 <div class="light-heading-row">
@@ -97,7 +96,8 @@
   <input
     id="light-color"
     type="color"
-    value={safeHexColor($lightColor)}
+    defaultValue={safeColorInputValue($lightColor, FALLBACK_HEX)}
+    value={safeColorInputValue($lightColor, FALLBACK_HEX)}
     oninput={(e) => lightColor.set((e.target as HTMLInputElement).value)}
   />
 </div>

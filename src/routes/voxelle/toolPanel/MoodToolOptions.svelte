@@ -37,10 +37,9 @@
     sunShaftsSamples,
     type GrainMode
   } from '../store/index';
+  import { safeColorInputValue } from '$lib/colorInput';
 
   const FALLBACK_HEX = '#ffffff';
-  const HEX6 = /^#[0-9a-fA-F]{6}$/;
-  const safeHexColor = (value: string): string => (HEX6.test(value) ? value : FALLBACK_HEX);
 </script>
 
 {#if isMoodTool($tool)}
@@ -71,7 +70,8 @@
       <span>Fog color</span>
       <input
         type="color"
-        value={safeHexColor($atmosphereColor)}
+        defaultValue={safeColorInputValue($atmosphereColor, FALLBACK_HEX)}
+        value={safeColorInputValue($atmosphereColor, FALLBACK_HEX)}
         disabled={$renderingMode === 'ray'}
         oninput={(e) => atmosphereColor.set((e.target as HTMLInputElement).value)}
       />
@@ -259,9 +259,9 @@
         />
         Enable distance tint
       </label>
-      <label class="row"><span>Near</span><input type="color" value={safeHexColor($distanceTintNearColor)} oninput={(e) => distanceTintNearColor.set((e.target as HTMLInputElement).value)} /></label>
-      <label class="row"><span>Mid</span><input type="color" value={safeHexColor($distanceTintMidColor)} oninput={(e) => distanceTintMidColor.set((e.target as HTMLInputElement).value)} /></label>
-      <label class="row"><span>Far</span><input type="color" value={safeHexColor($distanceTintFarColor)} oninput={(e) => distanceTintFarColor.set((e.target as HTMLInputElement).value)} /></label>
+      <label class="row"><span>Near</span><input type="color" defaultValue={safeColorInputValue($distanceTintNearColor, FALLBACK_HEX)} value={safeColorInputValue($distanceTintNearColor, FALLBACK_HEX)} oninput={(e) => distanceTintNearColor.set((e.target as HTMLInputElement).value)} /></label>
+      <label class="row"><span>Mid</span><input type="color" defaultValue={safeColorInputValue($distanceTintMidColor, FALLBACK_HEX)} value={safeColorInputValue($distanceTintMidColor, FALLBACK_HEX)} oninput={(e) => distanceTintMidColor.set((e.target as HTMLInputElement).value)} /></label>
+      <label class="row"><span>Far</span><input type="color" defaultValue={safeColorInputValue($distanceTintFarColor, FALLBACK_HEX)} value={safeColorInputValue($distanceTintFarColor, FALLBACK_HEX)} oninput={(e) => distanceTintFarColor.set((e.target as HTMLInputElement).value)} /></label>
       <label class="row"><span>Near dist</span><input type="range" min="1" max="256" step="1" value={$distanceTintNearDistance} oninput={(e) => distanceTintNearDistance.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$distanceTintNearDistance}</span></label>
       <label class="row"><span>Far dist</span><input type="range" min="8" max="512" step="1" value={$distanceTintFarDistance} oninput={(e) => distanceTintFarDistance.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$distanceTintFarDistance}</span></label>
       <label class="row"><span>Strength</span><input type="range" min="0" max="1" step="0.01" value={$distanceTintStrength} oninput={(e) => distanceTintStrength.set(Number((e.target as HTMLInputElement).value))} /><span class="val">{$distanceTintStrength.toFixed(2)}</span></label>

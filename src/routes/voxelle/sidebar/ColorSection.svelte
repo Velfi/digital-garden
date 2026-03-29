@@ -6,10 +6,9 @@
     VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX
   } from '../store/materialBuiltinPalette';
   import PalettePicker from '$lib/components/PalettePicker.svelte';
+  import { safeColorInputValue } from '$lib/colorInput';
 
   const FALLBACK_HEX = '#ffffff';
-  const HEX6 = /^#[0-9a-fA-F]{6}$/;
-  const safeHexColor = (value: string): string => (HEX6.test(value) ? value : FALLBACK_HEX);
 </script>
 
 <div>
@@ -18,7 +17,8 @@
     <input
       id="color-picker"
       type="color"
-      value={safeHexColor($color)}
+      defaultValue={safeColorInputValue($color, FALLBACK_HEX)}
+      value={safeColorInputValue($color, FALLBACK_HEX)}
       oninput={(e) => {
         const v = (e.target as HTMLInputElement).value;
         color.set(v);

@@ -128,7 +128,13 @@ export class VoxelleSceneRenderPass extends RenderPass {
   constructor(
     scene: THREE.Scene,
     camera: THREE.Camera,
-    private readonly depthStash: WebGLDepthStash
+    private readonly depthStash: WebGLDepthStash,
+    /**
+     * When set, scene depth is blit-copied here after each scene pass so atmosphere shaders can
+     * sample depth while later passes render into the composer's ping-pong buffers (avoids
+     * GL_INVALID_OPERATION feedback loops when `writeBuffer` aliases the depth source RT).
+     */
+    private readonly depthCopyDestination: THREE.WebGLRenderTarget | null = null
   ) {
     super(scene, camera);
   }
@@ -148,7 +154,14 @@ export class VoxelleSceneRenderPass extends RenderPass {
       maskActive ?? false
     );
     /** RenderPass renders into `readBuffer` (three.js postprocessing convention). */
-    this.depthStash.texture = readBuffer.depthTexture ?? null;
+    const srcDepth = readBuffer.depthTexture;
+    const dst = this.depthCopyDestination?.depthTexture;
+    if (srcDepth && dst) {
+      renderer.copyTextureToTexture(srcDepth, dst);
+      this.depthStash.texture = dst;
+    } else {
+      this.depthStash.texture = srcDepth ?? null;
+    }
   }
 }
 

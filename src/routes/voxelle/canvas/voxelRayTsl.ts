@@ -15,7 +15,7 @@ import {
   createVoxelRayGpuTracePipeline,
   type VoxelRayGpuTracePipeline
 } from './voxelRayGpuTslTrace';
-import { maxDistanceForGpuAccel } from './gpuVoxelAccel';
+import { maxRayDistanceForVoxels } from './voxelRayDda';
 import type { RayTraceBackendPreference } from '../store/preferences';
 
 export type VoxelRayTslOutput = {
@@ -111,26 +111,39 @@ export class VoxelRayTsl {
 
     const rayDpr = Math.min(dpr, 1);
     const backend = tickContext?.rayTraceBackend ?? 'gpu';
+    const webgpu = tickContext?.webgpuRenderer;
     const wantGpuTry =
       backend === 'gpu' &&
-      tickContext?.webgpuRenderer &&
-      isWebGPURenderer(tickContext.webgpuRenderer) &&
-      this.resources &&
+      webgpu != null &&
+      isWebGPURenderer(webgpu) &&
+      this.resources != null &&
       this.resources.mode === 1 &&
       this.resources.denseTexture !== null;
     const wantGpu = wantGpuTry;
 
     if (backend === 'gpu' && !wantGpu) {
       if (!this.gpuUnavailableWarned) {
-        console.warn(
-          'Voxelle: Ray backend is set to GPU only, but GPU ray tracing is currently ineligible (requires WebGPU renderer + dense acceleration).'
-        );
+        let detail =
+          'Requires an active WebGPU renderer plus a dense voxel grid (not hash layout).';
+        if (!webgpu || !isWebGPURenderer(webgpu)) {
+          detail = 'WebGPU renderer is not active (check Preferences → Graphics API).';
+        } else if (this.resources) {
+          const k = this.resources.accel.kind;
+          if (k === 'empty') {
+            detail = 'Scene has no voxels yet; GPU path needs a dense volume.';
+          } else if (k === 'hash') {
+            detail =
+              'Voxel bounds are too large for the dense GPU grid; CPU progressive is used. Shrink the model spread or set Ray trace backend to CPU in Preferences.';
+          }
+        }
+        console.warn(`Voxelle: GPU ray tracing unavailable — using CPU progressive instead. ${detail}`);
         this.gpuUnavailableWarned = true;
       }
       this.outputIsGpu = false;
-      return;
+      // Do not return: run CPU progressive so Ray mode still renders.
+    } else {
+      this.gpuUnavailableWarned = false;
     }
-    this.gpuUnavailableWarned = false;
 
     if (wantGpu) {
       this.scheduleGpuPipelineInit(width, height, rayDpr);
@@ -148,7 +161,11 @@ export class VoxelRayTsl {
       res.denseTexture !== null &&
       res.accel.kind === 'dense'
     ) {
-      const maxDist = maxDistanceForGpuAccel(res.accel, voxels);
+      const maxDist = maxRayDistanceForVoxels(voxels, [
+        camera.position.x,
+        camera.position.y,
+        camera.position.z
+      ]);
       pipeline.setSize(width, height, rayDpr);
       const t0 = voxellePerfEnabled() ? perfNow() : 0;
       pipeline.render(

@@ -3,16 +3,6 @@
 </script>
 
 <h2>Camera</h2>
-<div class="light-control">
-  <label class="checkbox-label">
-    <input
-      type="checkbox"
-      checked={$orthographic}
-      onchange={(e) => orthographic.set((e.target as HTMLInputElement).checked)}
-    />
-    Orthographic view
-  </label>
-</div>
 {#if !$orthographic}
   <div class="light-control">
     <label for="focal-length">Focal length</label>

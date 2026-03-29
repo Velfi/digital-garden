@@ -138,6 +138,8 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
   const rayOut = rayRenderer?.output;
 
   if (webgpuBloomPipeline && isWebGPURenderer(renderer)) {
+    const hasGlowMeshes = sceneHasGlowMesh || hasGlowInVoxelGroup(voxelGroup);
+    webgpuBloomPipeline.setGlowBloomActive(hasGlowMeshes);
     const webgpuAtm = prepareWebGPUBloomAtmosphere?.() ?? false;
     /** Ray: avoid BloomNode TSL (async WebGPU fragment validation errors); glow RT is already traced. */
     webgpuBloomPipeline.setRayBloomDirectComposite(renderingMode === 'ray' && rayRenderer != null);

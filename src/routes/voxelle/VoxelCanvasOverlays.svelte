@@ -1103,7 +1103,8 @@
     border: 1px solid rgba(255, 255, 255, 0.4);
     border-radius: 4px;
     pointer-events: auto;
-    z-index: 1;
+    /* Above .tool-panel (z-index 100) so depth / rope / cloth tension sliders stay usable */
+    z-index: 110;
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;

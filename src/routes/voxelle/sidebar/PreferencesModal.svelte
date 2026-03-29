@@ -103,7 +103,8 @@
     onkeydown={(e) => e.key === 'Escape' && (open = false)}
   >
     <div class="modal modal--preferences">
-      <h3 id="preferences-title">Preferences</h3>
+      <h3 id="preferences-title" class="modal--preferences-title">Preferences</h3>
+      <div class="modal--preferences-scroll">
       <label class="checkbox-label">
         <input
           type="checkbox"
@@ -149,13 +150,15 @@
           <option value="webgl">WebGL</option>
         </select>
         <span class="field-hint"
-          >Changing this reloads the page. WebGPU: TSL bloom + simpler grid/sky.</span
+          >Changing this reloads the page. For GPU ray tracing in Chrome, pick WebGPU or Auto (not
+          WebGL).</span
         >
       </label>
       <h4 class="prefs-section-title">Ray mode</h4>
       <p class="field-hint prefs-section-hint">
-        Applies in Scene → Ray (WebGPU). Backend selection is explicit: GPU does not fall back to
-        CPU.
+        Applies when View → Rendering is Ray. GPU path needs a WebGPU viewport and a compact voxel
+        volume (dense grid). Huge bounding boxes use a hash layout and CPU progressive until the
+        build is tighter. If GPU is ineligible, CPU progressive runs and the console explains once.
       </p>
       <label class="select-label">
         <span class="select-label-text">Ray trace backend</span>
@@ -165,9 +168,13 @@
           onchange={(e) =>
             onRayTraceBackendChange(e.currentTarget.value as RayTraceBackendPreference)}
         >
-          <option value="gpu">GPU only</option>
+          <option value="gpu">GPU when eligible, else CPU progressive</option>
           <option value="cpu">CPU progressive only</option>
         </select>
+        <span class="field-hint"
+          >GPU: full-screen TSL trace in Chrome after WebGPU reload. CPU: always progressive (good
+          for very large or sparse models).</span
+        >
       </label>
       <label class="select-label">
         <span class="select-label-text">CPU ray budget per frame (ms)</span>
@@ -229,7 +236,8 @@
           {/each}
         </select>
       </label>
-      <div class="modal-buttons">
+      </div>
+      <div class="modal-buttons modal--preferences-footer">
         <button type="button" onclick={() => (open = false)}>Close</button>
       </div>
     </div>
@@ -239,6 +247,41 @@
 <style>
   .modal--preferences {
     min-width: min(90vw, 24rem);
+    max-height: min(90dvh, 90vh);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .modal--preferences-title {
+    flex-shrink: 0;
+    margin: 0;
+  }
+
+  .modal--preferences-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .modal--preferences-scroll .checkbox-label,
+  .modal--preferences-scroll .select-label {
+    margin-bottom: 0;
+  }
+
+  .modal--preferences-scroll .prefs-section-title {
+    margin: 0;
+  }
+
+  .modal--preferences-scroll .prefs-section-hint {
+    margin: 0;
+  }
+
+  .modal--preferences-footer {
+    flex-shrink: 0;
   }
 
   .prefs-section-title {

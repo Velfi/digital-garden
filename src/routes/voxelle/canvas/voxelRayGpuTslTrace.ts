@@ -33,6 +33,23 @@ import {
 import { GLASS_ABSORPTION_PER_UNIT } from './voxelRayDda';
 import { clampShadowSamples, GOLDEN_ANGLE, shadowConeTanFromRadians } from './gpuSoftShadow';
 
+/** Primary-ray DDA cannot use a tiny fixed iteration cap or distant grazing hits become background (diagonal “horizon” cut). */
+const PRIMARY_DDA_STEPS_ABS_MAX = 65536;
+const PRIMARY_DDA_STEPS_ABS_MIN = 768;
+
+function primaryDdaStepBudget(
+  maxDist: number,
+  dims: readonly [number, number, number]
+): number {
+  const sumDim = dims[0] + dims[1] + dims[2];
+  const distBased = Math.ceil(maxDist * Math.sqrt(3)) + 256;
+  const volBased = sumDim + 512;
+  return Math.min(
+    PRIMARY_DDA_STEPS_ABS_MAX,
+    Math.max(PRIMARY_DDA_STEPS_ABS_MIN, distBased, volBased)
+  );
+}
+
 export type VoxelRayGpuTracePipeline = {
   beautyTexture: import('three').Texture;
   bloomTexture: import('three').Texture;
@@ -124,6 +141,7 @@ export async function createVoxelRayGpuTracePipeline(
     pow,
     select,
     mix,
+    step,
     floor,
     sin,
     cos,
@@ -183,6 +201,7 @@ export async function createVoxelRayGpuTracePipeline(
   const uEnableSky = uniform(0);
   const uEnableShadows = uniform(0);
   const uMaxDist = uniform(4000);
+  const uPrimaryDdaMaxSteps = uniform(768);
   /** Matches `buildVoxelRayTraceParams` `lightStrength01`. */
   const uLightStrength01 = uniform(0);
   /** `params.timeSeconds` for water surface normal. */
@@ -1369,16 +1388,391 @@ export async function createVoxelRayGpuTracePipeline(
     );
   };
 
-  const shadeOutputFn = Fn(() => {
-    const suv = uv();
+  /** Background RGB for a ray miss: `uBg`, optionally replaced by vertical sky gradient from quad UV. */
+  const missBackgroundFromUv = (suv: ReturnType<typeof uv>) => {
+    const miss = vec3(uBg).toVar();
+    If(uEnableSky.greaterThan(float(0.5)), () => {
+      const denom = uBufH.sub(float(1)).max(float(1));
+      const tSky = clamp(suv.y.mul(uBufH).div(denom), float(0), float(1));
+      miss.assign(mix(uSkyTop, uSkyBottom, tSky));
+    });
+    return miss;
+  };
+
+  /** `out* = acc* + transmittance * missRgb`; optionally sets `hitFound` to 1 (segment / ray exhausted). */
+  const accumulateTransmittedMissRgb = (
+    miss: { x: ReturnType<typeof float>; y: ReturnType<typeof float>; z: ReturnType<typeof float> },
+    accR: ReturnType<typeof float> & { value?: unknown },
+    accG: ReturnType<typeof float> & { value?: unknown },
+    accB: ReturnType<typeof float> & { value?: unknown },
+    tr: ReturnType<typeof float> & { value?: unknown },
+    tg: ReturnType<typeof float> & { value?: unknown },
+    tb: ReturnType<typeof float> & { value?: unknown },
+    outR: ReturnType<typeof float> & { value?: unknown },
+    outG: ReturnType<typeof float> & { value?: unknown },
+    outB: ReturnType<typeof float> & { value?: unknown },
+    hitFound: (ReturnType<typeof float> & { value?: unknown }) | null
+  ) => {
+    outR.assign(accR.add(tr.mul(miss.x)));
+    outG.assign(accG.add(tg.mul(miss.y)));
+    outB.assign(accB.add(tb.mul(miss.z)));
+    if (hitFound !== null) {
+      hitFound.assign(float(1));
+    }
+  };
+
+  /** Quad UV → world-space primary ray (matches CPU trace clip unproject). */
+  const cameraRayFromUv = (suv: ReturnType<typeof uv>) => {
     const ndcX = suv.x.mul(float(2)).sub(float(1));
-    // Quad UVs are bottom-left origin here; map directly to clip-space Y to match CPU rays.
     const ndcY = suv.y.mul(float(2)).sub(float(1));
     const clip = vec4(ndcX, ndcY, float(0.5), float(1));
     const pw = uClipToWorld.mul(clip);
     const pWorld = pw.xyz.div(pw.w.max(float(1e-6)));
     const rd = normalize(pWorld.sub(vec3(uCamPos)));
     const ro = vec3(uCamPos);
+    return { rd, ro };
+  };
+
+  /** DDA voxel grid + tMax/tDelta from current ray origin (`oox`..`ooz`) and direction. */
+  const primaryRayDdaPrep = (
+    oox: ReturnType<typeof float> & { value?: unknown },
+    ooy: ReturnType<typeof float> & { value?: unknown },
+    ooz: ReturnType<typeof float> & { value?: unknown },
+    rdx: ReturnType<typeof float> & { value?: unknown },
+    rdy: ReturnType<typeof float> & { value?: unknown },
+    rdz: ReturnType<typeof float> & { value?: unknown }
+  ) => {
+    const oxp = oox.add(rdx.mul(DDA_RAY_ORIGIN_EPS));
+    const oyp = ooy.add(rdy.mul(DDA_RAY_ORIGIN_EPS));
+    const ozp = ooz.add(rdz.mul(DDA_RAY_ORIGIN_EPS));
+    const x = int(floor(oxp)).toVar();
+    const y = int(floor(oyp)).toVar();
+    const z = int(floor(ozp)).toVar();
+    const stepX = int(0).toVar();
+    const stepY = int(0).toVar();
+    const stepZ = int(0).toVar();
+    If(greaterThan(rdx, float(1e-9)), () => stepX.assign(int(1)));
+    If(lessThan(rdx, float(-1e-9)), () => stepX.assign(int(-1)));
+    If(greaterThan(rdy, float(1e-9)), () => stepY.assign(int(1)));
+    If(lessThan(rdy, float(-1e-9)), () => stepY.assign(int(-1)));
+    If(greaterThan(rdz, float(1e-9)), () => stepZ.assign(int(1)));
+    If(lessThan(rdz, float(-1e-9)), () => stepZ.assign(int(-1)));
+    const big = float(1e30);
+    const tDeltaX = select(equal(stepX, int(0)), big, float(1).div(abs(rdx)));
+    const tDeltaY = select(equal(stepY, int(0)), big, float(1).div(abs(rdy)));
+    const tDeltaZ = select(equal(stepZ, int(0)), big, float(1).div(abs(rdz)));
+    const tMaxX = float(0).toVar();
+    const tMaxY = float(0).toVar();
+    const tMaxZ = float(0).toVar();
+    If(greaterThan(stepX, int(0)), () => tMaxX.assign(float(x.add(int(1)).sub(oxp)).div(rdx)));
+    If(lessThan(stepX, int(0)), () => tMaxX.assign(float(x.sub(oxp)).div(rdx)));
+    If(equal(stepX, int(0)), () => tMaxX.assign(big));
+    If(greaterThan(stepY, int(0)), () => tMaxY.assign(float(y.add(int(1)).sub(oyp)).div(rdy)));
+    If(lessThan(stepY, int(0)), () => tMaxY.assign(float(y.sub(oyp)).div(rdy)));
+    If(equal(stepY, int(0)), () => tMaxY.assign(big));
+    If(greaterThan(stepZ, int(0)), () => tMaxZ.assign(float(z.add(int(1)).sub(ozp)).div(rdz)));
+    If(lessThan(stepZ, int(0)), () => tMaxZ.assign(float(z.sub(ozp)).div(rdz)));
+    If(equal(stepZ, int(0)), () => tMaxZ.assign(big));
+    return { oxp, oyp, ozp, x, y, z, stepX, stepY, stepZ, tDeltaX, tDeltaY, tDeltaZ, tMaxX, tMaxY, tMaxZ };
+  };
+
+  /** Major-axis face normal pointing opposite to `-rd` (glass slab entry from outside). */
+  const ddaMajorAxisNormalTowardNegRay = (
+    rdx: ReturnType<typeof float> & { value?: unknown },
+    rdy: ReturnType<typeof float> & { value?: unknown },
+    rdz: ReturnType<typeof float> & { value?: unknown }
+  ) => {
+    const ax = abs(rdx);
+    const ay = abs(rdy);
+    const az = abs(rdz);
+    const nx = float(0).toVar();
+    const ny = float(0).toVar();
+    const nz = float(0).toVar();
+    If(and(ax.greaterThanEqual(ay), ax.greaterThanEqual(az)), () => {
+      nx.assign(select(greaterThan(rdx.negate(), float(0)), float(1), float(-1)));
+    })
+      .ElseIf(ay.greaterThanEqual(az), () => {
+        ny.assign(select(greaterThan(rdy.negate(), float(0)), float(1), float(-1)));
+      })
+      .Else(() => {
+        nz.assign(select(greaterThan(rdz.negate(), float(0)), float(1), float(-1)));
+      });
+    return { nx, ny, nz };
+  };
+
+  /** Major-axis face normal pointing toward `+rd` (opaque cube exit / camera side). */
+  const ddaMajorAxisNormalTowardPosRay = (
+    rdx: ReturnType<typeof float> & { value?: unknown },
+    rdy: ReturnType<typeof float> & { value?: unknown },
+    rdz: ReturnType<typeof float> & { value?: unknown }
+  ) => {
+    const ax = abs(rdx);
+    const ay = abs(rdy);
+    const az = abs(rdz);
+    const nx = float(0).toVar();
+    const ny = float(0).toVar();
+    const nz = float(0).toVar();
+    If(and(ax.greaterThanEqual(ay), ax.greaterThanEqual(az)), () => {
+      nx.assign(select(greaterThan(rdx, float(0)), float(1), float(-1)));
+    })
+      .ElseIf(ay.greaterThanEqual(az), () => {
+        ny.assign(select(greaterThan(rdy, float(0)), float(1), float(-1)));
+      })
+      .Else(() => {
+        nz.assign(select(greaterThan(rdz, float(0)), float(1), float(-1)));
+      });
+    return { nx, ny, nz };
+  };
+
+  /** Advance DDA to the next voxel boundary; updates `tMax*`, `x|y|z`, returns `tHit` and crossed `axis`. */
+  const ddaAdvanceNextVoxel = (
+    tMaxX: ReturnType<typeof float> & { value?: unknown },
+    tMaxY: ReturnType<typeof float> & { value?: unknown },
+    tMaxZ: ReturnType<typeof float> & { value?: unknown },
+    tDeltaX: ReturnType<typeof float>,
+    tDeltaY: ReturnType<typeof float>,
+    tDeltaZ: ReturnType<typeof float>,
+    stepX: ReturnType<typeof int> & { value?: unknown },
+    stepY: ReturnType<typeof int> & { value?: unknown },
+    stepZ: ReturnType<typeof int> & { value?: unknown },
+    x: ReturnType<typeof int> & { value?: unknown },
+    y: ReturnType<typeof int> & { value?: unknown },
+    z: ReturnType<typeof int> & { value?: unknown }
+  ) => {
+    const tHit = float(0).toVar();
+    const axis = int(0).toVar();
+    If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
+      axis.assign(int(0));
+      tHit.assign(tMaxX);
+      tMaxX.addAssign(tDeltaX);
+      x.addAssign(stepX);
+    })
+      .ElseIf(tMaxY.lessThanEqual(tMaxZ), () => {
+        axis.assign(int(1));
+        tHit.assign(tMaxY);
+        tMaxY.addAssign(tDeltaY);
+        y.addAssign(stepY);
+      })
+      .Else(() => {
+        axis.assign(int(2));
+        tHit.assign(tMaxZ);
+        tMaxZ.addAssign(tDeltaZ);
+        z.addAssign(stepZ);
+      });
+    return { tHit, axis };
+  };
+
+  /** Face normal for the DDA step axis (points into the entered voxel, ±1 on crossed axis). */
+  const ddaStepFaceNormal = (
+    axis: ReturnType<typeof int> & { value?: unknown },
+    stepX: ReturnType<typeof int> & { value?: unknown },
+    stepY: ReturnType<typeof int> & { value?: unknown },
+    stepZ: ReturnType<typeof int> & { value?: unknown }
+  ) => {
+    const nx = float(0).toVar();
+    const ny = float(0).toVar();
+    const nz = float(0).toVar();
+    If(axis.equal(int(0)), () => {
+      nx.assign(select(greaterThan(stepX, int(0)), float(-1), float(1)));
+    })
+      .ElseIf(axis.equal(int(1)), () => {
+        ny.assign(select(greaterThan(stepY, int(0)), float(-1), float(1)));
+      })
+      .Else(() => {
+        nz.assign(select(greaterThan(stepZ, int(0)), float(-1), float(1)));
+      });
+    return { nx, ny, nz };
+  };
+
+  /**
+   * Lambert + metal spec + glow accumulation + bloom mask for one opaque voxel hit.
+   * `base*` is the shaded surface point (ro for cell entry, hit position along march for DDA step).
+   */
+  const shadeOpaqueVoxelContribution = (
+    shouldBreakAfter: boolean,
+    pk: ReturnType<typeof uint>,
+    matIdx: ReturnType<typeof uint>,
+    baseX: ReturnType<typeof float>,
+    baseY: ReturnType<typeof float>,
+    baseZ: ReturnType<typeof float>,
+    nx: ReturnType<typeof float> & { value?: unknown },
+    ny: ReturnType<typeof float> & { value?: unknown },
+    nz: ReturnType<typeof float> & { value?: unknown },
+    maxT: ReturnType<typeof float>,
+    rdx: ReturnType<typeof float> & { value?: unknown },
+    rdy: ReturnType<typeof float> & { value?: unknown },
+    rdz: ReturnType<typeof float> & { value?: unknown },
+    accR: ReturnType<typeof float> & { value?: unknown },
+    accG: ReturnType<typeof float> & { value?: unknown },
+    accB: ReturnType<typeof float> & { value?: unknown },
+    tr: ReturnType<typeof float> & { value?: unknown },
+    tg: ReturnType<typeof float> & { value?: unknown },
+    tb: ReturnType<typeof float> & { value?: unknown },
+    outR: ReturnType<typeof float> & { value?: unknown },
+    outG: ReturnType<typeof float> & { value?: unknown },
+    outB: ReturnType<typeof float> & { value?: unknown },
+    bloomR: ReturnType<typeof float> & { value?: unknown },
+    bloomG: ReturnType<typeof float> & { value?: unknown },
+    bloomB: ReturnType<typeof float> & { value?: unknown },
+    hitFound: ReturnType<typeof float> & { value?: unknown }
+  ) => {
+    const rgb = unpackLinearRgb(pk);
+    const lx = uToLight.x;
+    const ly = uToLight.y;
+    const lz = uToLight.z;
+    const ndotl = max(float(0), nx.mul(lx).add(ny.mul(ly)).add(nz.mul(lz)));
+    const shR = float(1).toVar();
+    const shG = float(1).toVar();
+    const shB = float(1).toVar();
+    If(uEnableShadows.greaterThan(float(0.5)), () => {
+      const hx = baseX.add(nx.mul(SHADOW_SURFACE_EPS));
+      const hy = baseY.add(ny.mul(SHADOW_SURFACE_EPS));
+      const hz = baseZ.add(nz.mul(SHADOW_SURFACE_EPS));
+      const st = averagedShadowTransmission(hx, hy, hz, lx, ly, lz, maxT);
+      shR.assign(st.x);
+      shG.assign(st.y);
+      shB.assign(st.z);
+    });
+    const cr = rgb.x;
+    const cg = rgb.y;
+    const cb = rgb.z;
+    const dr = cr.mul(uAmbient.x).add(cr.mul(uSunDiffuse.x).mul(ndotl).mul(shR));
+    const dg = cg.mul(uAmbient.y).add(cg.mul(uSunDiffuse.y).mul(ndotl).mul(shG));
+    const db = cb.mul(uAmbient.z).add(cb.mul(uSunDiffuse.z).mul(ndotl).mul(shB));
+    const eAdd = accumulateGlowDirect(
+      baseX.add(nx.mul(SHADOW_SURFACE_EPS)),
+      baseY.add(ny.mul(SHADOW_SURFACE_EPS)),
+      baseZ.add(nz.mul(SHADOW_SURFACE_EPS)),
+      nx,
+      ny,
+      nz,
+      maxT
+    );
+    const isMetal = matIdx.equal(uint(METAL_MAT));
+    const isGlow = matIdx.equal(uint(GLOW_MAT));
+    const vx = rdx.negate();
+    const vy = rdy.negate();
+    const vz = rdz.negate();
+    const reflL = ndotl.mul(float(2)).mul(nx).sub(lx);
+    const reflM = ndotl.mul(float(2)).mul(ny).sub(ly);
+    const reflN = ndotl.mul(float(2)).mul(nz).sub(lz);
+    const spec = max(float(0), vx.mul(reflL).add(vy.mul(reflM)).add(vz.mul(reflN)));
+    const sp = pow(spec, float(48)).mul(float(0.45));
+    const dMetalR = dr.add(sp.mul(uSunDiffuse.x).mul(shR));
+    const dMetalG = dg.add(sp.mul(uSunDiffuse.y).mul(shG));
+    const dMetalB = db.add(sp.mul(uSunDiffuse.z).mul(shB));
+    const dFinalR = select(isMetal, dMetalR, dr).add(eAdd.x);
+    const dFinalG = select(isMetal, dMetalG, dg).add(eAdd.y);
+    const dFinalB = select(isMetal, dMetalB, db).add(eAdd.z);
+    const addR = cr.mul(GLOW_SELF_SCALE);
+    const addG = cg.mul(GLOW_SELF_SCALE);
+    const addB = cb.mul(GLOW_SELF_SCALE);
+    const surfR = dFinalR.add(select(isGlow, addR, float(0)));
+    const surfG = dFinalG.add(select(isGlow, addG, float(0)));
+    const surfB = dFinalB.add(select(isGlow, addB, float(0)));
+    outR.assign(accR.add(tr.mul(surfR)));
+    outG.assign(accG.add(tg.mul(surfG)));
+    outB.assign(accB.add(tb.mul(surfB)));
+    bloomR.assign(tr.mul(select(isGlow, addR.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
+    bloomG.assign(tg.mul(select(isGlow, addG.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
+    bloomB.assign(tb.mul(select(isGlow, addB.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
+    hitFound.assign(float(1));
+    if (shouldBreakAfter) {
+      Break();
+    }
+  };
+
+  /** Glass/water slab: Fresnel + column + advance ray. March step sets `marchDidGlass` and breaks the inner loop. */
+  const runTransmissiveGlassSlab = (
+    isMarchStep: boolean,
+    matIdx: ReturnType<typeof uint>,
+    pk: ReturnType<typeof uint>,
+    ix: ReturnType<typeof int>,
+    iy: ReturnType<typeof int>,
+    iz: ReturnType<typeof int>,
+    wavePx: ReturnType<typeof float>,
+    wavePz: ReturnType<typeof float>,
+    nx: ReturnType<typeof float> & { value?: unknown },
+    ny: ReturnType<typeof float> & { value?: unknown },
+    nz: ReturnType<typeof float> & { value?: unknown },
+    entryT: ReturnType<typeof float>,
+    ifaceX: ReturnType<typeof float>,
+    ifaceY: ReturnType<typeof float>,
+    ifaceZ: ReturnType<typeof float>,
+    oox: ReturnType<typeof float> & { value?: unknown },
+    ooy: ReturnType<typeof float> & { value?: unknown },
+    ooz: ReturnType<typeof float> & { value?: unknown },
+    remDist: ReturnType<typeof float> & { value?: unknown },
+    mediumIor: ReturnType<typeof float> & { value?: unknown },
+    accR: ReturnType<typeof float> & { value?: unknown },
+    accG: ReturnType<typeof float> & { value?: unknown },
+    accB: ReturnType<typeof float> & { value?: unknown },
+    tr: ReturnType<typeof float> & { value?: unknown },
+    tg: ReturnType<typeof float> & { value?: unknown },
+    tb: ReturnType<typeof float> & { value?: unknown },
+    rdx: ReturnType<typeof float> & { value?: unknown },
+    rdy: ReturnType<typeof float> & { value?: unknown },
+    rdz: ReturnType<typeof float> & { value?: unknown },
+    marchDidGlass: ReturnType<typeof float> & { value?: unknown }
+  ) => {
+    const sN = transmissiveShadingNormal(matIdx, ix, iy, iz, wavePx, wavePz, nx, ny, nz);
+    accumulateGlassInterface(
+      matIdx,
+      pk,
+      ix,
+      iy,
+      iz,
+      sN.x,
+      sN.y,
+      sN.z,
+      entryT,
+      ifaceX,
+      ifaceY,
+      ifaceZ,
+      oox,
+      ooy,
+      ooz,
+      remDist,
+      mediumIor,
+      accR,
+      accG,
+      accB,
+      tr,
+      tg,
+      tb,
+      rdx,
+      rdy,
+      rdz
+    );
+    if (isMarchStep) {
+      marchDidGlass.assign(float(1));
+      Break();
+    }
+  };
+
+  const composeBeautyBloomRgba = (
+    postX: ReturnType<typeof float>,
+    postY: ReturnType<typeof float>,
+    postZ: ReturnType<typeof float>,
+    bloomR: ReturnType<typeof float> & { value?: unknown },
+    bloomG: ReturnType<typeof float> & { value?: unknown },
+    bloomB: ReturnType<typeof float> & { value?: unknown }
+  ) => {
+    const bloomOut = vec4(bloomR, bloomG, bloomB, float(1));
+    const beautyOut = vec4(postX, postY, postZ, float(1));
+    const bloomMixT = step(float(0.5), uPassBloom);
+    return vec4(
+      mix(beautyOut.x, bloomOut.x, bloomMixT),
+      mix(beautyOut.y, bloomOut.y, bloomMixT),
+      mix(beautyOut.z, bloomOut.z, bloomMixT),
+      float(1)
+    );
+  };
+
+  // Inline `Fn(..., 'vec4')` only: object layout extracts a WGSL helper and can mis-type returns (f32 vs vec4).
+  const shadeOutputFn = Fn(() => {
+    const suv = uv();
+    const { rd, ro } = cameraRayFromUv(suv);
 
     const rdx = rd.x.toVar();
     const rdy = rd.y.toVar();
@@ -1418,52 +1812,39 @@ export async function createVoxelRayGpuTracePipeline(
       marchDidGlass.assign(float(0));
       If(hitFound.greaterThan(float(0.5)), () => Break());
       If(remDist.lessThan(float(1e-6)), () => {
-        const missRem = vec3(uBg).toVar();
-        If(uEnableSky.greaterThan(float(0.5)), () => {
-          const denomR = uBufH.sub(float(1)).max(float(1));
-          const tSkyR = clamp(suv.y.mul(uBufH).div(denomR), float(0), float(1));
-          missRem.assign(mix(uSkyTop, uSkyBottom, tSkyR));
-        });
-        outR.assign(accR.add(tr.mul(missRem.x)));
-        outG.assign(accG.add(tg.mul(missRem.y)));
-        outB.assign(accB.add(tb.mul(missRem.z)));
-        hitFound.assign(float(1));
+        accumulateTransmittedMissRgb(
+          missBackgroundFromUv(suv),
+          accR,
+          accG,
+          accB,
+          tr,
+          tg,
+          tb,
+          outR,
+          outG,
+          outB,
+          hitFound
+        );
         Break();
       });
 
-      const oxp = oox.add(rdx.mul(DDA_RAY_ORIGIN_EPS));
-      const oyp = ooy.add(rdy.mul(DDA_RAY_ORIGIN_EPS));
-      const ozp = ooz.add(rdz.mul(DDA_RAY_ORIGIN_EPS));
-      const x = int(floor(oxp)).toVar();
-      const y = int(floor(oyp)).toVar();
-      const z = int(floor(ozp)).toVar();
-
-      const stepX = int(0).toVar();
-      const stepY = int(0).toVar();
-      const stepZ = int(0).toVar();
-      If(greaterThan(rdx, float(1e-9)), () => stepX.assign(int(1)));
-      If(lessThan(rdx, float(-1e-9)), () => stepX.assign(int(-1)));
-      If(greaterThan(rdy, float(1e-9)), () => stepY.assign(int(1)));
-      If(lessThan(rdy, float(-1e-9)), () => stepY.assign(int(-1)));
-      If(greaterThan(rdz, float(1e-9)), () => stepZ.assign(int(1)));
-      If(lessThan(rdz, float(-1e-9)), () => stepZ.assign(int(-1)));
-
-      const big = float(1e30);
-      const tDeltaX = select(equal(stepX, int(0)), big, float(1).div(abs(rdx)));
-      const tDeltaY = select(equal(stepY, int(0)), big, float(1).div(abs(rdy)));
-      const tDeltaZ = select(equal(stepZ, int(0)), big, float(1).div(abs(rdz)));
-      const tMaxX = float(0).toVar();
-      const tMaxY = float(0).toVar();
-      const tMaxZ = float(0).toVar();
-      If(greaterThan(stepX, int(0)), () => tMaxX.assign(float(x.add(int(1)).sub(oxp)).div(rdx)));
-      If(lessThan(stepX, int(0)), () => tMaxX.assign(float(x.sub(oxp)).div(rdx)));
-      If(equal(stepX, int(0)), () => tMaxX.assign(big));
-      If(greaterThan(stepY, int(0)), () => tMaxY.assign(float(y.add(int(1)).sub(oyp)).div(rdy)));
-      If(lessThan(stepY, int(0)), () => tMaxY.assign(float(y.sub(oyp)).div(rdy)));
-      If(equal(stepY, int(0)), () => tMaxY.assign(big));
-      If(greaterThan(stepZ, int(0)), () => tMaxZ.assign(float(z.add(int(1)).sub(ozp)).div(rdz)));
-      If(lessThan(stepZ, int(0)), () => tMaxZ.assign(float(z.sub(ozp)).div(rdz)));
-      If(equal(stepZ, int(0)), () => tMaxZ.assign(big));
+      const {
+        oxp,
+        oyp,
+        ozp,
+        x,
+        y,
+        z,
+        stepX,
+        stepY,
+        stepZ,
+        tDeltaX,
+        tDeltaY,
+        tDeltaZ,
+        tMaxX,
+        tMaxY,
+        tMaxZ
+      } = primaryRayDdaPrep(oox, ooy, ooz, rdx, rdy, rdz);
 
       const maxT = remDist;
 
@@ -1472,31 +1853,19 @@ export async function createVoxelRayGpuTracePipeline(
       If(greaterThan(matStart, uint(0)), () => {
         const matIdx = uint(matStart.sub(uint(1)));
         If(isTransmissiveIdx(matIdx), () => {
-          const ax0 = abs(rdx);
-          const ay0 = abs(rdy);
-          const az0 = abs(rdz);
-          const nx0 = float(0).toVar();
-          const ny0 = float(0).toVar();
-          const nz0 = float(0).toVar();
-          If(and(ax0.greaterThanEqual(ay0), ax0.greaterThanEqual(az0)), () => {
-            nx0.assign(select(greaterThan(rdx.negate(), float(0)), float(1), float(-1)));
-          })
-            .ElseIf(ay0.greaterThanEqual(az0), () => {
-              ny0.assign(select(greaterThan(rdy.negate(), float(0)), float(1), float(-1)));
-            })
-            .Else(() => {
-              nz0.assign(select(greaterThan(rdz.negate(), float(0)), float(1), float(-1)));
-            });
-          const sN0 = transmissiveShadingNormal(matIdx, x, y, z, oox, ooz, nx0, ny0, nz0);
-          accumulateGlassInterface(
+          const { nx: nx0, ny: ny0, nz: nz0 } = ddaMajorAxisNormalTowardNegRay(rdx, rdy, rdz);
+          runTransmissiveGlassSlab(
+            false,
             matIdx,
             pkStart,
             x,
             y,
             z,
-            sN0.x,
-            sN0.y,
-            sN0.z,
+            oox,
+            ooz,
+            nx0,
+            ny0,
+            nz0,
             float(0),
             oox,
             ooy,
@@ -1514,110 +1883,60 @@ export async function createVoxelRayGpuTracePipeline(
             tb,
             rdx,
             rdy,
-            rdz
+            rdz,
+            marchDidGlass
           );
         }).Else(() => {
-          const rgb = unpackLinearRgb(pkStart);
-          const ax = abs(rdx);
-          const ay = abs(rdy);
-          const az = abs(rdz);
-          const nx = float(0).toVar();
-          const ny = float(0).toVar();
-          const nz = float(0).toVar();
-          If(and(ax.greaterThanEqual(ay), ax.greaterThanEqual(az)), () => {
-            nx.assign(select(greaterThan(rdx, float(0)), float(1), float(-1)));
-          })
-            .ElseIf(ay.greaterThanEqual(az), () => {
-              ny.assign(select(greaterThan(rdy, float(0)), float(1), float(-1)));
-            })
-            .Else(() => {
-              nz.assign(select(greaterThan(rdz, float(0)), float(1), float(-1)));
-            });
-          const lx = uToLight.x;
-          const ly = uToLight.y;
-          const lz = uToLight.z;
-          const ndotl = max(float(0), nx.mul(lx).add(ny.mul(ly)).add(nz.mul(lz)));
-          const shR = float(1).toVar();
-          const shG = float(1).toVar();
-          const shB = float(1).toVar();
-          If(uEnableShadows.greaterThan(float(0.5)), () => {
-            const hx = oox.add(nx.mul(SHADOW_SURFACE_EPS));
-            const hy = ooy.add(ny.mul(SHADOW_SURFACE_EPS));
-            const hz = ooz.add(nz.mul(SHADOW_SURFACE_EPS));
-            const st = averagedShadowTransmission(hx, hy, hz, lx, ly, lz, maxT);
-            shR.assign(st.x);
-            shG.assign(st.y);
-            shB.assign(st.z);
-          });
-          const cr = rgb.x;
-          const cg = rgb.y;
-          const cb = rgb.z;
-          const dr = cr.mul(uAmbient.x).add(cr.mul(uSunDiffuse.x).mul(ndotl).mul(shR));
-          const dg = cg.mul(uAmbient.y).add(cg.mul(uSunDiffuse.y).mul(ndotl).mul(shG));
-          const db = cb.mul(uAmbient.z).add(cb.mul(uSunDiffuse.z).mul(ndotl).mul(shB));
-          const eAdd = accumulateGlowDirect(
-            oox.add(nx.mul(SHADOW_SURFACE_EPS)),
-            ooy.add(ny.mul(SHADOW_SURFACE_EPS)),
-            ooz.add(nz.mul(SHADOW_SURFACE_EPS)),
+          const { nx, ny, nz } = ddaMajorAxisNormalTowardPosRay(rdx, rdy, rdz);
+          shadeOpaqueVoxelContribution(
+            false,
+            pkStart,
+            matIdx,
+            oox,
+            ooy,
+            ooz,
             nx,
             ny,
             nz,
-            maxT
+            maxT,
+            rdx,
+            rdy,
+            rdz,
+            accR,
+            accG,
+            accB,
+            tr,
+            tg,
+            tb,
+            outR,
+            outG,
+            outB,
+            bloomR,
+            bloomG,
+            bloomB,
+            hitFound
           );
-          const isMetal = matIdx.equal(uint(METAL_MAT));
-          const isGlow = matIdx.equal(uint(GLOW_MAT));
-          const vx = rdx.negate();
-          const vy = rdy.negate();
-          const vz = rdz.negate();
-          const reflL = ndotl.mul(float(2)).mul(nx).sub(lx);
-          const reflM = ndotl.mul(float(2)).mul(ny).sub(ly);
-          const reflN = ndotl.mul(float(2)).mul(nz).sub(lz);
-          const spec = max(float(0), vx.mul(reflL).add(vy.mul(reflM)).add(vz.mul(reflN)));
-          const sp = pow(spec, float(48)).mul(float(0.45));
-          const dMetalR = dr.add(sp.mul(uSunDiffuse.x).mul(shR));
-          const dMetalG = dg.add(sp.mul(uSunDiffuse.y).mul(shG));
-          const dMetalB = db.add(sp.mul(uSunDiffuse.z).mul(shB));
-          const dFinalR = select(isMetal, dMetalR, dr).add(eAdd.x);
-          const dFinalG = select(isMetal, dMetalG, dg).add(eAdd.y);
-          const dFinalB = select(isMetal, dMetalB, db).add(eAdd.z);
-          const addR = cr.mul(GLOW_SELF_SCALE);
-          const addG = cg.mul(GLOW_SELF_SCALE);
-          const addB = cb.mul(GLOW_SELF_SCALE);
-          const surfR = dFinalR.add(select(isGlow, addR, float(0)));
-          const surfG = dFinalG.add(select(isGlow, addG, float(0)));
-          const surfB = dFinalB.add(select(isGlow, addB, float(0)));
-          outR.assign(accR.add(tr.mul(surfR)));
-          outG.assign(accG.add(tg.mul(surfG)));
-          outB.assign(accB.add(tb.mul(surfB)));
-          bloomR.assign(tr.mul(select(isGlow, addR.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
-          bloomG.assign(tg.mul(select(isGlow, addG.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
-          bloomB.assign(tb.mul(select(isGlow, addB.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
-          hitFound.assign(float(1));
         });
       });
 
       If(hitFound.lessThan(float(0.5)), () => {
-        Loop({ start: int(0), end: int(768), type: 'int', condition: '<' }, () => {
-          const tHit = float(0).toVar();
-          const axis = int(0).toVar();
-          If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
-            axis.assign(int(0));
-            tHit.assign(tMaxX);
-            tMaxX.addAssign(tDeltaX);
-            x.addAssign(stepX);
-          })
-            .ElseIf(tMaxY.lessThanEqual(tMaxZ), () => {
-              axis.assign(int(1));
-              tHit.assign(tMaxY);
-              tMaxY.addAssign(tDeltaY);
-              y.addAssign(stepY);
-            })
-            .Else(() => {
-              axis.assign(int(2));
-              tHit.assign(tMaxZ);
-              tMaxZ.addAssign(tDeltaZ);
-              z.addAssign(stepZ);
-            });
+        Loop(
+          { start: int(0), end: int(floor(uPrimaryDdaMaxSteps)), type: 'int', condition: '<' },
+          () => {
+          const { tHit, axis } = ddaAdvanceNextVoxel(
+            tMaxX,
+            tMaxY,
+            tMaxZ,
+            tDeltaX,
+            tDeltaY,
+            tDeltaZ,
+            stepX,
+            stepY,
+            stepZ,
+            x,
+            y,
+            z
+          );
           If(tHit.greaterThan(maxT), () => Break());
           const hpx = oxp.add(rdx.mul(tHit));
           const hpy = oyp.add(rdy.mul(tHit));
@@ -1626,29 +1945,20 @@ export async function createVoxelRayGpuTracePipeline(
           const matEnc = shiftRight(pk, uint(24));
           If(greaterThan(matEnc, uint(0)), () => {
             const matIdx = uint(matEnc.sub(uint(1)));
-            const nx = float(0).toVar();
-            const ny = float(0).toVar();
-            const nz = float(0).toVar();
-            If(axis.equal(int(0)), () => {
-              nx.assign(select(greaterThan(stepX, int(0)), float(-1), float(1)));
-            })
-              .ElseIf(axis.equal(int(1)), () => {
-                ny.assign(select(greaterThan(stepY, int(0)), float(-1), float(1)));
-              })
-              .Else(() => {
-                nz.assign(select(greaterThan(stepZ, int(0)), float(-1), float(1)));
-              });
+            const { nx, ny, nz } = ddaStepFaceNormal(axis, stepX, stepY, stepZ);
             If(isTransmissiveIdx(matIdx), () => {
-              const sN = transmissiveShadingNormal(matIdx, x, y, z, hpx, hpz, nx, ny, nz);
-              accumulateGlassInterface(
+              runTransmissiveGlassSlab(
+                true,
                 matIdx,
                 pk,
                 x,
                 y,
                 z,
-                sN.x,
-                sN.y,
-                sN.z,
+                hpx,
+                hpz,
+                nx,
+                ny,
+                nz,
                 tHit,
                 hpx,
                 hpy,
@@ -1666,108 +1976,75 @@ export async function createVoxelRayGpuTracePipeline(
                 tb,
                 rdx,
                 rdy,
-                rdz
+                rdz,
+                marchDidGlass
               );
-              marchDidGlass.assign(float(1));
-              Break();
             }).Else(() => {
-              const rgb = unpackLinearRgb(pk);
-              const lx = uToLight.x;
-              const ly = uToLight.y;
-              const lz = uToLight.z;
-              const ndotl = max(float(0), nx.mul(lx).add(ny.mul(ly)).add(nz.mul(lz)));
-              const shR = float(1).toVar();
-              const shG = float(1).toVar();
-              const shB = float(1).toVar();
-              If(uEnableShadows.greaterThan(float(0.5)), () => {
-                const hx = hpx.add(nx.mul(SHADOW_SURFACE_EPS));
-                const hy = hpy.add(ny.mul(SHADOW_SURFACE_EPS));
-                const hz = hpz.add(nz.mul(SHADOW_SURFACE_EPS));
-                const st = averagedShadowTransmission(hx, hy, hz, lx, ly, lz, maxT);
-                shR.assign(st.x);
-                shG.assign(st.y);
-                shB.assign(st.z);
-              });
-              const cr = rgb.x;
-              const cg = rgb.y;
-              const cb = rgb.z;
-              const dr = cr.mul(uAmbient.x).add(cr.mul(uSunDiffuse.x).mul(ndotl).mul(shR));
-              const dg = cg.mul(uAmbient.y).add(cg.mul(uSunDiffuse.y).mul(ndotl).mul(shG));
-              const db = cb.mul(uAmbient.z).add(cb.mul(uSunDiffuse.z).mul(ndotl).mul(shB));
-              const eAdd = accumulateGlowDirect(
-                hpx.add(nx.mul(SHADOW_SURFACE_EPS)),
-                hpy.add(ny.mul(SHADOW_SURFACE_EPS)),
-                hpz.add(nz.mul(SHADOW_SURFACE_EPS)),
+              shadeOpaqueVoxelContribution(
+                true,
+                pk,
+                matIdx,
+                hpx,
+                hpy,
+                hpz,
                 nx,
                 ny,
                 nz,
-                maxT
+                maxT,
+                rdx,
+                rdy,
+                rdz,
+                accR,
+                accG,
+                accB,
+                tr,
+                tg,
+                tb,
+                outR,
+                outG,
+                outB,
+                bloomR,
+                bloomG,
+                bloomB,
+                hitFound
               );
-              const isMetal = matIdx.equal(uint(METAL_MAT));
-              const isGlow = matIdx.equal(uint(GLOW_MAT));
-              const vx = rdx.negate();
-              const vy = rdy.negate();
-              const vz = rdz.negate();
-              const reflL = ndotl.mul(float(2)).mul(nx).sub(lx);
-              const reflM = ndotl.mul(float(2)).mul(ny).sub(ly);
-              const reflN = ndotl.mul(float(2)).mul(nz).sub(lz);
-              const spec = max(float(0), vx.mul(reflL).add(vy.mul(reflM)).add(vz.mul(reflN)));
-              const sp = pow(spec, float(48)).mul(float(0.45));
-              const dMetalR = dr.add(sp.mul(uSunDiffuse.x).mul(shR));
-              const dMetalG = dg.add(sp.mul(uSunDiffuse.y).mul(shG));
-              const dMetalB = db.add(sp.mul(uSunDiffuse.z).mul(shB));
-              const dFinalR = select(isMetal, dMetalR, dr).add(eAdd.x);
-              const dFinalG = select(isMetal, dMetalG, dg).add(eAdd.y);
-              const dFinalB = select(isMetal, dMetalB, db).add(eAdd.z);
-              const addR = cr.mul(GLOW_SELF_SCALE);
-              const addG = cg.mul(GLOW_SELF_SCALE);
-              const addB = cb.mul(GLOW_SELF_SCALE);
-              const surfR = dFinalR.add(select(isGlow, addR, float(0)));
-              const surfG = dFinalG.add(select(isGlow, addG, float(0)));
-              const surfB = dFinalB.add(select(isGlow, addB, float(0)));
-              outR.assign(accR.add(tr.mul(surfR)));
-              outG.assign(accG.add(tg.mul(surfG)));
-              outB.assign(accB.add(tb.mul(surfB)));
-              bloomR.assign(
-                tr.mul(select(isGlow, addR.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0)))
-              );
-              bloomG.assign(
-                tg.mul(select(isGlow, addG.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0)))
-              );
-              bloomB.assign(
-                tb.mul(select(isGlow, addB.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0)))
-              );
-              hitFound.assign(float(1));
-              Break();
             });
           });
         });
+
       });
 
       If(and(hitFound.lessThan(float(0.5)), marchDidGlass.lessThan(float(0.5))), () => {
-        const missSeg = vec3(uBg).toVar();
-        If(uEnableSky.greaterThan(float(0.5)), () => {
-          const denomS = uBufH.sub(float(1)).max(float(1));
-          const tSkyS = clamp(suv.y.mul(uBufH).div(denomS), float(0), float(1));
-          missSeg.assign(mix(uSkyTop, uSkyBottom, tSkyS));
-        });
-        outR.assign(accR.add(tr.mul(missSeg.x)));
-        outG.assign(accG.add(tg.mul(missSeg.y)));
-        outB.assign(accB.add(tb.mul(missSeg.z)));
-        hitFound.assign(float(1));
+        accumulateTransmittedMissRgb(
+          missBackgroundFromUv(suv),
+          accR,
+          accG,
+          accB,
+          tr,
+          tg,
+          tb,
+          outR,
+          outG,
+          outB,
+          hitFound
+        );
       });
     });
 
     If(hitFound.lessThan(float(0.5)), () => {
-      const miss = vec3(uBg).toVar();
-      If(uEnableSky.greaterThan(float(0.5)), () => {
-        const denom = uBufH.sub(float(1)).max(float(1));
-        const tSky = clamp(suv.y.mul(uBufH).div(denom), float(0), float(1));
-        miss.assign(mix(uSkyTop, uSkyBottom, tSky));
-      });
-      outR.assign(accR.add(tr.mul(miss.x)));
-      outG.assign(accG.add(tg.mul(miss.y)));
-      outB.assign(accB.add(tb.mul(miss.z)));
+      accumulateTransmittedMissRgb(
+        missBackgroundFromUv(suv),
+        accR,
+        accG,
+        accB,
+        tr,
+        tg,
+        tb,
+        outR,
+        outG,
+        outB,
+        null
+      );
     });
 
     const post = applyRayPostMood(
@@ -1778,10 +2055,8 @@ export async function createVoxelRayGpuTracePipeline(
       suv.y,
       uMaxDist.mul(float(0.5))
     );
-    const bloomOut = vec4(bloomR, bloomG, bloomB, float(1));
-    const beautyOut = vec4(post.x, post.y, post.z, float(1));
-    return select(uPassBloom.greaterThan(float(0.5)), bloomOut, beautyOut);
-  });
+    return composeBeautyBloomRgba(post.x, post.y, post.z, bloomR, bloomG, bloomB);
+  }, 'vec4');
 
   const material = new NodeMaterial();
   material.fragmentNode = shadeOutputFn();
@@ -1834,6 +2109,7 @@ export async function createVoxelRayGpuTracePipeline(
       uEnableSky.value = params.enableSky ? 1 : 0;
       uEnableShadows.value = params.enableShadows ? 1 : 0;
       uMaxDist.value = maxDist;
+      uPrimaryDdaMaxSteps.value = primaryDdaStepBudget(maxDist, dims);
       uShadowSamples.value = clampShadowSamples(params.shadowRaySamples);
       uShadowTanHalf.value = shadowConeTanFromRadians(params.shadowSoftnessRadians);
       uDistanceTintEnabled.value = params.distanceTintEnabled ? 1 : 0;

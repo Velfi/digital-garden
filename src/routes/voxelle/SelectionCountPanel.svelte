@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { selection, sidebarOpen, deselectAll } from './store/index';
+  import { selection, deselectAll } from './store/index';
 </script>
 
 {#if $selection.size > 0}
   <div
     class="selection-panel"
-    class:sidebar-open={$sidebarOpen}
     data-voxelle-no-passthrough
     role="status"
     aria-live="polite"
@@ -30,11 +29,12 @@
 {/if}
 
 <style>
+  /* Absolute in .canvas-container (like .fps-counter): avoids overlapping the page menubar, which fixed + top: 4rem did when the real header is taller. */
   .selection-panel {
-    position: fixed;
-    top: 4rem;
-    left: calc(1.5rem + 1rem);
-    z-index: 100;
+    position: absolute;
+    top: 3rem;
+    left: 0.5rem;
+    z-index: 20;
     background: var(--bg-color);
     color: var(--text-color);
     padding: 0.5rem 0.75rem;
@@ -46,10 +46,6 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-  }
-
-  .selection-panel.sidebar-open {
-    left: calc(360px + 1rem);
   }
 
   .deselect-btn {

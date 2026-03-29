@@ -39,9 +39,13 @@
     LARGE_PROJECT_OPEN_VOXEL_THRESHOLD,
     beginProjectOpenLoading,
     updateProjectOpenLoadingProgress,
-    completeProjectOpenLoading
+    completeProjectOpenLoading,
+    renderingMode,
+    activeRendererIsWebGPU,
+    orthographic,
+    showGrid
   } from './store/index';
-  import type { SelectionMode } from './store/index';
+  import type { SelectionMode, RenderingMode } from './store/index';
 
   let fileOpen = $state(false);
   let editOpen = $state(false);
@@ -59,6 +63,27 @@
   let helpMenuRef: HTMLDivElement;
   let fileInputRef: HTMLInputElement;
   let imageInputRef: HTMLInputElement;
+
+  $effect(() => {
+    if ($activeRendererIsWebGPU === false && $renderingMode === 'ray') {
+      renderingMode.set('greedy');
+    }
+  });
+
+  function setRenderingMode(mode: RenderingMode) {
+    renderingMode.set(mode);
+    closeMenus();
+  }
+
+  function setOrthographic(on: boolean) {
+    orthographic.set(on);
+    closeMenus();
+  }
+
+  function setShowGrid(on: boolean) {
+    showGrid.set(on);
+    closeMenus();
+  }
 
   function closeMenus() {
     fileOpen = false;
@@ -515,6 +540,72 @@
     </button>
     {#if viewOpen}
       <div class="dropdown" role="menu">
+        <span class="menu-label">Rendering</span>
+        <button
+          type="button"
+          role="menuitem"
+          class:checked={$renderingMode === 'greedy'}
+          onclick={() => setRenderingMode('greedy')}
+        >
+          Blocky (greedy mesh)
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          class:checked={$renderingMode === 'marchingCubes'}
+          onclick={() => setRenderingMode('marchingCubes')}
+        >
+          Smooth (marching cubes)
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          class:checked={$renderingMode === 'ray'}
+          disabled={$activeRendererIsWebGPU !== true}
+          title={$activeRendererIsWebGPU !== true
+            ? 'Ray mode requires WebGPU (Preferences → Graphics API → Auto or WebGPU, then reload)'
+            : undefined}
+          onclick={() => setRenderingMode('ray')}
+        >
+          Ray (WebGPU)
+        </button>
+        <div class="menu-separator" role="separator"></div>
+        <span class="menu-label">Projection</span>
+        <button
+          type="button"
+          role="menuitem"
+          class:checked={!$orthographic}
+          onclick={() => setOrthographic(false)}
+        >
+          Perspective
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          class:checked={$orthographic}
+          onclick={() => setOrthographic(true)}
+        >
+          Orthographic
+        </button>
+        <div class="menu-separator" role="separator"></div>
+        <span class="menu-label">Borders</span>
+        <button
+          type="button"
+          role="menuitem"
+          class:checked={$showGrid}
+          onclick={() => setShowGrid(true)}
+        >
+          Show borders
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          class:checked={!$showGrid}
+          onclick={() => setShowGrid(false)}
+        >
+          Hide borders
+        </button>
+        <div class="menu-separator" role="separator"></div>
         <button type="button" role="menuitem" onclick={handleStampBook}> Stamp book… </button>
         <button type="button" role="menuitem" onclick={handleProjectStats}> Project stats… </button>
       </div>

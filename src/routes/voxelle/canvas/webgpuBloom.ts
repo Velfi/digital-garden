@@ -61,6 +61,8 @@ export type WebGPUBloomPipeline = {
   dispose(): void;
   /** Planar atmosphere (greedy / marchingCubes; not ray). */
   setPlanarAtmosphereEnabled: (on: boolean) => void;
+  /** Greedy/WebGPU: true when glow voxels exist so bloom samples a rendered glow RT; false for mood-only. */
+  setGlowBloomActive: (on: boolean) => void;
   /**
    * Ray mode: use `beauty + strength * bloomSource` instead of `BloomNode` (blur pyramid can trip
    * async WebGPU validation; ray traces already emit a glow mask in the bloom RT).
@@ -101,6 +103,8 @@ export type WebGPUBloomPipeline = {
     sunShaftsDensity: number;
     sunShaftsWeight: number;
     sunShaftsSamples: number;
+    /** WebGPU reverse-Z: sky clears to ~0; depth tests for sky must be inverted. */
+    reversedDepthBuffer?: boolean;
   }) => void;
 };
 
@@ -151,6 +155,7 @@ export async function createWebGPUBloomPipeline(
     Break,
     If,
     dot,
+    add,
     mul,
     max,
     min,
@@ -163,6 +168,8 @@ export async function createWebGPUBloomPipeline(
     smoothstep,
     greaterThan,
     greaterThanEqual,
+    lessThanEqual,
+    oneMinus,
     sin,
     fract
   } = tslMod;
@@ -225,7 +232,8 @@ export async function createWebGPUBloomPipeline(
 
   let bloomPass: ReturnType<typeof bloom> | null = null;
   let combined: ReturnType<typeof beautyColor.add> | null = null;
-  let outputWithAtmosphere: typeof rayCombined | null = null;
+  /** Screen-space mood on beauty pass only; with glow, bloom is added at the pipeline root (`add(..., bloomPass)`). */
+  let outputWithAtmosphereBeauty: typeof rayCombined | null = null;
 
   const uFogColor = uniform(new Vector3(0.78, 0.83, 0.88));
   const uFogDensity = uniform(0.85);
@@ -264,29 +272,42 @@ export async function createWebGPUBloomPipeline(
   const uSunShaftsDensity = uniform(0.8);
   const uSunShaftsWeight = uniform(0.6);
   const uSunShaftsSamples = uniform(32);
+  const uReversedDepthBuffer = uniform(0);
 
   const depthTexNode = texture(sceneRenderTarget.depthTexture);
 
   function buildGreedyBloomGraphSync(): void {
-    if (combined) return;
-    bloomPass = bloom(
-      bloomSourceColor,
-      WEBGPU_BLOOM_STRENGTH,
-      WEBGPU_BLOOM_RADIUS,
-      WEBGPU_BLOOM_THRESHOLD
-    );
-    combined = beautyColor.add(bloomPass);
-    const combinedNode = combined;
+    if (!combined) {
+      bloomPass = bloom(
+        bloomSourceColor,
+        WEBGPU_BLOOM_STRENGTH,
+        WEBGPU_BLOOM_RADIUS,
+        WEBGPU_BLOOM_THRESHOLD
+      );
+      combined = beautyColor.add(bloomPass);
+    }
+    if (outputWithAtmosphereBeauty !== null) return;
 
-    const outputWithAtmosphereVar = vec4(0, 0, 0, 1).toVar();
-    Fn(() => {
+    /**
+     * Mood samples a **separate** `texture(sceneRT)` node from {@link beautyColor} so the subgraph
+     * is not shared with `combined = beauty.add(bloom)` (can otherwise compile to black samples).
+     * Return the final `vec4` from `Fn` instead of `toVar().assign(...)`: the assign pattern broke
+     * beauty sampling in WebGPU while root-level bloom still appeared.
+     * With glow, compose `add(atmosphereFn, bloomPass)` at the pipeline root.
+     */
+    const atmosphereBeautyTex = texture(sceneRenderTarget.texture);
+    const buildAtmosphereOutput = () =>
+      Fn(() => {
     const suv = screenUV;
-    const base = combinedNode.context({ getUV: () => suv });
+    const base = atmosphereBeautyTex.sample(suv);
     const depth = depthTexNode.sample(suv).x;
+    /**
+     * Match `getViewPosition()` for {@link WebGPUCoordinateSystem}: flip framebuffer Y into NDC
+     * and use raw depth as clip Z (not `depth*2-1` like WebGL NDC).
+     */
     const ndcx = suv.x.mul(2).sub(1);
-    const ndcy = suv.y.mul(2).sub(1);
-    const clipZ = depth.mul(2).sub(1);
-    const clipVec = vec4(ndcx, ndcy, clipZ, float(1));
+    const ndcy = suv.y.oneMinus().mul(2).sub(1);
+    const clipVec = vec4(ndcx, ndcy, depth, float(1));
     const viewPosH = mul(uInvProj, clipVec);
     const viewPosN = viewPosH.xyz.div(viewPosH.w.max(1e-5));
     const t = uFogThickness.max(1e-4);
@@ -351,7 +372,11 @@ export async function createWebGPUBloomPipeline(
       clamp(uSunScreenUv.y, float(0), float(1))
     );
     const sunDepth = depthTexNode.sample(sunUv).x;
-    const sunVisible = greaterThanEqual(sunDepth, float(0.9992));
+    const sunVisible = select(
+      greaterThan(uReversedDepthBuffer, float(0.5)),
+      lessThanEqual(sunDepth, float(0.001)),
+      greaterThanEqual(sunDepth, float(0.9992))
+    );
     const sunGate = select(sunVisible, float(1), float(0.12));
     const toSun = uSunScreenUv.xy.sub(suv);
     const rayLen = max(toSun.length(), float(1e-4));
@@ -369,9 +394,8 @@ export async function createWebGPUBloomPipeline(
         const cuv = vec2(clamp(coord.x, float(0), float(1)), clamp(coord.y, float(0), float(1)));
         const ds = depthTexNode.sample(cuv).x;
         const ndcxS = cuv.x.mul(2).sub(1);
-        const ndcyS = cuv.y.mul(2).sub(1);
-        const clipZS = ds.mul(2).sub(1);
-        const clipVecS = vec4(ndcxS, ndcyS, clipZS, float(1));
+        const ndcyS = cuv.y.oneMinus().mul(2).sub(1);
+        const clipVecS = vec4(ndcxS, ndcyS, ds, float(1));
         const viewPosHS = mul(uInvProj, clipVecS);
         const viewPosNS = viewPosHS.xyz.div(viewPosHS.w.max(1e-5));
         const vzS = max(float(0), viewPosNS.z.negate());
@@ -380,13 +404,25 @@ export async function createWebGPUBloomPipeline(
          * Raw buffer compare was wrong under WebGPU depth sampling → inverted dark wedges.
          */
         const vzOcc = smoothstep(vz.mul(float(0.68)), vz.mul(float(1.2)), vzS);
-        const curSky = greaterThanEqual(depth, float(0.9992));
-        const sampSky = greaterThanEqual(ds, float(0.9992));
+        const curSky = select(
+          greaterThan(uReversedDepthBuffer, float(0.5)),
+          lessThanEqual(depth, float(0.001)),
+          greaterThanEqual(depth, float(0.9992))
+        );
+        const sampSky = select(
+          greaterThan(uReversedDepthBuffer, float(0.5)),
+          lessThanEqual(ds, float(0.001)),
+          greaterThanEqual(ds, float(0.9992))
+        );
         const skyLeak = select(curSky, float(1), select(sampSky, float(0.16), float(1)));
         const occW = vzOcc.mul(skyLeak).mul(sunGate);
-        const sampleCol = combinedNode.context({ getUV: () => cuv });
+        const sampleCol = atmosphereBeautyTex.sample(cuv);
         const luma = dot(sampleCol.xyz, vec3(0.2126, 0.7152, 0.0722));
-        const skyBlend = smoothstep(float(0.9986), float(1.0), ds);
+        const skyBlend = select(
+          greaterThan(uReversedDepthBuffer, float(0.5)),
+          oneMinus(smoothstep(float(0), float(0.002), ds)),
+          smoothstep(float(0.9986), float(1.0), ds)
+        );
         const geoScatter = pow(max(luma, float(0.025)), float(0.58)).mul(float(1.85));
         const skyScatter = float(0.36).add(luma.mul(float(0.68)));
         const scatter = mix(geoScatter, skyScatter, skyBlend);
@@ -403,7 +439,11 @@ export async function createWebGPUBloomPipeline(
       .mul(float(0.038))
       .mul(uSunShaftsWeight)
       .mul(uSunShaftsDensity.mul(0.32).add(0.68));
-    const pixSky = greaterThanEqual(depth, float(0.9992));
+    const pixSky = select(
+      greaterThan(uReversedDepthBuffer, float(0.5)),
+      lessThanEqual(depth, float(0.001)),
+      greaterThanEqual(depth, float(0.9992))
+    );
     const coreSurf = select(pixSky, float(1), float(0.82));
     const coreGlow = sunCore
       .mul(uSunShaftsStrength)
@@ -442,10 +482,15 @@ export async function createWebGPUBloomPipeline(
     );
     const grainApplied = vec4(fogged.xyz.add(grainRgb.mul(uGrainStrength).mul(grainMul)), fogged.w);
     const withGrain = select(uGrainEnabled.greaterThan(float(0.5)), grainApplied, fogged);
-    const skyMask = step(float(0.99999), depth);
-    outputWithAtmosphereVar.assign(mix(withGrain, base, skyMask));
+    const skyMask = select(
+      greaterThan(uReversedDepthBuffer, float(0.5)),
+      oneMinus(step(float(0.001), depth)),
+      step(float(0.999), depth)
+    );
+    return mix(withGrain, base, skyMask);
   })();
-    outputWithAtmosphere = outputWithAtmosphereVar;
+
+    outputWithAtmosphereBeauty = buildAtmosphereOutput();
   }
 
   if (!initialRayBloomDirect) {
@@ -458,13 +503,17 @@ export async function createWebGPUBloomPipeline(
 
   let atmosphereGraphEnabled = false;
   let rayBloomDirectEnabled = initialRayBloomDirect;
+  /** When false, atmosphere uses beauty only so BloomNode never runs without a rendered glow source RT. */
+  let glowBloomActive = false;
 
   function refreshRenderPipelineOutputNode(): void {
     if (rayBloomDirectEnabled) {
       renderPipeline.outputNode = rayCombined;
     } else if (atmosphereGraphEnabled) {
       buildGreedyBloomGraphSync();
-      renderPipeline.outputNode = outputWithAtmosphere!;
+      renderPipeline.outputNode = glowBloomActive
+        ? add(outputWithAtmosphereBeauty!, bloomPass!)
+        : outputWithAtmosphereBeauty!;
     } else {
       buildGreedyBloomGraphSync();
       renderPipeline.outputNode = combined!;
@@ -476,6 +525,12 @@ export async function createWebGPUBloomPipeline(
 
   function setPlanarAtmosphereEnabled(on: boolean): void {
     atmosphereGraphEnabled = on;
+    refreshRenderPipelineOutputNode();
+  }
+
+  function setGlowBloomActive(on: boolean): void {
+    if (glowBloomActive === on) return;
+    glowBloomActive = on;
     refreshRenderPipelineOutputNode();
   }
 
@@ -520,8 +575,10 @@ export async function createWebGPUBloomPipeline(
     sunShaftsDensity: number;
     sunShaftsWeight: number;
     sunShaftsSamples: number;
+    reversedDepthBuffer?: boolean;
   }): void {
     uInvProj.value.copy(opts.camera.projectionMatrixInverse);
+    uReversedDepthBuffer.value = opts.reversedDepthBuffer ? 1 : 0;
     uCamWorld.value.copy(opts.camera.matrixWorld);
     const fc = new Color(opts.fogColorHex);
     uFogColor.value.set(fc.r, fc.g, fc.b);
@@ -640,6 +697,7 @@ export async function createWebGPUBloomPipeline(
     renderBloomSourceToTarget,
     blitRayTexturesToBloomTargets,
     setPlanarAtmosphereEnabled,
+    setGlowBloomActive,
     setRayBloomDirectComposite,
     updatePlanarAtmosphereUniforms,
     setSize(nw: number, nh: number, pr: number) {

@@ -662,6 +662,8 @@
 
   let container: HTMLDivElement;
   let containerResizeObserver: ResizeObserver | null = null;
+  /** Coalesced rAF so resize reads run after flex/layout (same idea as fullscreen follow-up). */
+  let canvasResizeRaf = 0;
   /** Skip redundant composer/RT realloc when CSS size and pixel ratio are unchanged. */
   let lastCanvasResizeW = -1;
   let lastCanvasResizeH = -1;
@@ -690,6 +692,8 @@
   let sceneHasGlowMesh = false;
   const bloomMaterialStash: Record<string, THREE.Material | THREE.Material[]> = {};
   const webglDepthStash: WebGLDepthStash = { texture: null };
+  /** Detached depth target for atmosphere passes (see `VoxelleSceneRenderPass` depth copy). */
+  let atmosphereDepthCopyRT: THREE.WebGLRenderTarget | null = null;
   let planarAtmospherePassGL: ShaderPass | null = null;
   let distanceTintPassGL: ShaderPass | null = null;
   let sunShaftsPassGL: ShaderPass | null = null;
@@ -5790,9 +5794,9 @@
   }
 
   function onFullscreenChange() {
-    onWindowResize();
+    scheduleCanvasResize();
     // Browsers can finalize fullscreen exit layout on a later frame.
-    requestAnimationFrame(() => onWindowResize());
+    requestAnimationFrame(() => scheduleCanvasResize());
   }
 
   // Block pointer events from reaching FlyControls when in fly mode (we handle them ourselves)
@@ -6006,6 +6010,8 @@
     finalComposer = null;
     sharedSceneRenderPass = null;
     webglDepthStash.texture = null;
+    atmosphereDepthCopyRT?.dispose();
+    atmosphereDepthCopyRT = null;
     if (bloomDarkMaterial) {
       bloomDarkMaterial.dispose();
       bloomDarkMaterial = null;
@@ -6047,7 +6053,20 @@
       depthTexture: finalDepthTexture
     });
 
-    sharedSceneRenderPass = new VoxelleSceneRenderPass(scene, camera, webglDepthStash);
+    const atmosphereDepthCopyTex = new THREE.DepthTexture(1, 1);
+    atmosphereDepthCopyRT = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.UnsignedByteType,
+      colorSpace: THREE.NoColorSpace,
+      depthBuffer: true,
+      depthTexture: atmosphereDepthCopyTex
+    });
+
+    sharedSceneRenderPass = new VoxelleSceneRenderPass(
+      scene,
+      camera,
+      webglDepthStash,
+      atmosphereDepthCopyRT
+    );
     unrealBloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.58, 0.42, 0.15);
 
     bloomComposer = new EffectComposer(renderer, bloomRenderTarget);
@@ -6095,7 +6114,12 @@
       depthTexture: atmosphereOnlyDepthTexture
     });
     atmosphereOnlyComposer = new EffectComposer(renderer, atmosphereOnlyRT);
-    atmosphereOnlyScenePass = new VoxelleSceneRenderPass(scene, camera, webglDepthStash);
+    atmosphereOnlyScenePass = new VoxelleSceneRenderPass(
+      scene,
+      camera,
+      webglDepthStash,
+      atmosphereDepthCopyRT
+    );
     atmosphereOnlyFogPass = new StashingPlanarAtmospherePass(webglDepthStash);
     atmosphereOnlyDistanceTintPass = new StashingDistanceTintPass(webglDepthStash);
     atmosphereOnlySunShaftsPass = new SunShaftsPass(webglDepthStash);
@@ -6112,10 +6136,14 @@
     atmosphereOnlyComposer.addPass(atmosphereOnlyGrainPass);
     atmosphereOnlyComposer.addPass(atmosphereOnlyOutputPass);
 
+    const pr = renderer.getPixelRatio();
     bloomComposer.setSize(w, h);
     finalComposer.setSize(w, h);
     atmosphereOnlyComposer.setSize(w, h);
-    atmosphereOnlyComposer.setPixelRatio(renderer.getPixelRatio());
+    atmosphereOnlyComposer.setPixelRatio(pr);
+    const dw = Math.max(1, Math.floor(w * pr));
+    const dh = Math.max(1, Math.floor(h * pr));
+    atmosphereDepthCopyRT?.setSize(dw, dh, 1);
   }
 
   function prepareWebGLAtmosphere(): void {
@@ -6260,6 +6288,11 @@
       const sunUv = getSunScreenUv(camera as THREE.Camera, true);
       webgpuBloomPipeline.updatePlanarAtmosphereUniforms({
         camera,
+        reversedDepthBuffer:
+          typeof renderer === 'object' &&
+          renderer !== null &&
+          'reversedDepthBuffer' in renderer &&
+          (renderer as { reversedDepthBuffer?: boolean }).reversedDepthBuffer === true,
         fogColorHex: get(atmosphereColor),
         fogDensity: get(atmosphereDensity),
         fogEnabled: wantsFog,
@@ -6388,10 +6421,21 @@
     finalComposer?.setSize(w, h);
     atmosphereOnlyComposer?.setPixelRatio(pr);
     atmosphereOnlyComposer?.setSize(w, h);
+    const dw = Math.max(1, Math.floor(w * pr));
+    const dh = Math.max(1, Math.floor(h * pr));
+    atmosphereDepthCopyRT?.setSize(dw, dh, 1);
     if (webgpuBloomPipeline && container) {
       webgpuBloomPipeline.setSize(container.clientWidth, container.clientHeight, pr);
     }
     render();
+  }
+
+  function scheduleCanvasResize() {
+    if (canvasResizeRaf !== 0) return;
+    canvasResizeRaf = requestAnimationFrame(() => {
+      canvasResizeRaf = 0;
+      onWindowResize();
+    });
   }
 
   function render() {
@@ -7261,7 +7305,7 @@
     updateZoomPercent();
 
     containerResizeObserver = new ResizeObserver(() => {
-      onWindowResize();
+      scheduleCanvasResize();
     });
     containerResizeObserver.observe(container);
 
@@ -7274,7 +7318,7 @@
     container.addEventListener('pointercancel', onPointerCancel);
     container.addEventListener('contextmenu', onContextMenu);
     container.addEventListener('wheel', onWheel, { passive: false, capture: true });
-    window.addEventListener('resize', onWindowResize);
+    window.addEventListener('resize', scheduleCanvasResize);
 
     meshManager?.requestRebuildVoxelMeshes($voxels);
     if ($projectOpenLoading.active && awaitingFirstProjectOpenMeshBuild) {
@@ -7282,7 +7326,7 @@
     }
     sceneReady = true;
     syncSceneLightingAndBackgroundFromStores();
-    onWindowResize();
+    scheduleCanvasResize();
     if (loadedFromStorage) fitToView();
     animate();
   });
@@ -7354,7 +7398,7 @@
     orbitControls.object = camera;
     flyControls.object = camera;
     updateZoomPercent();
-    onWindowResize();
+    scheduleCanvasResize();
   });
 
   $effect(() => {
@@ -7628,7 +7672,11 @@
     container?.removeEventListener('pointercancel', onPointerCancel);
     container?.removeEventListener?.('contextmenu', onContextMenu);
     container?.removeEventListener('wheel', onWheel, true);
-    window.removeEventListener('resize', onWindowResize);
+    if (canvasResizeRaf !== 0) {
+      cancelAnimationFrame(canvasResizeRaf);
+      canvasResizeRaf = 0;
+    }
+    window.removeEventListener('resize', scheduleCanvasResize);
     window.removeEventListener(VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT, onProjectOpenFitCamera);
     window.removeEventListener('keydown', handleFlyKeyDown, true);
     window.removeEventListener('keydown', onEscapeKeyDown, true);

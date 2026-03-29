@@ -8,8 +8,14 @@ import { VOXEL_MATERIAL_IDS } from '../voxelMaterial';
 
 const PAD = 8;
 
-/** Max cells (dx*dy*dz) for dense 3D texture path (~64MB u32 at 16M cells). */
-export const DENSE_CELL_BUDGET = 2_500_000;
+/**
+ * Max cells (dx×dy×dz) for dense 3D texture path (~32MiB Float32 payload at 8M cells).
+ * Larger models use a hash table (CPU ray + mesh; GPU TSL ray needs dense).
+ */
+export const DENSE_CELL_BUDGET = 8_388_608;
+
+/** Dense 3D textures must fit typical WebGPU `maxTextureDimension3D` (often 2048). */
+const MAX_DENSE_AXIS = 2048;
 
 /** Max hash slots (power of two); ~64MiB buffer at 4M * 16 bytes. */
 export const MAX_HASH_SLOTS = 4 * 1024 * 1024;
@@ -79,7 +85,7 @@ function maxRayDistanceForBounds(
   const h = maxY - minY + 1 + PAD * 2;
   const d = maxZ - minZ + 1 + PAD * 2;
   const diag = Math.sqrt(w * w + h * h + d * d);
-  return Math.min(Math.max(diag * 3, 256), 20000);
+  return Math.min(Math.max(diag * 3, 256), 2_000_000);
 }
 
 function nextPow2(n: number): number {
@@ -204,8 +210,9 @@ export function buildGpuVoxelAccelFromMap(voxels: Map<string, Voxel>): GpuVoxelA
   const dy = maxY - minY + 1 + PAD * 2;
   const dz = maxZ - minZ + 1 + PAD * 2;
   const cells = dx * dy * dz;
+  const fitsAxis = dx <= MAX_DENSE_AXIS && dy <= MAX_DENSE_AXIS && dz <= MAX_DENSE_AXIS;
 
-  if (cells <= DENSE_CELL_BUDGET) {
+  if (cells <= DENSE_CELL_BUDGET && fitsAxis) {
     return buildDense(voxels, minX, minY, minZ, maxX, maxY, maxZ);
   }
   return buildHashTable(voxels);

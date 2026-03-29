@@ -256,6 +256,7 @@
     display: flex;
     flex-direction: column;
     min-height: calc(100vh - 4rem);
+    min-height: calc(100dvh - 4rem);
     margin-top: 1rem;
   }
 
@@ -265,6 +266,8 @@
     gap: 1rem;
     margin-bottom: 0.5rem;
     flex-wrap: wrap;
+    position: relative;
+    z-index: 150;
   }
 
   .header h1 {
@@ -274,10 +277,12 @@
 
   .app {
     display: flex;
-    flex: 1;
+    /* flex-basis 0 + height 0: column flex reliably allocates remaining viewport height to the canvas row */
+    flex: 1 1 0;
+    min-height: 0;
+    height: 0;
     gap: 1rem;
     align-items: stretch;
-    min-height: 0;
   }
 
   .webgl-alert {
