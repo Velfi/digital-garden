@@ -331,6 +331,27 @@ export {
 } from './mood/registry';
 
 export {
+  squishyMode,
+  squishyMetaballs,
+  squishySelectedId,
+  squishyDefaultRadius,
+  squishyHollow,
+  squishyHollowWallThickness,
+  createSquishyMetaball,
+  resetSquishySession,
+  type SquishyMode,
+  type SquishyMetaball
+} from './squishy/state';
+
+export {
+  sampleMetaballFieldAtCellCenter,
+  computeMetaballVoxelPositions,
+  shellVoxelPositions,
+  type MetaballFieldOptions,
+  type MetaballVoxelizationResult
+} from './squishy/metaballField';
+
+export {
   atmosphereEnabled,
   atmosphereColor,
   atmosphereThickness,

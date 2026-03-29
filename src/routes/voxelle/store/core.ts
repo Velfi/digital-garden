@@ -54,6 +54,7 @@ export type Tool =
   | 'fly'
   | 'eyedropper'
   | 'sculpt'
+  | 'squishy'
   | 'rope'
   | 'cloth'
   | 'rocks'
@@ -175,8 +176,8 @@ export function closeAddPanel(): void {
   addPanelStore.set({ ...defaultAddPanel });
 }
 
-/** Draw vs Sculpt vs Hand vs Fly vs Generators vs Mood tab pane. */
-export type ToolPane = 'draw' | 'sculpt' | 'hand' | 'fly' | 'generators' | 'mood';
+/** Draw vs Sculpt vs Squishy vs Hand vs Fly vs Generators vs Mood tab pane. */
+export type ToolPane = 'draw' | 'sculpt' | 'squishy' | 'hand' | 'fly' | 'generators' | 'mood';
 
 // Stores
 export const gridSize = writable<GridSize>(32);

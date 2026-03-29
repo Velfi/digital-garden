@@ -4,10 +4,11 @@
 
   interface Props {
     open: Writable<boolean>;
+    collapseButtonHeight?: string;
     children?: Snippet;
   }
 
-  let { open, children }: Props = $props();
+  let { open, collapseButtonHeight = '1.5rem', children }: Props = $props();
 </script>
 
 <div class="sidebar-wrapper">
@@ -15,6 +16,7 @@
     <button
       type="button"
       class="collapse-btn"
+      style={`--collapse-btn-height: ${collapseButtonHeight};`}
       onclick={() => open.set(false)}
       title="Collapse sidebar"
       aria-label="Collapse sidebar"
@@ -88,7 +90,7 @@
     top: 0.5rem;
     right: 0.5rem;
     width: 1.5rem;
-    height: 1.5rem;
+    height: var(--collapse-btn-height);
     padding: 0;
     font-size: 0.75rem;
     line-height: 1;

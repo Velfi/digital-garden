@@ -5,6 +5,7 @@
   import StampToolOptions from './toolPanel/StampToolOptions.svelte';
   import GeneratorToolOptions from './toolPanel/GeneratorToolOptions.svelte';
   import MoodToolOptions from './toolPanel/MoodToolOptions.svelte';
+  import SquishyOptions from './toolPanel/SquishyOptions.svelte';
   import SelectionGizmoTabs from './toolPanel/SelectionGizmoTabs.svelte';
   import {
     gizmoTabsVisible as gizmoTabsVisibleFn,
@@ -50,6 +51,7 @@
       <StampToolOptions />
       <GeneratorToolOptions />
       <SculptToolOptions />
+      <SquishyOptions />
       <MoodToolOptions />
     </div>
   </div>

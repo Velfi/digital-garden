@@ -37,13 +37,37 @@ export interface GreedyMeshOptions {
   aoStrength?: AOStrength;
   /** When true, emit one quad per visible face (no merge). Faster for previews. */
   skipMerge?: boolean;
+  /**
+   * Voxels used only for face culling and AO neighbor checks (see greedyMeshCore).
+   * When set, should be a superset of the meshed `voxels` map (e.g. scene + preview).
+   */
+  occlusionVoxels?: Map<string, Voxel>;
 }
 
-/** Options for preview/overlay meshes: no AO, no quad merging. */
+/** Selection / stamp thumbnails / add-panel coarse LOD: skip merge, AO off. */
 export const PREVIEW_MESH_OPTIONS: GreedyMeshOptions = {
-  aoEnabled: false,
-  skipMerge: true
+  skipMerge: true,
+  aoStrength: 0
 };
+
+/** Extra greedy options for `buildPreviewGeometry*` (always uses skipMerge internally). */
+export type PreviewGreedyExtras = {
+  aoStrength?: AOStrength;
+  /** Scene voxels for AO and culling against existing geometry (not meshed as preview surface). */
+  occlusionVoxels?: Map<string, Voxel>;
+};
+
+function mergePreviewOcclusion(
+  previewMap: Map<string, Voxel>,
+  world?: Map<string, Voxel>
+): Map<string, Voxel> | undefined {
+  if (!world || world.size === 0) return undefined;
+  const out = new Map(previewMap);
+  for (const [k, v] of world) {
+    if (!out.has(k)) out.set(k, v);
+  }
+  return out;
+}
 
 function darkenHex(hex: number, factor: number): number {
   const r = Math.min(255, Math.floor(((hex >> 16) & 0xff) * factor));
@@ -60,7 +84,8 @@ export function buildPreviewGeometry(
   positions: [number, number, number][],
   voxel: Voxel,
   existingVoxels?: Map<string, Voxel>,
-  overlapShading: PreviewOverlapShading = 'invert'
+  overlapShading: PreviewOverlapShading = 'invert',
+  extras?: PreviewGreedyExtras
 ): THREE.BufferGeometry | null {
   if (positions.length === 0) return null;
   let voxelMap: Map<string, Voxel>;
@@ -78,7 +103,12 @@ export function buildPreviewGeometry(
   } else {
     voxelMap = positionsToVoxelMap(positions, voxel);
   }
-  const geoByColor = buildGreedyMesh(voxelMap, PREVIEW_MESH_OPTIONS);
+  const mergedOcclusion = mergePreviewOcclusion(voxelMap, extras?.occlusionVoxels);
+  const geoByColor = buildGreedyMesh(voxelMap, {
+    skipMerge: true,
+    aoStrength: extras?.aoStrength ?? 0,
+    ...(mergedOcclusion ? { occlusionVoxels: mergedOcclusion } : {})
+  });
   const geos = [...geoByColor.values()];
   if (geos.length === 0) return null;
   if (geos.length === 1) return geos[0];
@@ -93,7 +123,8 @@ export function buildPreviewGeometry(
 export function buildPreviewGeometryFromVoxelMap(
   voxelMap: Map<string, Voxel>,
   existingVoxels: Map<string, Voxel>,
-  overlapShading: PreviewOverlapShading = 'invert'
+  overlapShading: PreviewOverlapShading = 'invert',
+  extras?: PreviewGreedyExtras
 ): THREE.BufferGeometry | null {
   if (voxelMap.size === 0) return null;
   let map: Map<string, Voxel>;
@@ -108,7 +139,12 @@ export function buildPreviewGeometryFromVoxelMap(
   } else {
     map = voxelMap;
   }
-  const geoByBucket = buildGreedyMesh(map, PREVIEW_MESH_OPTIONS);
+  const mergedOcclusion = mergePreviewOcclusion(map, extras?.occlusionVoxels);
+  const geoByBucket = buildGreedyMesh(map, {
+    skipMerge: true,
+    aoStrength: extras?.aoStrength ?? 0,
+    ...(mergedOcclusion ? { occlusionVoxels: mergedOcclusion } : {})
+  });
   const geos = [...geoByBucket.values()];
   if (geos.length === 0) return null;
   if (geos.length === 1) return geos[0];
@@ -124,7 +160,8 @@ export function buildGreedyMesh(
   const coreResults = computeGreedyMesh(voxels, {
     aoEnabled: options.aoEnabled,
     aoStrength: options.aoStrength,
-    skipMerge: options.skipMerge
+    skipMerge: options.skipMerge,
+    occlusionVoxels: options.occlusionVoxels
   });
   const result = new Map<string, THREE.BufferGeometry>();
 

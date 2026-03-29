@@ -11,6 +11,7 @@ export type ToolCategory =
   | 'navigation'
   | 'utility'
   | 'sculpt'
+  | 'squishy'
   | 'generator'
   | 'mood';
 
@@ -114,6 +115,13 @@ const DESCRIPTORS: ToolDescriptor[] = [
     label: 'Sculpt',
     title: 'Sculpt modes: draw, scrape, smooth, extrude, wall, terrain',
     defaultPane: 'sculpt'
+  },
+  {
+    id: 'squishy',
+    category: 'squishy',
+    label: 'Squishy',
+    title: 'Sculpt with metaballs, then voxelize on Done',
+    defaultPane: 'squishy'
   },
   {
     id: 'rope',

@@ -21,6 +21,7 @@
   import ToolPicker from './sidebar/ToolPicker.svelte';
   import StrokeModePicker from './sidebar/StrokeModePicker.svelte';
   import SculptModePicker from './sidebar/SculptModePicker.svelte';
+  import SquishyModePicker from './sidebar/SquishyModePicker.svelte';
   import GeneratorPicker from './sidebar/GeneratorPicker.svelte';
   import MoodPicker from './sidebar/MoodPicker.svelte';
   import SymmetrySection from './sidebar/SymmetrySection.svelte';
@@ -141,7 +142,7 @@
   });
 </script>
 
-<ArtSidebar open={sidebarOpen}>
+<ArtSidebar open={sidebarOpen} collapseButtonHeight="6.25rem">
   <div class="tool-panes">
     <div class="tab-bar" role="tablist">
       <button
@@ -166,6 +167,7 @@
           tool.set(
             $lastDrawTool === 'fly' ||
               $lastDrawTool === 'sculpt' ||
+              $lastDrawTool === 'squishy' ||
               $lastDrawTool === 'hand' ||
               $lastDrawTool === 'rope' ||
               $lastDrawTool === 'cloth' ||
@@ -196,6 +198,19 @@
       >
         Sculpt
       </button>
+      <button
+        type="button"
+        role="tab"
+        class:active={$toolPane === 'squishy'}
+        aria-selected={$toolPane === 'squishy'}
+        onclick={() => {
+          toolPane.set('squishy');
+          tool.set('squishy');
+        }}
+      >
+        Squishy
+      </button>
+      <span class="tab-bar-collapse-spacer" aria-hidden="true"></span>
       <button
         type="button"
         role="tab"
@@ -243,6 +258,15 @@
       <div role="tabpanel">
         <SculptModePicker />
         <SymmetrySection />
+      </div>
+    {:else if $toolPane === 'squishy'}
+      <div role="tabpanel">
+        <SquishyModePicker />
+        <SymmetrySection />
+        <p class="fly-hint">
+          Done voxelizes metaballs. Cancel or Escape discards the squishy session. Hold P for an opaque voxel
+          preview.
+        </p>
       </div>
     {:else if $toolPane === 'generators'}
       <div role="tabpanel">
@@ -305,9 +329,11 @@
   }
 
   .tab-bar {
+    position: relative;
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem;
+    padding-right: 2rem;
     margin-bottom: 0.5rem;
   }
 
@@ -322,6 +348,16 @@
     background: var(--bg-color);
     color: var(--text-color);
     cursor: pointer;
+  }
+
+  .tab-bar-collapse-spacer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 2rem;
+    height: 2rem;
+    background: transparent;
+    pointer-events: none;
   }
 
   .tab-bar button:hover:not(.active) {

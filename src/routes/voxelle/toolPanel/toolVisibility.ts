@@ -74,6 +74,10 @@ export function sculptVisible(tool: Tool): boolean {
   return tool === 'sculpt';
 }
 
+export function squishyOptionsVisible(tool: Tool): boolean {
+  return tool === 'squishy';
+}
+
 export function generatorOptionsVisible(tool: string): boolean {
   return isGeneratorTool(tool);
 }
@@ -92,6 +96,7 @@ export function gizmoTabsVisible(
   selectionSize: number,
   addPanelOpen: boolean
 ): boolean {
+  if (tool === 'squishy') return false;
   return tool !== 'fly' && tool !== 'hand' && (selectionSize > 0 || addPanelOpen);
 }
 
@@ -114,6 +119,7 @@ export function toolPanelShellVisible(opts: {
     (strokeModeUsesPolygonOffset(strokeMode) && isStrokeTool(tool)) ||
     stampVisible(tool) ||
     sculptVisible(tool) ||
+    squishyOptionsVisible(tool) ||
     generatorOptionsVisible(tool) ||
     moodOptionsVisible(tool)
   );

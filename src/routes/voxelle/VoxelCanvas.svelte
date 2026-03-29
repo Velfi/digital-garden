@@ -294,6 +294,17 @@
     sunShaftsDensity,
     sunShaftsWeight,
     sunShaftsSamples,
+    squishyMode,
+    squishyMetaballs,
+    squishySelectedId,
+    squishyDefaultRadius,
+    squishyHollow,
+    squishyHollowWallThickness,
+    createSquishyMetaball,
+    resetSquishySession,
+    type SquishyMetaball,
+    computeMetaballVoxelPositions,
+    shellVoxelPositions,
     type Tool,
     type FaceNormal,
     voxellePreferences,
@@ -397,6 +408,7 @@
   } from './previewMeshLod';
   import { toneMappingPreferenceToThree } from './toneMappingPreference';
   import { createSelectionGizmoController } from './canvas/selectionGizmo';
+  import { createSquishyGizmoController } from './canvas/squishy/squishyGizmo';
   import { handleFlyPointerUp } from './canvas/handlers/pointerHandler';
   import { runPointerDownPrelude, runPointerMovePrelude } from './canvas/pointerOrchestrator';
   import { isSegmentedStrokeGestureActive } from './canvas/toolPhaseState';
@@ -945,6 +957,13 @@
   let rotateGizmoGroup: THREE.Group | null = null;
   let moveDragLine: THREE.LineSegments | null = null;
   let selectionGizmo: ReturnType<typeof createSelectionGizmoController> | null = null;
+  let squishyGizmo: ReturnType<typeof createSquishyGizmoController> | null = null;
+  let squishyPickGroup: THREE.Group | null = null;
+  let squishyPreviewPositions: [number, number, number][] = [];
+  let squishyHoveredId = $state<string | null>(null);
+  let squishyAddPreviewCenter = $state<[number, number, number] | null>(null);
+  /** Hold P in Squishy: opaque metaball voxel preview (same rendering as placed voxels). */
+  let squishyPreviewHoldActive = $state(false);
   /** `pick` = choose face; `shape` = locked anchor, slider-driven preview, Place fish to commit. */
   let piscinaPhase = $state<'pick' | 'shape'>('pick');
   let piscinaLockedPlace = $state<[number, number, number] | null>(null);
@@ -1846,6 +1865,139 @@
     render();
   }
 
+  function getSquishyPickIntersection(): THREE.Intersection | null {
+    if (!camera || !squishyPickGroup || squishyPickGroup.children.length === 0) return null;
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObject(squishyPickGroup, true);
+    for (const hit of hits) {
+      const id = hit.object?.userData?.squishyId as string | undefined;
+      if (id) return hit;
+    }
+    return null;
+  }
+
+  function syncSquishyPickMeshes(): void {
+    if (!squishyPickGroup) return;
+    for (const c of [...squishyPickGroup.children]) {
+      const m = c as THREE.Mesh;
+      m.geometry?.dispose();
+      (m.material as THREE.Material | undefined)?.dispose?.();
+      squishyPickGroup.remove(c);
+    }
+    const balls = get(squishyMetaballs);
+    const selected = get(squishySelectedId);
+    const mode = get(squishyMode);
+    for (const b of balls) {
+      const isSelected = selected === b.id;
+      const deleteHover = mode === 'delete' && squishyHoveredId === b.id;
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(Math.max(0.2, b.radius), 24, 16),
+        new THREE.MeshBasicMaterial({
+          color: deleteHover ? 0xff3355 : isSelected ? 0xffcc55 : 0x40b8ff,
+          transparent: true,
+          opacity: deleteHover ? 0.82 : isSelected ? 0.68 : 0.52,
+          wireframe: true,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1
+        })
+      );
+      mesh.position.set(b.x + 0.5, b.y + 0.5, b.z + 0.5);
+      mesh.userData.squishyId = b.id;
+      squishyPickGroup.add(mesh);
+    }
+    if (mode === 'add' && squishyAddPreviewCenter) {
+      const ghost = new THREE.Mesh(
+        new THREE.SphereGeometry(Math.max(0.2, get(squishyDefaultRadius)), 24, 16),
+        new THREE.MeshBasicMaterial({
+          color: 0x5ef5a0,
+          transparent: true,
+          opacity: 0.55,
+          wireframe: true,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1
+        })
+      );
+      ghost.position.set(
+        squishyAddPreviewCenter[0] + 0.5,
+        squishyAddPreviewCenter[1] + 0.5,
+        squishyAddPreviewCenter[2] + 0.5
+      );
+      squishyPickGroup.add(ghost);
+    }
+    squishyPickGroup.visible = get(tool) === 'squishy' && !squishyPreviewHoldActive;
+    squishyGizmo?.sync();
+  }
+
+  function squishyVoxelPositionsFromBalls(balls: SquishyMetaball[]): [number, number, number][] {
+    let positions = computeMetaballVoxelPositions(balls, { maxVoxelCount: 120_000 }).positions;
+    if (get(squishyHollow)) {
+      const w = Math.max(
+        1,
+        Math.min(PLANE_CUBOID_HOLLOW_WALL_MAX, Math.floor(get(squishyHollowWallThickness)))
+      );
+      positions = shellVoxelPositions(positions, w);
+    }
+    return positions;
+  }
+
+  function syncSquishyPreviewMesh(): void {
+    const balls = get(squishyMetaballs);
+    const mode = get(squishyMode);
+    if (mode === 'add' && squishyAddPreviewCenter) {
+      const temp = createSquishyMetaball(
+        squishyAddPreviewCenter[0],
+        squishyAddPreviewCenter[1],
+        squishyAddPreviewCenter[2],
+        get(squishyDefaultRadius)
+      );
+      squishyPreviewPositions = squishyVoxelPositionsFromBalls([...balls, temp]);
+    } else {
+      squishyPreviewPositions = balls.length > 0 ? squishyVoxelPositionsFromBalls(balls) : [];
+    }
+    if (get(tool) !== 'squishy') return;
+    const squishyPreviewOpts = squishyPreviewHoldActive
+      ? ({ hidePreviewGrid: true, solidAsPlaced: true } as const)
+      : undefined;
+    updatePreviewMesh(squishyPreviewPositions, null, squishyPreviewOpts);
+  }
+
+  function cancelSquishySession() {
+    squishyPreviewHoldActive = false;
+    resetSquishySession();
+    squishyHoveredId = null;
+    squishyAddPreviewCenter = null;
+    squishyPreviewPositions = [];
+    updatePreviewMesh([]);
+    syncSquishyPickMeshes();
+    render();
+  }
+
+  function commitSquishySession() {
+    const balls = get(squishyMetaballs);
+    if (balls.length === 0) return;
+    const positions = squishyVoxelPositionsFromBalls(balls);
+    if (positions.length === 0) {
+      cancelSquishySession();
+      return;
+    }
+    const getVoxel = getPaintColorResolver();
+    ensureGridFitsPositions(positions);
+    runVoxelStroke(() => {
+      updateVoxelsInStroke((v) => {
+        for (const [x, y, z] of positions) {
+          if (!inBounds(x, y, z, undefined)) continue;
+          v.set(coordKey(x, y, z), getVoxel());
+        }
+      });
+    });
+    defaultPlayPlaceSound();
+    cancelSquishySession();
+  }
+
   function getFaunaFrameLocked():
     | {
         center: readonly [number, number, number];
@@ -2258,7 +2410,8 @@
 
   function updatePreviewMesh(
     positions: [number, number, number][],
-    bboxHint: StrokePreviewBboxHint | null = null
+    bboxHint: StrokePreviewBboxHint | null = null,
+    displayOpts?: { hidePreviewGrid?: boolean; solidAsPlaced?: boolean }
   ) {
     if (!meshManager) return;
     if (positions.length === 0) {
@@ -2345,7 +2498,24 @@
     const previewVoxel = previewVoxelFor(filtered.length);
     const previewOverlapShading: PreviewOverlapShading =
       $tool === 'remove' ? 'darken' : 'invert';
-    const existingForPreview = filtered.length > 0 ? $voxels : undefined;
+    const existingForPreview =
+      displayOpts?.solidAsPlaced === true
+        ? undefined
+        : filtered.length > 0
+          ? $voxels
+          : undefined;
+    const previewMeshOpts =
+      displayOpts?.hidePreviewGrid === true ||
+      displayOpts?.solidAsPlaced === true ||
+      $tool === 'squishy'
+        ? {
+            ...(displayOpts?.hidePreviewGrid === true ? { showGridOverlay: false as const } : {}),
+            ...(displayOpts?.solidAsPlaced === true ? { solidAsPlaced: true as const } : {}),
+            ...($tool === 'squishy'
+              ? { occlusionVoxels: $voxels, squishyVoxelShellEdges: true as const }
+              : {})
+          }
+        : undefined;
     const stride =
       filtered.length > PREVIEW_LOD_COARSE_TARGET
         ? computePreviewLodStride(filtered.length)
@@ -2372,20 +2542,23 @@
         previewOverlapShading,
         stride,
         min,
-        lodBounds
+        lodBounds,
+        previewMeshOpts
       );
       const capturedOverlap = previewOverlapShading;
       const capturedVoxel = previewVoxel;
+      const capturedPreviewMeshOpts = previewMeshOpts;
+      const capturedExistingForPreview = existingForPreview;
       strokePreviewLodScheduler.schedule(() => {
         if (!meshManager) return;
         const pts = strokePreviewLodPendingFull;
         if (!pts || pts.length === 0) return;
-        const vox = get(voxels);
         meshManager.updatePreviewMesh(
           pts,
           capturedVoxel,
-          vox.size > 0 ? vox : undefined,
-          capturedOverlap
+          capturedExistingForPreview,
+          capturedOverlap,
+          capturedPreviewMeshOpts
         );
         markCanvasDirty();
       });
@@ -2397,7 +2570,8 @@
       filtered,
       previewVoxel,
       existingForPreview,
-      previewOverlapShading
+      previewOverlapShading,
+      previewMeshOpts
     );
   }
 
@@ -3004,6 +3178,8 @@
 
   function cancelDrag() {
     selectionGizmo?.cancelWithPlacementRestore();
+    squishyGizmo?.tryPointerUp();
+    squishyGizmo?.clearHoverCursor();
     deltaDisplay = null;
     if (precisePhase !== 'idle') {
       resetPreciseState(true);
@@ -3311,6 +3487,13 @@
     // Rope tension phase: pointer down on slider track starts drag (handled in template)
 
     if (selectionGizmo?.tryPointerDown(event)) return;
+    if ($tool === 'squishy' && get(squishyMode) === 'edit' && squishyGizmo?.tryPointerDown()) {
+      event.preventDefault();
+      event.stopPropagation();
+      container.setPointerCapture(event.pointerId);
+      dragPointerId = event.pointerId;
+      return;
+    }
 
     // Do not stopPropagation here — container uses capture:true; blocking would prevent
     // OrbitControls on the canvas (left-drag orbit, etc.) from receiving the event.
@@ -3360,6 +3543,43 @@
         preciseNormal
       )
     ) {
+      if ($tool === 'squishy' && get(squishyMode) !== 'add') {
+        // Edit/Delete can target metaball pick meshes even when no voxel is under cursor.
+      } else {
+        return;
+      }
+    }
+
+    if ($tool === 'squishy') {
+      const mode = get(squishyMode);
+      if (mode === 'add') {
+        if (!hit) return;
+        const pos = getVoxelPosition(hit);
+        if (!pos) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const metaball = createSquishyMetaball(pos[0], pos[1], pos[2], get(squishyDefaultRadius));
+        squishyMetaballs.update((balls) => [...balls, metaball]);
+        squishySelectedId.set(metaball.id);
+        squishyAddPreviewCenter = [pos[0], pos[1], pos[2]];
+      } else {
+        const pick = getSquishyPickIntersection();
+        const pickedId = (pick?.object?.userData?.squishyId as string | undefined) ?? null;
+        if (!pickedId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        squishyHoveredId = pickedId;
+        if (mode === 'delete') {
+          squishyMetaballs.update((balls) => balls.filter((b) => b.id !== pickedId));
+          squishySelectedId.update((id) => (id === pickedId ? null : id));
+          squishyHoveredId = null;
+        } else {
+          squishySelectedId.set(pickedId);
+        }
+      }
+      syncSquishyPickMeshes();
+      syncSquishyPreviewMesh();
+      render();
       return;
     }
 
@@ -4309,6 +4529,7 @@
       })
     ) {
       selectionGizmo?.clearGizmoHoverCursor();
+      squishyGizmo?.clearHoverCursor();
       return;
     }
     try {
@@ -4316,7 +4537,10 @@
         resetPiscinaPlacementFlow();
         resetInsectaPlacementFlow();
         resetFaunaPlacementFlow();
+        squishyPreviewHoldActive = false;
+        resetSquishySession();
         selectionGizmo?.clearGizmoHoverCursor();
+        squishyGizmo?.clearHoverCursor();
         rollOverMesh.visible = false;
         updatePreviewMesh([]);
         return;
@@ -4342,6 +4566,52 @@
         }
       }
       if (selectionGizmo?.handlePointerMove(event)) return;
+      if ($tool === 'squishy') {
+        if (event) updatePointerFromEvent(event);
+        if (squishyGizmo?.handlePointerMove()) {
+          render();
+          return;
+        }
+        const mode = get(squishyMode);
+        if (mode === 'add') {
+          const hit = getIntersection();
+          const pos = hit ? getVoxelPosition(hit) : null;
+          const nextCenter: [number, number, number] | null = pos ? [pos[0], pos[1], pos[2]] : null;
+          const changed =
+            (squishyAddPreviewCenter === null) !== (nextCenter === null) ||
+            (squishyAddPreviewCenter !== null &&
+              nextCenter !== null &&
+              (squishyAddPreviewCenter[0] !== nextCenter[0] ||
+                squishyAddPreviewCenter[1] !== nextCenter[1] ||
+                squishyAddPreviewCenter[2] !== nextCenter[2]));
+          if (changed || squishyHoveredId !== null) {
+            squishyAddPreviewCenter = nextCenter;
+            squishyHoveredId = null;
+            syncSquishyPickMeshes();
+            syncSquishyPreviewMesh();
+          }
+        } else {
+          squishyAddPreviewCenter = null;
+          const pick = getSquishyPickIntersection();
+          const hovered = ((pick?.object?.userData?.squishyId as string | undefined) ?? null) as
+            | string
+            | null;
+          if (squishyHoveredId !== hovered) {
+            squishyHoveredId = hovered;
+            syncSquishyPickMeshes();
+          }
+        }
+        rollOverMesh.visible = false;
+        updatePreviewMesh(
+          squishyPreviewPositions,
+          null,
+          squishyPreviewHoldActive
+            ? { hidePreviewGrid: true, solidAsPlaced: true }
+            : undefined
+        );
+        render();
+        return;
+      }
       // Add shape panel: only add-preview ghost; hide active-tool rollover + meshManager preview
       if ($addPanelStore.open) {
         if (event) updatePointerFromEvent(event);
@@ -5397,6 +5667,7 @@
       render();
     } finally {
       selectionGizmo?.syncGizmoHoverCursor();
+      squishyGizmo?.sync();
     }
   }
 
@@ -5422,6 +5693,13 @@
 
   function onContainerPointerLeave() {
     selectionGizmo?.clearGizmoHoverCursor();
+    squishyGizmo?.clearHoverCursor();
+    if (get(tool) === 'squishy' && (squishyHoveredId !== null || squishyAddPreviewCenter !== null)) {
+      squishyHoveredId = null;
+      squishyAddPreviewCenter = null;
+      syncSquishyPickMeshes();
+      syncSquishyPreviewMesh();
+    }
     if (paintHoverMesh) {
       paintHoverMesh.visible = false;
       if (paintHoverOccludedMesh) paintHoverOccludedMesh.visible = false;
@@ -5484,6 +5762,7 @@
       event.button === 2 &&
       (isVoxelDrag ||
         selectionGizmo?.isGizmoDrag ||
+        squishyGizmo?.isDragging ||
         cuboidPhase ||
         cylinderPhase ||
         polygonPhase ||
@@ -5504,6 +5783,20 @@
         });
       }
       render();
+    }
+    if (event.button === 0 && $tool === 'squishy' && squishyGizmo?.tryPointerUp()) {
+      if (dragPointerId !== null) {
+        try {
+          container.releasePointerCapture(event.pointerId);
+        } catch {
+          /* ignore */
+        }
+        dragPointerId = null;
+      }
+      syncSquishyPickMeshes();
+      syncSquishyPreviewMesh();
+      render();
+      return;
     }
     if (event.button === 0 && isStampDrag) {
       updatePointerFromEvent(event);
@@ -5692,9 +5985,93 @@
     if (isVoxelDrag || selectionGizmo?.isGizmoDrag || $tool === 'fly') event.preventDefault();
   }
 
+  /** Hold P in Squishy: solid “as placed” metaball voxel preview. */
+  function squishyPreviewHoldGate(): boolean {
+    if (get(tool) !== 'squishy') return false;
+    if (get(addPanelStore).open) return false;
+    if (get(squishyMetaballs).length === 0) return false;
+    if (isVoxelDrag || isStampDrag || selectionGizmo?.isGizmoDrag) return false;
+    if (fillBusy) return false;
+    if (precisePhase !== 'idle') return false;
+    if (
+      isSegmentedStrokeGestureActive({
+        cuboidPhase,
+        cylinderPhase,
+        polygonPhase,
+        wallPolygonPhase,
+        solidPolygonPhase,
+        roofPhase,
+        ropePhase,
+        clothPhase
+      })
+    )
+      return false;
+    return true;
+  }
+
+  function onSquishyPreviewHoldKeyUp(e: KeyboardEvent) {
+    if (e.code !== 'KeyP') return;
+    if (!squishyPreviewHoldActive) return;
+    squishyPreviewHoldActive = false;
+    syncSquishyPreviewMesh();
+    syncSquishyPickMeshes();
+    markCanvasDirty();
+  }
+
+  function onWindowBlurSquishyPreviewHold() {
+    if (!squishyPreviewHoldActive) return;
+    squishyPreviewHoldActive = false;
+    syncSquishyPreviewMesh();
+    syncSquishyPickMeshes();
+    markCanvasDirty();
+  }
+
   function onEscapeKeyDown(e: KeyboardEvent) {
+    const active = document.activeElement;
+    const activeTag = active?.tagName;
+    const activeIsInput =
+      activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
+    const activeIsContentEditable =
+      active instanceof HTMLElement && active.isContentEditable;
+    if (
+      e.code === 'KeyP' &&
+      !e.repeat &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !activeIsInput &&
+      !activeIsContentEditable &&
+      squishyPreviewHoldGate()
+    ) {
+      squishyPreviewHoldActive = true;
+      syncSquishyPreviewMesh();
+      syncSquishyPickMeshes();
+      e.preventDefault();
+      markCanvasDirty();
+    }
+    if (get(tool) === 'squishy' && !activeIsInput) {
+      const hotkey = e.key.toLowerCase();
+      if (hotkey === 'a') {
+        squishyMode.set('add');
+        e.preventDefault();
+      } else if (hotkey === 'e') {
+        squishyMode.set('edit');
+        e.preventDefault();
+      } else if (hotkey === 'd') {
+        squishyMode.set('delete');
+        e.preventDefault();
+      }
+      if (e.key === 'Enter') {
+        commitSquishySession();
+        e.preventDefault();
+      }
+    }
     if (e.key === 'Escape' && fillBusy) {
       cancelActiveFill();
+      e.preventDefault();
+    }
+    if (e.key === 'Escape' && get(tool) === 'squishy') {
+      cancelSquishySession();
       e.preventDefault();
     }
     if (e.key === 'Escape' && precisePhase !== 'idle') {
@@ -5740,25 +6117,19 @@
       e.preventDefault();
     }
     if (e.key === 'Enter' && get(tool) === 'piscina' && piscinaPhase === 'shape') {
-      const active = document.activeElement;
-      const tag = active?.tagName;
-      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+      if (!activeIsInput) {
         commitPiscinaFish();
         e.preventDefault();
       }
     }
     if (e.key === 'Enter' && get(tool) === 'insecta' && insectaPhase === 'shape') {
-      const active = document.activeElement;
-      const tag = active?.tagName;
-      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+      if (!activeIsInput) {
         commitInsectaPlacement();
         e.preventDefault();
       }
     }
     if (e.key === 'Enter' && get(tool) === 'fauna' && faunaPhase === 'shape') {
-      const active = document.activeElement;
-      const tag = active?.tagName;
-      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+      if (!activeIsInput) {
         commitFaunaPlacement();
         e.preventDefault();
       }
@@ -5769,9 +6140,7 @@
       clothPhase === 'placing' &&
       clothPoints.length >= 3
     ) {
-      const active = document.activeElement;
-      const tag = active?.tagName;
-      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+      if (!activeIsInput) {
         finishClothPlacing();
         e.preventDefault();
       }
@@ -6443,6 +6812,7 @@
     if (renderer && scene && camera) {
       selectionGizmo?.updateGizmoPreviewOffset();
       selectionGizmo?.updateMoveGizmoTransform();
+      squishyGizmo?.sync();
       scene.updateMatrixWorld(true);
 
       if (meshManager && get(enableShadows) && !canvasIsWebGPU) {
@@ -7275,7 +7645,8 @@
         (get(tool) === 'piscina' && piscinaPhase === 'shape') ||
         (get(tool) === 'insecta' && insectaPhase === 'shape') ||
         (get(tool) === 'fauna' && faunaPhase === 'shape') ||
-        faunaHandleDragPointerId !== null,
+        faunaHandleDragPointerId !== null ||
+        squishyGizmo?.isDragging === true,
       getSelection: () => get(selection),
       getPointer: () => pointer,
       getCamera: () => camera ?? null,
@@ -7293,6 +7664,36 @@
     moveGizmoGroup = selectionGizmo.createMoveGizmo();
     rotateGizmoGroup = selectionGizmo.createRotateGizmo();
     scene.add(moveGizmoGroup, rotateGizmoGroup, moveDragLine);
+    squishyPickGroup = new THREE.Group();
+    squishyPickGroup.name = 'squishy-pick-group';
+    scene.add(squishyPickGroup);
+    squishyGizmo = createSquishyGizmoController({
+      getCamera: () => camera ?? null,
+      getPointer: () => pointer,
+      getRaycaster: () => raycaster,
+      getContainer: () => container,
+      // Squishy handles sit inside the metaball voxel preview; preview grid is renderOrder 1100,
+      // so we always draw this gizmo in the on-top path (9999) — global pref would leave arrows under the grid.
+      getGizmosAlwaysOnTop: () => true,
+      getHideMetaballChrome: () => squishyPreviewHoldActive,
+      getSelected: () => {
+        if (get(squishyMode) !== 'edit') return null;
+        const id = get(squishySelectedId);
+        if (!id) return null;
+        return get(squishyMetaballs).find((b) => b.id === id) ?? null;
+      },
+      onUpdate: (next) => {
+        const id = get(squishySelectedId);
+        if (!id) return;
+        squishyMetaballs.update((balls) =>
+          balls.map((b) => (b.id === id ? { ...b, x: next.x, y: next.y, z: next.z, radius: next.radius } : b))
+        );
+      },
+      render: markCanvasDirty
+    });
+    scene.add(squishyGizmo.group);
+    syncSquishyPickMeshes();
+    syncSquishyPreviewMesh();
     faunaHandleGroup = new THREE.Group();
     faunaHandleGroup.name = 'fauna-pose-handles';
     scene.add(faunaHandleGroup);
@@ -7302,6 +7703,8 @@
     window.addEventListener('keydown', onFullscreenKey);
     window.addEventListener('fullscreenchange', onFullscreenChange);
     window.addEventListener('keyup', handleFlyKeyUp, true);
+    window.addEventListener('keyup', onSquishyPreviewHoldKeyUp, true);
+    window.addEventListener('blur', onWindowBlurSquishyPreviewHold);
     updateZoomPercent();
 
     containerResizeObserver = new ResizeObserver(() => {
@@ -7437,12 +7840,21 @@
     if (prevTool !== null && prevTool !== 'fauna' && t === 'fauna') {
       resetFaunaPlacementFlow();
     }
+    if (prevTool === 'squishy' && t !== 'squishy') {
+      squishyPreviewHoldActive = false;
+      squishyHoveredId = null;
+      squishyAddPreviewCenter = null;
+      squishyPreviewPositions = [];
+      syncSquishyPickMeshes();
+      updatePreviewMesh([]);
+    }
     orbitControls.enabled = shouldEnableOrbitControls(t, false);
     flyControls.enabled = isFly;
     document.removeEventListener('mousemove', onFlyPointerMove);
     document.removeEventListener('pointerlockchange', onPointerLockChange);
     if (isFly) {
       selectionGizmo?.clearGizmoHoverCursor();
+      squishyGizmo?.clearHoverCursor();
       showFlyHint = true;
       if (flyHintHideTimeout != null) clearTimeout(flyHintHideTimeout);
       flyHintHideTimeout = setTimeout(() => {
@@ -7476,7 +7888,12 @@
       resetPiscinaPlacementFlow();
       resetInsectaPlacementFlow();
       resetFaunaPlacementFlow();
+      squishyPreviewHoldActive = false;
+      resetSquishySession();
+      squishyHoveredId = null;
+      squishyAddPreviewCenter = null;
       selectionGizmo?.clearGizmoHoverCursor();
+      squishyGizmo?.clearHoverCursor();
       rollOverMesh.visible = false;
       if (paintHoverMesh) paintHoverMesh.visible = false;
       if (paintHoverOccludedMesh) paintHoverOccludedMesh.visible = false;
@@ -7515,6 +7932,37 @@
       resetPreciseState(true);
       markCanvasDirty();
     }
+  });
+
+  $effect(() => {
+    void $squishyMetaballs;
+    void $squishySelectedId;
+    void $squishyMode;
+    void $squishyDefaultRadius;
+    void $squishyHollow;
+    void $squishyHollowWallThickness;
+    void $tool;
+    squishyPreviewHoldActive;
+    if ($squishyMode !== 'add' && squishyAddPreviewCenter !== null) squishyAddPreviewCenter = null;
+    if ($squishyMode === 'add' && squishyHoveredId !== null) squishyHoveredId = null;
+    if (($tool !== 'squishy' || $squishyMode !== 'edit') && squishyGizmo?.isDragging) {
+      squishyGizmo.tryPointerUp();
+      if (dragPointerId !== null && container) {
+        try {
+          container.releasePointerCapture(dragPointerId);
+        } catch {
+          /* ignore */
+        }
+        dragPointerId = null;
+      }
+    }
+    if (!$squishySelectedId || !$squishyMetaballs.some((b) => b.id === $squishySelectedId)) {
+      if ($squishySelectedId !== null) squishySelectedId.set(null);
+    }
+    syncSquishyPickMeshes();
+    syncSquishyPreviewMesh();
+    squishyGizmo?.sync();
+    if ($tool === 'squishy') markCanvasDirty();
   });
 
   $effect(() => {
@@ -7683,6 +8131,8 @@
     window.removeEventListener('keydown', onFullscreenKey);
     window.removeEventListener('fullscreenchange', onFullscreenChange);
     window.removeEventListener('keyup', handleFlyKeyUp, true);
+    window.removeEventListener('keyup', onSquishyPreviewHoldKeyUp, true);
+    window.removeEventListener('blur', onWindowBlurSquishyPreviewHold);
     containerResizeObserver?.disconnect();
     containerResizeObserver = null;
     document.removeEventListener('mousemove', onFlyPointerMove);
@@ -7742,8 +8192,19 @@
       });
       if (gg && scene) scene.remove(gg);
     }
+    squishyGizmo?.dispose();
+    if (squishyGizmo?.group && scene) scene.remove(squishyGizmo.group);
+    squishyPickGroup?.traverse((obj) => {
+      const m = obj as THREE.Mesh;
+      m.geometry?.dispose();
+      const mat = m.material as THREE.Material | undefined;
+      mat?.dispose();
+    });
+    if (squishyPickGroup && scene) scene.remove(squishyPickGroup);
     moveGizmoGroup = null;
     rotateGizmoGroup = null;
+    squishyGizmo = null;
+    squishyPickGroup = null;
   });
 </script>
 
@@ -7808,6 +8269,9 @@
     faunaPhase={faunaPhase}
     commitFaunaPlacement={commitFaunaPlacement}
     pickAgainFauna={pickAgainFauna}
+    squishyHasMetaballs={$squishyMetaballs.length > 0}
+    commitSquishySession={commitSquishySession}
+    cancelSquishySession={cancelSquishySession}
     {ropePhase}
     {commitRope}
     {cancelRope}

@@ -10,6 +10,8 @@ export const ROLLOVER_DEFAULT_RENDER_ORDER = 1101;
 export const PREVIEW_OCCLUDED_RENDER_ORDER = 1000;
 /** Preview edge/grid overlay above translucent preview fill. */
 export const PREVIEW_GRID_RENDER_ORDER = 1100;
+/** Crisp voxel shell / bounds outline on top of optional soft grid. */
+export const PREVIEW_BORDER_RENDER_ORDER = 1105;
 
 /** Precise tool temporarily raises preview to keep guide feedback on top. */
 export const PRECISE_PREVIEW_RENDER_ORDER = 1050;

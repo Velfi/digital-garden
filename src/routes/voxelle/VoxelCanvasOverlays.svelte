@@ -58,6 +58,9 @@
     faunaPhase: 'pick' | 'shape';
     commitFaunaPlacement: () => void;
     pickAgainFauna: () => void;
+    squishyHasMetaballs: boolean;
+    commitSquishySession: () => void;
+    cancelSquishySession: () => void;
     ropePhase: 'placing' | 'tension' | null;
     commitRope: () => void;
     cancelRope: () => void;
@@ -134,6 +137,9 @@
     faunaPhase,
     commitFaunaPlacement,
     pickAgainFauna,
+    squishyHasMetaballs,
+    commitSquishySession,
+    cancelSquishySession,
     ropePhase,
     commitRope,
     cancelRope,
@@ -611,6 +617,31 @@
       onclick={() => pickAgainFauna()}
       title="Discard pose and pick a different face"
       aria-label="Pick another face"
+    >
+      Cancel
+    </button>
+  </div>
+{/if}
+{#if $tool === 'squishy'}
+  <div class="polygon-actions" data-voxelle-no-passthrough>
+    <button
+      type="button"
+      class="polygon-done-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => commitSquishySession()}
+      disabled={!squishyHasMetaballs}
+      title={squishyHasMetaballs ? 'Voxelize metaballs and apply to model' : 'Add at least one metaball'}
+      aria-label="Voxelize squishy metaballs"
+    >
+      Done
+    </button>
+    <button
+      type="button"
+      class="polygon-cancel-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => cancelSquishySession()}
+      title="Cancel"
+      aria-label="Cancel squishy session"
     >
       Cancel
     </button>
