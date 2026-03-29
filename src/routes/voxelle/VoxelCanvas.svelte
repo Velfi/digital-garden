@@ -27,7 +27,6 @@
     lineAxisAlign,
     planeAxis,
     planeCuboidHollow,
-    PLANE_CUBOID_HOLLOW_WALL_MAX,
     planeCuboidHollowWallThickness,
     planeCylinderTaperPct,
     sculptMode,
@@ -392,7 +391,6 @@
     type VoxelleRenderer
   } from './canvas/sceneSetup';
   import { createMeshManager, syncGlassShadowUniformsFromBuckets } from './canvas/meshManager';
-  import { perfLog, perfNow, voxellePerfEnabled } from './canvas/voxellePerf';
   import { VoxelRayTsl } from './canvas/voxelRayTsl';
   import { isWebGLRenderer, isWebGPURenderer } from './canvas/rendererUtils';
   import { createWebGPUBloomPipeline, type WebGPUBloomPipeline } from './canvas/webgpuBloom';
@@ -436,7 +434,6 @@
     getRaycastTargetsFrom,
     getIntersectionFrom,
     axisVector,
-    getDominantAxisOfNormal,
     getFaceNormalFromHit as raycastFaceNormalFromHit,
     getIntersectionWithLockedPlane as raycastIntersectionWithLockedPlane,
     getIntersectionWithPlane as raycastIntersectionWithPlane,
@@ -491,6 +488,23 @@
     buildInsectaOptionsFromStores,
     buildFaunaOptionsFromStores
   } from './canvas/voxelCanvasStrokeCommit';
+  import { formatSignedDelta } from './canvas/voxelCanvasFormat';
+  import {
+    focalLengthToFov,
+    orbitWheelNormalizedDeltaY,
+    ZOOM_FACTOR_IN,
+    ZOOM_FACTOR_OUT,
+    MIN_CAMERA_DISTANCE,
+    MAX_CAMERA_DISTANCE,
+    ORBIT_INTERNAL_STATE_NONE
+  } from './canvas/voxelCanvasCamera';
+  import { sprayPlaneParamsForFaceNormal as buildSprayPlaneParams } from './canvas/voxelCanvasSprayPlane';
+  import {
+    clampPlaneCuboidHollowWallThickness,
+    wallHollowFootprintThickness,
+    fillPlaneContextFromHit
+  } from './canvas/voxelCanvasPlaneStroke';
+  import { createVoxelCanvasSceneRuntime } from './canvas/voxelCanvasSceneRuntime';
   import VoxelCanvasOverlays from './VoxelCanvasOverlays.svelte';
 
   let fillBusy = $state(false);
@@ -501,15 +515,6 @@
 
   function cancelActiveFill(): void {
     fillAbortController?.abort();
-  }
-
-  function formatSignedDelta(n: number): string {
-    return n > 0 ? `+${n}` : String(n);
-  }
-
-  function clampPlaneCuboidHollowWallThickness(): number {
-    const raw = Math.floor(get(planeCuboidHollowWallThickness));
-    return Math.min(PLANE_CUBOID_HOLLOW_WALL_MAX, Math.max(1, raw));
   }
 
   /** Voxel tool + fill only: capped probe when plane unconstrained; full flood is async/cancellable. */
@@ -547,105 +552,6 @@
     });
     if (full.cancelled) return null;
     return full.region;
-  }
-
-  function fillPlaneContextFromHit(hit: THREE.Intersection | null): FillPlaneSampleContext {
-    const faceNormal = hit ? getFaceNormalFromHit(hit) : null;
-    let cameraForward: { x: number; y: number; z: number } | null = null;
-    if (camera) {
-      const v = new THREE.Vector3();
-      camera.getWorldDirection(v);
-      cameraForward = { x: v.x, y: v.y, z: v.z };
-    }
-    return { faceNormal, cameraForward };
-  }
-
-  function sprayPlaneParamsForFaceNormal(
-    faceForAuto: THREE.Vector3 | null | undefined
-  ): Pick<
-    PathThickenParams,
-    'sprayConstrainToPlane' | 'sprayPlaneAxis' | 'sprayPlaneNormal'
-  > {
-    const enabled = get(constrainToPlaneEnabled);
-    if (!enabled) {
-      return {
-        sprayConstrainToPlane: false,
-        sprayPlaneAxis: undefined,
-        sprayPlaneNormal: undefined
-      };
-    }
-    const ref = get(constrainToPlaneRef);
-    if (ref === 'camera') {
-      return {
-        sprayConstrainToPlane: true,
-        sprayPlaneAxis: undefined,
-        sprayPlaneNormal: getCameraPlaneNormal()
-      };
-    }
-    if (ref === 'auto') {
-      const n = faceForAuto ?? dragFaceNormal;
-      return {
-        sprayConstrainToPlane: true,
-        sprayPlaneAxis: n ? getDominantAxisOfNormal(n) : undefined,
-        sprayPlaneNormal: undefined
-      };
-    }
-    return {
-      sprayConstrainToPlane: true,
-      sprayPlaneAxis: ref,
-      sprayPlaneNormal: undefined
-    };
-  }
-
-  function sprayPlaneParamsForStroke(): Pick<
-    PathThickenParams,
-    'sprayConstrainToPlane' | 'sprayPlaneAxis' | 'sprayPlaneNormal'
-  > {
-    return sprayPlaneParamsForFaceNormal(dragFaceNormal);
-  }
-
-  /** Path-thicken params for sculpt wall (preview + commit); `faceNormal` from clicked face. */
-  function pathThickenParamsForWallAtFace(
-    faceNormal: THREE.Vector3 | null,
-    seed: number
-  ): PathThickenParams {
-    const n = faceNormal;
-    return {
-      strokeMode: get(strokeMode),
-      sculptMode: 'wall',
-      sculptBrushRadius: (get(sculptBrushRadius) as number) * 0.5,
-      sculptBrushShape: get(sculptBrushShape),
-      branchTaper: get(branchTaper),
-      branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
-      branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
-      branchBrushProfile: get(branchBrushProfile),
-      branchEndCap: get(branchEndCap),
-      sprayRadius: (get(sprayRadius) as number) * 0.5,
-      sprayScatter: get(sprayScatter),
-      sprayRadiusRange: get(sprayRadiusRange),
-      sprayRadiusMin: get(sprayRadiusMin) * 0.5,
-      sprayRadiusMax: get(sprayRadiusMax) * 0.5,
-      sprayBrushShape: get(sprayBrushShape),
-      ...sprayPlaneParamsForFaceNormal(n),
-      planeAxis: get(planeAxis),
-      sprayDirection: get(sprayDirection),
-      sprayStreakLength: get(sprayStreakLength),
-      wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
-      wallHeight: get(wallHeight),
-      wallFaceNormal: n ? { x: n.x, y: n.y, z: n.z } : undefined,
-      drawBrushShape: get(drawBrushShape),
-      drawBrushSize: get(drawBrushSize) * 0.5,
-      drawBrushSnapToSurface: get(drawBrushSnapToSurface),
-      spraySnapToSurface: get(spraySnapToSurface),
-      drawBrushFaceNormal: n ? { x: n.x, y: n.y, z: n.z } : undefined,
-      seed
-    };
-  }
-
-  /** In-plane shell thickness for hollow wall circle (matches wall width slider, min 1 voxel). */
-  function wallHollowFootprintThickness(): number {
-    const w = get(wallWidth);
-    return Math.max(1, w === 0 ? 1 : w + 1);
   }
 
   function getSprayConstrainPlaneNormalWorld(): THREE.Vector3 | null {
@@ -741,9 +647,6 @@
   let prevRayCamInitialized = false;
   /** Set when voxels/lighting change; coalesced via rAF flush, consumed once per frame in `animate` before ray tick. */
   let pendingRayContentInvalidate = true;
-  let pendingPipelineMesh = false;
-  let pendingPipelineGrid = false;
-  let pendingPipelineRay = false;
 
   /** Set true after `createSceneSetupAsync` + core refs exist; presentation effects no-op until then. */
   let sceneReady = $state(false);
@@ -754,41 +657,6 @@
     canvasPresentationDirty = true;
   }
 
-  /** Apply batched mesh/grid/ray flags once per animation frame (coalesces burst edits). */
-  function applyPendingVoxelPipelineMutations(): boolean {
-    let did = false;
-    const v = get(voxels);
-    const tAll = voxellePerfEnabled() ? perfNow() : 0;
-    if (pendingPipelineMesh && meshManager) {
-      const t0 = voxellePerfEnabled() ? perfNow() : 0;
-      meshManager.requestRebuildVoxelMeshes(v);
-      if (voxellePerfEnabled()) perfLog('voxelPipeline.meshRequest', perfNow() - t0);
-      pendingPipelineMesh = false;
-      did = true;
-    }
-    if (pendingPipelineGrid && meshManager && get(showGrid)) {
-      const t0 = voxellePerfEnabled() ? perfNow() : 0;
-      meshManager.buildGrid(get(gridSize), v);
-      if (voxellePerfEnabled()) perfLog('voxelPipeline.gridRebuild', perfNow() - t0);
-      pendingPipelineGrid = false;
-      did = true;
-    } else {
-      pendingPipelineGrid = false;
-    }
-    if (pendingPipelineRay) {
-      pendingRayContentInvalidate = true;
-      pendingPipelineRay = false;
-      did = true;
-    }
-    if (voxellePerfEnabled() && did) perfLog('voxelPipeline.applyTotal', perfNow() - tAll);
-    return did;
-  }
-
-  function queueVoxelPipelineRebuild(opts: { mesh?: boolean; grid?: boolean; ray?: boolean }): void {
-    if (opts.mesh) pendingPipelineMesh = true;
-    if (opts.grid) pendingPipelineGrid = true;
-    if (opts.ray) pendingPipelineRay = true;
-  }
   let rollOverMesh: THREE.Mesh;
   let rollOverMaterial: THREE.MeshBasicMaterial;
   let paintHoverMesh: THREE.Mesh | null = null;
@@ -801,6 +669,15 @@
   let groundPlane: THREE.Mesh | null = null;
   let boxGeometry: THREE.BoxGeometry;
   let meshManager: ReturnType<typeof createMeshManager> | null = null;
+  const sceneRuntime = createVoxelCanvasSceneRuntime({
+    getMeshManager: () => meshManager,
+    getVoxels: () => get(voxels),
+    getShowGrid: () => get(showGrid),
+    getGridSize: () => get(gridSize),
+    onRayPipelineInvalidated: () => {
+      pendingRayContentInvalidate = true;
+    }
+  });
   let animationFrameId: number;
   let fpsCounterDisplayed = $state(0);
   let fpsCounterAccumFrames = 0;
@@ -1023,45 +900,9 @@
     y: number;
   } | null>(null);
   let pointerScreen = $state({ x: 0, y: 0 });
-  const ZOOM_FACTOR_IN = 1 / 1.2;
-  const ZOOM_FACTOR_OUT = 1.2;
-  const MIN_DISTANCE = 5;
-  const MAX_DISTANCE = 50000;
-  /** three@0.183 OrbitControls internal _STATE.NONE — wheel zoom only applies in this state. */
-  const ORBIT_INTERNAL_STATE_NONE = -1;
   let pendingOrbitWheelDeltaSum = 0;
   let pendingOrbitWheelClientX = 0;
   let pendingOrbitWheelClientY = 0;
-
-  // 35mm equivalent: sensor height 24mm; FOV = 2 * atan(12 / focalLength)
-  function focalLengthToFov(mm: number): number {
-    return (2 * Math.atan(12 / mm) * 180) / Math.PI;
-  }
-
-  /** Matches OrbitControls._customWheelEvent deltaY scaling. */
-  function orbitWheelNormalizedDeltaY(event: WheelEvent): number {
-    let dy = event.deltaY;
-    switch (event.deltaMode) {
-      case 1:
-        dy *= 16;
-        break;
-      case 2:
-        dy *= 100;
-        break;
-      default:
-        break;
-    }
-    if (event.ctrlKey) {
-      dy *= 10;
-    }
-    return dy;
-  }
-
-  /** Same base as OrbitControls._getZoomScale (three/examples OrbitControls.js). */
-  function orbitZoomScaleFromWheelDelta(controls: OrbitControls, deltaY: number): number {
-    const normalizedDelta = Math.abs(deltaY * 0.01);
-    return Math.pow(0.95, controls.zoomSpeed * normalizedDelta);
-  }
 
   const pointerHelper = new THREE.Vector3();
   const axisNormalHelper = new THREE.Vector3();
@@ -1247,6 +1088,65 @@
     return raycastCameraPlaneNormal(camera ?? null);
   }
 
+  function sprayPlaneParamsForFaceNormal(
+    faceForAuto: THREE.Vector3 | null | undefined
+  ): Pick<
+    PathThickenParams,
+    'sprayConstrainToPlane' | 'sprayPlaneAxis' | 'sprayPlaneNormal'
+  > {
+    return buildSprayPlaneParams({
+      constrainToPlaneEnabled: get(constrainToPlaneEnabled),
+      constrainToPlaneRef: get(constrainToPlaneRef),
+      faceForAuto,
+      cameraPlaneNormal: getCameraPlaneNormal()
+    });
+  }
+
+  function sprayPlaneParamsForStroke(): Pick<
+    PathThickenParams,
+    'sprayConstrainToPlane' | 'sprayPlaneAxis' | 'sprayPlaneNormal'
+  > {
+    return sprayPlaneParamsForFaceNormal(dragFaceNormal);
+  }
+
+  /** Path-thicken params for sculpt wall (preview + commit); `faceNormal` from clicked face. */
+  function pathThickenParamsForWallAtFace(
+    faceNormal: THREE.Vector3 | null,
+    seed: number
+  ): PathThickenParams {
+    const n = faceNormal;
+    return {
+      strokeMode: get(strokeMode),
+      sculptMode: 'wall',
+      sculptBrushRadius: (get(sculptBrushRadius) as number) * 0.5,
+      sculptBrushShape: get(sculptBrushShape),
+      branchTaper: get(branchTaper),
+      branchTaperStartRadius: get(branchTaperStartSize) * 0.5,
+      branchTaperEndRadius: get(branchTaperEndSize) * 0.5,
+      branchBrushProfile: get(branchBrushProfile),
+      branchEndCap: get(branchEndCap),
+      sprayRadius: (get(sprayRadius) as number) * 0.5,
+      sprayScatter: get(sprayScatter),
+      sprayRadiusRange: get(sprayRadiusRange),
+      sprayRadiusMin: get(sprayRadiusMin) * 0.5,
+      sprayRadiusMax: get(sprayRadiusMax) * 0.5,
+      sprayBrushShape: get(sprayBrushShape),
+      ...sprayPlaneParamsForFaceNormal(n),
+      planeAxis: get(planeAxis),
+      sprayDirection: get(sprayDirection),
+      sprayStreakLength: get(sprayStreakLength),
+      wallWidth: get(wallWidth) === 0 ? 0 : get(wallWidth) + 1,
+      wallHeight: get(wallHeight),
+      wallFaceNormal: n ? { x: n.x, y: n.y, z: n.z } : undefined,
+      drawBrushShape: get(drawBrushShape),
+      drawBrushSize: get(drawBrushSize) * 0.5,
+      drawBrushSnapToSurface: get(drawBrushSnapToSurface),
+      spraySnapToSurface: get(spraySnapToSurface),
+      drawBrushFaceNormal: n ? { x: n.x, y: n.y, z: n.z } : undefined,
+      seed
+    };
+  }
+
   function buildGrid(sz: number, v: Map<string, Voxel>) {
     meshManager?.buildGrid(sz, v);
   }
@@ -1258,7 +1158,7 @@
 
   function setCameraDistance(distance: number) {
     if (!camera || !orbitControls) return;
-    const d = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, distance));
+    const d = Math.max(MIN_CAMERA_DISTANCE, Math.min(MAX_CAMERA_DISTANCE, distance));
     const dir = new THREE.Vector3().subVectors(camera.position, orbitControls.target).normalize();
     camera.position.copy(orbitControls.target).add(dir.multiplyScalar(d));
     updateZoomPercent();
@@ -1412,7 +1312,7 @@
     } else {
       const vFovHalfTan = Math.tan((camera.fov * Math.PI) / 360);
       const hFovHalfTan = vFovHalfTan * aspect;
-      let fitDist = MIN_DISTANCE;
+      let fitDist = MIN_CAMERA_DISTANCE;
       for (const corner of fitCorners) {
         fitRelative.subVectors(corner, fitHelperCenter);
         const x = Math.abs(fitRelative.dot(fitCameraRight));
@@ -1424,7 +1324,7 @@
           (y * fitPadding) / Math.max(vFovHalfTan, 1e-6) - depth
         );
       }
-      const clampedDist = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, fitDist));
+      const clampedDist = Math.max(MIN_CAMERA_DISTANCE, Math.min(MAX_CAMERA_DISTANCE, fitDist));
       camera.position.copy(fitHelperCenter).addScaledVector(fitCameraDir, clampedDist);
     }
     camera.lookAt(fitHelperCenter);
@@ -1975,7 +1875,7 @@
     if (get(squishyHollow)) {
       const w = Math.max(
         1,
-        Math.min(PLANE_CUBOID_HOLLOW_WALL_MAX, Math.floor(get(squishyHollowWallThickness)))
+        clampPlaneCuboidHollowWallThickness(get(squishyHollowWallThickness))
       );
       positions = shellVoxelPositions(positions, w);
     }
@@ -2666,7 +2566,7 @@
         cuboidPlane.normal,
         cuboidDepth,
         get(planeCuboidHollow),
-        clampPlaneCuboidHollowWallThickness()
+        clampPlaneCuboidHollowWallThickness(get(planeCuboidHollowWallThickness))
       );
       updatePreviewMesh(pendingStrokePositions, bboxHintBase);
     }
@@ -2717,7 +2617,7 @@
         cylinderDepth,
         get(planeCylinderTaperPct),
         get(planeCuboidHollow),
-        clampPlaneCuboidHollowWallThickness()
+        clampPlaneCuboidHollowWallThickness(get(planeCuboidHollowWallThickness))
       );
       updatePreviewMesh(pendingStrokePositions, bboxHintBase);
     }
@@ -2733,7 +2633,7 @@
       cylinderDepth,
       get(planeCylinderTaperPct),
       get(planeCuboidHollow),
-      clampPlaneCuboidHollowWallThickness()
+      clampPlaneCuboidHollowWallThickness(get(planeCuboidHollowWallThickness))
     );
     if (positions.length > 0) {
       if ($tool === 'select') {
@@ -2758,7 +2658,7 @@
       cuboidPlane.normal,
       cuboidDepth,
       get(planeCuboidHollow),
-      clampPlaneCuboidHollowWallThickness()
+      clampPlaneCuboidHollowWallThickness(get(planeCuboidHollowWallThickness))
     );
     if (positions.length > 0) {
       if ($tool === 'select') {
@@ -2815,7 +2715,7 @@
       vec,
       solidPolygonDepth,
       get(planeCuboidHollow),
-      clampPlaneCuboidHollowWallThickness()
+      clampPlaneCuboidHollowWallThickness(get(planeCuboidHollowWallThickness))
     );
   }
 
@@ -3312,7 +3212,8 @@
   const pointerHandlerContext = {
     getTool: () => get(tool),
     getFlyControls: () => flyControls,
-    getContainer: () => container
+    getContainer: () => container,
+    onFlyPointerActivity: pokeFlyHint
   };
 
   const voxelGeneratorRmbBridge: VoxelGeneratorRmbBridge = {
@@ -4150,7 +4051,7 @@
             get(fillSelectDiagonals),
             get(fillRespectsColor),
             {
-              planeCtx: fillPlaneContextFromHit(hit),
+              planeCtx: fillPlaneContextFromHit(hit, camera, getFaceNormalFromHit),
               signal: controller.signal,
               onProgress: (p) => {
                 fillVisited = p.visited;
@@ -4197,7 +4098,7 @@
             get(fillSelectDiagonals),
             get(fillRespectsColor),
             {
-              planeCtx: fillPlaneContextFromHit(hit),
+              planeCtx: fillPlaneContextFromHit(hit, camera, getFaceNormalFromHit),
               signal: controller.signal,
               onProgress: (p) => {
                 fillVisited = p.visited;
@@ -4252,7 +4153,7 @@
             pos[1],
             pos[2],
             get(fillSelectDiagonals),
-            fillPlaneContextFromHit(hit),
+            fillPlaneContextFromHit(hit, camera, getFaceNormalFromHit),
             controller.signal
           );
           if (emptyRegion && emptyRegion.size > 0) {
@@ -4304,7 +4205,7 @@
             get(fillSelectDiagonals),
             get(fillRespectsColor),
             {
-              planeCtx: fillPlaneContextFromHit(hit),
+              planeCtx: fillPlaneContextFromHit(hit, camera, getFaceNormalFromHit),
               signal: controller.signal,
               onProgress: (p) => {
                 fillVisited = p.visited;
@@ -4399,7 +4300,7 @@
                 get(fillSelectDiagonals),
                 get(fillRespectsColor),
                 {
-                  planeCtx: fillPlaneContextFromHit(hit),
+                  planeCtx: fillPlaneContextFromHit(hit, camera, getFaceNormalFromHit),
                   signal: controller.signal,
                   onProgress: (p) => {
                     fillVisited = p.visited;
@@ -5010,7 +4911,7 @@
                     currentPos,
                     n,
                     true,
-                    wallHollowFootprintThickness()
+                    wallHollowFootprintThickness(get(wallWidth))
                   );
                   lastBulkPos = currentPos;
                 }
@@ -5048,7 +4949,9 @@
               ) {
                 const hollow = get(planeCuboidHollow);
                 const hollowWall =
-                  strokeModeVal === 'circle' ? 1 : clampPlaneCuboidHollowWallThickness();
+                  strokeModeVal === 'circle'
+                ? 1
+                : clampPlaneCuboidHollowWallThickness(get(planeCuboidHollowWallThickness));
                 pendingStrokePositions =
                   strokeModeVal === 'circle' || strokeModeVal === 'cylinder'
                     ? getAxisAlignedCircleFromNormal(
@@ -6345,7 +6248,7 @@
       if (currentPos) {
         const hollow = get(planeCuboidHollow);
         const hollowWall =
-          mode === 'circle' ? 1 : clampPlaneCuboidHollowWallThickness();
+          mode === 'circle' ? 1 : clampPlaneCuboidHollowWallThickness(get(planeCuboidHollowWallThickness));
         const n = axisVector(next);
         pendingStrokePositions =
           mode === 'circle' || mode === 'cylinder'
@@ -6968,7 +6871,7 @@
   function animate(now?: number) {
     animationFrameId = requestAnimationFrame(animate);
     const t = now ?? performance.now();
-    const pipelineApplied = applyPendingVoxelPipelineMutations();
+    const pipelineApplied = sceneRuntime.pipeline.apply();
     runVoxelCanvasAnimateStep({
       nowMs: t,
       showFpsCounter: get(voxellePreferences).showFpsCounter,
@@ -6998,7 +6901,6 @@
       },
       getPendingOrbitWheelClientX: () => pendingOrbitWheelClientX,
       getPendingOrbitWheelClientY: () => pendingOrbitWheelClientY,
-      orbitZoomScaleFromWheelDelta,
       getRenderingMode: () => get(renderingMode),
       rayRenderer,
       container,
@@ -7307,7 +7209,7 @@
     void $renderingMode;
     void $glowVoxelCount;
     sceneHasGlowMesh = $glowVoxelCount > 0;
-    queueVoxelPipelineRebuild({
+    sceneRuntime.pipeline.queue({
       mesh: true,
       grid: true,
       ray: $renderingMode === 'ray'
@@ -7329,7 +7231,7 @@
     void $focalLength;
     void $orthographic;
     if ($renderingMode === 'ray') {
-      queueVoxelPipelineRebuild({ ray: true });
+      sceneRuntime.pipeline.queue({ ray: true });
     }
   });
 
@@ -7857,7 +7759,7 @@
     void $showGrid;
     if (gridGroup) gridGroup.visible = $showGrid;
     if ($showGrid) {
-      queueVoxelPipelineRebuild({ grid: true });
+      sceneRuntime.pipeline.queue({ grid: true });
     }
   });
 
@@ -8345,16 +8247,20 @@
 >
   <VoxelCanvasOverlays
     bind:gizmoRef
-    {rayRefinementProgress}
-    {showGreedyMeshSpinner}
-    projectOpenLoadingActive={$projectOpenLoading.active}
-    projectOpenLoadingMessage={$projectOpenLoading.message}
-    projectOpenLoadingProgress={$projectOpenLoading.progress}
-    {fillBusy}
-    {fillMessage}
-    {fillVisited}
-    {fillMatched}
-    {cancelActiveFill}
+    loadingHud={{
+      rayRefinementProgress,
+      showGreedyMeshSpinner,
+      projectOpenLoadingActive: $projectOpenLoading.active,
+      projectOpenLoadingMessage: $projectOpenLoading.message,
+      projectOpenLoadingProgress: $projectOpenLoading.progress
+    }}
+    fillHud={{
+      fillBusy,
+      fillMessage,
+      fillVisited,
+      fillMatched,
+      cancelActiveFill
+    }}
     {cuboidPhase}
     bind:cuboidDepth
     {updateCuboidFromDepth}
@@ -8409,21 +8315,23 @@
     {finishClothPlacing}
     {commitCloth}
     {cancelCloth}
-    {fpsCounterDisplayed}
-    {deltaDisplay}
-    {preciseLocationHint}
-    {pointerScreen}
-    {moveGizmoDragLabel}
-    {formatSignedDelta}
-    {showFlyHint}
-    {camera}
-    {orbitControls}
-    {render}
-    {zoomPercent}
-    {zoomOut}
-    {zoomIn}
-    {fitToView}
-    {resetCamera}
+    viewportHud={{
+      fpsCounterDisplayed,
+      deltaDisplay,
+      preciseLocationHint,
+      pointerScreen,
+      moveGizmoDragLabel,
+      formatSignedDelta,
+      showFlyHint,
+      camera,
+      orbitControls,
+      render,
+      zoomPercent,
+      zoomOut,
+      zoomIn,
+      fitToView,
+      resetCamera
+    }}
   />
 </div>
 

@@ -12,6 +12,7 @@ export function handleFlyPointerDown(ctx: PointerHandlerContext, event: PointerE
   } else {
     flyControls?.lock(true);
   }
+  ctx.onFlyPointerActivity?.();
   event.preventDefault();
   event.stopPropagation();
   return true;

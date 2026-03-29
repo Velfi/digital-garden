@@ -1,24 +1,19 @@
 <script lang="ts">
-  import * as THREE from 'three';
-  import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { get } from 'svelte/store';
   import OrbitGizmo from './OrbitGizmo.svelte';
   import ToolPanel from './ToolPanel.svelte';
   import SelectionCountPanel from './SelectionCountPanel.svelte';
   import { renderingMode, ropeTension, clothTension, tool, voxellePreferences } from './store/index';
+  import type {
+    VoxelCanvasFillHudProps,
+    VoxelCanvasLoadingHudProps,
+    VoxelCanvasViewportHudProps
+  } from './canvas/voxelCanvasOverlayProps';
 
   interface Props {
     gizmoRef?: { draw: () => void } | undefined;
-    rayRefinementProgress: number;
-    showGreedyMeshSpinner: boolean;
-    projectOpenLoadingActive: boolean;
-    projectOpenLoadingMessage: string;
-    projectOpenLoadingProgress: number;
-    fillBusy: boolean;
-    fillMessage: string;
-    fillVisited: number;
-    fillMatched: number;
-    cancelActiveFill: () => void;
+    loadingHud: VoxelCanvasLoadingHudProps;
+    fillHud: VoxelCanvasFillHudProps;
     cuboidPhase: 'plane' | 'depth' | null;
     cuboidDepth: number;
     updateCuboidFromDepth: () => void;
@@ -69,36 +64,13 @@
     finishClothPlacing: () => void;
     commitCloth: () => void;
     cancelCloth: () => void;
-    fpsCounterDisplayed: number;
-    deltaDisplay: { dx: number; dy: number; dz: number } | null;
-    /** Precise stroke: snapped voxel coords under cursor on the work plane. */
-    preciseLocationHint: { x: number; y: number; z: number } | null;
-    pointerScreen: { x: number; y: number };
-    moveGizmoDragLabel: { x: number; y: number; dx: number; dy: number; dz: number } | null;
-    formatSignedDelta: (n: number) => string;
-    showFlyHint: boolean;
-    camera: THREE.PerspectiveCamera | THREE.OrthographicCamera | undefined;
-    orbitControls: OrbitControls | null | undefined;
-    render: () => void;
-    zoomPercent: number;
-    zoomOut: () => void;
-    zoomIn: () => void;
-    fitToView: () => void;
-    resetCamera: () => void;
+    viewportHud: VoxelCanvasViewportHudProps;
   }
 
   let {
     gizmoRef = $bindable(),
-    rayRefinementProgress,
-    showGreedyMeshSpinner,
-    projectOpenLoadingActive,
-    projectOpenLoadingMessage,
-    projectOpenLoadingProgress,
-    fillBusy,
-    fillMessage,
-    fillVisited,
-    fillMatched,
-    cancelActiveFill,
+    loadingHud,
+    fillHud,
     cuboidPhase,
     cuboidDepth = $bindable(),
     updateCuboidFromDepth,
@@ -148,21 +120,7 @@
     finishClothPlacing,
     commitCloth,
     cancelCloth,
-    fpsCounterDisplayed,
-    deltaDisplay,
-    preciseLocationHint,
-    pointerScreen,
-    moveGizmoDragLabel,
-    formatSignedDelta,
-    showFlyHint,
-    camera,
-    orbitControls,
-    render,
-    zoomPercent,
-    zoomOut,
-    zoomIn,
-    fitToView,
-    resetCamera
+    viewportHud
   }: Props = $props();
 
   let depthSliderPointerId: number | null = $state(null);
@@ -178,57 +136,60 @@
   let clothTensionSliderStartVal = $state(0);
 </script>
 
-{#if $renderingMode === 'ray' && rayRefinementProgress < 1}
+{#if $renderingMode === 'ray' && loadingHud.rayRefinementProgress < 1}
   <div
     class="ray-refine-progress"
     role="progressbar"
     aria-live="polite"
     aria-valuemin={0}
     aria-valuemax={100}
-    aria-valuenow={Math.round(rayRefinementProgress * 100)}
+    aria-valuenow={Math.round(loadingHud.rayRefinementProgress * 100)}
     aria-label="Ray trace refinement"
   >
-    <div class="ray-refine-progress-fill" style="transform: scaleX({rayRefinementProgress})"></div>
+    <div
+      class="ray-refine-progress-fill"
+      style="transform: scaleX({loadingHud.rayRefinementProgress})"
+    ></div>
   </div>
 {/if}
-{#if showGreedyMeshSpinner}
+{#if loadingHud.showGreedyMeshSpinner}
   <div class="greedy-mesh-spinner" role="status" aria-live="polite">
     <div class="spinner" aria-hidden="true"></div>
     <span>Building mesh…</span>
   </div>
 {/if}
-{#if projectOpenLoadingActive}
+{#if loadingHud.projectOpenLoadingActive}
   <div class="project-open-loading" role="status" aria-live="polite">
     <div class="project-open-loading-card">
       <div class="project-open-loading-title">Opening project</div>
-      <div class="project-open-loading-message">{projectOpenLoadingMessage}</div>
+      <div class="project-open-loading-message">{loadingHud.projectOpenLoadingMessage}</div>
       <div
         class="project-open-loading-progress"
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={Math.round(projectOpenLoadingProgress * 100)}
+        aria-valuenow={Math.round(loadingHud.projectOpenLoadingProgress * 100)}
         aria-label="Project open progress"
       >
         <div
           class="project-open-loading-progress-fill"
-          style="transform: scaleX({projectOpenLoadingProgress})"
+          style="transform: scaleX({loadingHud.projectOpenLoadingProgress})"
         ></div>
       </div>
       <div class="project-open-loading-percent">
-        {Math.round(projectOpenLoadingProgress * 100)}%
+        {Math.round(loadingHud.projectOpenLoadingProgress * 100)}%
       </div>
     </div>
   </div>
 {/if}
-{#if fillBusy}
+{#if fillHud.fillBusy}
   <div class="fill-progress" role="status" aria-live="polite" data-voxelle-no-passthrough>
-    <div class="fill-progress-title">{fillMessage}</div>
+    <div class="fill-progress-title">{fillHud.fillMessage}</div>
     <div class="fill-progress-stats">
-      <span>Visited: {fillVisited.toLocaleString()}</span>
-      <span>Matched: {fillMatched.toLocaleString()}</span>
+      <span>Visited: {fillHud.fillVisited.toLocaleString()}</span>
+      <span>Matched: {fillHud.fillMatched.toLocaleString()}</span>
     </div>
-    <button type="button" class="fill-cancel-btn" onclick={() => cancelActiveFill()}>Cancel</button>
+    <button type="button" class="fill-cancel-btn" onclick={() => fillHud.cancelActiveFill()}>Cancel</button>
   </div>
 {/if}
 {#if cuboidPhase === 'depth'}
@@ -831,61 +792,66 @@
 {/if}
 {#if $voxellePreferences.showFpsCounter}
   <div class="fps-counter" role="status" aria-live="polite">
-    {fpsCounterDisplayed} FPS
+    {viewportHud.fpsCounterDisplayed} FPS
   </div>
 {/if}
-{#if preciseLocationHint}
+{#if viewportHud.preciseLocationHint}
   <div
     class="precise-stroke-hud"
     role="status"
     aria-live="polite"
-    style="left: {pointerScreen.x}px; top: {pointerScreen.y}px;"
+    style="left: {viewportHud.pointerScreen.x}px; top: {viewportHud.pointerScreen.y}px;"
   >
     <div class="precise-coords-line">
-      {formatSignedDelta(preciseLocationHint.x)}, {formatSignedDelta(preciseLocationHint.y)}, {formatSignedDelta(
-        preciseLocationHint.z
-      )}
+      {viewportHud.formatSignedDelta(viewportHud.preciseLocationHint.x)}, {viewportHud.formatSignedDelta(
+        viewportHud.preciseLocationHint.y
+      )}, {viewportHud.formatSignedDelta(viewportHud.preciseLocationHint.z)}
     </div>
-    {#if deltaDisplay && $voxellePreferences.showMovementDeltaHint}
+    {#if viewportHud.deltaDisplay && $voxellePreferences.showMovementDeltaHint}
       <div class="precise-delta-line">
-        Δ {formatSignedDelta(deltaDisplay.dx)}, {formatSignedDelta(deltaDisplay.dy)}, {formatSignedDelta(
-          deltaDisplay.dz
-        )}
+        Δ {viewportHud.formatSignedDelta(viewportHud.deltaDisplay.dx)}, {viewportHud.formatSignedDelta(
+          viewportHud.deltaDisplay.dy
+        )}, {viewportHud.formatSignedDelta(viewportHud.deltaDisplay.dz)}
       </div>
     {/if}
   </div>
-{:else if deltaDisplay && $voxellePreferences.showMovementDeltaHint}
+{:else if viewportHud.deltaDisplay && $voxellePreferences.showMovementDeltaHint}
   <div
     class="delta-display"
     aria-live="polite"
-    style="left: {pointerScreen.x}px; top: {pointerScreen.y}px;"
+    style="left: {viewportHud.pointerScreen.x}px; top: {viewportHud.pointerScreen.y}px;"
   >
-    Δ {formatSignedDelta(deltaDisplay.dx)}, {formatSignedDelta(deltaDisplay.dy)}, {formatSignedDelta(
-      deltaDisplay.dz
-    )}
+    Δ {viewportHud.formatSignedDelta(viewportHud.deltaDisplay.dx)}, {viewportHud.formatSignedDelta(
+      viewportHud.deltaDisplay.dy
+    )}, {viewportHud.formatSignedDelta(viewportHud.deltaDisplay.dz)}
   </div>
 {/if}
-{#if moveGizmoDragLabel}
+{#if viewportHud.moveGizmoDragLabel}
   <div
     class="move-gizmo-delta-label"
     role="status"
     aria-live="polite"
-    style="left: {moveGizmoDragLabel.x}px; top: {moveGizmoDragLabel.y}px;"
+    style="left: {viewportHud.moveGizmoDragLabel.x}px; top: {viewportHud.moveGizmoDragLabel.y}px;"
   >
-    {formatSignedDelta(moveGizmoDragLabel.dx)}, {formatSignedDelta(moveGizmoDragLabel.dy)}, {formatSignedDelta(
-      moveGizmoDragLabel.dz
-    )}
+    {viewportHud.formatSignedDelta(viewportHud.moveGizmoDragLabel.dx)}, {viewportHud.formatSignedDelta(
+      viewportHud.moveGizmoDragLabel.dy
+    )}, {viewportHud.formatSignedDelta(viewportHud.moveGizmoDragLabel.dz)}
   </div>
 {/if}
 <ToolPanel />
 <SelectionCountPanel />
-{#if $tool === 'fly' && showFlyHint}
+{#if $tool === 'fly' && viewportHud.showFlyHint}
   <div class="fly-hint" role="status" aria-live="polite">
     Click to capture · WASD move · E/Q up/down · Shift 1/8 speed · Move mouse to look
   </div>
 {:else}
-  {#if camera && orbitControls}
-    <OrbitGizmo bind:this={gizmoRef} {camera} controls={orbitControls} onRender={render} />
+  {#if viewportHud.camera && viewportHud.orbitControls}
+    <OrbitGizmo
+      bind:this={gizmoRef}
+      camera={viewportHud.camera}
+      controls={viewportHud.orbitControls}
+      onRender={viewportHud.render}
+    />
   {/if}
   <div
     class="zoom-controls"
@@ -895,23 +861,25 @@
     tabindex="0"
     onpointerdown={(e) => e.stopPropagation()}
   >
-    <button type="button" onclick={zoomOut} title="Zoom out" aria-label="Zoom out">−</button>
-    <span class="zoom-percent">{zoomPercent}%</span>
-    <button type="button" onclick={zoomIn} title="Zoom in" aria-label="Zoom in">+</button>
+    <button
+      type="button"
+      onclick={viewportHud.zoomOut}
+      title="Zoom out"
+      aria-label="Zoom out">−</button>
+    <span class="zoom-percent">{viewportHud.zoomPercent}%</span>
+    <button type="button" onclick={viewportHud.zoomIn} title="Zoom in" aria-label="Zoom in">+</button>
     <button
       type="button"
       class="fit-btn"
-      onclick={fitToView}
+      onclick={viewportHud.fitToView}
       title="Fit to view"
-      aria-label="Fit sculpture to view">Fit</button
-    >
+      aria-label="Fit sculpture to view">Fit</button>
     <button
       type="button"
       class="fit-btn"
-      onclick={resetCamera}
+      onclick={viewportHud.resetCamera}
       title="Reset camera"
-      aria-label="Reset camera to default view">Reset</button
-    >
+      aria-label="Reset camera to default view">Reset</button>
   </div>
 {/if}
 

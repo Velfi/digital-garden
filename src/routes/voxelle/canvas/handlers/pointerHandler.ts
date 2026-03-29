@@ -26,7 +26,9 @@ export function handlePointerDown(
 
 /** Returns true if the event was handled and the caller should return. */
 export function handlePointerMove(ctx: PointerHandlerContext, event?: PointerEvent): boolean {
-  void event;
-  if (ctx.getTool() === 'fly') return true; // PointerLockControls handles move
+  if (ctx.getTool() === 'fly') {
+    if (event) ctx.onFlyPointerActivity?.();
+    return true; // PointerLockControls handles move
+  }
   return false;
 }

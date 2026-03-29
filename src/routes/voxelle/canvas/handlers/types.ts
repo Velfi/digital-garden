@@ -11,4 +11,6 @@ export interface PointerHandlerContext {
   getTool: () => string;
   getFlyControls: () => InstanceType<typeof PointerLockControls> | null;
   getContainer: () => HTMLDivElement | null;
+  /** Fly tool: hint/UX when the user moves the pointer (container move or pointer lock). */
+  onFlyPointerActivity?: () => void;
 }

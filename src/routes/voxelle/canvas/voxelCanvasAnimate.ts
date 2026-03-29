@@ -13,6 +13,7 @@ import { maybeSampleVoxelleRuntimeMetrics } from '../store/runtimeMetrics';
 import type { VoxelRayTsl, VoxelRayTslTickContext } from './voxelRayTsl';
 import type { VoxelleRenderer } from './sceneSetup';
 import { isWebGPURenderer } from './rendererUtils';
+import { orbitZoomScaleFromWheelDelta } from './voxelCanvasCamera';
 
 export type VoxelCanvasAnimateContext = {
   nowMs: number;
@@ -33,7 +34,6 @@ export type VoxelCanvasAnimateContext = {
   setPendingOrbitWheelDeltaSum: (n: number) => void;
   getPendingOrbitWheelClientX: () => number;
   getPendingOrbitWheelClientY: () => number;
-  orbitZoomScaleFromWheelDelta: (controls: OrbitControls, deltaY: number) => number;
   getRenderingMode: () => 'greedy' | 'marchingCubes' | 'ray';
   rayRenderer: VoxelRayTsl | null;
   container: HTMLElement;
@@ -149,7 +149,7 @@ export function runVoxelCanvasAnimateStep(ctx: VoxelCanvasAnimateContext): void 
         oc as unknown as { _updateZoomParameters(x: number, y: number): void }
       )._updateZoomParameters(ctx.getPendingOrbitWheelClientX(), ctx.getPendingOrbitWheelClientY());
     }
-    const scale = ctx.orbitZoomScaleFromWheelDelta(oc, dy);
+    const scale = orbitZoomScaleFromWheelDelta(oc, dy);
     if (dy < 0) oc.dollyIn(scale);
     else if (dy > 0) oc.dollyOut(scale);
     controlsDirty = true;
