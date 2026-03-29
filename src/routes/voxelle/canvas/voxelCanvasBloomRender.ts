@@ -79,7 +79,7 @@ export type VoxelPrimaryRenderParams = {
   renderer: VoxelleRenderer;
   scene: THREE.Scene;
   camera: THREE.Camera;
-  renderingMode: 'greedy' | 'marchingCubes' | 'ray';
+  renderingMode: 'greedy' | 'marchingCubes' | 'dualContour' | 'ray';
   rayRenderer: VoxelRayTsl | null;
   webgpuBloomPipeline: WebGPUBloomPipeline | null;
   bloomComposer: EffectComposer | null;

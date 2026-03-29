@@ -13,7 +13,7 @@ export type VoxelleRuntimeMetrics = {
   lastSamplePerfMs: number;
   /** Wall-clock time when sampled (stable in exported JSON). */
   lastSampleAtIso: string | null;
-  renderingMode: 'greedy' | 'marchingCubes' | 'ray';
+  renderingMode: 'greedy' | 'marchingCubes' | 'dualContour' | 'ray';
   rendererPixelRatio: number;
   /** Effective ray trace DPR (`min(rendererDpr, 1)`), same as `VoxelRayTsl`. */
   rayTracePixelRatio: number | null;

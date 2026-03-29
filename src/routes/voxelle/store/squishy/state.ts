@@ -14,6 +14,8 @@ export const squishyMode = writable<SquishyMode>('add');
 export const squishyMetaballs = writable<SquishyMetaball[]>([]);
 export const squishySelectedId = writable<string | null>(null);
 export const squishyDefaultRadius = writable<number>(4);
+/** Add mode: place like draw brush snap — adjacent air cell plus round(radius) along face normal so the ball rests on the surface. When false, center on the surface voxel cell. */
+export const squishyAddSnapToSurface = writable<boolean>(true);
 /** Voxelize metaballs as a shell (outer layers only), like plane/cuboid hollow. */
 export const squishyHollow = writable<boolean>(false);
 /** Layers kept from the outer air interface (6-neighborhood); 1 = thinnest shell. */

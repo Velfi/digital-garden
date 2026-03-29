@@ -34,7 +34,7 @@ export type VoxelCanvasAnimateContext = {
   setPendingOrbitWheelDeltaSum: (n: number) => void;
   getPendingOrbitWheelClientX: () => number;
   getPendingOrbitWheelClientY: () => number;
-  getRenderingMode: () => 'greedy' | 'marchingCubes' | 'ray';
+  getRenderingMode: () => 'greedy' | 'marchingCubes' | 'dualContour' | 'ray';
   rayRenderer: VoxelRayTsl | null;
   container: HTMLElement;
   renderer: VoxelleRenderer;

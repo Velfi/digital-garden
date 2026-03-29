@@ -1,11 +1,12 @@
 import { parseCoordKey } from './coordUtils';
 import { computeGreedyMesh } from './greedyMeshCore';
+import { computeDualContour } from './dualContourCore';
 import { computeMarchingCubes } from './marchingCubesCore';
 import { voxelsFromInput } from './greedyMeshWorkerLogic';
 import type { PackedSparseChunkInput, PackedVoxelInput } from './meshWorkerTransfer';
 import { parseBucketKey, voxelBucketKey, type Voxel } from './voxelMaterial';
 
-export type RenderingMode = 'greedy' | 'marchingCubes' | 'ray';
+export type RenderingMode = 'greedy' | 'marchingCubes' | 'dualContour' | 'ray';
 
 const CHUNK_SIZE_DEFAULT = 0;
 const GLASS_FULL_SCENE_REBUILD_THRESHOLD = 256;
@@ -346,8 +347,12 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
   cachedChunkResults = new Map();
   cachedChunkSize = CHUNK_SIZE_DEFAULT;
 
+  /** Sparse worker payloads leave `voxels` null; smooth + full greedy paths need a merged map. */
+  const fullVoxels: Map<string, Voxel> =
+    voxels ?? buildSparseChunkMaps(voxelInput as PackedSparseChunkInput).occupancy;
+
   if (mode === 'marchingCubes') {
-    const coreResults = computeMarchingCubes(voxels!);
+    const coreResults = computeMarchingCubes(fullVoxels);
     const results: VoxelMeshWorkerOutput['results'] = [];
     for (const [bucketKey, data] of coreResults) {
       const n = data.positions.length / 3;
@@ -367,7 +372,28 @@ export function processVoxelMeshMessage(input: VoxelMeshWorkerInput): VoxelMeshW
     };
   }
 
-  const coreResults = computeGreedyMesh(voxels!, options);
+  if (mode === 'dualContour') {
+    const coreResults = computeDualContour(fullVoxels);
+    const results: VoxelMeshWorkerOutput['results'] = [];
+    for (const [bucketKey, data] of coreResults) {
+      const n = data.positions.length / 3;
+      results.push({
+        bucketKey,
+        positions: data.positions,
+        normals: data.normals,
+        colors: data.colors,
+        slabThickness: data.slabThickness ?? new Float32Array(n).fill(1),
+        indices: data.indices
+      });
+    }
+    return {
+      results,
+      gen,
+      workerTimings: { parseInputMs, meshComputeMs: Math.max(0, workerNow() - tMesh0) }
+    };
+  }
+
+  const coreResults = computeGreedyMesh(fullVoxels, options);
   const results: VoxelMeshWorkerOutput['results'] = [];
   for (const [bucketKey, data] of coreResults) {
     results.push({

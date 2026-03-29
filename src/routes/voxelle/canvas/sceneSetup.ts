@@ -16,6 +16,7 @@ import {
   ROLLOVER_DEFAULT_RENDER_ORDER,
   VOXELLE_GIZMO_OVERLAY_LAYER
 } from './renderOrder';
+import { installVoxelleWebGpuPatches } from './threeNodeDevDebug';
 
 export const POLYGON_POINTS_MAX = 64;
 
@@ -134,7 +135,9 @@ async function createVoxelleRenderer(
 
   if (!forceWebGL && tryWebGPU && typeof navigator !== 'undefined' && navigator.gpu) {
     try {
-      const { WebGPURenderer } = await import('three/webgpu');
+      const webgpu = await import('three/webgpu');
+      installVoxelleWebGpuPatches(webgpu);
+      const { WebGPURenderer } = webgpu;
       const renderer = new WebGPURenderer({ antialias: true });
       await renderer.init();
       renderer.shadowMap.enabled = enableShadows;

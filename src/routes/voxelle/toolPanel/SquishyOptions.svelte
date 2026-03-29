@@ -5,6 +5,7 @@
     squishyMetaballs,
     squishyMode,
     squishySelectedId,
+    squishyAddSnapToSurface,
     squishyHollow,
     squishyHollowWallThickness,
     PLANE_CUBOID_HOLLOW_WALL_MAX
@@ -57,6 +58,18 @@
       />
       <span class="tool-panel-value">{Math.round(radiusSliderValue)}</span>
     </div>
+    {#if $squishyMode === 'add'}
+      <label class="tool-panel-check">
+        <input
+          type="checkbox"
+          checked={$squishyAddSnapToSurface}
+          onchange={(e) =>
+            squishyAddSnapToSurface.set((e.target as HTMLInputElement).checked)}
+          title="Offset center along the face normal by the brush radius, so the ball sits on the surface"
+        />
+        Snap to surface
+      </label>
+    {/if}
     <label class="tool-panel-check">
       <input
         type="checkbox"

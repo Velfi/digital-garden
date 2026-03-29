@@ -85,7 +85,7 @@ export type GetIntersectionParams = {
   camera: THREE.Camera | null;
   raycaster: THREE.Raycaster;
   pointer: THREE.Vector2;
-  renderingMode: 'greedy' | 'marchingCubes' | 'ray';
+  renderingMode: 'greedy' | 'marchingCubes' | 'dualContour' | 'ray';
   voxels: Map<string, Voxel>;
   rayPickProxy: THREE.Object3D | null;
   getTargets: () => THREE.Object3D[];

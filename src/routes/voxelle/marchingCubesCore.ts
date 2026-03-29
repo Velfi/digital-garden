@@ -18,12 +18,15 @@ export interface MarchingCubesCoreResult {
   indices: Uint32Array;
 }
 
-const ISO_LEVEL = 0.5;
-const EPS = 1e-6;
+/** Shared with dual contouring and marching cubes (corner-count field, iso 0.5). */
+export const VOXEL_ISO_LEVEL = 0.5;
+const ISO_LEVEL = VOXEL_ISO_LEVEL;
+export const VOXEL_MARCHING_EPS = 1e-6;
+const EPS = VOXEL_MARCHING_EPS;
 const EDGE_TABLE = edgeTable as unknown as ArrayLike<number>;
 const TRI_TABLE = triTable as unknown as ArrayLike<number>;
 
-const CORNER_OFFSETS: Vec3[] = [
+export const MARCHING_CORNER_OFFSETS: Vec3[] = [
   [0, 0, 0],
   [1, 0, 0],
   [1, 1, 0],
@@ -34,7 +37,7 @@ const CORNER_OFFSETS: Vec3[] = [
   [0, 1, 1]
 ];
 
-const EDGE_CORNERS: [number, number][] = [
+export const MARCHING_EDGE_CORNERS: [number, number][] = [
   [0, 1],
   [1, 2],
   [2, 3],
@@ -49,11 +52,11 @@ const EDGE_CORNERS: [number, number][] = [
   [3, 7]
 ];
 
-function idx(x: number, y: number, z: number, nx: number, ny: number): number {
+export function marchingLatticeIndex(x: number, y: number, z: number, nx: number, ny: number): number {
   return (z * ny + y) * nx + x;
 }
 
-function sampleField(
+export function sampleMarchingField(
   values: Float32Array,
   x: number,
   y: number,
@@ -63,16 +66,45 @@ function sampleField(
   nz: number
 ): number {
   if (x < 0 || y < 0 || z < 0 || x >= nx || y >= ny || z >= nz) return 0;
-  return values[idx(x, y, z, nx, ny)];
+  return values[marchingLatticeIndex(x, y, z, nx, ny)];
 }
 
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
+export interface MarchingLatticeField {
+  nodeMinX: number;
+  nodeMinY: number;
+  nodeMinZ: number;
+  nx: number;
+  ny: number;
+  nz: number;
+  values: Float32Array;
+  gradX: Float32Array;
+  gradY: Float32Array;
+  gradZ: Float32Array;
+  colR: Float32Array;
+  colG: Float32Array;
+  colB: Float32Array;
+  bucketMaterial: Voxel['material'];
+  bucketColor: number;
 }
 
-function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCoreResult | null {
-  if (voxels.size === 0) return null;
-  const firstVoxel = voxels.values().next().value as Voxel;
+/**
+ * Corner-count scalar field and gradients for meshing.
+ *
+ * @param colorVoxels Voxels used for bucket material metadata and preferred vertex coloring (per-bucket pass).
+ * @param occupancyVoxels If set, lattice bounds and `values[]` corner counts use this full map so the
+ *   implicit surface matches **all** solid voxels. Vertex colors still prefer `colorVoxels` at each corner;
+ *   if the bucket contributes nothing at a corner but another voxel does, RGB falls back to the occupancy
+ *   average (avoids gaps between color buckets in dual contouring). When omitted, behaves like a single
+ *   source (marching cubes per bucket).
+ */
+export function buildMarchingLatticeField(
+  colorVoxels: Map<string, Voxel>,
+  occupancyVoxels?: Map<string, Voxel>
+): MarchingLatticeField | null {
+  const occ = occupancyVoxels ?? colorVoxels;
+  if (occ.size === 0) return null;
+  if (colorVoxels.size === 0) return null;
+  const firstVoxel = colorVoxels.values().next().value as Voxel;
   const bucketMaterial = firstVoxel.material;
   const bucketColor = firstVoxel.color & 0xffffff;
 
@@ -83,7 +115,7 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
   let maxY = -Infinity;
   let maxZ = -Infinity;
 
-  for (const key of voxels.keys()) {
+  for (const key of occ.keys()) {
     const [x, y, z] = parseCoordKey(key);
     if (x < minX) minX = x;
     if (y < minY) minY = y;
@@ -96,8 +128,6 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
   const nodeMinX = minX - 1;
   const nodeMinY = minY - 1;
   const nodeMinZ = minZ - 1;
-  // With symmetric corner sampling (-1..0), we need one extra +axis layer
-  // so the final outside->inside transition is still represented.
   const nodeMaxX = maxX + 2;
   const nodeMaxY = maxY + 2;
   const nodeMaxZ = maxZ + 2;
@@ -111,41 +141,56 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
   const colG = new Float32Array(nx * ny * nz);
   const colB = new Float32Array(nx * ny * nz);
 
-  // Field value at each lattice corner = count of occupied voxels touching that corner.
   for (let z = 0; z < nz; z++) {
     const gz = nodeMinZ + z;
     for (let y = 0; y < ny; y++) {
       const gy = nodeMinY + y;
       for (let x = 0; x < nx; x++) {
         const gx = nodeMinX + x;
-        const i = idx(x, y, z, nx, ny);
+        const i = marchingLatticeIndex(x, y, z, nx, ny);
 
-        let count = 0;
-        let sr = 0;
-        let sg = 0;
-        let sb = 0;
+        let countOcc = 0;
+        let srOcc = 0;
+        let sgOcc = 0;
+        let sbOcc = 0;
+        let countB = 0;
+        let srB = 0;
+        let sgB = 0;
+        let sbB = 0;
 
-        // Sample the 8 voxels that share this lattice corner symmetrically.
-        // Using -1..0 avoids directional bias that can drop opposite-side faces.
         for (let dz = -1; dz <= 0; dz++) {
           for (let dy = -1; dy <= 0; dy++) {
             for (let dx = -1; dx <= 0; dx++) {
-              const vx = voxels.get(coordKey(gx + dx, gy + dy, gz + dz));
-              if (vx === undefined) continue;
-              count++;
-              const rgb = vx.color;
-              sr += (rgb >> 16) & 0xff;
-              sg += (rgb >> 8) & 0xff;
-              sb += rgb & 0xff;
+              const k = coordKey(gx + dx, gy + dy, gz + dz);
+              const vo = occ.get(k);
+              if (vo !== undefined) {
+                countOcc++;
+                const rgb = vo.color;
+                srOcc += (rgb >> 16) & 0xff;
+                sgOcc += (rgb >> 8) & 0xff;
+                sbOcc += rgb & 0xff;
+              }
+              const vb = colorVoxels.get(k);
+              if (vb !== undefined) {
+                countB++;
+                const rgb = vb.color;
+                srB += (rgb >> 16) & 0xff;
+                sgB += (rgb >> 8) & 0xff;
+                sbB += rgb & 0xff;
+              }
             }
           }
         }
 
-        values[i] = count;
-        if (count > 0) {
-          colR[i] = sr / count / 255;
-          colG[i] = sg / count / 255;
-          colB[i] = sb / count / 255;
+        values[i] = countOcc;
+        if (countB > 0) {
+          colR[i] = srB / countB / 255;
+          colG[i] = sgB / countB / 255;
+          colB[i] = sbB / countB / 255;
+        } else if (countOcc > 0) {
+          colR[i] = srOcc / countOcc / 255;
+          colG[i] = sgOcc / countOcc / 255;
+          colB[i] = sbOcc / countOcc / 255;
         }
       }
     }
@@ -157,16 +202,16 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
   for (let z = 0; z < nz; z++) {
     for (let y = 0; y < ny; y++) {
       for (let x = 0; x < nx; x++) {
-        const i = idx(x, y, z, nx, ny);
+        const i = marchingLatticeIndex(x, y, z, nx, ny);
         const gx =
-          sampleField(values, x - 1, y, z, nx, ny, nz) -
-          sampleField(values, x + 1, y, z, nx, ny, nz);
+          sampleMarchingField(values, x - 1, y, z, nx, ny, nz) -
+          sampleMarchingField(values, x + 1, y, z, nx, ny, nz);
         const gy =
-          sampleField(values, x, y - 1, z, nx, ny, nz) -
-          sampleField(values, x, y + 1, z, nx, ny, nz);
+          sampleMarchingField(values, x, y - 1, z, nx, ny, nz) -
+          sampleMarchingField(values, x, y + 1, z, nx, ny, nz);
         const gz =
-          sampleField(values, x, y, z - 1, nx, ny, nz) -
-          sampleField(values, x, y, z + 1, nx, ny, nz);
+          sampleMarchingField(values, x, y, z - 1, nx, ny, nz) -
+          sampleMarchingField(values, x, y, z + 1, nx, ny, nz);
         const gl = Math.hypot(gx, gy, gz);
         if (gl > EPS) {
           gradX[i] = gx / gl;
@@ -176,6 +221,50 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
       }
     }
   }
+
+  return {
+    nodeMinX,
+    nodeMinY,
+    nodeMinZ,
+    nx,
+    ny,
+    nz,
+    values,
+    gradX,
+    gradY,
+    gradZ,
+    colR,
+    colG,
+    colB,
+    bucketMaterial,
+    bucketColor
+  };
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCoreResult | null {
+  const field = buildMarchingLatticeField(voxels);
+  if (!field) return null;
+  const {
+    nodeMinX,
+    nodeMinY,
+    nodeMinZ,
+    nx,
+    ny,
+    nz,
+    values,
+    gradX,
+    gradY,
+    gradZ,
+    colR,
+    colG,
+    colB,
+    bucketMaterial,
+    bucketColor
+  } = field;
 
   const rawPos: number[] = [];
   const rawNorm: number[] = [];
@@ -203,11 +292,11 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
         const cornerB = new Float32Array(8);
 
         for (let c = 0; c < 8; c++) {
-          const [ox, oy, oz] = CORNER_OFFSETS[c];
+          const [ox, oy, oz] = MARCHING_CORNER_OFFSETS[c];
           const sx = x + ox;
           const sy = y + oy;
           const sz = z + oz;
-          const i = idx(sx, sy, sz, nx, ny);
+          const i = marchingLatticeIndex(sx, sy, sz, nx, ny);
           const v = values[i];
           cornerValues[c] = v;
           if (v < ISO_LEVEL) cubeIndex |= 1 << c;
@@ -228,7 +317,7 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
 
         for (let e = 0; e < 12; e++) {
           if ((edgeMask & (1 << e)) === 0) continue;
-          const [a, b] = EDGE_CORNERS[e];
+          const [a, b] = MARCHING_EDGE_CORNERS[e];
           const va = cornerValues[a];
           const vb = cornerValues[b];
           const denom = vb - va;
@@ -254,7 +343,6 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
             edgeNorm[base + 2] = 0;
           }
 
-          // Prefer color from the denser endpoint so outside corners do not darken colors.
           const useA = va >= vb;
           edgeColor[base] = useA ? cornerR[a] : cornerR[b];
           edgeColor[base + 1] = useA ? cornerG[a] : cornerG[b];
@@ -327,15 +415,15 @@ function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCo
   const vertexMap = new Map<string, number>();
 
   for (let i = 0; i < rawPos.length; i += 3) {
-    const x = rawPos[i];
-    const y = rawPos[i + 1];
-    const z = rawPos[i + 2];
-    const key = `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`;
+    const px = rawPos[i];
+    const py = rawPos[i + 1];
+    const pz = rawPos[i + 2];
+    const key = `${px.toFixed(6)},${py.toFixed(6)},${pz.toFixed(6)}`;
     let vi = vertexMap.get(key);
     if (vi === undefined) {
       vi = outPos.length / 3;
       vertexMap.set(key, vi);
-      outPos.push(x, y, z);
+      outPos.push(px, py, pz);
       outNormX.push(0);
       outNormY.push(0);
       outNormZ.push(0);

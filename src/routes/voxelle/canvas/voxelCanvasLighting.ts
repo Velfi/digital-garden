@@ -123,6 +123,13 @@ export function updateShadowCamera(dirLight: THREE.DirectionalLight, sz: number)
   cam.updateProjectionMatrix();
 }
 
+/**
+ * Shadow acne without huge `normalBias`/`bias` in the compare pass: see “bias-free” distance + `fwidth(d)`
+ * in the shadow *generation* pass (e.g. https://www.reddit.com/r/GraphicsProgramming/comments/1oyeer3/ ).
+ * Three’s built-in directional shadow pass writes packed depth, not that distance RT — adopting it would
+ * mean a custom shadow map + sampling path (and this project keeps BasicShadowMap on WebGL for Safari).
+ */
+
 /** WebGPU: avoid needsUpdate before ShadowNode.setup allocates shadow.map.depthTexture (updateBefore runs before updateForRender). */
 let pendingWebGpuDirectionalShadowInvalidate = false;
 

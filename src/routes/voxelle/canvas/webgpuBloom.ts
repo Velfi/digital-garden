@@ -15,6 +15,7 @@ import {
   type Texture
 } from 'three';
 import { atmospherePlaneSoftness } from '../atmosphereMath';
+import { installVoxelleWebGpuPatches } from './threeNodeDevDebug';
 
 /** Glow-only RT → TSL bloom; strength ~ WebGL `UnrealBloomPass` × mix shader factor. */
 export const WEBGPU_BLOOM_STRENGTH = 0.88;
@@ -127,6 +128,7 @@ export async function createWebGPUBloomPipeline(
     import('three/tsl'),
     import('three/addons/tsl/display/BloomNode.js')
   ]);
+  installVoxelleWebGpuPatches(webgpuMod);
   const {
     RenderPipeline,
     RenderTarget,

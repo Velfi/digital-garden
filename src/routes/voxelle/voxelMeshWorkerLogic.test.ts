@@ -39,6 +39,60 @@ describe('voxelMeshWorkerLogic', () => {
     expect(buckets.has(`${0x88ccff}|glass`)).toBe(true);
   });
 
+  it('builds dual contour mesh when mode is dualContour', () => {
+    const output = processVoxelMeshMessage({
+      mode: 'dualContour',
+      voxels: [['0,0,0', plasticVoxel(0xff5733)]]
+    });
+    expect(output.results.length).toBeGreaterThan(0);
+    expect(output.results[0].bucketKey).toBe(`${0xff5733}|plastic`);
+    expect(output.results[0].positions.length).toBeGreaterThan(0);
+    expect(output.results[0].indices.length).toBeGreaterThan(0);
+    expect(output.results[0].indices.length % 3).toBe(0);
+  });
+
+  it('builds separate dual contour meshes per material bucket', () => {
+    const output = processVoxelMeshMessage({
+      mode: 'dualContour',
+      voxels: [
+        ['0,0,0', { color: 0xff00aa, material: 'glow' }],
+        ['4,0,0', { color: 0x88ccff, material: 'glass' }]
+      ]
+    });
+    const buckets = new Set(output.results.map((r) => r.bucketKey));
+    expect(buckets.has(`${0xff00aa}|glow`)).toBe(true);
+    expect(buckets.has(`${0x88ccff}|glass`)).toBe(true);
+  });
+
+  it('dual contour iso-field uses full voxel map so adjacent color buckets still get a surface', () => {
+    const output = processVoxelMeshMessage({
+      mode: 'dualContour',
+      voxels: [
+        ['0,0,0', { color: 0xff0000, material: 'plastic' }],
+        ['1,0,0', { color: 0x00ff00, material: 'plastic' }]
+      ]
+    });
+    expect(output.results.length).toBe(2);
+    for (const r of output.results) {
+      expect(r.indices.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('dual contour merges packed sparse chunk occupancy (null voxels map)', () => {
+    const voxelMap = new Map<string, Voxel>([
+      [coordKey(0, 0, 0), plasticVoxel(0xff5733)],
+      [coordKey(1, 0, 0), plasticVoxel(0xff5733)]
+    ]);
+    const sparse = packSparseChunksForWorker(voxelMap, ['0,0,0'], ['0,0,0'], 32);
+    const output = processVoxelMeshMessage({
+      mode: 'dualContour',
+      voxels: sparse,
+      options: { chunkSize: 32 }
+    });
+    expect(output.results.length).toBeGreaterThan(0);
+    expect(output.results[0].positions.length).toBeGreaterThan(0);
+  });
+
   it('marching cubes applies adaptive transmission bound for transmissive buckets', () => {
     const output = processVoxelMeshMessage({
       mode: 'marchingCubes',
@@ -73,6 +127,15 @@ describe('voxelMeshWorkerLogic', () => {
       gen: 7
     });
     expect(output.gen).toBe(7);
+  });
+
+  it('echoes gen for dual contour rebuild tracking', () => {
+    const output = processVoxelMeshMessage({
+      mode: 'dualContour',
+      voxels: [['0,0,0', plasticVoxel(0xffffff)]],
+      gen: 11
+    });
+    expect(output.gen).toBe(11);
   });
 
   it('does not emit internal faces across chunk boundaries', () => {

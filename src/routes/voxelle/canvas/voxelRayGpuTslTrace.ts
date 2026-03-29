@@ -32,6 +32,7 @@ import {
 } from './voxelRayShared';
 import { GLASS_ABSORPTION_PER_UNIT } from './voxelRayDda';
 import { clampShadowSamples, GOLDEN_ANGLE, shadowConeTanFromRadians } from './gpuSoftShadow';
+import { installVoxelleWebGpuPatches } from './threeNodeDevDebug';
 
 /** Primary-ray DDA cannot use a tiny fixed iteration cap or distant grazing hits become background (diagonal “horizon” cut). */
 const PRIMARY_DDA_STEPS_ABS_MAX = 65536;
@@ -103,6 +104,7 @@ export async function createVoxelRayGpuTracePipeline(
   dpr: number
 ): Promise<VoxelRayGpuTracePipeline> {
   const [webgpuMod, tslMod] = await Promise.all([import('three/webgpu'), import('three/tsl')]);
+  installVoxelleWebGpuPatches(webgpuMod);
 
   const {
     RenderTarget,
@@ -367,7 +369,7 @@ export async function createVoxelRayGpuTracePipeline(
     segLen: ReturnType<typeof float>
   ) => {
     const me = shiftRight(pk, uint(24));
-    If(and(segLen.greaterThan(float(0)), greaterThan(me, uint(0))), () => {
+    void If(and(segLen.greaterThan(float(0)), greaterThan(me, uint(0))), () => {
       const mid = uint(me.sub(uint(1)));
       const isW = mid.equal(uint(WATER_MAT));
       const absR = select(isW, float(0.03), GLASS_ABS);
@@ -380,7 +382,7 @@ export async function createVoxelRayGpuTracePipeline(
       const tR = select(isW, float(1), rgbLin.x);
       const tG = select(isW, float(1), rgbLin.y);
       const tB = select(isW, float(1), rgbLin.z);
-      If(isTransmissiveIdx(mid), () => {
+      void If(isTransmissiveIdx(mid), () => {
         fr.assign(fr.mul(tR).mul(attR));
         fg.assign(fg.mul(tG).mul(attG));
         fb.assign(fb.mul(tB).mul(attB));
@@ -404,16 +406,16 @@ export async function createVoxelRayGpuTracePipeline(
     iz: ReturnType<typeof int>
   ) => {
     const me = shiftRight(pk, uint(24));
-    If(segLen.greaterThan(float(0)), () => {
-      If(equal(me, uint(0)), () => {
-        If(cornerSealEmptyCell(ix, iy, iz), () => {
+    void If(segLen.greaterThan(float(0)), () => {
+      void If(equal(me, uint(0)), () => {
+        void If(cornerSealEmptyCell(ix, iy, iz), () => {
           fr.assign(float(0));
           fg.assign(float(0));
           fb.assign(float(0));
         });
       }).Else(() => {
         const mid = uint(me.sub(uint(1)));
-        If(isTransmissiveIdx(mid), () => {
+        void If(isTransmissiveIdx(mid), () => {
           const isW = mid.equal(uint(WATER_MAT));
           const absR = select(isW, float(0.03), GLASS_ABS);
           const absG = select(isW, float(0.012), GLASS_ABS);
@@ -471,12 +473,12 @@ export async function createVoxelRayGpuTracePipeline(
     const stepX = int(0).toVar();
     const stepY = int(0).toVar();
     const stepZ = int(0).toVar();
-    If(greaterThan(rdx, float(1e-9)), () => stepX.assign(int(1)));
-    If(lessThan(rdx, float(-1e-9)), () => stepX.assign(int(-1)));
-    If(greaterThan(rdy, float(1e-9)), () => stepY.assign(int(1)));
-    If(lessThan(rdy, float(-1e-9)), () => stepY.assign(int(-1)));
-    If(greaterThan(rdz, float(1e-9)), () => stepZ.assign(int(1)));
-    If(lessThan(rdz, float(-1e-9)), () => stepZ.assign(int(-1)));
+    void If(greaterThan(rdx, float(1e-9)), () => stepX.assign(int(1)));
+    void If(lessThan(rdx, float(-1e-9)), () => stepX.assign(int(-1)));
+    void If(greaterThan(rdy, float(1e-9)), () => stepY.assign(int(1)));
+    void If(lessThan(rdy, float(-1e-9)), () => stepY.assign(int(-1)));
+    void If(greaterThan(rdz, float(1e-9)), () => stepZ.assign(int(1)));
+    void If(lessThan(rdz, float(-1e-9)), () => stepZ.assign(int(-1)));
     const big = float(1e30);
     const tDeltaX = select(equal(stepX, int(0)), big, float(1).div(abs(rdx)));
     const tDeltaY = select(equal(stepY, int(0)), big, float(1).div(abs(rdy)));
@@ -484,15 +486,15 @@ export async function createVoxelRayGpuTracePipeline(
     const tMaxX = float(0).toVar();
     const tMaxY = float(0).toVar();
     const tMaxZ = float(0).toVar();
-    If(greaterThan(stepX, int(0)), () => tMaxX.assign(float(x.add(int(1)).sub(oxp)).div(rdx)));
-    If(lessThan(stepX, int(0)), () => tMaxX.assign(float(x.sub(oxp)).div(rdx)));
-    If(equal(stepX, int(0)), () => tMaxX.assign(big));
-    If(greaterThan(stepY, int(0)), () => tMaxY.assign(float(y.add(int(1)).sub(oyp)).div(rdy)));
-    If(lessThan(stepY, int(0)), () => tMaxY.assign(float(y.sub(oyp)).div(rdy)));
-    If(equal(stepY, int(0)), () => tMaxY.assign(big));
-    If(greaterThan(stepZ, int(0)), () => tMaxZ.assign(float(z.add(int(1)).sub(ozp)).div(rdz)));
-    If(lessThan(stepZ, int(0)), () => tMaxZ.assign(float(z.sub(ozp)).div(rdz)));
-    If(equal(stepZ, int(0)), () => tMaxZ.assign(big));
+    void If(greaterThan(stepX, int(0)), () => tMaxX.assign(float(x.add(int(1)).sub(oxp)).div(rdx)));
+    void If(lessThan(stepX, int(0)), () => tMaxX.assign(float(x.sub(oxp)).div(rdx)));
+    void If(equal(stepX, int(0)), () => tMaxX.assign(big));
+    void If(greaterThan(stepY, int(0)), () => tMaxY.assign(float(y.add(int(1)).sub(oyp)).div(rdy)));
+    void If(lessThan(stepY, int(0)), () => tMaxY.assign(float(y.sub(oyp)).div(rdy)));
+    void If(equal(stepY, int(0)), () => tMaxY.assign(big));
+    void If(greaterThan(stepZ, int(0)), () => tMaxZ.assign(float(z.add(int(1)).sub(ozp)).div(rdz)));
+    void If(lessThan(stepZ, int(0)), () => tMaxZ.assign(float(z.sub(ozp)).div(rdz)));
+    void If(equal(stepZ, int(0)), () => tMaxZ.assign(big));
 
     const fr = float(1).toVar();
     const fg = float(1).toVar();
@@ -502,14 +504,14 @@ export async function createVoxelRayGpuTracePipeline(
     const pkStart = fetchPacked(x, y, z);
     const me0 = shiftRight(pkStart, uint(24));
 
-    If(greaterThan(me0, uint(0)), () => {
+    void If(greaterThan(me0, uint(0)), () => {
       const mid0 = uint(me0.sub(uint(1)));
-      If(isTransmissiveIdx(mid0), () => {
+      void If(isTransmissiveIdx(mid0), () => {
         const tFirst = min(tMaxX, min(tMaxY, tMaxZ));
         const seg0 = min(max(float(0), tFirst), maxDist);
         applyShadowSegment(fr, fg, fb, pkStart, seg0);
-        If(tFirst.greaterThanEqual(maxDist), () => skipShadowMarch.assign(float(1)));
-        If(
+        void If(tFirst.greaterThanEqual(maxDist), () => skipShadowMarch.assign(float(1)));
+        void If(
           and(
             tFirst.lessThan(maxDist),
             skipShadowMarch.lessThan(float(0.5)),
@@ -519,7 +521,7 @@ export async function createVoxelRayGpuTracePipeline(
             )
           ),
           () => {
-            If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
+            void If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
               tPrev.assign(tMaxX);
               tMaxX.addAssign(tDeltaX);
               x.addAssign(stepX);
@@ -544,19 +546,19 @@ export async function createVoxelRayGpuTracePipeline(
       });
     });
 
-    Loop({ start: int(0), end: int(512), type: 'int', condition: '<' }, () => {
-      If(skipShadowMarch.greaterThan(float(0.5)), () => Break());
-      If(
+    void Loop({ start: int(0), end: int(512), type: 'int', condition: '<' }, () => {
+      void If(skipShadowMarch.greaterThan(float(0.5)), () => void Break());
+      void If(
         and(
           fr.lessThanEqual(float(1e-8)),
           fg.lessThanEqual(float(1e-8)),
           fb.lessThanEqual(float(1e-8))
         ),
-        () => Break()
+        () => void Break()
       );
       const tHit = float(0).toVar();
       const axis = int(0).toVar();
-      If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
+      void If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
         axis.assign(int(0));
         tHit.assign(tMaxX);
         tMaxX.addAssign(tDeltaX);
@@ -575,19 +577,19 @@ export async function createVoxelRayGpuTracePipeline(
       const y0 = y;
       const z0 = z;
       const seg = min(tHit, maxDist).sub(tPrev);
-      If(seg.greaterThan(float(0)), () => {
+      void If(seg.greaterThan(float(0)), () => {
         applyShadowSegment(fr, fg, fb, fetchPacked(x0, y0, z0), seg);
       });
-      If(
+      void If(
         and(
           fr.lessThanEqual(float(1e-8)),
           fg.lessThanEqual(float(1e-8)),
           fb.lessThanEqual(float(1e-8))
         ),
-        () => Break()
+        () => void Break()
       );
-      If(tHit.greaterThan(maxDist), () => Break());
-      If(axis.equal(int(0)), () => x.addAssign(stepX))
+      void If(tHit.greaterThan(maxDist), () => void Break());
+      void If(axis.equal(int(0)), () => x.addAssign(stepX))
         .ElseIf(axis.equal(int(1)), () => y.addAssign(stepY))
         .Else(() => z.addAssign(stepZ));
       tPrev.assign(tHit);
@@ -625,12 +627,12 @@ export async function createVoxelRayGpuTracePipeline(
     const stepX = int(0).toVar();
     const stepY = int(0).toVar();
     const stepZ = int(0).toVar();
-    If(greaterThan(rdx, float(1e-9)), () => stepX.assign(int(1)));
-    If(lessThan(rdx, float(-1e-9)), () => stepX.assign(int(-1)));
-    If(greaterThan(rdy, float(1e-9)), () => stepY.assign(int(1)));
-    If(lessThan(rdy, float(-1e-9)), () => stepY.assign(int(-1)));
-    If(greaterThan(rdz, float(1e-9)), () => stepZ.assign(int(1)));
-    If(lessThan(rdz, float(-1e-9)), () => stepZ.assign(int(-1)));
+    void If(greaterThan(rdx, float(1e-9)), () => stepX.assign(int(1)));
+    void If(lessThan(rdx, float(-1e-9)), () => stepX.assign(int(-1)));
+    void If(greaterThan(rdy, float(1e-9)), () => stepY.assign(int(1)));
+    void If(lessThan(rdy, float(-1e-9)), () => stepY.assign(int(-1)));
+    void If(greaterThan(rdz, float(1e-9)), () => stepZ.assign(int(1)));
+    void If(lessThan(rdz, float(-1e-9)), () => stepZ.assign(int(-1)));
     const big = float(1e30);
     const tDeltaX = select(equal(stepX, int(0)), big, float(1).div(abs(rdx)));
     const tDeltaY = select(equal(stepY, int(0)), big, float(1).div(abs(rdy)));
@@ -638,15 +640,15 @@ export async function createVoxelRayGpuTracePipeline(
     const tMaxX = float(0).toVar();
     const tMaxY = float(0).toVar();
     const tMaxZ = float(0).toVar();
-    If(greaterThan(stepX, int(0)), () => tMaxX.assign(float(x.add(int(1)).sub(oxp)).div(rdx)));
-    If(lessThan(stepX, int(0)), () => tMaxX.assign(float(x.sub(oxp)).div(rdx)));
-    If(equal(stepX, int(0)), () => tMaxX.assign(big));
-    If(greaterThan(stepY, int(0)), () => tMaxY.assign(float(y.add(int(1)).sub(oyp)).div(rdy)));
-    If(lessThan(stepY, int(0)), () => tMaxY.assign(float(y.sub(oyp)).div(rdy)));
-    If(equal(stepY, int(0)), () => tMaxY.assign(big));
-    If(greaterThan(stepZ, int(0)), () => tMaxZ.assign(float(z.add(int(1)).sub(ozp)).div(rdz)));
-    If(lessThan(stepZ, int(0)), () => tMaxZ.assign(float(z.sub(ozp)).div(rdz)));
-    If(equal(stepZ, int(0)), () => tMaxZ.assign(big));
+    void If(greaterThan(stepX, int(0)), () => tMaxX.assign(float(x.add(int(1)).sub(oxp)).div(rdx)));
+    void If(lessThan(stepX, int(0)), () => tMaxX.assign(float(x.sub(oxp)).div(rdx)));
+    void If(equal(stepX, int(0)), () => tMaxX.assign(big));
+    void If(greaterThan(stepY, int(0)), () => tMaxY.assign(float(y.add(int(1)).sub(oyp)).div(rdy)));
+    void If(lessThan(stepY, int(0)), () => tMaxY.assign(float(y.sub(oyp)).div(rdy)));
+    void If(equal(stepY, int(0)), () => tMaxY.assign(big));
+    void If(greaterThan(stepZ, int(0)), () => tMaxZ.assign(float(z.add(int(1)).sub(ozp)).div(rdz)));
+    void If(lessThan(stepZ, int(0)), () => tMaxZ.assign(float(z.sub(ozp)).div(rdz)));
+    void If(equal(stepZ, int(0)), () => tMaxZ.assign(big));
 
     const fr = float(1).toVar();
     const fg = float(1).toVar();
@@ -656,14 +658,14 @@ export async function createVoxelRayGpuTracePipeline(
     const pkStart = fetchPacked(x, y, z);
     const me0 = shiftRight(pkStart, uint(24));
 
-    If(greaterThan(me0, uint(0)), () => {
+    void If(greaterThan(me0, uint(0)), () => {
       const mid0 = uint(me0.sub(uint(1)));
-      If(or(isTransmissiveIdx(mid0), mid0.equal(uint(GLOW_MAT))), () => {
+      void If(or(isTransmissiveIdx(mid0), mid0.equal(uint(GLOW_MAT))), () => {
         const tFirst = min(tMaxX, min(tMaxY, tMaxZ));
         const seg0 = min(max(float(0), tFirst), maxDist);
         applyShadowSegmentGlowEmitter(fr, fg, fb, pkStart, seg0, x, y, z);
-        If(tFirst.greaterThanEqual(maxDist), () => skipShadowMarch.assign(float(1)));
-        If(
+        void If(tFirst.greaterThanEqual(maxDist), () => skipShadowMarch.assign(float(1)));
+        void If(
           and(
             tFirst.lessThan(maxDist),
             skipShadowMarch.lessThan(float(0.5)),
@@ -673,7 +675,7 @@ export async function createVoxelRayGpuTracePipeline(
             )
           ),
           () => {
-            If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
+            void If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
               tPrev.assign(tMaxX);
               tMaxX.addAssign(tDeltaX);
               x.addAssign(stepX);
@@ -698,19 +700,19 @@ export async function createVoxelRayGpuTracePipeline(
       });
     });
 
-    Loop({ start: int(0), end: int(512), type: 'int', condition: '<' }, () => {
-      If(skipShadowMarch.greaterThan(float(0.5)), () => Break());
-      If(
+    void Loop({ start: int(0), end: int(512), type: 'int', condition: '<' }, () => {
+      void If(skipShadowMarch.greaterThan(float(0.5)), () => void Break());
+      void If(
         and(
           fr.lessThanEqual(float(1e-8)),
           fg.lessThanEqual(float(1e-8)),
           fb.lessThanEqual(float(1e-8))
         ),
-        () => Break()
+        () => void Break()
       );
       const tHit = float(0).toVar();
       const axis = int(0).toVar();
-      If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
+      void If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
         axis.assign(int(0));
         tHit.assign(tMaxX);
         tMaxX.addAssign(tDeltaX);
@@ -729,19 +731,19 @@ export async function createVoxelRayGpuTracePipeline(
       const y0 = y;
       const z0 = z;
       const seg = min(tHit, maxDist).sub(tPrev);
-      If(seg.greaterThan(float(0)), () => {
+      void If(seg.greaterThan(float(0)), () => {
         applyShadowSegmentGlowEmitter(fr, fg, fb, fetchPacked(x0, y0, z0), seg, x0, y0, z0);
       });
-      If(
+      void If(
         and(
           fr.lessThanEqual(float(1e-8)),
           fg.lessThanEqual(float(1e-8)),
           fb.lessThanEqual(float(1e-8))
         ),
-        () => Break()
+        () => void Break()
       );
-      If(tHit.greaterThan(maxDist), () => Break());
-      If(axis.equal(int(0)), () => x.addAssign(stepX))
+      void If(tHit.greaterThan(maxDist), () => void Break());
+      void If(axis.equal(int(0)), () => x.addAssign(stepX))
         .ElseIf(axis.equal(int(1)), () => y.addAssign(stepY))
         .Else(() => z.addAssign(stepZ));
       tPrev.assign(tHit);
@@ -763,7 +765,7 @@ export async function createVoxelRayGpuTracePipeline(
     const upHx = float(0).toVar();
     const upHy = float(0).toVar();
     const upHz = float(1).toVar();
-    If(abs(lz).greaterThan(float(0.95)), () => {
+    void If(abs(lz).greaterThan(float(0.95)), () => {
       upHx.assign(float(1));
       upHy.assign(float(0));
       upHz.assign(float(0));
@@ -772,7 +774,7 @@ export async function createVoxelRayGpuTracePipeline(
     const ty = upHz.mul(lx).sub(upHx.mul(lz)).toVar();
     const tz = upHx.mul(ly).sub(upHy.mul(lx)).toVar();
     const tLen = sqrt(tx.mul(tx).add(ty.mul(ty)).add(tz.mul(tz))).toVar();
-    If(tLen.lessThan(float(1e-8)), () => {
+    void If(tLen.lessThan(float(1e-8)), () => {
       upHx.assign(float(0));
       upHy.assign(float(1));
       upHz.assign(float(0));
@@ -812,8 +814,8 @@ export async function createVoxelRayGpuTracePipeline(
     const accR = float(0).toVar();
     const accG = float(0).toVar();
     const accB = float(0).toVar();
-    Loop({ start: int(0), end: int(8), type: 'int', condition: '<' }, ({ i }) => {
-      If(float(i).greaterThanEqual(uShadowSamples), () => Break());
+    void Loop({ start: int(0), end: int(8), type: 'int', condition: '<' }, ({ i }) => {
+      void If(float(i).greaterThanEqual(uShadowSamples), () => void Break());
       const fj = shadowDiskBasis(lx, ly, lz, float(i));
       const s = traceShadowTransmissionRgb(sx, sy, sz, fj.x, fj.y, fj.z, maxT);
       accR.addAssign(s.x);
@@ -842,7 +844,7 @@ export async function createVoxelRayGpuTracePipeline(
     const upHx = float(0).toVar();
     const upHy = float(0).toVar();
     const upHz = float(1).toVar();
-    If(abs(nz).greaterThan(float(0.95)), () => {
+    void If(abs(nz).greaterThan(float(0.95)), () => {
       upHx.assign(float(1));
       upHy.assign(float(0));
       upHz.assign(float(0));
@@ -851,7 +853,7 @@ export async function createVoxelRayGpuTracePipeline(
     const ty = upHz.mul(nx).sub(upHx.mul(nz)).toVar();
     const tz = upHx.mul(ny).sub(upHy.mul(nx)).toVar();
     const tLen = sqrt(tx.mul(tx).add(ty.mul(ty)).add(tz.mul(tz))).toVar();
-    If(tLen.lessThan(float(1e-8)), () => {
+    void If(tLen.lessThan(float(1e-8)), () => {
       upHx.assign(float(0));
       upHy.assign(float(1));
       upHz.assign(float(0));
@@ -890,7 +892,7 @@ export async function createVoxelRayGpuTracePipeline(
     const accR = float(0).toVar();
     const accG = float(0).toVar();
     const accB = float(0).toVar();
-    Loop(
+    void Loop(
       { start: int(0), end: int(GLOW_VISIBILITY_OCCLUSION_SAMPLES), type: 'int', condition: '<' },
       ({ i }) => {
         const off = glowVisibilityTangentDisk(nx, ny, nz, float(i));
@@ -923,11 +925,11 @@ export async function createVoxelRayGpuTracePipeline(
     const addR = float(0).toVar();
     const addG = float(0).toVar();
     const addB = float(0).toVar();
-    If(uGlowEmitterCount.greaterThan(float(0.5)), () => {
-      Loop(
+    void If(uGlowEmitterCount.greaterThan(float(0.5)), () => {
+      void Loop(
         { start: int(0), end: int(MAX_RAY_GLOW_EMITTERS), type: 'int', condition: '<' },
         ({ i }) => {
-          If(float(i).greaterThanEqual(uGlowEmitterCount), () => Break());
+          void If(float(i).greaterThanEqual(uGlowEmitterCount), () => void Break());
           const idx = int(i).mul(int(2));
           const posSample = textureLoad(glowAcc, ivec2(idx, int(0)), int(0));
           const colSample = textureLoad(glowAcc, ivec2(idx.add(int(1)), int(0)), int(0));
@@ -936,7 +938,7 @@ export async function createVoxelRayGpuTracePipeline(
           const dz = posSample.z.sub(sz);
           const d2 = dx.mul(dx).add(dy.mul(dy)).add(dz.mul(dz));
           const radiusSq = float(GLOW_EMISSIVE_LIGHT_RADIUS * GLOW_EMISSIVE_LIGHT_RADIUS);
-          If(and(d2.greaterThan(float(1e-8)), d2.lessThan(radiusSq)), () => {
+          void If(and(d2.greaterThan(float(1e-8)), d2.lessThan(radiusSq)), () => {
             const dist = sqrt(d2).max(float(1e-4));
             const invDist = float(1).div(dist);
             const ldx = dx.mul(invDist);
@@ -949,14 +951,14 @@ export async function createVoxelRayGpuTracePipeline(
             const u = clamp(float(1).sub(dist.div(float(GLOW_EMISSIVE_LIGHT_RADIUS))), float(0), float(1));
             const window = u.mul(u).mul(float(3).sub(u.mul(float(2))));
             const ndComb = ndSoft.add(GLOW_PROX_FILL.mul(window).mul(hlClamped));
-            If(ndComb.greaterThan(float(1e-6)), () => {
+            void If(ndComb.greaterThan(float(1e-6)), () => {
               const atten = window
                 .mul(float(GLOW_EMISSIVE_LIGHT_INTENSITY))
                 .div(float(1).add(d2.mul(float(GLOW_EMISSIVE_LIGHT_SOFTNESS))));
               const visR = float(1).toVar();
               const visG = float(1).toVar();
               const visB = float(1).toVar();
-              If(uEnableShadows.greaterThan(float(0.5)), () => {
+              void If(uEnableShadows.greaterThan(float(0.5)), () => {
                 const reach = max(float(0), min(maxT, dist.sub(float(GLOW_EMISSIVE_SHADOW_END_BIAS))));
                 const tr = averagedGlowEmitterVisibilityTransmissionRgb(
                   sx,
@@ -1072,7 +1074,7 @@ export async function createVoxelRayGpuTracePipeline(
     iz: ReturnType<typeof int>
   ) => {
     const tM = float(1e30).toVar();
-    If(rdx.greaterThan(float(1e-9)), () =>
+    void If(rdx.greaterThan(float(1e-9)), () =>
       tM.assign(
         min(
           tM,
@@ -1082,8 +1084,8 @@ export async function createVoxelRayGpuTracePipeline(
         )
       )
     );
-    If(rdx.lessThan(float(-1e-9)), () => tM.assign(min(tM, float(ix).sub(px).div(rdx))));
-    If(rdy.greaterThan(float(1e-9)), () =>
+    void If(rdx.lessThan(float(-1e-9)), () => tM.assign(min(tM, float(ix).sub(px).div(rdx))));
+    void If(rdy.greaterThan(float(1e-9)), () =>
       tM.assign(
         min(
           tM,
@@ -1093,8 +1095,8 @@ export async function createVoxelRayGpuTracePipeline(
         )
       )
     );
-    If(rdy.lessThan(float(-1e-9)), () => tM.assign(min(tM, float(iy).sub(py).div(rdy))));
-    If(rdz.greaterThan(float(1e-9)), () =>
+    void If(rdy.lessThan(float(-1e-9)), () => tM.assign(min(tM, float(iy).sub(py).div(rdy))));
+    void If(rdz.greaterThan(float(1e-9)), () =>
       tM.assign(
         min(
           tM,
@@ -1104,7 +1106,7 @@ export async function createVoxelRayGpuTracePipeline(
         )
       )
     );
-    If(rdz.lessThan(float(-1e-9)), () => tM.assign(min(tM, float(iz).sub(pz).div(rdz))));
+    void If(rdz.lessThan(float(-1e-9)), () => tM.assign(min(tM, float(iz).sub(pz).div(rdz))));
     return select(tM.greaterThanEqual(float(1e20)), float(4e-9), tM);
   };
 
@@ -1147,16 +1149,16 @@ export async function createVoxelRayGpuTracePipeline(
     const sx = nx.toVar();
     const sy = ny.toVar();
     const sz = nz.toVar();
-    If(matIdx.equal(uint(WATER_MAT)), () => {
+    void If(matIdx.equal(uint(WATER_MAT)), () => {
       const axisAlignedTopBottom = and(abs(sy).greaterThanEqual(float(0.8)), and(equal(sx, float(0)), equal(sz, float(0))));
-      If(axisAlignedTopBottom, () => {
+      void If(axisAlignedTopBottom, () => {
         const neigh = fetchPacked(ix.add(int(sx)), iy.add(int(sy)), iz.add(int(sz)));
         const neighMatEnc = shiftRight(neigh, uint(24));
         const neighWater = and(
           greaterThan(neighMatEnc, uint(0)),
           uint(neighMatEnc.sub(uint(1))).equal(uint(WATER_MAT))
         );
-        If(not(neighWater), () => {
+        void If(not(neighWater), () => {
           const wN = waterWaveNormal(hpx, hpz, sy);
           sx.assign(wN.x);
           sy.assign(wN.y);
@@ -1178,7 +1180,7 @@ export async function createVoxelRayGpuTracePipeline(
     const pr = inR.toVar();
     const pg = inG.toVar();
     const pb = inB.toVar();
-    If(uDistanceTintEnabled.greaterThan(float(0.5)), () => {
+    void If(uDistanceTintEnabled.greaterThan(float(0.5)), () => {
       const nearT = clamp(
         travelDist.div(max(float(0.001), uDistanceTintNearDist)),
         float(0),
@@ -1201,7 +1203,7 @@ export async function createVoxelRayGpuTracePipeline(
       pg.assign(mix(pg, tint.y, s));
       pb.assign(mix(pb, tint.z, s));
     });
-    If(and(uGrainEnabled.greaterThan(float(0.5)), uGrainStrength.greaterThan(float(0))), () => {
+    void If(and(uGrainEnabled.greaterThan(float(0.5)), uGrainStrength.greaterThan(float(0))), () => {
       const tt = select(
         uGrainAnimated.greaterThan(float(0.5)),
         uTimeSeconds.mul(uGrainSpeed),
@@ -1209,7 +1211,7 @@ export async function createVoxelRayGpuTracePipeline(
       );
       const s = uGrainStrength;
       const fract01 = (x: ReturnType<typeof float>) => fract(x);
-      If(uGrainColorful.greaterThan(float(0.5)), () => {
+      void If(uGrainColorful.greaterThan(float(0.5)), () => {
         const n1 = fract01(
           sin(su.add(tt.mul(float(0.37))).mul(float(12.9898)).add(sv.add(tt.mul(float(0.19))).mul(float(78.233)))).mul(float(43758.5453))
         );
@@ -1287,10 +1289,10 @@ export async function createVoxelRayGpuTracePipeline(
       rdx.negate().mul(sx).add(rdy.negate().mul(sy)).add(rdz.negate().mul(sz))
     );
     const etaT = iorFromMatIdx(matIdx);
-    If(entryT.greaterThanEqual(DDA_HIT_EPS), () => {
+    void If(entryT.greaterThanEqual(DDA_HIT_EPS), () => {
       const Rentry = float(0).toVar();
       Rentry.assign(fresnelSchlick(cosIN, mediumIor, etaT));
-      If(matIdx.equal(uint(WATER_MAT)), () => Rentry.assign(max(Rentry, float(0.12))));
+      void If(matIdx.equal(uint(WATER_MAT)), () => Rentry.assign(max(Rentry, float(0.12))));
       const Tentry = float(1).sub(Rentry);
       const ndoti = sx.mul(rdx).add(sy.mul(rdy)).add(sz.mul(rdz));
       const rfx = rdx.sub(sx.mul(ndoti).mul(float(2)));
@@ -1319,7 +1321,7 @@ export async function createVoxelRayGpuTracePipeline(
     const stepAcc = float(0).toVar();
     stepAcc.assign(entryT);
     const etaOutVar = float(1).toVar();
-    Loop({ start: int(0), end: int(32), type: 'int', condition: '<' }, () => {
+    void Loop({ start: int(0), end: int(32), type: 'int', condition: '<' }, () => {
       const tThru = distToExitCell(cpx, cpy, cpz, rdx, rdy, rdz, cx, cy, cz);
       const isWcell = curMid.equal(uint(WATER_MAT));
       const aRcol = select(isWcell, float(0.03), GLASS_ABS);
@@ -1348,7 +1350,7 @@ export async function createVoxelRayGpuTracePipeline(
       const ncz = int(floor(nzp));
       const pkN = fetchPacked(ncx, ncy, ncz);
       const meN = shiftRight(pkN, uint(24));
-      If(and(greaterThan(meN, uint(0)), curMid.equal(uint(meN.sub(uint(1))))), () => {
+      void If(and(greaterThan(meN, uint(0)), curMid.equal(uint(meN.sub(uint(1))))), () => {
         cx.assign(ncx);
         cy.assign(ncy);
         cz.assign(ncz);
@@ -1359,10 +1361,10 @@ export async function createVoxelRayGpuTracePipeline(
         stepAcc.assign(stepAcc.add(GLASS_CELL_NUDGE));
       }).Else(() => {
         const midN = uint(meN.sub(uint(1)));
-        If(and(greaterThan(meN, uint(0)), isTransmissiveIdx(midN)), () =>
+        void If(and(greaterThan(meN, uint(0)), isTransmissiveIdx(midN)), () =>
           etaOutVar.assign(iorFromMatIdx(midN))
         );
-        Break();
+        void Break();
       });
     });
     const Rexit = fresnelSchlick(cosIN, iorFromMatIdx(curMid), etaOutVar);
@@ -1383,7 +1385,7 @@ export async function createVoxelRayGpuTracePipeline(
     );
     const meMed = shiftRight(pkMedN, uint(24));
     const midMed = uint(meMed.sub(uint(1)));
-    If(and(greaterThan(meMed, uint(0)), isTransmissiveIdx(midMed)), () =>
+    void If(and(greaterThan(meMed, uint(0)), isTransmissiveIdx(midMed)), () =>
       mediumIor.assign(iorFromMatIdx(midMed))
     );
   };
@@ -1391,7 +1393,7 @@ export async function createVoxelRayGpuTracePipeline(
   /** Background RGB for a ray miss: `uBg`, optionally replaced by vertical sky gradient from quad UV. */
   const missBackgroundFromUv = (suv: ReturnType<typeof uv>) => {
     const miss = vec3(uBg).toVar();
-    If(uEnableSky.greaterThan(float(0.5)), () => {
+    void If(uEnableSky.greaterThan(float(0.5)), () => {
       const denom = uBufH.sub(float(1)).max(float(1));
       const tSky = clamp(suv.y.mul(uBufH).div(denom), float(0), float(1));
       miss.assign(mix(uSkyTop, uSkyBottom, tSky));
@@ -1451,12 +1453,12 @@ export async function createVoxelRayGpuTracePipeline(
     const stepX = int(0).toVar();
     const stepY = int(0).toVar();
     const stepZ = int(0).toVar();
-    If(greaterThan(rdx, float(1e-9)), () => stepX.assign(int(1)));
-    If(lessThan(rdx, float(-1e-9)), () => stepX.assign(int(-1)));
-    If(greaterThan(rdy, float(1e-9)), () => stepY.assign(int(1)));
-    If(lessThan(rdy, float(-1e-9)), () => stepY.assign(int(-1)));
-    If(greaterThan(rdz, float(1e-9)), () => stepZ.assign(int(1)));
-    If(lessThan(rdz, float(-1e-9)), () => stepZ.assign(int(-1)));
+    void If(greaterThan(rdx, float(1e-9)), () => stepX.assign(int(1)));
+    void If(lessThan(rdx, float(-1e-9)), () => stepX.assign(int(-1)));
+    void If(greaterThan(rdy, float(1e-9)), () => stepY.assign(int(1)));
+    void If(lessThan(rdy, float(-1e-9)), () => stepY.assign(int(-1)));
+    void If(greaterThan(rdz, float(1e-9)), () => stepZ.assign(int(1)));
+    void If(lessThan(rdz, float(-1e-9)), () => stepZ.assign(int(-1)));
     const big = float(1e30);
     const tDeltaX = select(equal(stepX, int(0)), big, float(1).div(abs(rdx)));
     const tDeltaY = select(equal(stepY, int(0)), big, float(1).div(abs(rdy)));
@@ -1464,15 +1466,15 @@ export async function createVoxelRayGpuTracePipeline(
     const tMaxX = float(0).toVar();
     const tMaxY = float(0).toVar();
     const tMaxZ = float(0).toVar();
-    If(greaterThan(stepX, int(0)), () => tMaxX.assign(float(x.add(int(1)).sub(oxp)).div(rdx)));
-    If(lessThan(stepX, int(0)), () => tMaxX.assign(float(x.sub(oxp)).div(rdx)));
-    If(equal(stepX, int(0)), () => tMaxX.assign(big));
-    If(greaterThan(stepY, int(0)), () => tMaxY.assign(float(y.add(int(1)).sub(oyp)).div(rdy)));
-    If(lessThan(stepY, int(0)), () => tMaxY.assign(float(y.sub(oyp)).div(rdy)));
-    If(equal(stepY, int(0)), () => tMaxY.assign(big));
-    If(greaterThan(stepZ, int(0)), () => tMaxZ.assign(float(z.add(int(1)).sub(ozp)).div(rdz)));
-    If(lessThan(stepZ, int(0)), () => tMaxZ.assign(float(z.sub(ozp)).div(rdz)));
-    If(equal(stepZ, int(0)), () => tMaxZ.assign(big));
+    void If(greaterThan(stepX, int(0)), () => tMaxX.assign(float(x.add(int(1)).sub(oxp)).div(rdx)));
+    void If(lessThan(stepX, int(0)), () => tMaxX.assign(float(x.sub(oxp)).div(rdx)));
+    void If(equal(stepX, int(0)), () => tMaxX.assign(big));
+    void If(greaterThan(stepY, int(0)), () => tMaxY.assign(float(y.add(int(1)).sub(oyp)).div(rdy)));
+    void If(lessThan(stepY, int(0)), () => tMaxY.assign(float(y.sub(oyp)).div(rdy)));
+    void If(equal(stepY, int(0)), () => tMaxY.assign(big));
+    void If(greaterThan(stepZ, int(0)), () => tMaxZ.assign(float(z.add(int(1)).sub(ozp)).div(rdz)));
+    void If(lessThan(stepZ, int(0)), () => tMaxZ.assign(float(z.sub(ozp)).div(rdz)));
+    void If(equal(stepZ, int(0)), () => tMaxZ.assign(big));
     return { oxp, oyp, ozp, x, y, z, stepX, stepY, stepZ, tDeltaX, tDeltaY, tDeltaZ, tMaxX, tMaxY, tMaxZ };
   };
 
@@ -1488,7 +1490,7 @@ export async function createVoxelRayGpuTracePipeline(
     const nx = float(0).toVar();
     const ny = float(0).toVar();
     const nz = float(0).toVar();
-    If(and(ax.greaterThanEqual(ay), ax.greaterThanEqual(az)), () => {
+    void If(and(ax.greaterThanEqual(ay), ax.greaterThanEqual(az)), () => {
       nx.assign(select(greaterThan(rdx.negate(), float(0)), float(1), float(-1)));
     })
       .ElseIf(ay.greaterThanEqual(az), () => {
@@ -1512,7 +1514,7 @@ export async function createVoxelRayGpuTracePipeline(
     const nx = float(0).toVar();
     const ny = float(0).toVar();
     const nz = float(0).toVar();
-    If(and(ax.greaterThanEqual(ay), ax.greaterThanEqual(az)), () => {
+    void If(and(ax.greaterThanEqual(ay), ax.greaterThanEqual(az)), () => {
       nx.assign(select(greaterThan(rdx, float(0)), float(1), float(-1)));
     })
       .ElseIf(ay.greaterThanEqual(az), () => {
@@ -1541,7 +1543,7 @@ export async function createVoxelRayGpuTracePipeline(
   ) => {
     const tHit = float(0).toVar();
     const axis = int(0).toVar();
-    If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
+    void If(and(tMaxX.lessThanEqual(tMaxY), tMaxX.lessThanEqual(tMaxZ)), () => {
       axis.assign(int(0));
       tHit.assign(tMaxX);
       tMaxX.addAssign(tDeltaX);
@@ -1572,7 +1574,7 @@ export async function createVoxelRayGpuTracePipeline(
     const nx = float(0).toVar();
     const ny = float(0).toVar();
     const nz = float(0).toVar();
-    If(axis.equal(int(0)), () => {
+    void If(axis.equal(int(0)), () => {
       nx.assign(select(greaterThan(stepX, int(0)), float(-1), float(1)));
     })
       .ElseIf(axis.equal(int(1)), () => {
@@ -1624,7 +1626,7 @@ export async function createVoxelRayGpuTracePipeline(
     const shR = float(1).toVar();
     const shG = float(1).toVar();
     const shB = float(1).toVar();
-    If(uEnableShadows.greaterThan(float(0.5)), () => {
+    void If(uEnableShadows.greaterThan(float(0.5)), () => {
       const hx = baseX.add(nx.mul(SHADOW_SURFACE_EPS));
       const hy = baseY.add(ny.mul(SHADOW_SURFACE_EPS));
       const hz = baseZ.add(nz.mul(SHADOW_SURFACE_EPS));
@@ -1678,7 +1680,7 @@ export async function createVoxelRayGpuTracePipeline(
     bloomB.assign(tb.mul(select(isGlow, addB.mul(float(GLOW_BLOOM_LINEAR_SCALE)), float(0))));
     hitFound.assign(float(1));
     if (shouldBreakAfter) {
-      Break();
+      void Break();
     }
   };
 
@@ -1746,7 +1748,7 @@ export async function createVoxelRayGpuTracePipeline(
     );
     if (isMarchStep) {
       marchDidGlass.assign(float(1));
-      Break();
+      void Break();
     }
   };
 
@@ -1770,6 +1772,7 @@ export async function createVoxelRayGpuTracePipeline(
   };
 
   // Inline `Fn(..., 'vec4')` only: object layout extracts a WGSL helper and can mis-type returns (f32 vs vec4).
+  // TSL: stack children are built with `void` output; prefix `If`/`Loop`/`Break` with `void` so branches are not emitted as invalid `return` in non-function flow.
   const shadeOutputFn = Fn(() => {
     const suv = uv();
     const { rd, ro } = cameraRayFromUv(suv);
@@ -1795,9 +1798,9 @@ export async function createVoxelRayGpuTracePipeline(
       int(floor(ro.z.add(rdz.mul(DDA_RAY_ORIGIN_EPS))))
     );
     const mei0 = shiftRight(pki0, uint(24));
-    If(greaterThan(mei0, uint(0)), () => {
+    void If(greaterThan(mei0, uint(0)), () => {
       const midI = uint(mei0.sub(uint(1)));
-      If(isTransmissiveIdx(midI), () => mediumIor.assign(iorFromMatIdx(midI)));
+      void If(isTransmissiveIdx(midI), () => mediumIor.assign(iorFromMatIdx(midI)));
     });
     const outR = float(0).toVar();
     const outG = float(0).toVar();
@@ -1808,10 +1811,10 @@ export async function createVoxelRayGpuTracePipeline(
     const hitFound = float(0).toVar();
     const marchDidGlass = float(0).toVar();
 
-    Loop({ start: int(0), end: int(4), type: 'int', condition: '<' }, () => {
+    void Loop({ start: int(0), end: int(4), type: 'int', condition: '<' }, () => {
       marchDidGlass.assign(float(0));
-      If(hitFound.greaterThan(float(0.5)), () => Break());
-      If(remDist.lessThan(float(1e-6)), () => {
+      void If(hitFound.greaterThan(float(0.5)), () => void Break());
+      void If(remDist.lessThan(float(1e-6)), () => {
         accumulateTransmittedMissRgb(
           missBackgroundFromUv(suv),
           accR,
@@ -1825,7 +1828,7 @@ export async function createVoxelRayGpuTracePipeline(
           outB,
           hitFound
         );
-        Break();
+        void Break();
       });
 
       const {
@@ -1850,9 +1853,9 @@ export async function createVoxelRayGpuTracePipeline(
 
       const pkStart = fetchPacked(x, y, z);
       const matStart = shiftRight(pkStart, uint(24));
-      If(greaterThan(matStart, uint(0)), () => {
+      void If(greaterThan(matStart, uint(0)), () => {
         const matIdx = uint(matStart.sub(uint(1)));
-        If(isTransmissiveIdx(matIdx), () => {
+        void If(isTransmissiveIdx(matIdx), () => {
           const { nx: nx0, ny: ny0, nz: nz0 } = ddaMajorAxisNormalTowardNegRay(rdx, rdy, rdz);
           runTransmissiveGlassSlab(
             false,
@@ -1919,8 +1922,8 @@ export async function createVoxelRayGpuTracePipeline(
         });
       });
 
-      If(hitFound.lessThan(float(0.5)), () => {
-        Loop(
+      void If(hitFound.lessThan(float(0.5)), () => {
+        void Loop(
           { start: int(0), end: int(floor(uPrimaryDdaMaxSteps)), type: 'int', condition: '<' },
           () => {
           const { tHit, axis } = ddaAdvanceNextVoxel(
@@ -1937,16 +1940,16 @@ export async function createVoxelRayGpuTracePipeline(
             y,
             z
           );
-          If(tHit.greaterThan(maxT), () => Break());
+          void If(tHit.greaterThan(maxT), () => void Break());
           const hpx = oxp.add(rdx.mul(tHit));
           const hpy = oyp.add(rdy.mul(tHit));
           const hpz = ozp.add(rdz.mul(tHit));
           const pk = fetchPacked(x, y, z);
           const matEnc = shiftRight(pk, uint(24));
-          If(greaterThan(matEnc, uint(0)), () => {
+          void If(greaterThan(matEnc, uint(0)), () => {
             const matIdx = uint(matEnc.sub(uint(1)));
             const { nx, ny, nz } = ddaStepFaceNormal(axis, stepX, stepY, stepZ);
-            If(isTransmissiveIdx(matIdx), () => {
+            void If(isTransmissiveIdx(matIdx), () => {
               runTransmissiveGlassSlab(
                 true,
                 matIdx,
@@ -2014,7 +2017,7 @@ export async function createVoxelRayGpuTracePipeline(
 
       });
 
-      If(and(hitFound.lessThan(float(0.5)), marchDidGlass.lessThan(float(0.5))), () => {
+      void If(and(hitFound.lessThan(float(0.5)), marchDidGlass.lessThan(float(0.5))), () => {
         accumulateTransmittedMissRgb(
           missBackgroundFromUv(suv),
           accR,
@@ -2031,7 +2034,7 @@ export async function createVoxelRayGpuTracePipeline(
       });
     });
 
-    If(hitFound.lessThan(float(0.5)), () => {
+    void If(hitFound.lessThan(float(0.5)), () => {
       accumulateTransmittedMissRgb(
         missBackgroundFromUv(suv),
         accR,

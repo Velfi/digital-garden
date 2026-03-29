@@ -618,6 +618,14 @@
         <button
           type="button"
           role="menuitem"
+          class:checked={$renderingMode === 'dualContour'}
+          onclick={() => setRenderingMode('dualContour')}
+        >
+          Smooth (dual contouring)
+        </button>
+        <button
+          type="button"
+          role="menuitem"
           class:checked={$renderingMode === 'ray'}
           disabled={$activeRendererIsWebGPU !== true}
           title={$activeRendererIsWebGPU !== true

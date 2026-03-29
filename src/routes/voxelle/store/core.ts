@@ -130,11 +130,12 @@ export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect' | 'togg
 export type PlaneAxis = 'auto' | 0 | 1 | 2;
 
 export type FaceNormal = [number, number, number];
-export type RenderingMode = 'greedy' | 'marchingCubes' | 'ray';
+export type RenderingMode = 'greedy' | 'marchingCubes' | 'dualContour' | 'ray';
 
 function normalizeRenderingMode(mode: RenderingMode | 'raycast'): RenderingMode {
   if (mode === 'raycast') return 'ray';
-  if (mode === 'greedy' || mode === 'marchingCubes' || mode === 'ray') return mode;
+  if (mode === 'greedy' || mode === 'marchingCubes' || mode === 'dualContour' || mode === 'ray')
+    return mode;
   return 'greedy';
 }
 

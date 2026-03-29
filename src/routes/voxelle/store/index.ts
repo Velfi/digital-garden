@@ -344,6 +344,7 @@ export {
   squishyMetaballs,
   squishySelectedId,
   squishyDefaultRadius,
+  squishyAddSnapToSurface,
   squishyHollow,
   squishyHollowWallThickness,
   createSquishyMetaball,

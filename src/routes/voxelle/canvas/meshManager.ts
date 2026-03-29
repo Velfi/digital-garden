@@ -75,7 +75,7 @@ import {
 
 export interface MeshManagerOptions {
   enableShadows: boolean;
-  renderingMode: 'greedy' | 'marchingCubes' | 'ray';
+  renderingMode: 'greedy' | 'marchingCubes' | 'dualContour' | 'ray';
   aoStrength: number;
   sceneEnvironmentIntensity: number;
 }
@@ -364,15 +364,18 @@ export function createMeshManager(
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.setAttribute('slabThickness', new THREE.BufferAttribute(slabThickness, 1));
     geo.setIndex(new THREE.BufferAttribute(indices, 1));
+    const opts = getOptions();
     const parsedForNormals = parseBucketKey(bucketKey);
     const transmissiveGreedy =
       parsedForNormals?.material === 'water' || parsedForNormals?.material === 'glass';
-    if (!transmissiveGreedy) {
+    const smoothIso =
+      opts.renderingMode === 'marchingCubes' || opts.renderingMode === 'dualContour';
+    /** Greedy benefits from averaged normals; iso meshes use worker gradient normals — recomputing from tiny tris adds noise in lighting/shadows. */
+    if (!transmissiveGreedy && !smoothIso) {
       geo.computeVertexNormals();
     }
     geo.computeBoundingSphere();
 
-    const opts = getOptions();
     const envMap = scene?.environment ?? null;
     const parsed = parseBucketKey(bucketKey);
     const materialId: VoxelMaterialId = parsed?.material ?? 'plastic';
@@ -395,7 +398,8 @@ export function createMeshManager(
       materialId !== 'water';
     if (materialId === 'glass' || materialId === 'water') {
       mesh.customDepthMaterial = createGlassShadowDepthMaterial(parsed?.color ?? 0xffffff, {
-        marchingCubes: opts.renderingMode === 'marchingCubes'
+        marchingCubes:
+          opts.renderingMode === 'marchingCubes' || opts.renderingMode === 'dualContour'
       });
     }
     return { mesh, materialId };

@@ -297,6 +297,7 @@
     squishyMetaballs,
     squishySelectedId,
     squishyDefaultRadius,
+    squishyAddSnapToSurface,
     squishyHollow,
     squishyHollowWallThickness,
     createSquishyMetaball,
@@ -1457,6 +1458,28 @@
 
   function getVoxelPosition(hit: THREE.Intersection): [number, number, number] | null {
     return getVoxelPositionFromHit(hit, worldQuaternion);
+  }
+
+  /**
+   * Metaball Add: same embedding as draw brush snap — empty cell from face, then offset by
+   * round(radius) along face normal so the ball sits on the surface instead of buried in it.
+   */
+  function getSquishyAddCellFromHit(hit: THREE.Intersection): [number, number, number] | null {
+    if (get(squishyAddSnapToSurface)) {
+      const base = getAddPosition(hit);
+      if (!base) return getVoxelPosition(hit);
+      const n = getFaceNormalFromHit(hit);
+      if (!n) return base;
+      const [ox, oy, oz] = offsetSprayStampCenterForSnap(
+        base[0],
+        base[1],
+        base[2],
+        get(squishyDefaultRadius),
+        { x: n[0], y: n[1], z: n[2] }
+      );
+      return [ox, oy, oz];
+    }
+    return getVoxelPosition(hit);
   }
 
   function getStrokeStartFromHit(hit: THREE.Intersection): [number, number, number] | null {
@@ -3516,7 +3539,7 @@
       const mode = get(squishyMode);
       if (mode === 'add') {
         if (!hit) return;
-        const pos = getVoxelPosition(hit);
+        const pos = getSquishyAddCellFromHit(hit);
         if (!pos) return;
         event.preventDefault();
         event.stopPropagation();
@@ -4539,7 +4562,7 @@
         const mode = get(squishyMode);
         if (mode === 'add') {
           const hit = getIntersection();
-          const pos = hit ? getVoxelPosition(hit) : null;
+          const pos = hit ? getSquishyAddCellFromHit(hit) : null;
           const nextCenter: [number, number, number] | null = pos ? [pos[0], pos[1], pos[2]] : null;
           const changed =
             (squishyAddPreviewCenter === null) !== (nextCenter === null) ||
@@ -6373,6 +6396,19 @@
     bloomPassBackground = null;
   }
 
+  /**
+   * Depth `copyTextureToTexture` requires each depth texture's internal `__renderTarget` link, which
+   * is only created when the RT's framebuffer is first bound. The atmosphere depth-stash RT is never
+   * the scene draw target—only a blit destination—so we bind it once after alloc/resize.
+   */
+  function warmUpWebGLAtmosphereDepthCopyRT(): void {
+    if (!renderer || !atmosphereDepthCopyRT || !isWebGLRenderer(renderer)) return;
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(atmosphereDepthCopyRT);
+    renderer.clear();
+    renderer.setRenderTarget(prev);
+  }
+
   function ensureBloomAuxMaterials() {
     if (!bloomDarkMaterial) {
       bloomDarkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
@@ -6498,6 +6534,7 @@
     const dw = Math.max(1, Math.floor(w * pr));
     const dh = Math.max(1, Math.floor(h * pr));
     atmosphereDepthCopyRT?.setSize(dw, dh, 1);
+    warmUpWebGLAtmosphereDepthCopyRT();
   }
 
   function prepareWebGLAtmosphere(): void {
@@ -6778,6 +6815,7 @@
     const dw = Math.max(1, Math.floor(w * pr));
     const dh = Math.max(1, Math.floor(h * pr));
     atmosphereDepthCopyRT?.setSize(dw, dh, 1);
+    warmUpWebGLAtmosphereDepthCopyRT();
     if (webgpuBloomPipeline && container) {
       webgpuBloomPipeline.setSize(container.clientWidth, container.clientHeight, pr);
     }
@@ -7954,6 +7992,19 @@
     syncSquishyPreviewMesh();
     squishyGizmo?.sync();
     if ($tool === 'squishy') markCanvasDirty();
+  });
+
+  /** Recompute add preview cell when snap or default radius changes (same cursor ray). */
+  $effect(() => {
+    void $squishyAddSnapToSurface;
+    void $squishyDefaultRadius;
+    if ($tool !== 'squishy' || $squishyMode !== 'add') return;
+    const hit = getIntersection();
+    const pos = hit ? getSquishyAddCellFromHit(hit) : null;
+    squishyAddPreviewCenter = pos ? [pos[0], pos[1], pos[2]] : null;
+    syncSquishyPickMeshes();
+    syncSquishyPreviewMesh();
+    markCanvasDirty();
   });
 
   $effect(() => {
