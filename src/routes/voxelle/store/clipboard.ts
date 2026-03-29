@@ -18,7 +18,7 @@ import {
 } from './core';
 import type { Voxel } from '../voxelMaterial';
 import { parseVoxelMaterial, plasticVoxel } from '../voxelMaterial';
-import { rotatePositionAroundOrigin, clampQuarterTurn } from './shapes';
+import { rotatePositionAroundOrigin } from './shapes';
 
 const DBG = '[voxelle:clipboard]';
 
@@ -114,15 +114,10 @@ export function buildPastePlacementVoxelMap(
 ): Map<string, Voxel> {
   const out = new Map<string, Voxel>();
   const [px, py, pz] = position;
-  const [rx, ry, rz] = [
-    clampQuarterTurn(rotation[0]),
-    clampQuarterTurn(rotation[1]),
-    clampQuarterTurn(rotation[2])
-  ];
   const sym = symmetryAxes.x || symmetryAxes.y || symmetryAxes.z;
   for (const e of entries) {
     const [dx, dy, dz] = e;
-    const r = rotatePositionAroundOrigin([dx, dy, dz], [rx, ry, rz]);
+    const r = rotatePositionAroundOrigin([dx, dy, dz], rotation);
     const x = r[0] + px;
     const y = r[1] + py;
     const z = r[2] + pz;
@@ -177,11 +172,7 @@ export function placePastePatternAt(
     worldVoxels: map.size,
     overwritingCells,
     position,
-    rotationQuarters: [
-      clampQuarterTurn(rotation[0]),
-      clampQuarterTurn(rotation[1]),
-      clampQuarterTurn(rotation[2])
-    ],
+    rotationDegrees: [rotation[0], rotation[1], rotation[2]],
     symmetry: { x: sym.x, y: sym.y, z: sym.z }
   });
   updateVoxels((v) => {

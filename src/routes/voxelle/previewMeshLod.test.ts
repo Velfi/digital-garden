@@ -85,6 +85,30 @@ describe('downsamplePositionsToPreviewMap', () => {
     const v = map.get(coordKey(0, 0, 0))!;
     expect(v.color).toBe(0x000000);
   });
+
+  it('marks coarse cell with invert overlap when any fine voxel intersects guide plane', () => {
+    const positions: [number, number, number][] = [
+      [0, 0, 0],
+      [3, 3, 3]
+    ];
+    const min: [number, number, number] = [0, 0, 0];
+    const planeOverlap = {
+      planePoint: [0, 0, 0] as [number, number, number],
+      planeNormal: [0, 1, 0] as [number, number, number]
+    };
+    const map = downsamplePositionsToPreviewMap(
+      positions,
+      voxel,
+      2,
+      min,
+      undefined,
+      'invert',
+      planeOverlap
+    );
+    expect(map.size).toBe(2);
+    expect(map.get(coordKey(0, 0, 0))?.color).toBe(0x000000);
+    expect(map.get(coordKey(1, 1, 1))?.color).toBe(0xffffff);
+  });
 });
 
 describe('downsampleVoxelMapToPreviewMap', () => {

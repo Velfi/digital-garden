@@ -5,7 +5,13 @@
 import * as THREE from 'three';
 import { coordKey, parseCoordKey } from './coordUtils';
 import type { Voxel } from './voxelMaterial';
-import { previewOverlapColor, type PreviewOverlapShading } from './greedyMesh';
+import {
+  previewOverlapColor,
+  voxelCellIntersectsWorkPlane,
+  type PreviewGuidePlaneOverlap,
+  type PreviewOverlapShading,
+  type PreviewVoxelSource
+} from './greedyMesh';
 
 /** Coarse cell count above which stroke/add-shape preview uses LOD downsampling. */
 export const PREVIEW_LOD_COARSE_TARGET = 12_000;
@@ -33,17 +39,21 @@ export function computePreviewLodStride(
  * Downsample positions into a coarse voxel Map for preview meshing.
  * min = [minX, minY, minZ] of the positions AABB.
  * If existingVoxels is set, a coarse cell uses overlap shading when any fine voxel in that cell overlaps.
+ * If planeOverlap is set, a coarse cell uses overlap shading when any fine voxel's cell cuts that plane.
  */
 export function downsamplePositionsToPreviewMap(
   positions: [number, number, number][],
-  voxel: Voxel,
+  voxel: PreviewVoxelSource,
   stride: number,
   min: MinTuple,
   existingVoxels?: Map<string, Voxel>,
-  overlapShading: PreviewOverlapShading = 'invert'
+  overlapShading: PreviewOverlapShading = 'invert',
+  planeOverlap?: PreviewGuidePlaneOverlap
 ): Map<string, Voxel> {
   const [minX, minY, minZ] = min;
   const map = new Map<string, Voxel>();
+  const resolveVoxel =
+    typeof voxel === 'function' ? voxel : (_x: number, _y: number, _z: number) => voxel;
   const overlapCells = new Set<string>();
   for (const [x, y, z] of positions) {
     const cx = Math.floor((x - minX) / stride);
@@ -51,15 +61,25 @@ export function downsamplePositionsToPreviewMap(
     const cz = Math.floor((z - minZ) / stride);
     const ck = coordKey(cx, cy, cz);
     if (existingVoxels?.has(coordKey(x, y, z))) overlapCells.add(ck);
+    if (
+      planeOverlap &&
+      voxelCellIntersectsWorkPlane(x, y, z, planeOverlap.planePoint, planeOverlap.planeNormal)
+    ) {
+      overlapCells.add(ck);
+    }
     if (!map.has(ck)) {
-      map.set(ck, { color: voxel.color, material: voxel.material });
+      const ax = minX + cx * stride;
+      const ay = minY + cy * stride;
+      const az = minZ + cz * stride;
+      const resolved = resolveVoxel(ax, ay, az);
+      map.set(ck, { color: resolved.color, material: resolved.material });
     }
   }
   for (const ck of overlapCells) {
     const v = map.get(ck)!;
     map.set(ck, {
       ...v,
-      color: previewOverlapColor(voxel.color, overlapShading)
+      color: previewOverlapColor(v.color, overlapShading)
     });
   }
   return map;

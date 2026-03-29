@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { coordKey, positionsToVoxelMap } from './coordUtils';
+import { coordKey, parseCoordKey, positionsToVoxelMap } from './coordUtils';
 import { computeGreedyMesh, getGreedyMeshFaceArea } from './greedyMeshCore';
 import type { Voxel } from './voxelMaterial';
 
@@ -50,14 +50,44 @@ export const PREVIEW_MESH_OPTIONS: GreedyMeshOptions = {
   aoStrength: 0
 };
 
+/** Precise / guide work plane in world space (integer voxel centers, plane from face anchor). */
+export type PreviewGuidePlaneOverlap = {
+  planePoint: [number, number, number];
+  planeNormal: [number, number, number];
+};
+
 /** Extra greedy options for `buildPreviewGeometry*` (always uses skipMerge internally). */
 export type PreviewGreedyExtras = {
   aoStrength?: AOStrength;
   /** Scene voxels for AO and culling against existing geometry (not meshed as preview surface). */
   occlusionVoxels?: Map<string, Voxel>;
+  /** Highlight preview cells whose voxel AABB cuts this plane (e.g. precise work plane). */
+  planeOverlap?: PreviewGuidePlaneOverlap;
 };
 
-function mergePreviewOcclusion(
+export type PreviewVoxelSource = Voxel | ((x: number, y: number, z: number) => Voxel);
+
+/** True if the unit cube centered at integer (cx,cy,cz) intersects the infinite plane. */
+export function voxelCellIntersectsWorkPlane(
+  cx: number,
+  cy: number,
+  cz: number,
+  planePoint: [number, number, number],
+  planeNormal: [number, number, number]
+): boolean {
+  const [px, py, pz] = planePoint;
+  const [nx, ny, nz] = planeNormal;
+  const len = Math.hypot(nx, ny, nz);
+  if (len < 1e-9) return false;
+  const nx0 = nx / len;
+  const ny0 = ny / len;
+  const nz0 = nz / len;
+  const d = (cx - px) * nx0 + (cy - py) * ny0 + (cz - pz) * nz0;
+  const extent = 0.5 * (Math.abs(nx0) + Math.abs(ny0) + Math.abs(nz0));
+  return Math.abs(d) <= extent + 1e-6;
+}
+
+export function mergePreviewOcclusion(
   previewMap: Map<string, Voxel>,
   world?: Map<string, Voxel>
 ): Map<string, Voxel> | undefined {
@@ -82,26 +112,56 @@ function darkenHex(hex: number, factor: number): number {
  */
 export function buildPreviewGeometry(
   positions: [number, number, number][],
-  voxel: Voxel,
+  voxel: PreviewVoxelSource,
   existingVoxels?: Map<string, Voxel>,
   overlapShading: PreviewOverlapShading = 'invert',
   extras?: PreviewGreedyExtras
 ): THREE.BufferGeometry | null {
   if (positions.length === 0) return null;
+  const resolveVoxel =
+    typeof voxel === 'function' ? voxel : (_x: number, _y: number, _z: number) => voxel;
+  const plane = extras?.planeOverlap;
   let voxelMap: Map<string, Voxel>;
   if (existingVoxels && existingVoxels.size > 0) {
     voxelMap = new Map();
     for (const [x, y, z] of positions) {
       const key = coordKey(x, y, z);
+      const resolved = resolveVoxel(x, y, z);
+      const onPlane =
+        plane !== undefined &&
+        voxelCellIntersectsWorkPlane(x, y, z, plane.planePoint, plane.planeNormal);
       voxelMap.set(key, {
-        color: existingVoxels.has(key)
-          ? previewOverlapColor(voxel.color, overlapShading)
-          : voxel.color,
-        material: voxel.material
+        color:
+          existingVoxels.has(key) || onPlane
+            ? previewOverlapColor(resolved.color, overlapShading)
+            : resolved.color,
+        material: resolved.material
+      });
+    }
+  } else if (plane) {
+    voxelMap = new Map();
+    for (const [x, y, z] of positions) {
+      const key = coordKey(x, y, z);
+      const resolved = resolveVoxel(x, y, z);
+      const onPlane = voxelCellIntersectsWorkPlane(x, y, z, plane.planePoint, plane.planeNormal);
+      voxelMap.set(key, {
+        color: onPlane ? previewOverlapColor(resolved.color, overlapShading) : resolved.color,
+        material: resolved.material
       });
     }
   } else {
-    voxelMap = positionsToVoxelMap(positions, voxel);
+    if (typeof voxel === 'function') {
+      voxelMap = new Map();
+      for (const [x, y, z] of positions) {
+        const resolved = voxel(x, y, z);
+        voxelMap.set(coordKey(x, y, z), {
+          color: resolved.color,
+          material: resolved.material
+        });
+      }
+    } else {
+      voxelMap = positionsToVoxelMap(positions, voxel);
+    }
   }
   const mergedOcclusion = mergePreviewOcclusion(voxelMap, extras?.occlusionVoxels);
   const geoByColor = buildGreedyMesh(voxelMap, {
@@ -127,12 +187,30 @@ export function buildPreviewGeometryFromVoxelMap(
   extras?: PreviewGreedyExtras
 ): THREE.BufferGeometry | null {
   if (voxelMap.size === 0) return null;
+  const plane = extras?.planeOverlap;
   let map: Map<string, Voxel>;
   if (existingVoxels.size > 0) {
     map = new Map();
     for (const [key, vx] of voxelMap) {
+      const [x, y, z] = parseCoordKey(key);
+      const onPlane =
+        plane !== undefined &&
+        voxelCellIntersectsWorkPlane(x, y, z, plane.planePoint, plane.planeNormal);
       map.set(key, {
-        color: existingVoxels.has(key) ? previewOverlapColor(vx.color, overlapShading) : vx.color,
+        color:
+          existingVoxels.has(key) || onPlane
+            ? previewOverlapColor(vx.color, overlapShading)
+            : vx.color,
+        material: vx.material
+      });
+    }
+  } else if (plane) {
+    map = new Map();
+    for (const [key, vx] of voxelMap) {
+      const [x, y, z] = parseCoordKey(key);
+      const onPlane = voxelCellIntersectsWorkPlane(x, y, z, plane.planePoint, plane.planeNormal);
+      map.set(key, {
+        color: onPlane ? previewOverlapColor(vx.color, overlapShading) : vx.color,
         material: vx.material
       });
     }

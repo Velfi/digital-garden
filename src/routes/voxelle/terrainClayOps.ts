@@ -135,7 +135,7 @@ export function applyTerrainStroke(
   brushPositions: [number, number, number][],
   gridSizeOrBounds: number | SelectionBounds,
   options: ApplyTerrainStrokeOptions,
-  getVoxel: () => Voxel
+  getVoxel: (x: number, y: number, z: number) => Voxel
 ): { toAdd: Map<string, Voxel>; toRemove: Set<string> } {
   const cols = uniqueColumns(brushPositions, gridSizeOrBounds);
   if (cols.size === 0) {
@@ -157,7 +157,7 @@ export function applyTerrainStroke(
     const template =
       ext && v.has(coordKey(x, ext.maxY, z))
         ? cloneVoxel(v.get(coordKey(x, ext.maxY, z))!)
-        : cloneVoxel(getVoxel());
+        : cloneVoxel(getVoxel(x, yFill, z));
     colMeta.set(k, { x, z, yFill, oldMax, oldMin: ext ? ext.minY : null, template });
   }
 

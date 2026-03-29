@@ -13,7 +13,8 @@ import {
   GRID_GROUP_RENDER_ORDER,
   PREVIEW_DEFAULT_RENDER_ORDER,
   PREVIEW_OCCLUDED_RENDER_ORDER,
-  ROLLOVER_DEFAULT_RENDER_ORDER
+  ROLLOVER_DEFAULT_RENDER_ORDER,
+  VOXELLE_GIZMO_OVERLAY_LAYER
 } from './renderOrder';
 
 export const POLYGON_POINTS_MAX = 64;
@@ -54,6 +55,9 @@ export interface SceneSetupRefs {
   selectionGroup: THREE.Group;
   previewMesh: THREE.Mesh;
   previewMaterial: THREE.MeshBasicMaterial;
+  /** Shared greedy stroke/squishy preview geometry; draws where preview is behind scene depth. */
+  previewOccludedMesh: THREE.Mesh;
+  previewOccludedMaterial: THREE.MeshBasicMaterial;
   addPreviewMesh: THREE.Mesh;
   addPreviewMaterial: THREE.MeshBasicMaterial;
   /** Same geometry as addPreviewMesh; draws only where preview is behind scene depth (occluded). */
@@ -282,11 +286,30 @@ export async function createSceneSetupAsync(
     depthTest: false,
     depthWrite: false
   });
-  const previewMesh = new THREE.Mesh(placeholderMeshGeometry(), previewMaterial);
+  const previewSharedGeometry = placeholderMeshGeometry();
+  const previewMesh = new THREE.Mesh(previewSharedGeometry, previewMaterial);
   previewMesh.visible = false;
   previewMesh.renderOrder = PREVIEW_DEFAULT_RENDER_ORDER;
   previewMesh.raycast = () => {};
   scene.add(previewMesh);
+
+  const previewOccludedMaterial = new THREE.MeshBasicMaterial({
+    vertexColors: false,
+    color: 0x5577cc,
+    opacity: 0.4,
+    transparent: true,
+    depthTest: true,
+    depthWrite: false,
+    depthFunc: THREE.GreaterDepth,
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1
+  });
+  const previewOccludedMesh = new THREE.Mesh(previewSharedGeometry, previewOccludedMaterial);
+  previewOccludedMesh.visible = false;
+  previewOccludedMesh.renderOrder = PREVIEW_OCCLUDED_RENDER_ORDER;
+  previewOccludedMesh.raycast = () => {};
+  scene.add(previewOccludedMesh);
 
   const addPreviewMaterial = new THREE.MeshBasicMaterial({
     vertexColors: true,
@@ -470,6 +493,7 @@ export async function createSceneSetupAsync(
   flyControls.enabled = false;
 
   const raycaster = new THREE.Raycaster();
+  raycaster.layers.enable(VOXELLE_GIZMO_OVERLAY_LAYER);
   const pointer = new THREE.Vector2();
 
   return {
@@ -490,6 +514,8 @@ export async function createSceneSetupAsync(
     selectionGroup,
     previewMesh,
     previewMaterial,
+    previewOccludedMesh,
+    previewOccludedMaterial,
     addPreviewMesh,
     addPreviewMaterial,
     addPreviewOccludedMesh,

@@ -79,7 +79,8 @@
     updateVoxelsInStroke,
     runVoxelStroke,
     applySelectionTranslationAlongAxis,
-    applySelectionRotationInStroke,
+    applySelectionRotationRadiansInStroke,
+    applySelectionScaleAxesInStroke,
     selectionGizmoMode,
     commitUndoAfter,
     initCanvas,
@@ -118,7 +119,6 @@
     getCoplanarFacesSelectionAt,
     getCoplanarEmptySelectionAt,
     getShapePositionsAt,
-    clampQuarterTurn,
     addPanelStore,
     buildPastePlacementVoxelMap,
     clipboardEntryToVoxel,
@@ -380,8 +380,11 @@
     buildGreedyMesh,
     buildPreviewGeometry,
     buildPreviewGeometryFromVoxelMap,
+    mergePreviewOcclusion,
     PREVIEW_MESH_OPTIONS,
-    type PreviewOverlapShading
+    type PreviewGuidePlaneOverlap,
+    type PreviewOverlapShading,
+    type PreviewVoxelSource
   } from './greedyMesh';
   import {
     createSceneSetupAsync,
@@ -454,6 +457,7 @@
     renderVoxelCanvasPrimaryScene,
     hasGlowInVoxelGroup
   } from './canvas/voxelCanvasBloomRender';
+  import { renderVoxelleGizmoOverlayPass } from './canvas/gizmoOverlayPass';
   import {
     VoxelleSceneRenderPass,
     StashingPlanarAtmospherePass,
@@ -468,10 +472,14 @@
   } from './canvas/planarAtmospherePass';
   import { runVoxelCanvasAnimateStep } from './canvas/voxelCanvasAnimate';
   import {
+    assignVoxelleGizmoOverlayLayer,
+    PRECISE_PREVIEW_OCCLUDED_RENDER_ORDER,
     PRECISE_PREVIEW_RENDER_ORDER,
     PRECISE_ROLLOVER_RENDER_ORDER,
     PREVIEW_DEFAULT_RENDER_ORDER,
-    ROLLOVER_DEFAULT_RENDER_ORDER
+    PREVIEW_OCCLUDED_RENDER_ORDER,
+    ROLLOVER_DEFAULT_RENDER_ORDER,
+    VOXELLE_GIZMO_OVERLAY_LAYER
   } from './canvas/renderOrder';
   import {
     createVoxelCanvasStrokeCommit,
@@ -939,6 +947,8 @@
   let ropePointsMaterial: THREE.MeshBasicMaterial | null = null;
   let previewMesh: THREE.Mesh | null = null;
   let previewMaterial: THREE.MeshBasicMaterial | null = null;
+  let previewOccludedMesh: THREE.Mesh | null = null;
+  let previewOccludedMaterial: THREE.MeshBasicMaterial | null = null;
   let preciseGuidePlaneMesh: THREE.Mesh | null = null;
   let preciseGuidePlaneMaterial: THREE.MeshBasicMaterial | null = null;
   let preciseGuidePlaneTexture: THREE.CanvasTexture | null = null;
@@ -955,6 +965,7 @@
 
   let moveGizmoGroup: THREE.Group | null = null;
   let rotateGizmoGroup: THREE.Group | null = null;
+  let scaleGizmoGroup: THREE.Group | null = null;
   let moveDragLine: THREE.LineSegments | null = null;
   let selectionGizmo: ReturnType<typeof createSelectionGizmoController> | null = null;
   let squishyGizmo: ReturnType<typeof createSquishyGizmoController> | null = null;
@@ -1077,6 +1088,27 @@
       anchor[2] + 0.5 * normal.z
     );
   }
+
+  /** Work plane for add/paste ghost overlap (invert) along the precise guide slice. */
+  function addPanelGuidePlaneOverlap(): PreviewGuidePlaneOverlap | undefined {
+    if (
+      (precisePhase !== 'armed' && precisePhase !== 'placing') ||
+      !preciseAnchor ||
+      !preciseNormal
+    ) {
+      return undefined;
+    }
+    setPreciseWorkPlanePoint(preciseAnchor, preciseNormal, preciseWorkPlanePointScratch);
+    return {
+      planePoint: [
+        preciseWorkPlanePointScratch.x,
+        preciseWorkPlanePointScratch.y,
+        preciseWorkPlanePointScratch.z
+      ],
+      planeNormal: [preciseNormal.x, preciseNormal.y, preciseNormal.z]
+    };
+  }
+
   const centroidToCameraScratch = new THREE.Vector3();
   const fitHelperBox = new THREE.Box3();
   const fitHelperCenter = new THREE.Vector3();
@@ -1663,11 +1695,17 @@
 
   function applyPrecisePreviewRenderOrder() {
     if (previewMesh) previewMesh.renderOrder = PRECISE_PREVIEW_RENDER_ORDER;
+    if (previewOccludedMesh) {
+      previewOccludedMesh.renderOrder = PRECISE_PREVIEW_OCCLUDED_RENDER_ORDER;
+    }
     if (rollOverMesh) rollOverMesh.renderOrder = PRECISE_ROLLOVER_RENDER_ORDER;
   }
 
   function resetPrecisePreviewRenderOrder() {
     if (previewMesh) previewMesh.renderOrder = PREVIEW_DEFAULT_RENDER_ORDER;
+    if (previewOccludedMesh) {
+      previewOccludedMesh.renderOrder = PREVIEW_OCCLUDED_RENDER_ORDER;
+    }
     if (rollOverMesh) rollOverMesh.renderOrder = ROLLOVER_DEFAULT_RENDER_ORDER;
   }
 
@@ -1990,7 +2028,7 @@
       updateVoxelsInStroke((v) => {
         for (const [x, y, z] of positions) {
           if (!inBounds(x, y, z, undefined)) continue;
-          v.set(coordKey(x, y, z), getVoxel());
+          v.set(coordKey(x, y, z), getVoxel(x, y, z));
         }
       });
     });
@@ -2432,7 +2470,8 @@
       ropePhase !== 'tension' &&
       clothPhase !== 'tension';
 
-    const previewVoxelFor = (count: number): Voxel => {
+    const resolvePaintVoxel = getPaintColorResolver();
+    const previewVoxelFor = (count: number, sample: [number, number, number] = [0, 0, 0]): Voxel => {
       if (useRemoveStylePreDragPreview) {
         return count === 0
           ? { color: 0, material: 'plastic' }
@@ -2447,7 +2486,7 @@
               $tool === 'selectCoplanar' ||
               $tool === 'selectCoplanarEmpty'
             ? { color: 0x33aaff, material: 'plastic' }
-            : getPaintColorResolver()();
+            : resolvePaintVoxel(sample[0], sample[1], sample[2]);
     };
 
     const drawBrushInflatesBounds =
@@ -2477,7 +2516,12 @@
       } else {
         b = expandStrokePreviewBoundsOriginMirror(b, getCurrentSymmetryAxes());
       }
-      const pv = previewVoxelFor(positions.length > 0 ? positions.length : 1);
+      const center: [number, number, number] = [
+        Math.floor((b.minX + b.maxX) / 2),
+        Math.floor((b.minY + b.maxY) / 2),
+        Math.floor((b.minZ + b.maxZ) / 2)
+      ];
+      const pv = previewVoxelFor(positions.length > 0 ? positions.length : 1, center);
       strokePreviewLodScheduler.cancel();
       strokePreviewLodPendingFull = null;
       let cylVol = bboxGated.cylinderVolume;
@@ -2495,7 +2539,17 @@
       sel.size > 0 && ($tool === 'paint' || $tool === 'remove')
         ? expanded.filter(([x, y, z]) => sel.has(coordKey(x, y, z)))
         : expanded;
-    const previewVoxel = previewVoxelFor(filtered.length);
+    const previewVoxel: PreviewVoxelSource =
+      filtered.length > 0 &&
+      $tool !== 'remove' &&
+      $tool !== 'punch' &&
+      $tool !== 'select' &&
+      $tool !== 'selectByColor' &&
+      $tool !== 'selectCoplanar' &&
+      $tool !== 'selectCoplanarEmpty' &&
+      !useRemoveStylePreDragPreview
+        ? ((x: number, y: number, z: number) => resolvePaintVoxel(x, y, z))
+        : previewVoxelFor(filtered.length);
     const previewOverlapShading: PreviewOverlapShading =
       $tool === 'remove' ? 'darken' : 'invert';
     const existingForPreview =
@@ -2504,6 +2558,7 @@
         : filtered.length > 0
           ? $voxels
           : undefined;
+    const guidePlaneOverlap = addPanelGuidePlaneOverlap();
     const previewMeshOpts =
       displayOpts?.hidePreviewGrid === true ||
       displayOpts?.solidAsPlaced === true ||
@@ -2512,7 +2567,12 @@
             ...(displayOpts?.hidePreviewGrid === true ? { showGridOverlay: false as const } : {}),
             ...(displayOpts?.solidAsPlaced === true ? { solidAsPlaced: true as const } : {}),
             ...($tool === 'squishy'
-              ? { occlusionVoxels: $voxels, squishyVoxelShellEdges: true as const }
+              ? {
+                  occlusionVoxels: $voxels,
+                  squishyVoxelShellEdges: true as const,
+                  previewAoStrength: 1 as const,
+                  planeOverlap: guidePlaneOverlap
+                }
               : {})
           }
         : undefined;
@@ -2534,7 +2594,8 @@
         stride,
         min,
         existingForPreview,
-        previewOverlapShading
+        previewOverlapShading,
+        $tool === 'squishy' ? guidePlaneOverlap : undefined
       );
       meshManager.updatePreviewMeshLod(
         coarseMap,
@@ -2857,7 +2918,7 @@
       parapetHeight: get(roofParapetHeight),
       saltSkew: get(roofSaltSkew),
       hollow: get(roofHollow),
-      color: getPaintColorResolver()().color,
+      color: getPaintColorResolver()(0, 0, 0).color,
       footprintFromShape,
       footprintWindingFlip: sel !== 'polygon' && roofShapeWindingFlipped,
       profileCurve: get(roofProfileCurve)
@@ -2891,7 +2952,7 @@
       parapetHeight: get(roofParapetHeight),
       saltSkew: get(roofSaltSkew),
       hollow: get(roofHollow),
-      color: getPaintColorResolver()().color,
+      color: getPaintColorResolver()(0, 0, 0).color,
       footprintFromShape,
       footprintWindingFlip: sel !== 'polygon' && roofShapeWindingFlipped,
       profileCurve: get(roofProfileCurve)
@@ -4152,7 +4213,8 @@
             runVoxelStroke(() => {
               updateVoxelsInStroke((v) => {
                 for (const key of fillRegion.region.keys()) {
-                  v.set(key, getCol());
+                  const [x, y, z] = parseCoordKey(key);
+                  v.set(key, getCol(x, y, z));
                 }
               });
             });
@@ -4201,7 +4263,8 @@
             runVoxelStroke(() => {
               updateVoxelsInStroke((v) => {
                 for (const key of emptyRegion) {
-                  v.set(key, getCol());
+                  const [x, y, z] = parseCoordKey(key);
+                  v.set(key, getCol(x, y, z));
                 }
               });
             });
@@ -5711,8 +5774,37 @@
     handlePointerMove(event);
   }
 
+  function onLostPointerCapture(event: PointerEvent) {
+    commitSelectionGizmoFromPointerEvent(event);
+  }
+
   function onPointerDown(event: PointerEvent) {
     void handlePointerDown(event);
+  }
+
+  /** Commit selection gizmo rotate/scale/move; handles pointerup, lostpointercapture, pointercancel. */
+  function commitSelectionGizmoFromPointerEvent(event: PointerEvent): void {
+    const gizmoCommit = selectionGizmo?.tryPrimaryPointerUp(event);
+    if (!gizmoCommit) return;
+    const gizmoAxis = gizmoCommit.axis;
+    if (!gizmoCommit.wasPlacement) {
+      runVoxelStroke(() => {
+        if (gizmoCommit.kind === 'rotate' && gizmoAxis !== null && Math.abs(gizmoCommit.angleRad) > 1e-9)
+          applySelectionRotationRadiansInStroke(gizmoAxis, gizmoCommit.angleRad);
+        else if (gizmoCommit.kind === 'scale') {
+          const [sx, sy, sz] = gizmoCommit.scaleAxes;
+          if (
+            Math.abs(sx - 1) > 1e-9 ||
+            Math.abs(sy - 1) > 1e-9 ||
+            Math.abs(sz - 1) > 1e-9
+          ) {
+            applySelectionScaleAxesInStroke(sx, sy, sz);
+          }
+        } else if (gizmoCommit.kind === 'move' && gizmoAxis !== null && gizmoCommit.steps !== 0)
+          applySelectionTranslationAlongAxis(gizmoAxis, gizmoCommit.steps);
+      });
+    }
+    render();
   }
 
   async function onPointerUp(event: PointerEvent) {
@@ -5772,18 +5864,7 @@
     ) {
       cancelDrag();
     }
-    const gizmoCommit = selectionGizmo?.tryPrimaryPointerUp(event);
-    if (gizmoCommit) {
-      const gizmoAxis = gizmoCommit.axis;
-      if (!gizmoCommit.wasPlacement && gizmoAxis !== null && gizmoCommit.steps !== 0) {
-        runVoxelStroke(() => {
-          if (gizmoCommit.kind === 'rotate')
-            applySelectionRotationInStroke(gizmoAxis, gizmoCommit.steps);
-          else applySelectionTranslationAlongAxis(gizmoAxis, gizmoCommit.steps);
-        });
-      }
-      render();
-    }
+    commitSelectionGizmoFromPointerEvent(event);
     if (event.button === 0 && $tool === 'squishy' && squishyGizmo?.tryPointerUp()) {
       if (dragPointerId !== null) {
         try {
@@ -5972,6 +6053,7 @@
   }
 
   function onPointerCancel(event: PointerEvent) {
+    commitSelectionGizmoFromPointerEvent(event);
     if (depthAdjustPointerId === event.pointerId) {
       depthAdjustPointerId = null;
     }
@@ -6199,10 +6281,10 @@
       if (event.shiftKey && !event.altKey) {
         event.preventDefault();
         event.stopPropagation();
-        const d = event.deltaY < 0 ? 1 : -1;
+        const d = event.deltaY < 0 ? 15 : -15;
         addPanelStore.update((s) => ({
           ...s,
-          rotX: ((((Math.floor(s.rotX) + d) % 4) + 4) % 4) & 3
+          rotX: s.rotX + d
         }));
         render();
         return;
@@ -6210,10 +6292,10 @@
       if (event.altKey && !event.shiftKey) {
         event.preventDefault();
         event.stopPropagation();
-        const d = event.deltaY < 0 ? 1 : -1;
+        const d = event.deltaY < 0 ? 15 : -15;
         addPanelStore.update((s) => ({
           ...s,
-          rotY: ((((Math.floor(s.rotY) + d) % 4) + 4) % 4) & 3
+          rotY: s.rotY + d
         }));
         render();
         return;
@@ -6221,10 +6303,10 @@
       if (event.altKey && event.shiftKey) {
         event.preventDefault();
         event.stopPropagation();
-        const d = event.deltaY < 0 ? 1 : -1;
+        const d = event.deltaY < 0 ? 15 : -15;
         addPanelStore.update((s) => ({
           ...s,
-          rotZ: ((((Math.floor(s.rotZ) + d) % 4) + 4) % 4) & 3
+          rotZ: s.rotZ + d
         }));
         render();
         return;
@@ -6876,6 +6958,7 @@
         atmosphereOnlyGrainPass,
         prepareWebGPUBloomAtmosphere
       });
+      renderVoxelleGizmoOverlayPass(renderer, scene, camera, VOXELLE_GIZMO_OVERLAY_LAYER);
       lightingFlushPendingWebGpuShadowInvalidate(renderer, get(enableShadows), dirLight);
     }
     gizmoRef?.draw();
@@ -7538,6 +7621,8 @@
 
     previewMesh = setupRefs.previewMesh;
     previewMaterial = setupRefs.previewMaterial;
+    previewOccludedMesh = setupRefs.previewOccludedMesh;
+    previewOccludedMaterial = setupRefs.previewOccludedMaterial;
     const preciseGuide = createPreciseGuidePlaneInScene(scene);
     preciseGuidePlaneCtx = preciseGuide.ctx;
     preciseGuidePlaneTexture = preciseGuide.texture;
@@ -7653,17 +7738,22 @@
       getRaycaster: () => raycaster,
       getMoveGroup: () => moveGizmoGroup,
       getRotateGroup: () => rotateGizmoGroup,
+      getScaleGroup: () => scaleGizmoGroup,
       getSelectionGroup: () => selectionGroup,
       getVoxelGroup: () => voxelGroup,
       getMoveDragLine: () => moveDragLine,
       getShowDragDeltaHint: () => get(voxellePreferences).showDragDeltaHint,
-      getGizmosAlwaysOnTop: () => get(voxellePreferences).gizmosAlwaysOnTop,
       getContainer: () => container,
       render: markCanvasDirty
     });
     moveGizmoGroup = selectionGizmo.createMoveGizmo();
     rotateGizmoGroup = selectionGizmo.createRotateGizmo();
-    scene.add(moveGizmoGroup, rotateGizmoGroup, moveDragLine);
+    scaleGizmoGroup = selectionGizmo.createScaleGizmo();
+    scene.add(moveGizmoGroup, rotateGizmoGroup, scaleGizmoGroup, moveDragLine);
+    assignVoxelleGizmoOverlayLayer(moveGizmoGroup);
+    assignVoxelleGizmoOverlayLayer(rotateGizmoGroup);
+    assignVoxelleGizmoOverlayLayer(scaleGizmoGroup);
+    assignVoxelleGizmoOverlayLayer(moveDragLine);
     squishyPickGroup = new THREE.Group();
     squishyPickGroup.name = 'squishy-pick-group';
     scene.add(squishyPickGroup);
@@ -7672,9 +7762,6 @@
       getPointer: () => pointer,
       getRaycaster: () => raycaster,
       getContainer: () => container,
-      // Squishy handles sit inside the metaball voxel preview; preview grid is renderOrder 1100,
-      // so we always draw this gizmo in the on-top path (9999) — global pref would leave arrows under the grid.
-      getGizmosAlwaysOnTop: () => true,
       getHideMetaballChrome: () => squishyPreviewHoldActive,
       getSelected: () => {
         if (get(squishyMode) !== 'edit') return null;
@@ -7692,6 +7779,7 @@
       render: markCanvasDirty
     });
     scene.add(squishyGizmo.group);
+    assignVoxelleGizmoOverlayLayer(squishyGizmo.group);
     syncSquishyPickMeshes();
     syncSquishyPreviewMesh();
     faunaHandleGroup = new THREE.Group();
@@ -7717,6 +7805,7 @@
     container.addEventListener('pointerdown', onPointerDown, true);
     container.addEventListener('pointerup', onFlyPointerCapture, true);
     container.addEventListener('pointerup', onPointerUp);
+    container.addEventListener('lostpointercapture', onLostPointerCapture);
     container.addEventListener('pointercancel', onFlyPointerCapture, true);
     container.addEventListener('pointercancel', onPointerCancel);
     container.addEventListener('contextmenu', onContextMenu);
@@ -8020,12 +8109,18 @@
       markCanvasDirty();
       return;
     }
+    const guidePlaneOverlap = addPanelGuidePlaneOverlap();
+    const addShapePreviewExtras = {
+      occlusionVoxels: $voxels,
+      aoStrength: 1 as const,
+      ...(guidePlaneOverlap ? { planeOverlap: guidePlaneOverlap } : {})
+    };
     if (s.mode === 'paste' && s.pasteEntries && s.pasteEntries.length > 0) {
       addPanelRefinementScheduler.cancel();
       const voxelMap = buildPastePlacementVoxelMap(
         s.pasteEntries,
         [s.posX, s.posY, s.posZ],
-        [clampQuarterTurn(s.rotX), clampQuarterTurn(s.rotY), clampQuarterTurn(s.rotZ)],
+        [s.rotX, s.rotY, s.rotZ],
         { x: get(symmetryX), y: get(symmetryY), z: get(symmetryZ) }
       );
       applyAddShapeOccludedPreviewTint(
@@ -8034,7 +8129,12 @@
       );
       resetPreviewMeshTransform(addPreviewMesh);
       resetPreviewMeshTransform(addPreviewOccludedMesh);
-      const geo = buildPreviewGeometryFromVoxelMap(voxelMap, $voxels);
+      const geo = buildPreviewGeometryFromVoxelMap(
+        voxelMap,
+        $voxels,
+        'invert',
+        addShapePreviewExtras
+      );
       assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
       markCanvasDirty();
       return;
@@ -8046,7 +8146,7 @@
     };
     let primaries = getShapePositionsAt({
       position: [s.posX, s.posY, s.posZ],
-      rotation: [clampQuarterTurn(s.rotX), clampQuarterTurn(s.rotY), clampQuarterTurn(s.rotZ)],
+      rotation: [s.rotX, s.rotY, s.rotZ],
       shape: s.shape,
       size: Math.max(1, Math.min(1024, Math.floor(s.size)))
     });
@@ -8069,8 +8169,21 @@
     const bounds = getBoundsFromPositions(positions);
     if (stride > 1 && bounds) {
       const min: [number, number, number] = [bounds.minX, bounds.minY, bounds.minZ];
-      const coarseMap = downsamplePositionsToPreviewMap(positions, addVx, stride, min, $voxels);
-      const geoByBucket = buildGreedyMesh(coarseMap, PREVIEW_MESH_OPTIONS);
+      const coarseMap = downsamplePositionsToPreviewMap(
+        positions,
+        addVx,
+        stride,
+        min,
+        $voxels,
+        'invert',
+        guidePlaneOverlap
+      );
+      const mergedCoarseOcc = mergePreviewOcclusion(coarseMap, $voxels);
+      const geoByBucket = buildGreedyMesh(coarseMap, {
+        skipMerge: true,
+        aoStrength: 1,
+        ...(mergedCoarseOcc ? { occlusionVoxels: mergedCoarseOcc } : {})
+      });
       const geos = [...geoByBucket.values()];
       const coarseGeo =
         geos.length === 0
@@ -8088,8 +8201,15 @@
         alignPreviewMeshToLod(addPreviewOccludedMesh, stride, min);
         const capturedPositions = positions;
         const capturedVoxel = addVx;
+        const capturedPreviewExtras = addShapePreviewExtras;
         addPanelRefinementScheduler.schedule(() => {
-          const fullGeo = buildPreviewGeometry(capturedPositions, capturedVoxel, $voxels);
+          const fullGeo = buildPreviewGeometry(
+            capturedPositions,
+            capturedVoxel,
+            $voxels,
+            'invert',
+            capturedPreviewExtras
+          );
           if (!fullGeo || !addPreviewMesh || !addPreviewOccludedMesh) return;
           assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, fullGeo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
           resetPreviewMeshTransform(addPreviewMesh);
@@ -8100,7 +8220,13 @@
     } else {
       resetPreviewMeshTransform(addPreviewMesh);
       resetPreviewMeshTransform(addPreviewOccludedMesh);
-      const geo = buildPreviewGeometry(positions, addVx, $voxels);
+      const geo = buildPreviewGeometry(
+        positions,
+        addVx,
+        $voxels,
+        'invert',
+        addShapePreviewExtras
+      );
       assignSharedDualPreviewGeometry(addPreviewMesh, addPreviewOccludedMesh, geo, (g) => safeDisposeBufferGeometry(g, canvasIsWebGPU));
     }
     markCanvasDirty();
@@ -8116,6 +8242,7 @@
     container?.removeEventListener('pointerdown', onPointerDown, true);
     container?.removeEventListener('pointerup', onFlyPointerCapture, true);
     container?.removeEventListener('pointerup', onPointerUp);
+    container?.removeEventListener('lostpointercapture', onLostPointerCapture);
     container?.removeEventListener('pointercancel', onFlyPointerCapture, true);
     container?.removeEventListener('pointercancel', onPointerCancel);
     container?.removeEventListener?.('contextmenu', onContextMenu);
@@ -8149,6 +8276,7 @@
     paintHoverMaterial?.dispose();
     paintHoverOccludedMaterial?.dispose();
     previewMaterial?.dispose();
+    previewOccludedMaterial?.dispose();
     if (preciseGuidePlaneMesh && scene) scene.remove(preciseGuidePlaneMesh);
     preciseGuidePlaneMesh?.geometry?.dispose();
     preciseGuidePlaneMaterial?.dispose();
@@ -8180,7 +8308,7 @@
       moveDragLine = null;
     }
     const gizmoGeos = new SvelteSet<THREE.BufferGeometry>();
-    for (const gg of [moveGizmoGroup, rotateGizmoGroup]) {
+    for (const gg of [moveGizmoGroup, rotateGizmoGroup, scaleGizmoGroup]) {
       gg?.traverse((obj) => {
         const m = obj as THREE.Mesh;
         if (m.geometry && !gizmoGeos.has(m.geometry)) {
@@ -8203,6 +8331,7 @@
     if (squishyPickGroup && scene) scene.remove(squishyPickGroup);
     moveGizmoGroup = null;
     rotateGizmoGroup = null;
+    scaleGizmoGroup = null;
     squishyGizmo = null;
     squishyPickGroup = null;
   });

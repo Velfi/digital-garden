@@ -27,10 +27,16 @@ import {
   buildPreviewGeometryFromVoxelMap,
   PREVIEW_MESH_OPTIONS,
   type PreviewGreedyExtras,
-  type PreviewOverlapShading
+  type PreviewGuidePlaneOverlap,
+  type PreviewOverlapShading,
+  type PreviewVoxelSource
 } from '../greedyMesh';
 import { alignPreviewMeshToLod, resetPreviewMeshTransform } from '../previewMeshLod';
-import { safeDisposeBufferGeometry } from './previewMeshUtils';
+import {
+  applyAddShapeOccludedPreviewTint,
+  assignSharedDualPreviewGeometry,
+  safeDisposeBufferGeometry
+} from './previewMeshUtils';
 import type { SceneSetupRefs } from './sceneSetup';
 import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
 import { PREVIEW_BORDER_RENDER_ORDER, PREVIEW_GRID_RENDER_ORDER } from './renderOrder';
@@ -236,6 +242,15 @@ function createGlassShadowDepthMaterial(
   return depthMat;
 }
 
+function previewVoxelAt(
+  source: PreviewVoxelSource,
+  x: number,
+  y: number,
+  z: number
+): Voxel {
+  return typeof source === 'function' ? source(x, y, z) : source;
+}
+
 export function createMeshManager(
   refs: SceneSetupRefs,
   getOptions: () => MeshManagerOptions,
@@ -249,8 +264,26 @@ export function createMeshManager(
     selectionGroup,
     previewMesh,
     previewMaterial,
+    previewOccludedMesh,
+    previewOccludedMaterial,
     isWebGPU
   } = refs;
+
+  const previewOccludedPlaceholderGeometry = (() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0, 0, 0, 0], 3));
+    g.setIndex([0, 1, 2]);
+    return g;
+  })();
+
+  /** Stop sharing BufferGeometry between stroke preview meshes before disposing or swapping. */
+  function breakPreviewOccludedSharedGeometry(): void {
+    if (!previewOccludedMesh) return;
+    previewOccludedMesh.visible = false;
+    if (previewOccludedMesh.geometry === previewMesh.geometry) {
+      previewOccludedMesh.geometry = previewOccludedPlaceholderGeometry;
+    }
+  }
 
   let meshWorker: Worker | null = null;
   let meshRebuildGen = 0;
@@ -1016,12 +1049,18 @@ export function createMeshManager(
 
   function previewGreedyExtras(previewOpts?: {
     occlusionVoxels?: Map<string, Voxel>;
+    planeOverlap?: PreviewGuidePlaneOverlap;
+    /** When set (e.g. squishy / add-shape parity), overrides global AO for this preview only. */
+    previewAoStrength?: 0 | 1 | 2;
   }): PreviewGreedyExtras {
-    const aoStrength = getOptions().aoStrength as 0 | 1 | 2;
+    const aoStrength =
+      previewOpts?.previewAoStrength ?? (getOptions().aoStrength as 0 | 1 | 2);
     const occ = previewOpts?.occlusionVoxels;
+    const planeOverlap = previewOpts?.planeOverlap;
     return {
       aoStrength,
-      ...(occ && occ.size > 0 ? { occlusionVoxels: occ } : {})
+      ...(occ && occ.size > 0 ? { occlusionVoxels: occ } : {}),
+      ...(planeOverlap ? { planeOverlap } : {})
     };
   }
 
@@ -1054,15 +1093,21 @@ export function createMeshManager(
     const wz = bounds.maxZ - bounds.minZ + 1;
     if (wx <= 0 || wy <= 0 || wz <= 0) {
       previewMesh.visible = false;
+      if (previewOccludedMesh) {
+        breakPreviewOccludedSharedGeometry();
+        resetPreviewMeshTransform(previewOccludedMesh);
+      }
       if (previewGridLines) previewGridLines.visible = false;
       hideSquishyPreviewShellEdges();
       return;
     }
     previewMesh.visible = false;
     resetPreviewMeshTransform(previewMesh);
+    if (previewOccludedMesh) resetPreviewMeshTransform(previewOccludedMesh);
     previewMaterial.vertexColors = false;
     previewMaterial.needsUpdate = true;
     previewMaterial.color.setHex(voxel.color & 0xffffff);
+    breakPreviewOccludedSharedGeometry();
     const prevPreviewGeo = previewMesh.geometry;
 
     let nextGeo: THREE.BufferGeometry;
@@ -1093,23 +1138,30 @@ export function createMeshManager(
     hideSquishyPreviewShellEdges();
   }
 
+  type StrokePreviewOpts = {
+    showGridOverlay?: boolean;
+    solidAsPlaced?: boolean;
+    occlusionVoxels?: Map<string, Voxel>;
+    planeOverlap?: PreviewGuidePlaneOverlap;
+    previewAoStrength?: 0 | 1 | 2;
+    /** Squishy metaball voxelization: shell edge lines when soft grid is hidden. */
+    squishyVoxelShellEdges?: boolean;
+  };
+
   function updatePreviewMesh(
     positions: [number, number, number][],
-    voxel: Voxel,
+    voxel: PreviewVoxelSource,
     existingVoxels?: Map<string, Voxel>,
     overlapShading: PreviewOverlapShading = 'invert',
-    previewOpts?: {
-      showGridOverlay?: boolean;
-      solidAsPlaced?: boolean;
-      occlusionVoxels?: Map<string, Voxel>;
-      /** Squishy metaball voxelization: shell edge lines when soft grid is hidden. */
-      squishyVoxelShellEdges?: boolean;
-    }
+    previewOpts?: StrokePreviewOpts
   ) {
-    if (!previewMesh || !previewMaterial) return;
+    if (!previewMesh || !previewMaterial || !previewOccludedMesh || !previewOccludedMaterial) return;
     if (positions.length === 0) {
       previewMesh.visible = false;
+      previewOccludedMesh.visible = false;
+      breakPreviewOccludedSharedGeometry();
       resetPreviewMeshTransform(previewMesh);
+      resetPreviewMeshTransform(previewOccludedMesh);
       previewMaterial.vertexColors = true;
       previewMaterial.color.setHex(0xffffff);
       applyPreviewSurfaceStyle('ghost');
@@ -1118,11 +1170,14 @@ export function createMeshManager(
       return;
     }
     previewMesh.visible = false;
+    previewOccludedMesh.visible = false;
     resetPreviewMeshTransform(previewMesh);
+    resetPreviewMeshTransform(previewOccludedMesh);
     previewMaterial.vertexColors = true;
     previewMaterial.needsUpdate = true;
     previewMaterial.color.setHex(0xffffff);
-    applyPreviewSurfaceStyle(previewOpts?.solidAsPlaced ? 'solidPlaced' : 'ghost');
+    const solidPlaced = previewOpts?.solidAsPlaced === true;
+    applyPreviewSurfaceStyle(solidPlaced ? 'solidPlaced' : 'ghost');
     const geo = buildPreviewGeometry(
       positions,
       voxel,
@@ -1132,9 +1187,26 @@ export function createMeshManager(
     );
     if (geo) {
       const prevPreviewGeo = previewMesh.geometry;
-      previewMesh.geometry = geo;
-      safeDisposeBufferGeometry(prevPreviewGeo, isWebGPU);
-      previewMesh.visible = true;
+      if (solidPlaced) {
+        breakPreviewOccludedSharedGeometry();
+        previewMesh.geometry = geo;
+        if (prevPreviewGeo && prevPreviewGeo !== geo) {
+          safeDisposeBufferGeometry(prevPreviewGeo, isWebGPU);
+        }
+        previewMesh.visible = true;
+      } else {
+        const [ox, oy, oz] = positions[0]!;
+        applyAddShapeOccludedPreviewTint(
+          previewVoxelAt(voxel, ox, oy, oz).color & 0xffffff,
+          previewOccludedMaterial
+        );
+        assignSharedDualPreviewGeometry(
+          previewMesh,
+          previewOccludedMesh,
+          geo,
+          (g) => safeDisposeBufferGeometry(g, isWebGPU)
+        );
+      }
       if (previewOpts?.showGridOverlay === false) {
         if (previewGridLines) previewGridLines.visible = false;
       } else {
@@ -1150,6 +1222,8 @@ export function createMeshManager(
       }
     } else {
       previewMesh.visible = false;
+      previewOccludedMesh.visible = false;
+      breakPreviewOccludedSharedGeometry();
       applyPreviewSurfaceStyle('ghost');
       if (previewGridLines) previewGridLines.visible = false;
       hideSquishyPreviewShellEdges();
@@ -1164,37 +1238,52 @@ export function createMeshManager(
     stride: number,
     min: [number, number, number],
     gridBounds: SelectionBounds,
-    previewOpts?: {
-      showGridOverlay?: boolean;
-      solidAsPlaced?: boolean;
-      occlusionVoxels?: Map<string, Voxel>;
-      squishyVoxelShellEdges?: boolean;
-    }
+    previewOpts?: StrokePreviewOpts
   ) {
-    if (!previewMesh || !previewMaterial) return;
+    if (!previewMesh || !previewMaterial || !previewOccludedMesh || !previewOccludedMaterial) return;
     const geo = buildPreviewGeometryFromVoxelMap(
       coarseMap,
       existingVoxels ?? new Map(),
       overlapShading,
-      previewGreedyExtras()
+      previewGreedyExtras(previewOpts)
     );
     if (!geo) {
       previewMesh.visible = false;
+      previewOccludedMesh.visible = false;
+      breakPreviewOccludedSharedGeometry();
       applyPreviewSurfaceStyle('ghost');
       if (previewGridLines) previewGridLines.visible = false;
       hideSquishyPreviewShellEdges();
       return;
     }
     previewMesh.visible = false;
+    previewOccludedMesh.visible = false;
     previewMaterial.vertexColors = true;
     previewMaterial.needsUpdate = true;
     previewMaterial.color.setHex(0xffffff);
-    applyPreviewSurfaceStyle(previewOpts?.solidAsPlaced ? 'solidPlaced' : 'ghost');
+    const solidPlaced = previewOpts?.solidAsPlaced === true;
+    applyPreviewSurfaceStyle(solidPlaced ? 'solidPlaced' : 'ghost');
+    const tintVoxel = coarseMap.values().next().value;
+    const tintColor = (tintVoxel?.color ?? 0xffffff) & 0xffffff;
     const prevPreviewGeo = previewMesh.geometry;
-    previewMesh.geometry = geo;
-    safeDisposeBufferGeometry(prevPreviewGeo, isWebGPU);
-    previewMesh.visible = true;
+    if (solidPlaced) {
+      breakPreviewOccludedSharedGeometry();
+      previewMesh.geometry = geo;
+      if (prevPreviewGeo && prevPreviewGeo !== geo) {
+        safeDisposeBufferGeometry(prevPreviewGeo, isWebGPU);
+      }
+      previewMesh.visible = true;
+    } else {
+      applyAddShapeOccludedPreviewTint(tintColor, previewOccludedMaterial);
+      assignSharedDualPreviewGeometry(
+        previewMesh,
+        previewOccludedMesh,
+        geo,
+        (g) => safeDisposeBufferGeometry(g, isWebGPU)
+      );
+    }
     alignPreviewMeshToLod(previewMesh, stride, min);
+    alignPreviewMeshToLod(previewOccludedMesh, stride, min);
     if (previewOpts?.showGridOverlay === false) {
       if (previewGridLines) previewGridLines.visible = false;
     } else {

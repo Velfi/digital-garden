@@ -19,6 +19,11 @@ import {
   clampQuarterTurn
 } from './shapes';
 import {
+  applyLatticeTransform,
+  resolveLatticeScaleVec,
+  type LatticeAxis
+} from './latticeTransform';
+import {
   cloneVoxels as cloneVoxelsImpl,
   serializeVoxels,
   deserializeVoxels,
@@ -346,8 +351,8 @@ export const modalRequest = writable<
 >(null);
 export const addPanelStore = writable<AddPanelState>({ ...defaultAddPanel });
 
-/** Move vs rotate rings on the in-scene transform gizmo (selection / add-shape placement). */
-export type SelectionGizmoMode = 'move' | 'rotate';
+/** Move vs rotate vs uniform scale on the in-scene transform gizmo (selection / add-shape placement). */
+export type SelectionGizmoMode = 'move' | 'rotate' | 'scale';
 export const selectionGizmoMode = writable<SelectionGizmoMode>('move');
 
 export type StampRotation = { rotX: number; rotY: number; rotZ: number };
@@ -578,180 +583,92 @@ export function shiftVoxelsAndSelection(dx: number, dy: number, dz: number): voi
   });
 }
 
-/**
- * Scale the whole model by 2× about the origin: each voxel at (x,y,z) becomes a 2×2×2 block
- * with the same color, occupying [2x,2x+1]×[2y,2y+1]×[2z,2z+1]. Selection is scaled the same way.
- */
-export function scaleProjectBy2(): void {
-  const v = get(voxels);
-  if (v.size === 0) return;
-  commitUndoAfter(() => {
-    const next = new Map<string, Voxel>();
-    for (const [key, col] of v) {
-      const [x, y, z] = parseCoordKey(key);
-      const bx = 2 * x;
-      const by = 2 * y;
-      const bz = 2 * z;
-      for (let dx = 0; dx < 2; dx++) {
-        for (let dy = 0; dy < 2; dy++) {
-          for (let dz = 0; dz < 2; dz++) {
-            next.set(coordKey(bx + dx, by + dy, bz + dz), col);
-          }
-        }
-      }
-    }
-    const sel = get(selection);
-    const nextSel = new Map<string, Voxel>();
-    for (const [key, col] of sel) {
-      const [x, y, z] = parseCoordKey(key);
-      const bx = 2 * x;
-      const by = 2 * y;
-      const bz = 2 * z;
-      for (let dx = 0; dx < 2; dx++) {
-        for (let dy = 0; dy < 2; dy++) {
-          for (let dz = 0; dz < 2; dz++) {
-            nextSel.set(coordKey(bx + dx, by + dy, bz + dz), col);
-          }
-        }
-      }
-    }
-    const positions = [...next.keys()].map((k) => parseCoordKey(k));
-    ensureGridFitsPositions(positions);
-    voxels.set(next);
-    recomputeGlowVoxelCountFromMap(next);
-    selection.set(nextSel);
-  });
+type LatticeTransformConfig = {
+  axis?: LatticeAxis;
+  angleRad?: number;
+  scale?: number;
+  scalePerAxis?: [number, number, number];
+};
+
+function shouldMergeLatticeDuplicatesFromConfig(config: LatticeTransformConfig): boolean {
+  const angleRad = config.angleRad ?? 0;
+  if (Math.abs(angleRad) > 1e-9) return true;
+  if (config.scalePerAxis) return Math.min(...config.scalePerAxis) < 1 - 1e-9;
+  return (config.scale ?? 1) < 1;
 }
 
-/**
- * Scale the whole model by ½ about the origin: voxel at (x,y,z) maps to
- * (⌊x/2⌋, ⌊y/2⌋, ⌊z/2⌋). When several voxels merge into one cell, the voxel at the
- * lexicographically smallest (x,y,z) among them wins. Selection is scaled the same way.
- */
-export function scaleProjectByHalf(): void {
-  const v = get(voxels);
-  if (v.size === 0) return;
-  commitUndoAfter(() => {
-    const groups = new Map<string, { x: number; y: number; z: number; vx: Voxel }[]>();
-    for (const [key, vx] of v) {
-      const [x, y, z] = parseCoordKey(key);
-      const ix = Math.floor(x / 2);
-      const iy = Math.floor(y / 2);
-      const iz = Math.floor(z / 2);
-      const dk = coordKey(ix, iy, iz);
-      let arr = groups.get(dk);
-      if (!arr) {
-        arr = [];
-        groups.set(dk, arr);
-      }
-      arr.push({ x, y, z, vx });
-    }
-    const next = new Map<string, Voxel>();
-    for (const [dk, arr] of groups) {
-      arr.sort((a, b) => a.x - b.x || a.y - b.y || a.z - b.z);
-      next.set(dk, arr[0]!.vx);
-    }
-    const sel = get(selection);
-    const selGroups = new Map<string, { x: number; y: number; z: number; col: Voxel }[]>();
-    for (const [key, col] of sel) {
-      const [x, y, z] = parseCoordKey(key);
-      const dk = coordKey(Math.floor(x / 2), Math.floor(y / 2), Math.floor(z / 2));
-      let arr = selGroups.get(dk);
-      if (!arr) {
-        arr = [];
-        selGroups.set(dk, arr);
-      }
-      arr.push({ x, y, z, col });
-    }
-    const nextSel = new Map<string, Voxel>();
-    for (const [dk, arr] of selGroups) {
-      arr.sort((a, b) => a.x - b.x || a.y - b.y || a.z - b.z);
-      nextSel.set(dk, arr[0]!.col);
-    }
-    const positions = [...next.keys()].map((k) => parseCoordKey(k));
-    ensureGridFitsPositions(positions);
-    voxels.set(next);
-    recomputeGlowVoxelCountFromMap(next);
-    selection.set(nextSel);
-  });
-}
-
-/**
- * Rotate the whole model (visible voxels + selection) by 90° steps about the voxel bounding-box center.
- * No-op if rounding would merge two voxels or two selection cells, or if a voxel would land on an
- * uninvolved solid (same rules as the selection rotate gizmo).
- */
-export function rotateProjectQuarterTurns(axis: 0 | 1 | 2, deltaQuarters: number): void {
-  let q = deltaQuarters % 4;
-  if (q < 0) q += 4;
-  if (q === 0) return;
-
+export function transformProjectLatticeTransform(config: LatticeTransformConfig): void {
   const v = get(voxels);
   const sel = get(selection);
   if (v.size === 0) return;
-
   const pivot = getVoxelCenter(v);
   if (!pivot) return;
-
-  const rawRotatedKey = (key: string) => {
-    const [x, y, z] = parseCoordKey(key);
-    const rel: [number, number, number] = [x - pivot[0], y - pivot[1], z - pivot[2]];
-    const [rx, ry, rz] = rotateVectorByAxisQuarters(rel, axis, q);
-    return coordKey(
-      Math.round(pivot[0] + rx),
-      Math.round(pivot[1] + ry),
-      Math.round(pivot[2] + rz)
-    );
-  };
-
   const allKeys = [...new Set([...v.keys(), ...sel.keys()])];
-  const rawKeys = allKeys.map((k) => rawRotatedKey(k));
-  if (new Set(rawKeys).size !== rawKeys.length) return;
-
-  const provisional = new Map<string, Voxel>();
-  const dummy: Voxel = { color: 0, material: 'plastic' };
-  for (let i = 0; i < rawKeys.length; i++) {
-    provisional.set(rawKeys[i]!, dummy);
+  const allEntries = allKeys.map((key) => ({ key, value: key }));
+  const mapped = applyLatticeTransform(allEntries, {
+    pivot,
+    axis: config.axis,
+    angleRad: config.angleRad,
+    scale: config.scale,
+    scalePerAxis: config.scalePerAxis,
+    allowMergeOnDuplicate: shouldMergeLatticeDuplicatesFromConfig(config)
+  });
+  if (!mapped.ok) return;
+  const voxelSources = new Map(v.entries());
+  const next = new Map<string, Voxel>();
+  for (const entry of mapped.entries) {
+    const col = voxelSources.get(entry.sourceKey);
+    if (col !== undefined) next.set(entry.destKey, col);
   }
-  const pivotAfter = getVoxelCenter(provisional);
-  if (!pivotAfter) return;
-
-  const tx = Math.round(pivot[0] - pivotAfter[0]);
-  const ty = Math.round(pivot[1] - pivotAfter[1]);
-  const tz = Math.round(pivot[2] - pivotAfter[2]);
-
-  const finalKey = (key: string) => {
-    const rk = rawRotatedKey(key);
-    const [x, y, z] = parseCoordKey(rk);
-    return coordKey(x + tx, y + ty, z + tz);
-  };
-
-  const newSelKeys = allKeys.map((k) => finalKey(k));
-  if (new Set(newSelKeys).size !== newSelKeys.length) return;
-
-  const sourceKeys = new Set(v.keys());
-  const toMove: [string, Voxel][] = [...v.entries()];
-  const destKeys = toMove.map(([key]) => finalKey(key));
-
-  for (const nk of destKeys) {
-    if (v.has(nk) && !sourceKeys.has(nk)) return;
+  const nextSel = new Map<string, Voxel>();
+  for (const entry of mapped.entries) {
+    const selCol = sel.get(entry.sourceKey);
+    if (selCol !== undefined) nextSel.set(entry.destKey, selCol);
   }
-
   commitUndoAfter(() => {
-    const next = new Map<string, Voxel>();
-    for (let i = 0; i < toMove.length; i++) {
-      next.set(destKeys[i]!, toMove[i]![1]);
-    }
     ensureGridFitsPositions([...next.keys()].map((k) => parseCoordKey(k)));
     voxels.set(next);
     recomputeGlowVoxelCountFromMap(next);
-    const newSel = new Map<string, Voxel>();
-    for (let i = 0; i < allKeys.length; i++) {
-      const col = sel.get(allKeys[i]!);
-      if (col !== undefined) newSel.set(newSelKeys[i]!, col);
-    }
-    selection.set(newSel);
+    selection.set(nextSel);
   });
+}
+
+/** Scale the whole model by 2× around the model pivot (nearest-neighbor fill when upscaling). */
+export function scaleProjectBy2(): void {
+  transformProjectLatticeTransform({ scale: 2 });
+}
+
+/** Scale the whole model by ½ around the model pivot with deterministic merge on collisions. */
+export function scaleProjectByHalf(): void {
+  transformProjectLatticeTransform({ scale: 0.5 });
+}
+
+/** Scale the whole model around bbox center with integer lattice resampling. */
+export function scaleProjectUniform(scale: number): void {
+  if (!Number.isFinite(scale) || scale <= 0) return;
+  transformProjectLatticeTransform({ scale });
+}
+
+/** Rotate the whole model around bbox center by arbitrary radians around world axis. */
+export function rotateProjectByAngle(axis: LatticeAxis, angleRad: number): void {
+  if (!Number.isFinite(angleRad) || Math.abs(angleRad) < 1e-9) return;
+  transformProjectLatticeTransform({ axis, angleRad, scale: 1 });
+}
+
+function mirrorScalePerAxis(axis: LatticeAxis): [number, number, number] {
+  if (axis === 0) return [-1, 1, 1];
+  if (axis === 1) return [1, -1, 1];
+  return [1, 1, -1];
+}
+
+/** Mirror the whole model across the plane through the model bbox center perpendicular to `axis`. */
+export function mirrorProjectAcrossAxis(axis: LatticeAxis): void {
+  transformProjectLatticeTransform({ scalePerAxis: mirrorScalePerAxis(axis) });
+}
+
+/** Backward-compatible quarter-turn API. */
+export function rotateProjectQuarterTurns(axis: 0 | 1 | 2, deltaQuarters: number): void {
+  rotateProjectByAngle(axis, deltaQuarters * (Math.PI / 2));
 }
 
 /** Shift only the selected voxels (and the selection). Call when selection is active. */
@@ -1096,85 +1013,74 @@ export function applySelectionTranslationAlongAxis(axis: 0 | 1 | 2, steps: numbe
   else applySelectionTranslationInStroke(0, 0, steps);
 }
 
-/**
- * Rigid 90° rotation of selected keys (and occupied voxels) about the selection bounding-box center
- * (`getSelectionCenter`). After per-voxel rounding, an integer translation recenters the selection so
- * its bbox center matches the pre-rotation center (avoids a 1-voxel “slide” common with round-alone).
- * Skips if rounding + recenter would collapse two voxels onto one cell or intrude on non-selected solids.
- */
-export function applySelectionRotationInStroke(axis: 0 | 1 | 2, deltaQuarters: number): void {
+/** Lattice rotate/scale selected keys (and occupied voxels) around selection center. */
+export function applySelectionLatticeTransformInStroke(config: LatticeTransformConfig): void {
   try {
-    let q = deltaQuarters % 4;
-    if (q < 0) q += 4;
-    if (q === 0) return;
-
     const sel = get(selection);
+    if (sel.size === 0) return;
     const pivot = getSelectionCenter(sel);
     if (!pivot) return;
-
-    const rawRotatedKey = (key: string) => {
-      const [x, y, z] = parseCoordKey(key);
-      const rel: [number, number, number] = [x - pivot[0], y - pivot[1], z - pivot[2]];
-      const [rx, ry, rz] = rotateVectorByAxisQuarters(rel, axis, q);
-      return coordKey(
-        Math.round(pivot[0] + rx),
-        Math.round(pivot[1] + ry),
-        Math.round(pivot[2] + rz)
-      );
-    };
-
     const selEntries = [...sel.entries()];
-    const rawKeys = selEntries.map(([k]) => rawRotatedKey(k));
-    if (new Set(rawKeys).size !== rawKeys.length) return;
-
-    const provisional = new Map<string, Voxel>();
-    for (let i = 0; i < selEntries.length; i++) {
-      provisional.set(rawKeys[i], selEntries[i][1]);
-    }
-    const pivotAfter = getSelectionCenter(provisional);
-    if (!pivotAfter) return;
-
-    const tx = Math.round(pivot[0] - pivotAfter[0]);
-    const ty = Math.round(pivot[1] - pivotAfter[1]);
-    const tz = Math.round(pivot[2] - pivotAfter[2]);
-
-    const newSelKeys = rawKeys.map((k) => {
-      const [x, y, z] = parseCoordKey(k);
-      return coordKey(x + tx, y + ty, z + tz);
-    });
-    if (new Set(newSelKeys).size !== newSelKeys.length) return;
+    const mappedSel = applyLatticeTransform(
+      selEntries.map(([key, col]) => ({ key, value: col })),
+      {
+        pivot,
+        axis: config.axis,
+        angleRad: config.angleRad,
+        scale: config.scale,
+        scalePerAxis: config.scalePerAxis,
+        allowMergeOnDuplicate: shouldMergeLatticeDuplicatesFromConfig(config)
+      }
+    );
+    if (!mappedSel.ok) return;
 
     const v = get(voxels);
-    const toMove: [string, Voxel][] = [];
+    const toMove: Array<{ sourceKey: string; destKey: string; col: Voxel }> = [];
+    const occupiedSelectionKeys = new Set<string>();
     for (const [key] of sel) {
+      if (v.has(key)) occupiedSelectionKeys.add(key);
+    }
+    for (const entry of mappedSel.entries) {
+      const key = entry.sourceKey;
       const col = v.get(key);
-      if (col !== undefined) toMove.push([key, col]);
+      if (col !== undefined) toMove.push({ sourceKey: key, destKey: entry.destKey, col });
     }
 
-    const sourceKeys = new Set(toMove.map((t) => t[0]));
-    const destKeys = toMove.map(([key]) => {
-      const rk = rawRotatedKey(key);
-      const [x, y, z] = parseCoordKey(rk);
-      return coordKey(x + tx, y + ty, z + tz);
-    });
+    const sourceKeys = occupiedSelectionKeys;
+    const destKeys = toMove.map((t) => t.destKey);
 
-    for (const nk of destKeys) {
-      if (v.has(nk) && !sourceKeys.has(nk)) return;
+    const maxScaleFactor = Math.max(
+      ...resolveLatticeScaleVec({
+        pivot,
+        scale: config.scale,
+        scalePerAxis: config.scalePerAxis,
+        allowMergeOnDuplicate: shouldMergeLatticeDuplicatesFromConfig(config)
+      })
+    );
+    const angleRad = config.angleRad ?? 0;
+    const scaleUpExpandsFootprint = maxScaleFactor > 1 + 1e-9;
+    /** NN rotation / hole-fill can target many cells; requiring empty neighbors made gizmo + menu no-op for typical selections. */
+    const latticeRotates = Math.abs(angleRad) > 1e-9;
+    const skipIntrusionCheck = scaleUpExpandsFootprint || latticeRotates;
+    if (!skipIntrusionCheck) {
+      for (const nk of destKeys) {
+        if (v.has(nk) && !sourceKeys.has(nk)) return;
+      }
     }
 
     if (toMove.length > 0) {
       ensureGridFitsPositions(destKeys.map((k) => parseCoordKey(k)));
       updateVoxelsInStroke((target) => {
-        for (const [key] of toMove) target.delete(key);
-        for (let i = 0; i < toMove.length; i++) {
-          target.set(destKeys[i], toMove[i][1]);
+        for (const sourceKey of sourceKeys) target.delete(sourceKey);
+        for (const { destKey, col } of toMove) {
+          target.set(destKey, col);
         }
       });
     }
 
     const newSel = new Map<string, Voxel>();
-    for (let i = 0; i < selEntries.length; i++) {
-      newSel.set(newSelKeys[i], selEntries[i][1]);
+    for (const entry of mappedSel.entries) {
+      newSel.set(entry.destKey, entry.value);
     }
     selection.set(newSel);
   } finally {
@@ -1182,8 +1088,65 @@ export function applySelectionRotationInStroke(axis: 0 | 1 | 2, deltaQuarters: n
   }
 }
 
-/** Returns a function that yields a voxel (color + material) per stroke cell (random color when multi-palette). */
-export function getPaintColorResolver(): () => Voxel {
+/** Backward-compatible quarter-turn selection rotate API. */
+export function applySelectionRotationInStroke(axis: 0 | 1 | 2, deltaQuarters: number): void {
+  if (deltaQuarters === 0) return;
+  applySelectionLatticeTransformInStroke({
+    axis,
+    angleRad: deltaQuarters * (Math.PI / 2),
+    scale: 1
+  });
+}
+
+/** Selection rotate by arbitrary radians around one world axis. */
+export function applySelectionRotationRadiansInStroke(axis: 0 | 1 | 2, angleRad: number): void {
+  if (!Number.isFinite(angleRad) || Math.abs(angleRad) < 1e-9) return;
+  applySelectionLatticeTransformInStroke({ axis, angleRad, scale: 1 });
+}
+
+/** Selection uniform scale around current selection center. */
+export function applySelectionScaleInStroke(scale: number): void {
+  if (!Number.isFinite(scale) || scale <= 0 || Math.abs(scale - 1) < 1e-9) return;
+  applySelectionLatticeTransformInStroke({ scale });
+}
+
+/** Per-axis scale around selection center (world X / Y / Z). */
+export function applySelectionScaleAxesInStroke(sx: number, sy: number, sz: number): void {
+  if (!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(sz)) return;
+  if (sx <= 0 || sy <= 0 || sz <= 0) return;
+  if (
+    Math.abs(sx - 1) < 1e-9 &&
+    Math.abs(sy - 1) < 1e-9 &&
+    Math.abs(sz - 1) < 1e-9
+  ) {
+    return;
+  }
+  applySelectionLatticeTransformInStroke({ scalePerAxis: [sx, sy, sz] });
+}
+
+/** Mirror selected keys (and occupied voxels on them) across the plane through selection bbox center perpendicular to `axis`. */
+export function applySelectionMirrorAcrossAxisInStroke(axis: LatticeAxis): void {
+  applySelectionLatticeTransformInStroke({ scalePerAxis: mirrorScalePerAxis(axis) });
+}
+
+export type PaintColorResolver = (x: number, y: number, z: number) => Voxel;
+
+/** Deterministic palette index for a voxel coordinate. */
+export function paintColorIndexForCoord(x: number, y: number, z: number, paletteSize: number): number {
+  if (paletteSize <= 1) return 0;
+  const xi = Math.floor(x) | 0;
+  const yi = Math.floor(y) | 0;
+  const zi = Math.floor(z) | 0;
+  let h =
+    Math.imul(xi, 0x9e3779b1) ^ Math.imul(yi, 0x85ebca6b) ^ Math.imul(zi, 0xc2b2ae35);
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x7feb352d);
+  h ^= h >>> 15;
+  return (h >>> 0) % paletteSize;
+}
+
+/** Returns a function that yields a voxel (color + material) per stroke cell. */
+export function getPaintColorResolver(): PaintColorResolver {
   const sel = get(selectedColors);
   const mat = get(voxelMaterial);
   const colors = sel.length > 0 ? sel.map(hexToInt) : [hexToInt(get(color))];
@@ -1191,8 +1154,8 @@ export function getPaintColorResolver(): () => Voxel {
     const c = colors[0]! & 0xffffff;
     return () => ({ color: c, material: mat });
   }
-  return () => ({
-    color: colors[Math.floor(Math.random() * colors.length)]! & 0xffffff,
+  return (x: number, y: number, z: number) => ({
+    color: colors[paintColorIndexForCoord(x, y, z, colors.length)]! & 0xffffff,
     material: mat
   });
 }
@@ -1220,7 +1183,7 @@ export function addShapeAt(params: AddShapeParams): void {
         }
         if (blocked) continue;
       }
-      v.set(coordKey(x, y, z), cloneVoxel(getVoxel()));
+      v.set(coordKey(x, y, z), cloneVoxel(getVoxel(x, y, z)));
     }
   });
 }

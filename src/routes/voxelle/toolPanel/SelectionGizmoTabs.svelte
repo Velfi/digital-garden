@@ -22,11 +22,22 @@
     >
       Rotate
     </button>
+    <button
+      type="button"
+      role="tab"
+      class:active={$selectionGizmoMode === 'scale'}
+      aria-selected={$selectionGizmoMode === 'scale'}
+      onclick={() => selectionGizmoMode.set('scale')}
+    >
+      Scale
+    </button>
   </div>
   <p class="gizmo-hint">
     {$selectionGizmoMode === 'move'
       ? 'Drag RGB arrows to slide along axes.'
-      : 'Drag colored rings to rotate in 90° steps around X / Y / Z.'}
+      : $selectionGizmoMode === 'rotate'
+        ? 'Drag colored rings to rotate around X / Y / Z with free angles.'
+        : 'Drag RGB boxes along ±X / ±Y / ±Z to scale on that axis.'}
   </p>
 </section>
 

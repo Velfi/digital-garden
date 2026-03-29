@@ -2,7 +2,6 @@
   import {
     addPanelStore,
     addShapeAt,
-    clampQuarterTurn,
     closeAddPanel,
     getPaintColorResolver,
     placePastePatternAt,
@@ -15,19 +14,17 @@
 
   function handleDone() {
     const s = $addPanelStore;
-    const rx = clampQuarterTurn(s.rotX);
-    const ry = clampQuarterTurn(s.rotY);
-    const rz = clampQuarterTurn(s.rotZ);
     if (s.mode === 'paste' && s.pasteEntries && s.pasteEntries.length > 0) {
-      placePastePatternAt([s.posX, s.posY, s.posZ], [rx, ry, rz], s.pasteEntries);
+      placePastePatternAt([s.posX, s.posY, s.posZ], [s.rotX, s.rotY, s.rotZ], s.pasteEntries);
     } else {
       const size = Math.max(1, Math.min(ADD_SHAPE_MAX_SIZE, Math.floor(s.size)));
+      const resolveVoxel = getPaintColorResolver();
       addShapeAt({
         position: [s.posX, s.posY, s.posZ],
-        rotation: [rx, ry, rz],
+        rotation: [s.rotX, s.rotY, s.rotZ],
         shape: s.shape,
         size,
-        getVoxel: getPaintColorResolver(),
+        getVoxel: (x, y, z) => resolveVoxel(x, y, z),
         overwriteIntersecting: s.overwriteIntersecting
       });
     }
@@ -57,10 +54,10 @@
     <p class="add-panel-hint">
       {#if $addPanelStore.mode === 'paste'}
         Ghost preview until Done. Drag RGB axes to move. Wheel: <kbd>Shift</kbd> / <kbd>Alt</kbd> /
-        <kbd>Shift</kbd>+<kbd>Alt</kbd> rotate X / Y / Z (90° steps). Mirror symmetry applies on Done.
+        <kbd>Shift</kbd>+<kbd>Alt</kbd> rotate X / Y / Z (15° steps). Mirror symmetry applies on Done.
       {:else}
         Ghost preview only until Done. Drag RGB axes to move. Wheel: <kbd>Ctrl</kbd> size,
-        <kbd>Shift</kbd>/<kbd>Alt</kbd>/<kbd>Shift</kbd>+<kbd>Alt</kbd> rotate X / Y / Z (90° steps).
+        <kbd>Shift</kbd>/<kbd>Alt</kbd>/<kbd>Shift</kbd>+<kbd>Alt</kbd> rotate X / Y / Z (15° steps).
       {/if}
     </p>
     <div class="add-panel-row">
@@ -88,30 +85,24 @@
       <span class="add-panel-label">Rot</span>
       <input
         type="number"
-        min="0"
-        max="3"
         step="1"
         value={$addPanelStore.rotX}
         oninput={(e) => update('rotX', Number((e.target as HTMLInputElement).value))}
-        title="X (0–3 = 0°–270°)"
+        title="X degrees"
       />
       <input
         type="number"
-        min="0"
-        max="3"
         step="1"
         value={$addPanelStore.rotY}
         oninput={(e) => update('rotY', Number((e.target as HTMLInputElement).value))}
-        title="Y"
+        title="Y degrees"
       />
       <input
         type="number"
-        min="0"
-        max="3"
         step="1"
         value={$addPanelStore.rotZ}
         oninput={(e) => update('rotZ', Number((e.target as HTMLInputElement).value))}
-        title="Z"
+        title="Z degrees"
       />
     </div>
     {#if $addPanelStore.mode === 'shape'}

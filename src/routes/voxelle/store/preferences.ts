@@ -31,8 +31,6 @@ export type VoxellePreferences = {
   showMovementDeltaHint: boolean;
   /** Line + numeric label at the original centroid while moving the selection with the move gizmo. */
   showDragDeltaHint: boolean;
-  /** When true, move/rotate gizmos skip occluded-pass tint and draw fully on top of the scene. */
-  gizmosAlwaysOnTop: boolean;
   /** HDR → display tone mapping for the main viewport (and bloom OutputPass). */
   toneMapping: ToneMappingPreference;
   /**
@@ -59,7 +57,6 @@ export type VoxellePreferences = {
 const DEFAULTS: VoxellePreferences = {
   showMovementDeltaHint: false,
   showDragDeltaHint: true,
-  gizmosAlwaysOnTop: false,
   toneMapping: DEFAULT_TONE_MAPPING_PREFERENCE,
   rendererBackend: DEFAULT_RENDERER_BACKEND,
   showFpsCounter: false,
@@ -86,8 +83,6 @@ export function loadPreferences(): VoxellePreferences {
           : DEFAULTS.showMovementDeltaHint,
       showDragDeltaHint:
         typeof o.showDragDeltaHint === 'boolean' ? o.showDragDeltaHint : DEFAULTS.showDragDeltaHint,
-      gizmosAlwaysOnTop:
-        typeof o.gizmosAlwaysOnTop === 'boolean' ? o.gizmosAlwaysOnTop : DEFAULTS.gizmosAlwaysOnTop,
       toneMapping: isToneMappingPreference(o.toneMapping) ? o.toneMapping : DEFAULTS.toneMapping,
       rendererBackend: isRendererBackendPreference(o.rendererBackend)
         ? o.rendererBackend

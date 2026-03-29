@@ -15,8 +15,6 @@ export type SquishyGizmoDeps = {
   getPointer: () => THREE.Vector2;
   getRaycaster: () => THREE.Raycaster;
   getContainer: () => HTMLDivElement | null;
-  /** When true, skip dual visible/occluded passes and draw handles on top of the scene. */
-  getGizmosAlwaysOnTop: () => boolean;
   getSelected: () => SquishyGizmoSelected | null;
   /** When true (e.g. hold P for voxel-only preview), hide handles so metaball chrome stays off-screen. */
   getHideMetaballChrome?: () => boolean;
@@ -43,9 +41,7 @@ const SCALE_CONE_H = 0.34;
 /** World scale for XYZ move arrows vs scale handle (user-requested readability). */
 const AXIS_ARROW_SIZE_MULT = 5;
 
-const GIZMO_RENDER_ORDER_VISIBLE = 1001;
 const GIZMO_RENDER_ORDER_ON_TOP = 9999;
-const GIZMO_RENDER_ORDER_OCCLUDED = 1000;
 
 const DIAG_ALIGN = new THREE.Vector3(1, 1, 1).normalize();
 
@@ -67,12 +63,10 @@ function buildAxisArrowArm(
   const cone = new THREE.Mesh(coneGeom, matVis);
   const shaftOcc = new THREE.Mesh(shaftGeom, matOcc);
   const coneOcc = new THREE.Mesh(coneGeom, matOcc);
-  shaft.renderOrder = GIZMO_RENDER_ORDER_VISIBLE;
-  cone.renderOrder = GIZMO_RENDER_ORDER_VISIBLE;
-  shaftOcc.renderOrder = GIZMO_RENDER_ORDER_OCCLUDED;
-  coneOcc.renderOrder = GIZMO_RENDER_ORDER_OCCLUDED;
-  shaftOcc.userData.voxelleGizmoOccluded = true;
-  coneOcc.userData.voxelleGizmoOccluded = true;
+  shaft.renderOrder = GIZMO_RENDER_ORDER_ON_TOP;
+  cone.renderOrder = GIZMO_RENDER_ORDER_ON_TOP;
+  shaftOcc.visible = false;
+  coneOcc.visible = false;
   shaftOcc.raycast = () => {};
   coneOcc.raycast = () => {};
 
@@ -133,12 +127,10 @@ function buildScaleDoubleArrow(
     const cone = new THREE.Mesh(coneGeom, matVis);
     const shaftOcc = new THREE.Mesh(shaftGeom, matOcc);
     const coneOcc = new THREE.Mesh(coneGeom, matOcc);
-    shaft.renderOrder = GIZMO_RENDER_ORDER_VISIBLE;
-    cone.renderOrder = GIZMO_RENDER_ORDER_VISIBLE;
-    shaftOcc.renderOrder = GIZMO_RENDER_ORDER_OCCLUDED;
-    coneOcc.renderOrder = GIZMO_RENDER_ORDER_OCCLUDED;
-    shaftOcc.userData.voxelleGizmoOccluded = true;
-    coneOcc.userData.voxelleGizmoOccluded = true;
+    shaft.renderOrder = GIZMO_RENDER_ORDER_ON_TOP;
+    cone.renderOrder = GIZMO_RENDER_ORDER_ON_TOP;
+    shaftOcc.visible = false;
+    coneOcc.visible = false;
     shaftOcc.raycast = () => {};
     coneOcc.raycast = () => {};
 
@@ -179,7 +171,7 @@ export function createSquishyGizmoController(deps: SquishyGizmoDeps) {
       color,
       transparent: true,
       opacity,
-      depthTest: true,
+      depthTest: false,
       depthWrite: false
     });
   }
@@ -255,35 +247,8 @@ export function createSquishyGizmoController(deps: SquishyGizmoDeps) {
   let draggingKind: SquishyHandleKind | null = null;
   let dragStartState: SquishyGizmoSelected | null = null;
   let hoverKind: SquishyHandleKind | null = null;
-  let appliedGizmosAlwaysOnTop: boolean | undefined;
-
-  function syncGizmoAlwaysOnTopStyle() {
-    const onTop = deps.getGizmosAlwaysOnTop();
-    if (onTop === appliedGizmosAlwaysOnTop) return;
-    appliedGizmosAlwaysOnTop = onTop;
-    group.traverse((obj) => {
-      if (obj.userData.voxelleGizmoOccluded === true) {
-        obj.visible = !onTop;
-        return;
-      }
-      if (!(obj instanceof THREE.Mesh)) return;
-      const mat = obj.material;
-      if (!(mat instanceof THREE.MeshBasicMaterial)) return;
-      if (onTop) {
-        mat.depthTest = false;
-        mat.depthFunc = THREE.LessEqualDepth;
-        obj.renderOrder = GIZMO_RENDER_ORDER_ON_TOP;
-      } else {
-        mat.depthTest = true;
-        mat.depthFunc = THREE.LessEqualDepth;
-        obj.renderOrder = GIZMO_RENDER_ORDER_VISIBLE;
-      }
-      mat.needsUpdate = true;
-    });
-  }
 
   function sync() {
-    syncGizmoAlwaysOnTopStyle();
     const selected = deps.getSelected();
     const camera = deps.getCamera();
     if (!selected || !camera || deps.getHideMetaballChrome?.()) {

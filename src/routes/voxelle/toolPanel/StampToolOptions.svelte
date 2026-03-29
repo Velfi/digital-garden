@@ -8,7 +8,6 @@
     stampPunchOffsetFromNormal,
     punchDepth,
     PUNCH_DEPTH_MAX,
-    clampQuarterTurn,
     modalRequest,
     type StampRotation
   } from '../store/index';
@@ -77,40 +76,31 @@
       <span class="tool-panel-label">Rot</span>
       <input
         type="number"
-        min="0"
-        max="3"
         step="1"
         value={$stampRotation.rotX}
-        oninput={(e) =>
-          updateStamp('rotX', clampQuarterTurn(Number((e.target as HTMLInputElement).value)))}
-        title="X (0–3 = 0°–270°)"
+        oninput={(e) => updateStamp('rotX', Number((e.target as HTMLInputElement).value))}
+        title="X degrees"
       />
       <input
         type="number"
-        min="0"
-        max="3"
         step="1"
         value={$stampRotation.rotY}
-        oninput={(e) =>
-          updateStamp('rotY', clampQuarterTurn(Number((e.target as HTMLInputElement).value)))}
-        title="Y"
+        oninput={(e) => updateStamp('rotY', Number((e.target as HTMLInputElement).value))}
+        title="Y degrees"
       />
       <input
         type="number"
-        min="0"
-        max="3"
         step="1"
         value={$stampRotation.rotZ}
-        oninput={(e) =>
-          updateStamp('rotZ', clampQuarterTurn(Number((e.target as HTMLInputElement).value)))}
-        title="Z"
+        oninput={(e) => updateStamp('rotZ', Number((e.target as HTMLInputElement).value))}
+        title="Z degrees"
       />
     </div>
     <div class="tool-panel-cross">
       <button
         type="button"
         class="cross-up"
-        onclick={() => updateStamp('rotX', clampQuarterTurn($stampRotation.rotX - 1))}
+        onclick={() => updateStamp('rotX', $stampRotation.rotX - 15)}
         title="Tilt up"
       >
         Up
@@ -118,7 +108,7 @@
       <button
         type="button"
         class="cross-down"
-        onclick={() => updateStamp('rotX', clampQuarterTurn($stampRotation.rotX + 1))}
+        onclick={() => updateStamp('rotX', $stampRotation.rotX + 15)}
         title="Tilt down"
       >
         Down
@@ -126,7 +116,7 @@
       <button
         type="button"
         class="cross-left"
-        onclick={() => updateStamp('rotY', clampQuarterTurn($stampRotation.rotY - 1))}
+        onclick={() => updateStamp('rotY', $stampRotation.rotY - 15)}
         title="Turn left"
       >
         Left
@@ -134,7 +124,7 @@
       <button
         type="button"
         class="cross-right"
-        onclick={() => updateStamp('rotY', clampQuarterTurn($stampRotation.rotY + 1))}
+        onclick={() => updateStamp('rotY', $stampRotation.rotY + 15)}
         title="Turn right"
       >
         Right
@@ -145,14 +135,14 @@
       <span class="tool-panel-label">Roll</span>
       <button
         type="button"
-        onclick={() => updateStamp('rotZ', clampQuarterTurn($stampRotation.rotZ - 1))}
+        onclick={() => updateStamp('rotZ', $stampRotation.rotZ - 15)}
         title="Roll left"
       >
         ←
       </button>
       <button
         type="button"
-        onclick={() => updateStamp('rotZ', clampQuarterTurn($stampRotation.rotZ + 1))}
+        onclick={() => updateStamp('rotZ', $stampRotation.rotZ + 15)}
         title="Roll right"
       >
         →

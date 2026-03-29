@@ -114,7 +114,7 @@ describe('clipboard', () => {
       voxels.set(new Map());
       placePastePatternAt(
         [10, 0, 0],
-        [0, 1, 0],
+        [0, 90, 0],
         [
           [0, 0, 0, 0xff0000],
           [1, 0, 0, 0x00ff00]

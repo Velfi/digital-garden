@@ -104,21 +104,42 @@ export type AddShapeParams = {
   rotation: [number, number, number];
   shape: StartShape;
   size: number;
-  getVoxel: () => Voxel;
+  getVoxel: (x: number, y: number, z: number) => Voxel;
   /** When false, only empty cells are filled (per primary + mirror keys). Default true. */
   overwriteIntersecting?: boolean;
 };
 
-/** Rotate position by quarter-turns (0–3) around origin. Order: X, Y, Z. */
+function rotateXRad([x, y, z]: [number, number, number], rad: number): [number, number, number] {
+  if (Math.abs(rad) < 1e-9) return [x, y, z];
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  return [x, y * c - z * s, y * s + z * c];
+}
+
+function rotateYRad([x, y, z]: [number, number, number], rad: number): [number, number, number] {
+  if (Math.abs(rad) < 1e-9) return [x, y, z];
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  return [x * c + z * s, y, -x * s + z * c];
+}
+
+function rotateZRad([x, y, z]: [number, number, number], rad: number): [number, number, number] {
+  if (Math.abs(rad) < 1e-9) return [x, y, z];
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  return [x * c - y * s, x * s + y * c, z];
+}
+
+/** Rotate position by Euler degrees around origin. Order: X, Y, Z. */
 export function rotatePositionAroundOrigin(
   pos: [number, number, number],
   [rx, ry, rz]: [number, number, number]
 ): [number, number, number] {
   let [x, y, z] = pos;
-  [x, y, z] = rotateX([x, y, z], rx);
-  [x, y, z] = rotateY([x, y, z], ry);
-  [x, y, z] = rotateZ([x, y, z], rz);
-  return [x, y, z];
+  [x, y, z] = rotateXRad([x, y, z], (rx * Math.PI) / 180);
+  [x, y, z] = rotateYRad([x, y, z], (ry * Math.PI) / 180);
+  [x, y, z] = rotateZRad([x, y, z], (rz * Math.PI) / 180);
+  return [Math.round(x), Math.round(y), Math.round(z)];
 }
 
 export function getShapePositionsAt(
@@ -128,13 +149,9 @@ export function getShapePositionsAt(
   if (shape === 'empty' || size < 1) return [];
   const raw = initShape(size, shape, 0);
   const [px, py, pz] = position;
-  const [rx, ry, rz] = rotation;
   const positions: [number, number, number][] = [];
   for (const key of raw.keys()) {
-    let [x, y, z] = parseCoordKey(key);
-    [x, y, z] = rotateX([x, y, z], rx);
-    [x, y, z] = rotateY([x, y, z], ry);
-    [x, y, z] = rotateZ([x, y, z], rz);
+    const [x, y, z] = rotatePositionAroundOrigin(parseCoordKey(key), rotation);
     positions.push([x + px, y + py, z + pz]);
   }
   return positions;

@@ -34,11 +34,6 @@
     savePreferences(prefs);
   }
 
-  function onGizmosAlwaysOnTopChange(checked: boolean) {
-    prefs = { ...prefs, gizmosAlwaysOnTop: checked };
-    savePreferences(prefs);
-  }
-
   function onFpsCounterChange(checked: boolean) {
     prefs = { ...prefs, showFpsCounter: checked };
     savePreferences(prefs);
@@ -120,14 +115,6 @@
           onchange={(e) => onDragDeltaHintChange(e.currentTarget.checked)}
         />
         Show selection move drag hint (line and delta at original position)
-      </label>
-      <label class="checkbox-label">
-        <input
-          type="checkbox"
-          checked={prefs.gizmosAlwaysOnTop}
-          onchange={(e) => onGizmosAlwaysOnTopChange(e.currentTarget.checked)}
-        />
-        Always render movement and rotation gizmos on top
       </label>
       <label class="checkbox-label">
         <input

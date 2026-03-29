@@ -40,7 +40,7 @@ For new tools, rendering, meshing, and preview internals, see `CONTRIBUTING.md` 
 - Coords are integer voxel positions; `gridSize` is for new-grid initialization and file format metadata
 - Colors are 24-bit hex in `Voxel.color`; select-by-color logic compares color only
 - `FaceNormal` is `[nx, ny, nz]` with components in `-1 | 0 | 1`
-- Shapes include `cube`, `orb`, `cylinder`, `hollowCube`, `plane`, `circle`, `empty`; rotation is quarter turns per axis
+- Shapes include `cube`, `orb`, `cylinder`, `hollowCube`, `plane`, `circle`, `empty`; placement rotation uses per-axis degrees
 - Most brush size sliders store `0..(MAX_BRUSH_SIZE - 1)` and map to voxel radius/size internally
 
 ## Guidelines for Changes

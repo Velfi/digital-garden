@@ -481,14 +481,15 @@ export function generateFloraVoxels(
   center: [number, number, number],
   normal: FaceNormal,
   options: GenerateFloraOptions,
-  getVoxel: () => Voxel
+  getVoxel: (x: number, y: number, z: number) => Voxel
 ): Map<string, Voxel> {
   const keys = collectFloraKeys(seed, center, normal, options);
   const sorted = [...keys].sort();
   const out = new Map<string, Voxel>();
   const jitter = clamp(options.barkJitter, 0, 1);
   for (const key of sorted) {
-    const base = cloneVoxel(getVoxel());
+    const [x, y, z] = parseCoordKey(key);
+    const base = cloneVoxel(getVoxel(x, y, z));
     out.set(key, jitter > 0 ? jitterColor(base, jitter, key, seed) : base);
   }
   return out;

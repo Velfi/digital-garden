@@ -1,6 +1,7 @@
 <script lang="ts">
   const VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT = 'voxelle:fit-camera-on-project-open';
 
+  import { get } from 'svelte/store';
   import {
     voxels,
     selection,
@@ -30,9 +31,13 @@
     deleteSelectedVoxels,
     pasteFromClipboard,
     hollowOut,
-    scaleProjectBy2,
-    scaleProjectByHalf,
-    rotateProjectQuarterTurns,
+    scaleProjectUniform,
+    rotateProjectByAngle,
+    mirrorProjectAcrossAxis,
+    applySelectionMirrorAcrossAxisInStroke,
+    runVoxelStroke,
+    applySelectionRotationRadiansInStroke,
+    applySelectionScaleInStroke,
     saveToFile,
     loadFromFile,
     importImageFromFile,
@@ -212,18 +217,71 @@
     closeMenus();
   }
 
-  function handleScaleProjectBy2() {
-    scaleProjectBy2();
+  /** Selection if any voxels are selected; otherwise whole project (needs voxels). */
+  function handleRotateDegreesPrompt() {
+    if (get(voxels).size === 0 && get(selection).size === 0) return;
+    const axisText = window.prompt('Rotate axis (X, Y, or Z)', 'Y');
+    if (!axisText) return;
+    const axisKey = axisText.trim().toUpperCase();
+    const axis: 0 | 1 | 2 | null =
+      axisKey === 'X' ? 0 : axisKey === 'Y' ? 1 : axisKey === 'Z' ? 2 : null;
+    if (axis === null) return;
+    const degText = window.prompt('Degrees (any number, can be fractional)', '15');
+    if (!degText) return;
+    const deg = Number(degText);
+    if (!Number.isFinite(deg)) return;
+    const rad = (deg * Math.PI) / 180;
+    if (get(selection).size > 0) {
+      runVoxelStroke(() => {
+        applySelectionRotationRadiansInStroke(axis, rad);
+      });
+    } else {
+      rotateProjectByAngle(axis, rad);
+    }
     closeMenus();
   }
 
-  function handleScaleProjectByHalf() {
-    scaleProjectByHalf();
+  function mirrorAcrossAxis(axis: 0 | 1 | 2) {
+    if (get(selection).size > 0) {
+      runVoxelStroke(() => {
+        applySelectionMirrorAcrossAxisInStroke(axis);
+      });
+    } else {
+      mirrorProjectAcrossAxis(axis);
+    }
+  }
+
+  function handleMirrorAcrossX() {
+    if (get(voxels).size === 0 && get(selection).size === 0) return;
+    mirrorAcrossAxis(0);
     closeMenus();
   }
 
-  function handleRotateProject(axis: 0 | 1 | 2, deltaQuarters: number) {
-    rotateProjectQuarterTurns(axis, deltaQuarters);
+  function handleMirrorAcrossY() {
+    if (get(voxels).size === 0 && get(selection).size === 0) return;
+    mirrorAcrossAxis(1);
+    closeMenus();
+  }
+
+  function handleMirrorAcrossZ() {
+    if (get(voxels).size === 0 && get(selection).size === 0) return;
+    mirrorAcrossAxis(2);
+    closeMenus();
+  }
+
+  function handleScaleByFactorPrompt() {
+    if (get(voxels).size === 0 && get(selection).size === 0) return;
+    const scaleText = window.prompt('Uniform scale (>0, can be fractional)', '1.25');
+    if (!scaleText) return;
+    const s = Number(scaleText);
+    if (!Number.isFinite(s) || s <= 0) return;
+    if (get(selection).size > 0) {
+      runVoxelStroke(() => {
+        applySelectionScaleInStroke(s);
+      });
+    } else {
+      scaleProjectUniform(s);
+    }
     closeMenus();
   }
 
@@ -672,76 +730,49 @@
         <button
           type="button"
           role="menuitem"
-          onclick={handleScaleProjectBy2}
-          disabled={$voxels.size === 0}
-          title="Each voxel becomes a 2×2×2 block (coordinates double)"
+          onclick={handleScaleByFactorPrompt}
+          disabled={$voxels.size === 0 && $selection.size === 0}
+          title="With a selection: scale selected voxels around selection center. Otherwise: scale the whole model around model center."
         >
-          Scale project up by 2×
+          Scale by factor…
         </button>
         <button
           type="button"
           role="menuitem"
-          onclick={handleScaleProjectByHalf}
-          disabled={$voxels.size === 0}
-          title="Each voxel maps to ⌊x/2⌋,⌊y/2⌋,⌊z/2⌋; merged cells keep the lexicographically smallest source voxel"
+          onclick={handleRotateDegreesPrompt}
+          disabled={$voxels.size === 0 && $selection.size === 0}
+          title="With a selection: rotate selected voxels around selection center. Otherwise: rotate the whole model around model center."
         >
-          Scale project down by 2×
+          Rotate by degrees…
         </button>
         <div class="menu-separator" role="separator"></div>
-        <span class="menu-label">Rotate 90°</span>
+        <span class="menu-label">Mirror</span>
         <button
           type="button"
           role="menuitem"
-          onclick={() => handleRotateProject(0, 1)}
-          disabled={$voxels.size === 0}
-          title="Rigid rotation about the model bounding-box center (+X right-hand rule)"
+          onclick={handleMirrorAcrossX}
+          disabled={$voxels.size === 0 && $selection.size === 0}
+          title="With a selection: mirror the selection across the YZ plane through selection center. Otherwise: mirror the whole model across the plane through model center."
         >
-          +90° around X
+          Across X (YZ plane)
         </button>
         <button
           type="button"
           role="menuitem"
-          onclick={() => handleRotateProject(0, -1)}
-          disabled={$voxels.size === 0}
-          title="Rigid rotation about the model bounding-box center"
+          onclick={handleMirrorAcrossY}
+          disabled={$voxels.size === 0 && $selection.size === 0}
+          title="With a selection: mirror the selection across the XZ plane through selection center. Otherwise: mirror the whole model across the plane through model center."
         >
-          −90° around X
+          Across Y (XZ plane)
         </button>
         <button
           type="button"
           role="menuitem"
-          onclick={() => handleRotateProject(1, 1)}
-          disabled={$voxels.size === 0}
-          title="Rigid rotation about the model bounding-box center (+Y right-hand rule)"
+          onclick={handleMirrorAcrossZ}
+          disabled={$voxels.size === 0 && $selection.size === 0}
+          title="With a selection: mirror the selection across the XY plane through selection center. Otherwise: mirror the whole model across the plane through model center."
         >
-          +90° around Y
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          onclick={() => handleRotateProject(1, -1)}
-          disabled={$voxels.size === 0}
-          title="Rigid rotation about the model bounding-box center"
-        >
-          −90° around Y
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          onclick={() => handleRotateProject(2, 1)}
-          disabled={$voxels.size === 0}
-          title="Rigid rotation about the model bounding-box center (+Z right-hand rule)"
-        >
-          +90° around Z
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          onclick={() => handleRotateProject(2, -1)}
-          disabled={$voxels.size === 0}
-          title="Rigid rotation about the model bounding-box center"
-        >
-          −90° around Z
+          Across Z (XY plane)
         </button>
       </div>
     {/if}

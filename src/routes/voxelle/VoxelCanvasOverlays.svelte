@@ -139,7 +139,7 @@
     pickAgainFauna,
     squishyHasMetaballs,
     commitSquishySession,
-    cancelSquishySession,
+    cancelSquishySession: resetSquishySession,
     ropePhase,
     commitRope,
     cancelRope,
@@ -639,11 +639,11 @@
       type="button"
       class="polygon-cancel-btn"
       onpointerdown={(e) => e.stopPropagation()}
-      onclick={() => cancelSquishySession()}
-      title="Cancel"
-      aria-label="Cancel squishy session"
+      onclick={() => resetSquishySession()}
+      title="Reset"
+      aria-label="Reset squishy session"
     >
-      Cancel
+      Reset
     </button>
   </div>
 {/if}

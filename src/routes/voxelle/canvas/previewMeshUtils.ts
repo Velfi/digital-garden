@@ -20,8 +20,8 @@ const tintScratch = new THREE.Color();
 /** Occluded-pass tint (x-ray style); used by add-shape ghost and selection gizmo materials. */
 export function previewOccludedTintInto(baseHex: number, out: THREE.Color): void {
   out.setHex(baseHex);
-  out.multiplyScalar(0.48);
-  out.lerp(new THREE.Color(0x5577ee), 0.42);
+  out.multiplyScalar(0.38);
+  out.lerp(new THREE.Color(0x5577ee), 0.48);
 }
 
 /** Occluded-pass tint for add-shape preview materials. */

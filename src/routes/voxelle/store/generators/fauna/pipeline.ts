@@ -698,12 +698,14 @@ export function generateFaunaVoxels(
   place: [number, number, number],
   normal: FaceNormal,
   options: GenerateFaunaOptions,
-  getVoxel: () => Voxel
+  getVoxel: (x: number, y: number, z: number) => Voxel
 ): Map<string, Voxel> {
   const keys = collectFaunaKeys(place, normal, options);
   const out = new Map<string, Voxel>();
-  const v = getVoxel();
-  for (const k of keys) out.set(k, cloneVoxel(v));
+  for (const k of keys) {
+    const [x, y, z] = parseCoordKey(k);
+    out.set(k, cloneVoxel(getVoxel(x, y, z)));
+  }
   return out;
 }
 

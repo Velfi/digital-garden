@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { buildGreedyMesh, getGreedyMeshFaceArea } from './greedyMesh';
+import {
+  buildGreedyMesh,
+  buildPreviewGeometry,
+  getGreedyMeshFaceArea,
+  voxelCellIntersectsWorkPlane
+} from './greedyMesh';
 import { coordKey } from './store/index';
 import { initShape } from './store/index';
 import { plasticVoxel, voxelBucketKey, type Voxel } from './voxelMaterial';
@@ -335,5 +340,54 @@ describe('buildGreedyMesh', () => {
     expect(result.has(bkey(0x00ff00))).toBe(true);
     expect(getVertexCount(result.get(bkey(0xff0000))!)).toBe(24);
     expect(getVertexCount(result.get(bkey(0x00ff00))!)).toBe(24);
+  });
+});
+
+describe('voxelCellIntersectsWorkPlane', () => {
+  const yUp = {
+    planePoint: [0, 0, 0] as [number, number, number],
+    planeNormal: [0, 1, 0] as [number, number, number]
+  };
+
+  it('detects voxel on horizontal plane through origin', () => {
+    expect(voxelCellIntersectsWorkPlane(0, 0, 0, yUp.planePoint, yUp.planeNormal)).toBe(true);
+    expect(voxelCellIntersectsWorkPlane(0, 1, 0, yUp.planePoint, yUp.planeNormal)).toBe(false);
+    expect(voxelCellIntersectsWorkPlane(0, -1, 0, yUp.planePoint, yUp.planeNormal)).toBe(false);
+  });
+
+  it('detects diagonal straddle for tilted plane', () => {
+    const tilted = {
+      planePoint: [0, 0, 0] as [number, number, number],
+      planeNormal: [1, 1, 0] as [number, number, number]
+    };
+    expect(voxelCellIntersectsWorkPlane(0, 0, 0, tilted.planePoint, tilted.planeNormal)).toBe(true);
+  });
+});
+
+describe('buildPreviewGeometry plane overlap', () => {
+  it('inverts colors for voxels whose cells intersect guide plane', () => {
+    const vx = plasticVoxel(0x00ff00);
+    const geo = buildPreviewGeometry(
+      [
+        [0, 0, 0],
+        [0, 2, 0]
+      ],
+      vx,
+      undefined,
+      'invert',
+      {
+        planeOverlap: {
+          planePoint: [0, 0, 0],
+          planeNormal: [0, 1, 0]
+        }
+      }
+    );
+    expect(geo).not.toBeNull();
+    const colors = geo!.getAttribute('color') as THREE.BufferAttribute;
+    const buckets = new Set<number>();
+    for (let i = 0; i < colors.count; i++) {
+      buckets.add(colors.getX(i) + colors.getY(i) + colors.getZ(i));
+    }
+    expect(buckets.size).toBeGreaterThan(1);
   });
 });

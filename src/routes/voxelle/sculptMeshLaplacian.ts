@@ -394,7 +394,7 @@ export function applyMeshLaplacianSmooth(
   brushPositions: [number, number, number][],
   gridSizeOrBounds: number | SelectionBounds,
   options: ApplyMeshLaplacianSmoothOptions,
-  getVoxel: () => Voxel
+  getVoxel: (x: number, y: number, z: number) => Voxel
 ): { toAdd: Map<string, Voxel>; toRemove: Set<string> } {
   const margin = Math.max(0, Math.floor(options.neighborMargin));
   const roi = buildRoiFromBrush(brushPositions, margin, gridSizeOrBounds);
@@ -447,7 +447,6 @@ export function applyMeshLaplacianSmooth(
     }
   }
 
-  const def = cloneVoxel(getVoxel());
   for (let x = roi.minX; x <= roi.maxX; x++) {
     for (let y = roi.minY; y <= roi.maxY; y++) {
       for (let z = roi.minZ; z <= roi.maxZ; z++) {
@@ -462,7 +461,7 @@ export function applyMeshLaplacianSmooth(
           continue;
         }
         const near = nearestOriginalVoxel(x + 0.5, y + 0.5, z + 0.5, originals);
-        const voxel = near !== null ? cloneVoxel(near) : def;
+        const voxel = near !== null ? cloneVoxel(near) : cloneVoxel(getVoxel(x, y, z));
         toAdd.set(k, voxel);
       }
     }

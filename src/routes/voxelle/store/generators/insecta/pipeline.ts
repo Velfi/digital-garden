@@ -564,13 +564,13 @@ export function generateInsectaVoxels(
   place: [number, number, number],
   normal: FaceNormal,
   options: GenerateInsectaOptions,
-  getVoxel: () => Voxel
+  getVoxel: (x: number, y: number, z: number) => Voxel
 ): Map<string, Voxel> {
   const keys = collectInsectaPositionKeys(place, normal, options);
   const map = new Map<string, Voxel>();
-  const v = getVoxel();
   for (const k of keys) {
-    map.set(k, cloneVoxel(v));
+    const [x, y, z] = parseCoordKey(k);
+    map.set(k, cloneVoxel(getVoxel(x, y, z)));
   }
   return map;
 }

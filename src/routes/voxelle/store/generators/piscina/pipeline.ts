@@ -1,4 +1,4 @@
-import { coordKey } from '../../../coordUtils';
+import { coordKey, parseCoordKey } from '../../../coordUtils';
 import type { FaceNormal } from '../../core';
 import type { Voxel } from '../../../voxelMaterial';
 import { cloneVoxel } from '../../../voxelMaterial';
@@ -1034,7 +1034,7 @@ export function generatePiscinaVoxels(
   place: [number, number, number],
   normal: FaceNormal,
   options: GeneratePiscinaOptions,
-  getVoxel: () => Voxel
+  getVoxel: (x: number, y: number, z: number) => Voxel
 ): Map<string, Voxel> {
   const o = clampOptions(options);
   const frame = buildPiscinaFrame(place, normal, options);
@@ -1043,9 +1043,9 @@ export function generatePiscinaVoxels(
   const map = new Map<string, [number, number, number]>();
   collectFishVoxels(frame, options, map, rng, cap);
   const out = new Map<string, Voxel>();
-  const base = cloneVoxel(getVoxel());
   for (const key of map.keys()) {
-    out.set(key, cloneVoxel(base));
+    const [x, y, z] = parseCoordKey(key);
+    out.set(key, cloneVoxel(getVoxel(x, y, z)));
   }
   return out;
 }

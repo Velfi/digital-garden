@@ -455,9 +455,9 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
         if (tool === 'remove') {
           v.delete(key);
         } else if (tool === 'voxel' || tool === 'sculpt') {
-          if (!v.has(key)) v.set(key, getCol());
+          if (!v.has(key)) v.set(key, getCol(x, y, z));
         } else if (tool === 'paint') {
-          if (v.has(key)) v.set(key, getCol());
+          if (v.has(key)) v.set(key, getCol(x, y, z));
         }
       }
     };
@@ -550,7 +550,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
         for (const [x, y, z] of pos) {
           if (!inBounds(x, y, z, boundSize)) continue;
           const key = coordKey(x, y, z);
-          if (!next.has(key)) next.set(key, getCol());
+          if (!next.has(key)) next.set(key, getCol(x, y, z));
         }
       });
       return;
@@ -711,7 +711,12 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
       const dy = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
       const dz = clusterR > 0 ? Math.floor(rng() * (2 * clusterR + 1)) - clusterR : 0;
       const placeI: [number, number, number] = [place[0] + dx, place[1] + dy, place[2] + dz];
-      const rockMap = generateRockVoxels(placementSeed + i, size, roughness, getCol().color);
+      const rockMap = generateRockVoxels(
+        placementSeed + i,
+        size,
+        roughness,
+        getCol(placeI[0], placeI[1], placeI[2]).color
+      );
       const localPositions = [...rockMap.keys()].map(
         (k) => parseCoordKey(k) as [number, number, number]
       );
@@ -762,7 +767,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
       placementSeed,
       size,
       roughness,
-      getCol().color,
+      getCol(place[0], place[1], place[2]).color,
       thickness,
       thicknessAxis
     );
@@ -813,7 +818,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
       radius,
       density,
       height,
-      getCol().color
+      getCol(place[0], place[1], place[2]).color
     );
     const allPositions: [number, number, number][] = [];
     const allVoxelsGrass: Voxel[] = [];
@@ -842,7 +847,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
   ) {
     const getCol = getPaintColorResolver();
     const options = buildInsectaOptionsFromStores();
-    const map = generateInsectaVoxels(placementSeed, place, normal, options, () => getCol());
+    const map = generateInsectaVoxels(placementSeed, place, normal, options, getCol);
     const allPositions: [number, number, number][] = [];
     const allVoxelsInsecta: Voxel[] = [];
     for (const [key, vx] of map) {
@@ -866,7 +871,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
   function placeFauna(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
     const getCol = getPaintColorResolver();
     const options = buildFaunaOptionsFromStores();
-    const map = generateFaunaVoxels(placementSeed, place, normal, options, () => getCol());
+    const map = generateFaunaVoxels(placementSeed, place, normal, options, getCol);
     const allPositions: [number, number, number][] = [];
     const allVoxelsFauna: Voxel[] = [];
     for (const [key, vx] of map) {
@@ -894,7 +899,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
   ) {
     const getCol = getPaintColorResolver();
     const options = buildPiscinaOptionsFromStores();
-    const map = generatePiscinaVoxels(placementSeed, place, normal, options, () => getCol());
+    const map = generatePiscinaVoxels(placementSeed, place, normal, options, getCol);
     const allPositions: [number, number, number][] = [];
     const allVoxelsPiscina: Voxel[] = [];
     for (const [key, vx] of map) {
@@ -918,7 +923,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
   function placeFlora(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
     const getCol = getPaintColorResolver();
     const options = buildFloraOptionsFromStores();
-    const floraMap = generateFloraVoxels(placementSeed, place, normal, options, () => getCol());
+    const floraMap = generateFloraVoxels(placementSeed, place, normal, options, getCol);
     const allPositions: [number, number, number][] = [];
     const allVoxelsFlora: Voxel[] = [];
     for (const [key, vx] of floraMap) {

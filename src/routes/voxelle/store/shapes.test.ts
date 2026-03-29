@@ -99,7 +99,7 @@ describe('getShapePositionsAt', () => {
     });
     const rotY = getShapePositionsAt({
       position: [0, 0, 0],
-      rotation: [0, 1, 0],
+      rotation: [0, 90, 0],
       shape: 'cube',
       size: 3
     });

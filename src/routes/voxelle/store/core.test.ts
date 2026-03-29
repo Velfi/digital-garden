@@ -14,9 +14,14 @@ import {
   cloneVoxels,
   ensureGridFitsPositions,
   shiftVoxelsAndSelection,
+  scaleProjectUniform,
   scaleProjectBy2,
   scaleProjectByHalf,
+  rotateProjectByAngle,
   rotateProjectQuarterTurns,
+  mirrorProjectAcrossAxis,
+  runVoxelStroke,
+  applySelectionMirrorAcrossAxisInStroke,
   shiftSelection,
   centerOriginOnObject,
   centerOriginOnSelection,
@@ -26,9 +31,12 @@ import {
   selectedColors,
   voxelMaterial,
   beginStroke,
+  endStrokeUndo,
   applySelectionTranslationInStroke,
   applySelectionTranslationAlongAxis,
   applySelectionRotationInStroke,
+  applySelectionRotationRadiansInStroke,
+  applySelectionScaleInStroke,
   hideSelectedVoxels,
   unhideAllVoxels,
   updateVoxels,
@@ -174,22 +182,16 @@ describe('core', () => {
   });
 
   describe('scaleProjectBy2', () => {
-    it('replaces each voxel with a 2×2×2 block of the same color', () => {
+    it('upscales with nearest-neighbor fill around model center', () => {
       voxels.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
       selection.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
       scaleProjectBy2();
       const v = get(voxels);
-      expect(v.size).toBe(8);
-      for (let dx = 0; dx < 2; dx++) {
-        for (let dy = 0; dy < 2; dy++) {
-          for (let dz = 0; dz < 2; dz++) {
-            expect(v.get(coordKey(dx, dy, dz))).toEqual(pv(0xff0000));
-          }
-        }
-      }
-      expect(get(selection).size).toBe(8);
+      expect(v.size).toBe(9 * 9 * 9);
+      expect(v.get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
+      expect(get(selection).size).toBe(9 * 9 * 9);
     });
-    it('keeps adjacent unit voxels as separate 2×2×2 blocks', () => {
+    it('fills space between adjacent sources after upscale (NN)', () => {
       voxels.set(
         new Map([
           [coordKey(0, 0, 0), pv(0xff0000)],
@@ -198,9 +200,14 @@ describe('core', () => {
       );
       scaleProjectBy2();
       const v = get(voxels);
-      expect(v.size).toBe(16);
-      expect(v.get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
-      expect(v.get(coordKey(2, 0, 0))).toEqual(pv(0x00ff00));
+      expect(v.size).toBe(972);
+      const xs = [...v.keys()].map((k) => Number(k.split(',')[0]));
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      expect(maxX - minX).toBeGreaterThanOrEqual(2);
+      const colors = new Set([...v.values()].map((vx) => vx.color));
+      expect(colors.has(0xff0000)).toBe(true);
+      expect(colors.has(0x00ff00)).toBe(true);
     });
     it('no-op when voxels empty', () => {
       scaleProjectBy2();
@@ -209,13 +216,20 @@ describe('core', () => {
   });
 
   describe('scaleProjectByHalf', () => {
-    it('inverts scale up for a single voxel', () => {
+    it('leaves a single voxel stable around center', () => {
       voxels.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
-      scaleProjectBy2();
-      expect(get(voxels).size).toBe(8);
       scaleProjectByHalf();
       expect(get(voxels).size).toBe(1);
       expect(get(voxels).get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
+    });
+    it('after 2× NN upscale, ½× merges to a smaller solid block (not sparse inverse)', () => {
+      voxels.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
+      scaleProjectBy2();
+      expect(get(voxels).size).toBe(9 * 9 * 9);
+      scaleProjectByHalf();
+      expect(get(voxels).size).toBe(5 * 5 * 5);
+      expect(get(voxels).get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
+      expect([...get(voxels).values()].every((vx) => vx.color === 0xff0000)).toBe(true);
     });
     it('no-op when voxels empty', () => {
       scaleProjectByHalf();
@@ -254,6 +268,81 @@ describe('core', () => {
       selection.set(new Map());
       rotateProjectQuarterTurns(2, 1);
       expect(get(voxels)).toEqual(expected);
+    });
+  });
+
+  describe('rotateProjectByAngle', () => {
+    it('supports arbitrary-angle project rotation', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x00ff00)]
+        ])
+      );
+      rotateProjectByAngle(2, (33 * Math.PI) / 180);
+      const v = get(voxels);
+      expect(v.size).toBeGreaterThanOrEqual(2);
+      const colors = new Set([...v.values()].map((x) => x.color));
+      expect(colors.has(0xff0000)).toBe(true);
+      expect(colors.has(0x00ff00)).toBe(true);
+    });
+  });
+
+  describe('mirrorProjectAcrossAxis', () => {
+    it('swaps two voxels symmetric about model center on X', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x00ff00)]
+        ])
+      );
+      selection.set(new Map());
+      mirrorProjectAcrossAxis(0);
+      const v = get(voxels);
+      expect(v.get(coordKey(0, 0, 0))).toEqual(pv(0x00ff00));
+      expect(v.get(coordKey(1, 0, 0))).toEqual(pv(0xff0000));
+    });
+  });
+
+  describe('applySelectionMirrorAcrossAxisInStroke', () => {
+    it('mirrors only selected voxels across selection center', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(2, 0, 0), pv(0x00ff00)]
+        ])
+      );
+      selection.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(2, 0, 0), pv(0x00ff00)]
+        ])
+      );
+      runVoxelStroke(() => {
+        applySelectionMirrorAcrossAxisInStroke(0);
+      });
+      const v = get(voxels);
+      const s = get(selection);
+      expect(v.get(coordKey(0, 0, 0))).toEqual(pv(0x00ff00));
+      expect(v.get(coordKey(2, 0, 0))).toEqual(pv(0xff0000));
+      expect(s.get(coordKey(0, 0, 0))).toEqual(pv(0x00ff00));
+      expect(s.get(coordKey(2, 0, 0))).toEqual(pv(0xff0000));
+    });
+  });
+
+  describe('scaleProjectUniform', () => {
+    it('merges deterministically for scale-down collisions', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xaa0000)],
+          [coordKey(1, 0, 0), pv(0x00aa00)],
+          [coordKey(2, 0, 0), pv(0x0000aa)]
+        ])
+      );
+      scaleProjectUniform(0.2);
+      const v = get(voxels);
+      expect(v.size).toBe(1);
+      expect([...v.values()][0]).toEqual(pv(0xaa0000));
     });
   });
 
@@ -469,7 +558,7 @@ describe('core', () => {
       expect(get(selection).has(coordKey(0, 0, 0))).toBe(true);
     });
 
-    it('no-op when re-centered rotation would overlap non-selected solid voxels', () => {
+    it('90° Z rotation applies when footprint overlaps unselected voxels (replaces them)', () => {
       voxels.set(
         new Map([
           [coordKey(0, 0, 0), pv(0xff0000)],
@@ -485,11 +574,10 @@ describe('core', () => {
       );
       beginStroke();
       applySelectionRotationInStroke(2, 1);
-      expect(get(voxels).get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
-      expect(get(voxels).get(coordKey(1, 0, 0))).toEqual(pv(0xff0000));
-      expect(get(voxels).get(coordKey(1, 1, 0))).toEqual(pv(0x00ff00));
-      expect(get(selection).has(coordKey(0, 0, 0))).toBe(true);
-      expect(get(selection).has(coordKey(1, 0, 0))).toBe(true);
+      const s = get(selection);
+      expect(s.size).toBeGreaterThanOrEqual(2);
+      expect([...s.values()].every((vx) => vx.color === 0xff0000)).toBe(true);
+      expect(get(voxels).get(coordKey(1, 1, 0))?.color).toBe(0xff0000);
     });
 
     it('no-op for zero quarter steps', () => {
@@ -498,6 +586,76 @@ describe('core', () => {
       beginStroke();
       applySelectionRotationInStroke(1, 0);
       expect(get(voxels).get(coordKey(0, 0, 0))).toEqual(pv(0xff0000));
+    });
+
+    it('supports arbitrary-angle selection rotation', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x00ff00)]
+        ])
+      );
+      selection.set(cloneVoxels(get(voxels)));
+      beginStroke();
+      applySelectionRotationRadiansInStroke(2, (33 * Math.PI) / 180);
+      const s = get(selection);
+      expect(s.size).toBeGreaterThanOrEqual(2);
+      const colors = new Set([...s.values()].map((x) => x.color));
+      expect(colors.has(0xff0000)).toBe(true);
+      expect(colors.has(0x00ff00)).toBe(true);
+    });
+
+    it('arbitrary-angle rotation applies when footprint overlaps unselected voxels', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0xff0000)],
+          [coordKey(1, 1, 0), pv(0x00ff00)]
+        ])
+      );
+      selection.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0xff0000)]
+        ])
+      );
+      beginStroke();
+      applySelectionRotationRadiansInStroke(2, Math.PI / 2);
+      const s = get(selection);
+      expect(s.size).toBeGreaterThanOrEqual(2);
+      expect([...s.values()].every((vx) => vx.color === 0xff0000)).toBe(true);
+      expect(get(voxels).get(coordKey(1, 1, 0))?.color).toBe(0xff0000);
+    });
+
+    it('scales selection down with lexicographic merge', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xaa0000)],
+          [coordKey(1, 0, 0), pv(0x00aa00)],
+          [coordKey(2, 0, 0), pv(0x0000aa)]
+        ])
+      );
+      selection.set(cloneVoxels(get(voxels)));
+      beginStroke();
+      applySelectionScaleInStroke(0.2);
+      const v = get(voxels);
+      expect(v.size).toBe(1);
+      expect([...v.values()][0]).toEqual(pv(0xaa0000));
+      expect(get(selection).size).toBe(1);
+    });
+
+    it('scale-up fills past unselected neighbors (NN expansion, no intrusion abort)', () => {
+      voxels.set(
+        new Map([
+          [coordKey(0, 0, 0), pv(0xff0000)],
+          [coordKey(1, 0, 0), pv(0x00ff00)]
+        ])
+      );
+      selection.set(new Map([[coordKey(0, 0, 0), pv(0xff0000)]]));
+      beginStroke();
+      applySelectionScaleInStroke(2);
+      endStrokeUndo();
+      expect(get(voxels).size).toBeGreaterThan(1);
     });
   });
 
@@ -552,21 +710,22 @@ describe('core', () => {
       color.set('#ff0000');
       voxelMaterial.set('plastic');
       const resolver = getPaintColorResolver();
-      expect(resolver()).toEqual({ color: 0xff0000, material: 'plastic' });
-      expect(resolver()).toEqual({ color: 0xff0000, material: 'plastic' });
+      expect(resolver(0, 0, 0)).toEqual({ color: 0xff0000, material: 'plastic' });
+      expect(resolver(10, -3, 4)).toEqual({ color: 0xff0000, material: 'plastic' });
     });
-    it('returns from selectedColors when non-empty', () => {
+    it('returns deterministic colors from selectedColors when non-empty', () => {
       selectedColors.set(['#ff0000', '#00ff00']);
       voxelMaterial.set('metal');
       const resolver = getPaintColorResolver();
-      const colors = new Set<number>();
-      for (let i = 0; i < 20; i++) {
-        const v = resolver();
-        expect(v.material).toBe('metal');
-        colors.add(v.color);
-      }
-      expect(colors.has(0xff0000)).toBe(true);
-      expect(colors.has(0x00ff00)).toBe(true);
+      const a = resolver(3, 7, -1);
+      const b = resolver(3, 7, -1);
+      const c = resolver(4, 7, -1);
+      expect(a.material).toBe('metal');
+      expect(b.material).toBe('metal');
+      expect(c.material).toBe('metal');
+      expect(a.color).toBe(b.color);
+      expect(new Set([a.color, c.color]).size).toBeGreaterThanOrEqual(1);
+      expect(new Set([a.color, c.color]).size).toBeLessThanOrEqual(2);
     });
   });
 
