@@ -5,6 +5,11 @@ import {
   isToneMappingPreference,
   type ToneMappingPreference
 } from '../toneMappingPreference';
+import {
+  DEFAULT_PAINT_COLOR_DISTRIBUTION,
+  mergePaintColorDistribution,
+  type PaintColorDistributionState
+} from './paintColorDistribution';
 
 const VOXELLE_PREFERENCES_KEY = 'voxelle-preferences';
 
@@ -52,6 +57,8 @@ export type VoxellePreferences = {
   rayMaxTemporalSamples: number;
   /** Ray mode: soft shadow rays per shaded point when not in coarse CPU pass (1–8). */
   rayShadowSamples: number;
+  /** Multi-color brush: how palette entries map to voxels (white noise, FBM, gradient, dither, …). */
+  paintColorDistribution: PaintColorDistributionState;
 };
 
 const DEFAULTS: VoxellePreferences = {
@@ -65,7 +72,8 @@ const DEFAULTS: VoxellePreferences = {
   rayTickBudgetMs: 12,
   rayMaxBufferDim: 1920,
   rayMaxTemporalSamples: 64,
-  rayShadowSamples: 8
+  rayShadowSamples: 8,
+  paintColorDistribution: DEFAULT_PAINT_COLOR_DISTRIBUTION
 };
 
 export function loadPreferences(): VoxellePreferences {
@@ -128,7 +136,11 @@ export function loadPreferences(): VoxellePreferences {
         o.rayShadowSamples >= 1 &&
         o.rayShadowSamples <= 8
           ? Math.round(o.rayShadowSamples)
-          : DEFAULTS.rayShadowSamples
+          : DEFAULTS.rayShadowSamples,
+      paintColorDistribution: mergePaintColorDistribution(
+        o.paintColorDistribution,
+        DEFAULTS.paintColorDistribution
+      )
     };
   } catch {
     return { ...DEFAULTS };

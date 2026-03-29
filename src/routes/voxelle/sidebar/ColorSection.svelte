@@ -1,14 +1,46 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { color, palette, selectedColors, tool, toolBeforeEyedropper } from '../store/index';
+  import {
+    color,
+    palette,
+    selectedColors,
+    tool,
+    toolBeforeEyedropper,
+    paintColorDistribution,
+    type PaintColorDistributionMode
+  } from '../store/index';
   import {
     MATERIAL_BUILTIN_PALETTE_HEX,
     VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX
   } from '../store/materialBuiltinPalette';
   import PalettePicker from '$lib/components/PalettePicker.svelte';
   import { safeColorInputValue } from '$lib/colorInput';
+  import MultiColorPaintSection from './MultiColorPaintSection.svelte';
 
   const FALLBACK_HEX = '#ffffff';
+
+  function modeLabel(m: PaintColorDistributionMode): string {
+    switch (m) {
+      case 'whiteNoise':
+        return 'white noise';
+      case 'randomSingle':
+        return 'one random color per stroke';
+      case 'fbmNoise':
+        return 'FBM noise';
+      case 'gradient':
+        return 'gradient';
+      case 'dither':
+        return 'dither';
+      default:
+        return m;
+    }
+  }
+
+  const multiColorHint = $derived(
+    $selectedColors.length > 1
+      ? `Active: ${modeLabel($paintColorDistribution.mode)}.`
+      : undefined
+  );
 </script>
 
 <div>
@@ -56,7 +88,11 @@
     {selectedColors}
     builtinPalette={MATERIAL_BUILTIN_PALETTE_HEX}
     builtinDefaultHex={VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX}
+    multiColorHint={multiColorHint ?? undefined}
   />
+  {#if $selectedColors.length > 1}
+    <MultiColorPaintSection />
+  {/if}
 </div>
 
 <style>

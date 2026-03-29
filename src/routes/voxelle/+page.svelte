@@ -20,6 +20,9 @@
     modalRequest,
     getSkipStartup,
     autosaveError,
+    loadPreferences,
+    paintColorDistribution,
+    mergePaintColorDistribution,
     voxels,
     gridSize,
     focalLength,
@@ -114,6 +117,9 @@
 
   onMount(() => {
     if (browser) {
+      paintColorDistribution.set(
+        mergePaintColorDistribution(loadPreferences().paintColorDistribution)
+      );
       window.addEventListener('beforeunload', onBeforeUnload);
       document.addEventListener('visibilitychange', onVisibilityChange);
       document.addEventListener('fullscreenchange', onFullscreenChange);

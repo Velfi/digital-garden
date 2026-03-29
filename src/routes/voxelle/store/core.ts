@@ -43,6 +43,13 @@ import {
   MATERIAL_BUILTIN_PALETTE_HEX,
   VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX
 } from './materialBuiltinPalette';
+import {
+  buildPaintColorResolver,
+  paintColorDistribution,
+  type PaintColorResolverOptions
+} from './paintColorDistribution';
+export type { PaintColorResolver, PaintColorResolverOptions } from './paintColorDistribution';
+export { paintColorIndexForCoord } from './paintColorDistributionMath';
 
 export type GridSize = number;
 export type Tool =
@@ -1148,35 +1155,12 @@ export function applySelectionMirrorAcrossAxisInStroke(axis: LatticeAxis): void 
   applySelectionLatticeTransformInStroke({ scalePerAxis: mirrorScalePerAxis(axis) });
 }
 
-export type PaintColorResolver = (x: number, y: number, z: number) => Voxel;
-
-/** Deterministic palette index for a voxel coordinate. */
-export function paintColorIndexForCoord(x: number, y: number, z: number, paletteSize: number): number {
-  if (paletteSize <= 1) return 0;
-  const xi = Math.floor(x) | 0;
-  const yi = Math.floor(y) | 0;
-  const zi = Math.floor(z) | 0;
-  let h =
-    Math.imul(xi, 0x9e3779b1) ^ Math.imul(yi, 0x85ebca6b) ^ Math.imul(zi, 0xc2b2ae35);
-  h ^= h >>> 16;
-  h = Math.imul(h, 0x7feb352d);
-  h ^= h >>> 15;
-  return (h >>> 0) % paletteSize;
-}
-
 /** Returns a function that yields a voxel (color + material) per stroke cell. */
-export function getPaintColorResolver(): PaintColorResolver {
+export function getPaintColorResolver(opts?: PaintColorResolverOptions) {
   const sel = get(selectedColors);
   const mat = get(voxelMaterial);
   const colors = sel.length > 0 ? sel.map(hexToInt) : [hexToInt(get(color))];
-  if (colors.length === 1) {
-    const c = colors[0]! & 0xffffff;
-    return () => ({ color: c, material: mat });
-  }
-  return (x: number, y: number, z: number) => ({
-    color: colors[paintColorIndexForCoord(x, y, z, colors.length)]! & 0xffffff,
-    material: mat
-  });
+  return buildPaintColorResolver(get(paintColorDistribution), colors, mat, opts);
 }
 
 export function addShapeAt(params: AddShapeParams): void {

@@ -1,50 +1,7 @@
 import { coordKey, parseCoordKey } from '../../coordUtils';
 import type { Voxel } from '../../voxelMaterial';
 import { plasticVoxel } from '../../voxelMaterial';
-
-/** Hash three integers to a float in [0, 1]. Deterministic. */
-function hash3(seed: number, x: number, y: number, z: number): number {
-  let h = (seed >>> 0) ^ (x * 73856093) ^ (y * 19349663) ^ (z * 83492791);
-  h = (h ^ (h >>> 16)) * 0x85ebca6b;
-  h = (h ^ (h >>> 13)) * 0xc2b2ae35;
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
-/** Smooth 3D value noise at integer coords (seeded). Returns 0–1. */
-function noise3(seed: number, x: number, y: number, z: number): number {
-  const x0 = Math.floor(x);
-  const y0 = Math.floor(y);
-  const z0 = Math.floor(z);
-  const fx = x - x0;
-  const fy = y - y0;
-  const fz = z - z0;
-  const u = fx * fx * (3 - 2 * fx);
-  const v = fy * fy * (3 - 2 * fy);
-  const w = fz * fz * (3 - 2 * fz);
-  const n000 = hash3(seed, x0, y0, z0);
-  const n100 = hash3(seed, x0 + 1, y0, z0);
-  const n010 = hash3(seed, x0, y0 + 1, z0);
-  const n110 = hash3(seed, x0 + 1, y0 + 1, z0);
-  const n001 = hash3(seed, x0, y0, z0 + 1);
-  const n101 = hash3(seed, x0 + 1, y0, z0 + 1);
-  const n011 = hash3(seed, x0, y0 + 1, z0 + 1);
-  const n111 = hash3(seed, x0 + 1, y0 + 1, z0 + 1);
-  const nx00 = n000 * (1 - u) + n100 * u;
-  const nx10 = n010 * (1 - u) + n110 * u;
-  const nx01 = n001 * (1 - u) + n101 * u;
-  const nx11 = n011 * (1 - u) + n111 * u;
-  const nxy0 = nx00 * (1 - v) + nx10 * v;
-  const nxy1 = nx01 * (1 - v) + nx11 * v;
-  return nxy0 * (1 - w) + nxy1 * w;
-}
-
-/** Derive a float in [lo, hi] from seed. */
-function seedToRange(seed: number, lo: number, hi: number): number {
-  let h = (seed >>> 0) * 0x9e3779b9;
-  h = (h ^ (h >>> 16)) * 0x85ebca6b;
-  h = (h ^ (h >>> 13)) * 0xc2b2ae35;
-  return lo + ((h >>> 0) / 4294967296) * (hi - lo);
-}
+import { hash3, seedToRange, valueNoise3 } from '../valueNoise3d';
 
 /**
  * Generate a single rock as a voxel map in local space (origin at center).
@@ -87,8 +44,8 @@ export function generateRockVoxels(
         const pz = z / sz;
         const d = Math.sqrt(px * px + py * py + pz * pz);
         if (d > r + 1) continue;
-        const n = noise3(seed + 0x1234, x * scale, y * scale, z * scale);
-        const n2 = noise3(seed + 0x5678, x * scale * 1.7 + 3, y * scale * 1.7, z * scale * 1.7);
+        const n = valueNoise3(seed + 0x1234, x * scale, y * scale, z * scale);
+        const n2 = valueNoise3(seed + 0x5678, x * scale * 1.7 + 3, y * scale * 1.7, z * scale * 1.7);
         const perturb = (n - 0.5) * 2 * lumpiness + (n2 - 0.5) * lumpiness * 0.5;
         const rEffective = r * (1 + perturb);
         if (d > rEffective) continue;

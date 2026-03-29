@@ -578,6 +578,18 @@ export type {
 } from './preferences';
 
 export {
+  paintColorDistribution,
+  mergePaintColorDistribution,
+  DEFAULT_PAINT_COLOR_DISTRIBUTION,
+  buildPaintColorResolver
+} from './paintColorDistribution';
+export type {
+  PaintColorDistributionMode,
+  PaintColorDistributionState,
+  PaintColorResolverOptions
+} from './paintColorDistribution';
+
+export {
   DEFAULT_TONE_MAPPING_PREFERENCE,
   TONE_MAPPING_OPTIONS,
   isToneMappingPreference,

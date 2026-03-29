@@ -99,6 +99,7 @@
     hexToInt,
     intToHex,
     getPaintColorResolver,
+    paintColorDistribution,
     getStampOffsetForFace,
     ensureGridFitsPositions,
     resizeGridToContent,
@@ -1833,7 +1834,8 @@
     getStampRotation: () => get(stampRotation),
     getStampOriginMode: () => get(stampOriginMode),
     getEffectiveStampPatternMap,
-    playPlaceSound: defaultPlayPlaceSound
+    playPlaceSound: defaultPlayPlaceSound,
+    getStrokeSeed: () => currentStrokeSeed
   });
 
   function resetPiscinaPlacementFlow() {
@@ -2035,7 +2037,7 @@
       cancelSquishySession();
       return;
     }
-    const getVoxel = getPaintColorResolver();
+    const getVoxel = getPaintColorResolver({ strokeSeed: currentStrokeSeed >>> 0 });
     ensureGridFitsPositions(positions);
     runVoxelStroke(() => {
       updateVoxelsInStroke((v) => {
@@ -2483,7 +2485,7 @@
       ropePhase !== 'tension' &&
       clothPhase !== 'tension';
 
-    const resolvePaintVoxel = getPaintColorResolver();
+    const resolvePaintVoxel = getPaintColorResolver({ strokeSeed: currentStrokeSeed >>> 0 });
     const previewVoxelFor = (count: number, sample: [number, number, number] = [0, 0, 0]): Voxel => {
       if (useRemoveStylePreDragPreview) {
         return count === 0
@@ -4252,8 +4254,15 @@
           );
           if (!fillRegion.cancelled && fillRegion.region.size > 0) {
             fillMessage = 'Applying fill…';
-            const getCol = getPaintColorResolver();
+            const pd = get(paintColorDistribution);
             const positions = [...fillRegion.region.keys()].map((k) => parseCoordKey(k));
+            const getCol = getPaintColorResolver({
+              strokeSeed: currentStrokeSeed >>> 0,
+              positionsForErrorDiffusion:
+                pd.mode === 'dither' && pd.dither.errorDiffusion === 'floydSteinberg'
+                  ? positions
+                  : undefined
+            });
             ensureGridFitsPositions(positions);
             runVoxelStroke(() => {
               updateVoxelsInStroke((v) => {
@@ -4302,8 +4311,15 @@
           );
           if (emptyRegion && emptyRegion.size > 0) {
             fillMessage = 'Applying fill…';
-            const getCol = getPaintColorResolver();
+            const pd = get(paintColorDistribution);
             const positions = [...emptyRegion].map((k) => parseCoordKey(k));
+            const getCol = getPaintColorResolver({
+              strokeSeed: currentStrokeSeed >>> 0,
+              positionsForErrorDiffusion:
+                pd.mode === 'dither' && pd.dither.errorDiffusion === 'floydSteinberg'
+                  ? positions
+                  : undefined
+            });
             ensureGridFitsPositions(positions);
             runVoxelStroke(() => {
               updateVoxelsInStroke((v) => {

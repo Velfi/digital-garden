@@ -4,6 +4,8 @@
     savePreferences,
     voxellePreferences,
     TONE_MAPPING_OPTIONS,
+    mergePaintColorDistribution,
+    paintColorDistribution,
     type VoxellePreferences,
     type ToneMappingPreference,
     type RendererBackendPreference,
@@ -20,6 +22,7 @@
       const loaded = loadPreferences();
       prefs = loaded;
       voxellePreferences.set(loaded);
+      paintColorDistribution.set(mergePaintColorDistribution(loaded.paintColorDistribution));
       rendererBackendBeforeOpen = loaded.rendererBackend;
     }
   });

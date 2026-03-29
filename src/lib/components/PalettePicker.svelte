@@ -12,6 +12,8 @@
     builtinPalette?: readonly string[];
     /** Brush color after Default; must be in `builtinPalette` if set. */
     builtinDefaultHex?: string;
+    /** Replaces default multi-select hint (e.g. active distribution mode). */
+    multiColorHint?: string;
   }
 
   let {
@@ -21,7 +23,8 @@
     disabled = false,
     defaultSlug,
     builtinPalette,
-    builtinDefaultHex
+    builtinDefaultHex,
+    multiColorHint
   }: Props = $props();
 
   onMount(() => {
@@ -256,8 +259,9 @@
   </div>
   {#if selectedColors}
     <p class="palette-hint">
-      Shift+click to multi-select; drag to select a range; shift+drag to add a range. Painting uses
-      selected colors randomly.
+      Shift+click to multi-select; drag to select a range; shift+drag to add a range.
+      {multiColorHint ??
+        'Painting maps selected colors per voxel (see Multi-color paint below when several are selected).'}
     </p>
   {/if}
 {/if}
@@ -274,10 +278,9 @@
 
   .popular-palettes {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 0.25rem 0.5rem;
     margin-bottom: 0.25rem;
-    overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -291,7 +294,6 @@
     border: none;
     padding: 0;
     background: none;
-    font: inherit;
     cursor: pointer;
   }
   button.palette-link:disabled {

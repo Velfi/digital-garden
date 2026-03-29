@@ -279,6 +279,8 @@ export type VoxelStrokeCommitContext = {
   getStampOriginMode: () => 'center' | 'corner';
   getEffectiveStampPatternMap: () => Map<string, Voxel>;
   playPlaceSound: () => void;
+  /** Current brush stroke seed (multi-color random-single / seeded resolvers). */
+  getStrokeSeed: () => number;
 };
 
 export function getAshlarThicknessAxis(normal: FaceNormal): 0 | 1 | 2 {
@@ -447,7 +449,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
         : sourcePositions;
     ensureGridFitsPositions(effective);
     const boundSize: number | undefined = undefined;
-    const getCol = getPaintColorResolver();
+    const getCol = getPaintColorResolver({ strokeSeed: ctx.getStrokeSeed() >>> 0 });
     const applyToMap = (v: VoxelUpdaterMap) => {
       for (const [x, y, z] of effective) {
         if (!inBounds(x, y, z, boundSize)) continue;
@@ -507,7 +509,8 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     ensureGridFitsPositions(pos);
     const sculptBoundsOrSize = getEffectiveBounds(ctx.getLiveVoxels(), 512);
     const boundSize: number | undefined = undefined;
-    const getCol = getPaintColorResolver();
+    const strokeSeed = ((brushOpts?.strokeSeed ?? ctx.getStrokeSeed()) >>> 0) as number;
+    const getCol = getPaintColorResolver({ strokeSeed });
     const v = ctx.getLiveVoxels();
     if (sculptModeVal === 'terrain') {
       const { toAdd, toRemove } = applyTerrainStroke(
@@ -680,7 +683,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
   }
 
   function placeRocks(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
-    const getCol = getPaintColorResolver();
+    const getCol = getPaintColorResolver({ placementSeed: placementSeed >>> 0 });
     const size = get(rockSize) as number;
     const roughness = get(rockRoughness) as number;
     const count = get(rockCount) as number;
@@ -753,7 +756,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
   }
 
   function placeAshlar(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
-    const getCol = getPaintColorResolver();
+    const getCol = getPaintColorResolver({ placementSeed: placementSeed >>> 0 });
     const size = get(ashlarSize) as number;
     const roughness = get(ashlarRoughness) as number;
     const thickness = get(ashlarThickness) as number;
@@ -807,7 +810,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
   }
 
   function placeGrass(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
-    const getCol = getPaintColorResolver();
+    const getCol = getPaintColorResolver({ placementSeed: placementSeed >>> 0 });
     const radius = get(grassRadius) as number;
     const density = get(grassDensity) as number;
     const height = get(grassHeight) as number;
@@ -845,7 +848,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     normal: FaceNormal,
     placementSeed: number
   ) {
-    const getCol = getPaintColorResolver();
+    const getCol = getPaintColorResolver({ placementSeed: placementSeed >>> 0 });
     const options = buildInsectaOptionsFromStores();
     const map = generateInsectaVoxels(placementSeed, place, normal, options, getCol);
     const allPositions: [number, number, number][] = [];
@@ -869,7 +872,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
   }
 
   function placeFauna(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
-    const getCol = getPaintColorResolver();
+    const getCol = getPaintColorResolver({ placementSeed: placementSeed >>> 0 });
     const options = buildFaunaOptionsFromStores();
     const map = generateFaunaVoxels(placementSeed, place, normal, options, getCol);
     const allPositions: [number, number, number][] = [];
@@ -897,7 +900,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
     normal: FaceNormal,
     placementSeed: number
   ) {
-    const getCol = getPaintColorResolver();
+    const getCol = getPaintColorResolver({ placementSeed: placementSeed >>> 0 });
     const options = buildPiscinaOptionsFromStores();
     const map = generatePiscinaVoxels(placementSeed, place, normal, options, getCol);
     const allPositions: [number, number, number][] = [];
@@ -921,7 +924,7 @@ export function createVoxelCanvasStrokeCommit(ctx: VoxelStrokeCommitContext) {
   }
 
   function placeFlora(place: [number, number, number], normal: FaceNormal, placementSeed: number) {
-    const getCol = getPaintColorResolver();
+    const getCol = getPaintColorResolver({ placementSeed: placementSeed >>> 0 });
     const options = buildFloraOptionsFromStores();
     const floraMap = generateFloraVoxels(placementSeed, place, normal, options, getCol);
     const allPositions: [number, number, number][] = [];
