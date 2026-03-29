@@ -405,6 +405,16 @@ export const enableShadows = writable<boolean>(true);
 export const aoStrength = writable<0 | 1 | 2>(1);
 export const backgroundColor = writable<string>('#f0f0f0');
 export const enableSky = writable<boolean>(true);
+/** Exposure slider range in EV stops; applied as `renderer.toneMappingExposure = 2 ** ev`. */
+export const TONE_MAPPING_EXPOSURE_MIN = -5;
+export const TONE_MAPPING_EXPOSURE_MAX = 5;
+/**
+ * EV stops for the Light exposure slider: manual mode uses absolute EV (`2**ev`);
+ * with Autoexpose on, the same slider is an EV **bias** multiplied onto the auto meter.
+ */
+export const toneMappingExposure = writable<number>(0);
+/** Adapt exposure from measured canvas luminance (screen probe). */
+export const autoExposureEnabled = writable<boolean>(false);
 export const focalLength = writable<number>(29);
 export const orthographic = writable<boolean>(false);
 

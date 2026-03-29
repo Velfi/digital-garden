@@ -17,7 +17,7 @@ Supported **backends**: WebGL (`THREE.WebGLRenderer`) or WebGPU (`WebGPURenderer
 
 [`canvas/sceneSetup.ts`](../canvas/sceneSetup.ts) builds:
 
-- **Renderer** – Pixel ratio respects `maxPixelRatio` when set (caps HiDPI cost). Tone mapping and output color space are configured for consistent HDR-ish lighting and sRGB output.
+- **Renderer** – Pixel ratio respects `maxPixelRatio` when set (caps HiDPI cost). Tone mapping and output color space are configured for consistent HDR-ish lighting and sRGB output. Exposure in the Light panel is **EV stops** (−5…+5); manual mode sets `renderer.toneMappingExposure` to `2**ev`. With **Autoexpose**, the slider is an **EV bias** and multiplies the probe-driven auto multiplier (`canvas/autoExposureProbe.ts`).
 - **Scene graph** – `voxelGroup` holds meshed voxels; `selectionGroup` holds selection overlays; rollover/preview/add-shape/polygon/rope helper objects; `gridGroup` for surface grid lines; sky, hemisphere + directional light, optional ground.
 - **Cameras** – Perspective (focal length from UI) and orthographic; one is active at a time.
 - **Materials / variance by backend** – WebGL uses the `Sky` shader and wide grid lines (`LineSegments2` + `LineMaterial`). WebGPU uses a simple skydome mesh and basic line segments until equivalent features exist. Both paths share the same voxel **surface** material story (`voxelMaterial.ts`, `createVoxelSurfaceMaterial` via mesh manager).

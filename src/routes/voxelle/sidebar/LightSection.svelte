@@ -8,6 +8,10 @@
     enableShadows,
     aoStrength,
     sceneEnvironmentIntensity,
+    TONE_MAPPING_EXPOSURE_MIN,
+    TONE_MAPPING_EXPOSURE_MAX,
+    toneMappingExposure,
+    autoExposureEnabled,
     LIGHT_PRESETS,
     applyLightPreset,
     type LightPresetId
@@ -60,6 +64,40 @@
       </button>
     {/each}
   </div>
+</div>
+<div class="light-control">
+  <label for="tone-exposure">Exposure</label>
+  <div class="slider-row">
+    <input
+      id="tone-exposure"
+      type="range"
+      min={TONE_MAPPING_EXPOSURE_MIN}
+      max={TONE_MAPPING_EXPOSURE_MAX}
+      step="0.01"
+      value={$toneMappingExposure}
+      oninput={(e) =>
+        toneMappingExposure.set(Number((e.target as HTMLInputElement).value))}
+      title={$autoExposureEnabled
+        ? 'EV bias added to auto exposure (±5); neutral 0'
+        : 'Exposure in EV stops (neutral 0); applied as 2^EV to tone mapping'}
+    />
+    <span class="slider-value"
+      >{$autoExposureEnabled ? 'Bias ' : ''}{$toneMappingExposure >= 0 ? '+' : ''}{$toneMappingExposure.toFixed(
+        2
+      )} EV</span
+    >
+  </div>
+</div>
+<div class="light-control">
+  <label class="checkbox-label">
+    <input
+      type="checkbox"
+      checked={$autoExposureEnabled}
+      onchange={(e) => autoExposureEnabled.set((e.target as HTMLInputElement).checked)}
+      title="Adjust exposure each frame from viewport brightness (may add GPU readback cost)"
+    />
+    Autoexpose
+  </label>
 </div>
 <div class="light-control">
   <label for="ambient-intensity">Ambient light</label>

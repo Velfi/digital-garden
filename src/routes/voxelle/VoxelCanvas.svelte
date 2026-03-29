@@ -75,6 +75,10 @@
     aoStrength,
     backgroundColor,
     enableSky,
+    TONE_MAPPING_EXPOSURE_MIN,
+    TONE_MAPPING_EXPOSURE_MAX,
+    toneMappingExposure,
+    autoExposureEnabled,
     focalLength,
     orthographic,
     voxelMaterial,
@@ -475,6 +479,15 @@
   } from './canvas/planarAtmospherePass';
   import { runVoxelCanvasAnimateStep } from './canvas/voxelCanvasAnimate';
   import {
+    createAutoExposureProbeState,
+    tickAutoExposureProbe,
+    AUTO_EXPOSURE_TARGET_LUMINANCE,
+    AUTO_EXPOSURE_SMOOTH,
+    AUTO_EXPOSURE_MIN_MEASURED_LUM,
+    AUTO_EXPOSURE_DIRTY_EPS,
+    type AutoExposureProbeState
+  } from './canvas/autoExposureProbe';
+  import {
     assignVoxelleGizmoOverlayLayer,
     PRECISE_PREVIEW_OCCLUDED_RENDER_ORDER,
     PRECISE_PREVIEW_RENDER_ORDER,
@@ -658,6 +671,9 @@
   let sceneReady = $state(false);
   /** Greedy/marching: lights/env/tone/etc. changed; `animate` draws once per frame max (see `markCanvasDirty`). */
   let canvasPresentationDirty = false;
+
+  let autoExposureProbeState: AutoExposureProbeState = createAutoExposureProbeState(1);
+  let prevAutoExposureEnabled = false;
 
   function markCanvasDirty(): void {
     canvasPresentationDirty = true;
@@ -1393,6 +1409,13 @@
   function applyToneMappingFromPreferences(): void {
     if (!renderer) return;
     renderer.toneMapping = toneMappingPreferenceToThree(get(voxellePreferences).toneMapping);
+    if (get(autoExposureEnabled)) {
+      return;
+    }
+    const raw = get(toneMappingExposure);
+    const ev = Math.min(TONE_MAPPING_EXPOSURE_MAX, Math.max(TONE_MAPPING_EXPOSURE_MIN, raw));
+    if (ev !== raw) toneMappingExposure.set(ev);
+    renderer.toneMappingExposure = Math.pow(2, ev);
   }
 
   /**
@@ -1487,6 +1510,20 @@
 
     syncVoxelMaterialEnvMaps();
     invalidateDirectionalShadowMap();
+    syncAutoExposureRendererFromProbeState();
+  }
+
+  /** Auto mode: `toneMappingExposure` is EV bias; final mult = autoMult * 2**bias. */
+  function syncAutoExposureRendererFromProbeState(): void {
+    if (!renderer || !get(autoExposureEnabled)) return;
+    const raw = get(toneMappingExposure);
+    const biasEv = Math.min(TONE_MAPPING_EXPOSURE_MAX, Math.max(TONE_MAPPING_EXPOSURE_MIN, raw));
+    if (biasEv !== raw) toneMappingExposure.set(biasEv);
+    const biasM = Math.pow(2, biasEv);
+    const multMin = Math.pow(2, TONE_MAPPING_EXPOSURE_MIN);
+    const multMax = Math.pow(2, TONE_MAPPING_EXPOSURE_MAX);
+    const total = autoExposureProbeState.smoothedAutoMultiplier * biasM;
+    renderer.toneMappingExposure = Math.min(multMax, Math.max(multMin, total));
   }
 
   /** Immediate apply + draw (e.g. `onMount` first paint). */
@@ -6988,6 +7025,31 @@
     }
     gizmoRef?.draw();
     canvasPresentationDirty = false;
+
+    if (renderer && scene && camera && get(autoExposureEnabled)) {
+      const multMin = Math.pow(2, TONE_MAPPING_EXPOSURE_MIN);
+      const multMax = Math.pow(2, TONE_MAPPING_EXPOSURE_MAX);
+      const rawBias = get(toneMappingExposure);
+      const biasEv = Math.min(
+        TONE_MAPPING_EXPOSURE_MAX,
+        Math.max(TONE_MAPPING_EXPOSURE_MIN, rawBias)
+      );
+      const probe = tickAutoExposureProbe(autoExposureProbeState, renderer.domElement, {
+        biasEv,
+        min: multMin,
+        max: multMax,
+        targetLuminance: AUTO_EXPOSURE_TARGET_LUMINANCE,
+        smooth: AUTO_EXPOSURE_SMOOTH,
+        minMeasuredLum: AUTO_EXPOSURE_MIN_MEASURED_LUM,
+        dirtyEps: AUTO_EXPOSURE_DIRTY_EPS
+      });
+      if (probe) {
+        renderer.toneMappingExposure = probe.newTotalMultiplier;
+        if (probe.shouldMarkDirty) {
+          markCanvasDirty();
+        }
+      }
+    }
   }
 
   function animate(now?: number) {
@@ -7571,6 +7633,8 @@
     void $lightColor;
     void $sunlightIntensity;
     void $ambientIntensity;
+    void $toneMappingExposure;
+    void $autoExposureEnabled;
     /** Post / mood (atmosphere, tint, grain, sun shafts): applied inside `render` only — must dirty canvas when they change. */
     void $atmosphereActiveForRender;
     void $atmosphereColor;
@@ -7605,6 +7669,21 @@
     void $sunShaftsSamples;
     applyPresentationFromStores();
     markCanvasDirty();
+  });
+
+  $effect(() => {
+    const cur = $autoExposureEnabled;
+    if (cur && !prevAutoExposureEnabled) {
+      const prevTotal = renderer?.toneMappingExposure ?? 1;
+      toneMappingExposure.set(0);
+      autoExposureProbeState.smoothedAutoMultiplier = prevTotal;
+    } else if (!cur && prevAutoExposureEnabled && renderer) {
+      const ev = Math.log2(Math.max(1e-9, renderer.toneMappingExposure));
+      toneMappingExposure.set(
+        Math.min(TONE_MAPPING_EXPOSURE_MAX, Math.max(TONE_MAPPING_EXPOSURE_MIN, ev))
+      );
+    }
+    prevAutoExposureEnabled = cur;
   });
 
   onMount(async () => {
