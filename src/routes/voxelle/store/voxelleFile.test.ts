@@ -11,8 +11,10 @@ import {
 } from './voxelleFile';
 import { plasticVoxel } from '../voxelMaterial';
 import {
+  isV3WirePayload,
   parseFormatPayload,
   serializeFormatToBson,
+  serializeFormatToWireBytes,
   type VoxelleFileFormat
 } from './voxelleFormatCore';
 
@@ -216,5 +218,64 @@ describe('loadFromBytes / encodeForTransport with injected impls', () => {
     const [asBytes, asB64] = await Promise.all([encodeForTransportBytes(), encodeForTransport()]);
     const fromB64 = Uint8Array.from(atob(asB64), (c) => c.charCodeAt(0));
     expect(asBytes).toEqual(fromB64);
+  });
+});
+
+describe('v3 wire format', () => {
+  it('serializeFormatToWireBytes uses v3 for large voxel counts and round-trips', () => {
+    const rows = Array.from({ length: 50001 }, (_, i) => [
+      (i % 8) - 4,
+      0,
+      0,
+      0x888888,
+      'plastic'
+    ]) as VoxelleFileFormat['voxels'];
+    const data: VoxelleFileFormat = {
+      version: 2,
+      gridSize: 32,
+      voxels: rows,
+      hiddenVoxels: [[1, 2, 3, 0xff0000, 'metal']],
+      scene: { focalLength: 40, orthographic: false }
+    };
+    const wire = serializeFormatToWireBytes(data);
+    expect(isV3WirePayload(wire)).toBe(true);
+    const parsed = parseFormatPayload(wire);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.voxels.length).toBe(50001);
+    expect(parsed!.hiddenVoxels?.length).toBe(1);
+    expect(parsed!.gridSize).toBe(32);
+    expect(parsed!.scene?.focalLength).toBe(40);
+  });
+
+  it('parseFormatPayload reads v3 correctly when Uint8Array has non-zero byteOffset', () => {
+    const rows = Array.from({ length: 50001 }, (_, i) => [
+      (i % 8) - 4,
+      0,
+      0,
+      0x888888,
+      'plastic'
+    ]) as VoxelleFileFormat['voxels'];
+    const data: VoxelleFileFormat = {
+      version: 2,
+      gridSize: 32,
+      voxels: rows,
+      hiddenVoxels: [[1, 2, 3, 0xff0000, 'metal']],
+      scene: { focalLength: 40, orthographic: false }
+    };
+    const wire = serializeFormatToWireBytes(data);
+    const padding = 64;
+    const buf = new ArrayBuffer(padding + wire.byteLength);
+    new Uint8Array(buf).set(wire, padding);
+    const sliced = new Uint8Array(buf, padding, wire.byteLength);
+    expect(sliced.byteOffset).toBe(padding);
+    const direct = parseFormatPayload(wire);
+    const offsetView = parseFormatPayload(sliced);
+    expect(direct).not.toBeNull();
+    expect(offsetView).not.toBeNull();
+    expect(offsetView!.voxels.length).toBe(direct!.voxels.length);
+    expect(offsetView!.voxels[0]).toEqual(direct!.voxels[0]);
+    expect(offsetView!.voxels[50000]).toEqual(direct!.voxels[50000]);
+    expect(offsetView!.hiddenVoxels).toEqual(direct!.hiddenVoxels);
+    expect(offsetView!.gridSize).toBe(direct!.gridSize);
   });
 });

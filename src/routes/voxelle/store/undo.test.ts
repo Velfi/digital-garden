@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
+import { replaceVoxelChunkIndexFromMap } from './voxelChunkIndex';
 import { writable, get } from 'svelte/store';
 import { createUndo } from './undo';
 import { computeUndoDelta } from './serialization';
@@ -24,6 +25,10 @@ function commitDelta(
 }
 
 describe('createUndo', () => {
+  afterEach(() => {
+    replaceVoxelChunkIndexFromMap(new Map());
+  });
+
   it('undo restores prior color when painting over an existing voxel', () => {
     const voxels = writable(makeVoxels([['0,0,0', plasticVoxel(0xff0000)]]));
     const selection = writable(new Map<string, Voxel>());

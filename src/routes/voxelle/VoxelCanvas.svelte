@@ -7888,12 +7888,36 @@
   onMount(async () => {
     window.addEventListener(VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT, onProjectOpenFitCamera);
 
+    let startedShareDownloadUi = false;
+    if (
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('m')
+    ) {
+      beginProjectOpenLoading('Downloading model…');
+      startedShareDownloadUi = true;
+    }
+
     const { loadedFromStorage, fromUrl } = await loadVoxelCanvasBootstrapModel({
       loadFromBytes,
       loadFromStorageAsync,
       initCanvas,
-      getGridSize: () => get(gridSize)
+      getGridSize: () => get(gridSize),
+      onShareFetchProgress: (loaded, total) => {
+        if (!startedShareDownloadUi) return;
+        const t = total != null && total > 0 ? loaded / total : 0;
+        updateProjectOpenLoadingProgress(0.02 + 0.18 * Math.min(1, t), 'Downloading model…');
+      }
     });
+    if (startedShareDownloadUi && !fromUrl) {
+      completeProjectOpenLoading();
+    } else if (
+      startedShareDownloadUi &&
+      fromUrl &&
+      get(voxels).size < LARGE_PROJECT_OPEN_VOXEL_THRESHOLD
+    ) {
+      completeProjectOpenLoading();
+    }
+
     const openingLargeProject =
       (loadedFromStorage || fromUrl) && get(voxels).size >= LARGE_PROJECT_OPEN_VOXEL_THRESHOLD;
     if (openingLargeProject) {

@@ -61,6 +61,8 @@ import {
 } from './glassShadowConstants';
 import { perfLog, perfNow, voxellePerfEnabled } from './voxellePerf';
 import { consumeDirtyVoxelKeys } from '../store/core';
+import { getVoxelKeysInChunkForMesh } from '../store/voxelChunkIndex';
+import { deriveDirtyAndHaloChunkIds } from './meshChunkHalo';
 import type { VoxelMeshWorkerOutput } from '../voxelMeshWorkerLogic';
 import {
   clearPendingUndoRedoGesture,
@@ -327,49 +329,6 @@ export function createMeshManager(
   const workerRequestStartByGen = new Map<number, number>();
   const gridEdgeSegments = new Map<string, [number, number, number, number, number, number]>();
   let pendingDirtyGridKeys: Set<string> | null = null;
-
-  function deriveDirtyAndHaloChunkIds(
-    keys: ReadonlySet<string>,
-    chunkSize: number,
-    options: { aoStrength: number; highScaleScene: boolean }
-  ): { dirtyChunkIds: string[]; haloChunkIds: string[] } {
-    const dirty = new Set<string>();
-    const halo = new Set<string>();
-    const useReducedHalo =
-      options.aoStrength === 0 ||
-      (options.highScaleScene && keys.size <= 8 && options.aoStrength <= 1);
-    for (const key of keys) {
-      const [x, y, z] = parseCoordKey(key);
-      const cx = Math.floor(x / chunkSize);
-      const cy = Math.floor(y / chunkSize);
-      const cz = Math.floor(z / chunkSize);
-      dirty.add(`${cx},${cy},${cz}`);
-      if (useReducedHalo) {
-        const neighbors: Array<[number, number, number]> = [
-          [cx, cy, cz],
-          [cx + 1, cy, cz],
-          [cx - 1, cy, cz],
-          [cx, cy + 1, cz],
-          [cx, cy - 1, cz],
-          [cx, cy, cz + 1],
-          [cx, cy, cz - 1]
-        ];
-        for (const [nx, ny, nz] of neighbors) {
-          halo.add(`${nx},${ny},${nz}`);
-        }
-      } else {
-        for (let dx = -1; dx <= 1; dx++) {
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dz = -1; dz <= 1; dz++) {
-              halo.add(`${cx + dx},${cy + dy},${cz + dz}`);
-            }
-          }
-        }
-      }
-    }
-    for (const id of dirty) halo.delete(id);
-    return { dirtyChunkIds: [...dirty], haloChunkIds: [...halo] };
-  }
 
   function buildVoxelMeshEntry(
     bucketKey: string,
@@ -728,7 +687,7 @@ export function createMeshManager(
     let haloChunkIds: string[] = [];
     if (chunkSize >= 16 && dirtyKeys.size > 0) {
       const derived = deriveDirtyAndHaloChunkIds(dirtyKeys, chunkSize, {
-        aoStrength: opts.aoStrength,
+        aoStrength: opts.aoStrength as 0 | 1 | 2,
         highScaleScene: v.size >= 500000
       });
       dirtyChunkIds = derived.dirtyChunkIds;
@@ -749,7 +708,9 @@ export function createMeshManager(
           dirtyChunkCount: dirtyChunkIds.length,
           haloChunkCount: haloChunkIds.length
         });
-        const sparseChunks = packSparseChunksForWorker(v, dirtyChunkIds, haloChunkIds, chunkSize);
+        const sparseChunks = packSparseChunksForWorker(v, dirtyChunkIds, haloChunkIds, chunkSize, {
+          keysForChunk: getVoxelKeysInChunkForMesh
+        });
         if (sparseChunks.totalTransmissiveCount >= 256) {
           const packedVoxels = packVoxelsForWorker(v);
           if (voxellePerfEnabled()) perfLog('meshWorker.packVoxels', perfNow() - tPack);

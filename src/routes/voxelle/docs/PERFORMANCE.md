@@ -36,14 +36,20 @@ This document lists the main **performance-oriented mechanisms** in Voxelle, wha
 
 **What we do** ([`canvas/meshManager.ts`](../canvas/meshManager.ts))
 
-| Mechanism                     | Threshold / rule                                                      | Purpose                                                                                                                         |
-| ----------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| **Spatial chunking**          | `v.size >= 50_000` → `chunkSize = 32`                                 | Splits work for the worker; enables dirty-chunk messaging.                                                                      |
-| **Incremental dirty rebuild** | Chunking on, `dirtyKeys` non-empty, `dirtyKeys.size <= 2048`          | Sends only **dirty + halo** chunks ([`packSparseChunksForWorker`](../meshWorkerTransfer.ts)) so small edits touch fewer voxels. |
-| **Transmissive fallback**     | If sparse pack has **≥ 256** transmissive voxels in the packed region | **Full** voxel pack to avoid wrong glass/water AO/neighbor behavior across chunk boundaries.                                    |
-| **Large rebuild defer**       | `v.size >= 150_000` and **not** incremental                           | `requestAnimationFrame` before `postMessage` gives the browser a breath frame before heavy transfer/worker start.               |
+| Mechanism                     | Threshold / rule                                                                 | Purpose                                                                                                                         |
+| ----------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Spatial chunking**          | `v.size >= 50_000` → `chunkSize = 32`                                            | Splits work for the worker; enables dirty-chunk messaging.                                                                      |
+| **Incremental dirty rebuild** | Chunking on, `dirtyKeys` non-empty, `dirtyChunkIds.length <= 256`               | Sends only **dirty + halo** chunks ([`packSparseChunksForWorker`](../meshWorkerTransfer.ts)) so small edits touch fewer voxels. |
+| **Transmissive fallback**     | If sparse pack has **≥ 256** transmissive voxels in the packed region             | **Full** voxel pack to avoid wrong glass/water AO/neighbor behavior across chunk boundaries.                                    |
+| **Large rebuild defer**       | `v.size >= 150_000` and **not** incremental                                      | `requestAnimationFrame` before `postMessage` gives the browser a breath frame before heavy transfer/worker start.               |
 
 **Note:** `chunkSize` is **32** only when `v.size >= 50_000`; otherwise it is **0** and the incremental dirty-chunk path is never used—each rebuild sends a **full** voxel pack. The table’s “chunking / incremental” rows apply only to large models.
+
+**Chunk spatial index** – [`voxelChunkIndex.ts`](../store/voxelChunkIndex.ts) keeps `chunkId → voxel keys` for the same **32³** grid as incremental meshing. It is updated on voxel edits ([`core.ts`](../store/core.ts) `applyVoxelUpdater`) and rebuilt on `voxels.set`. When [`meshManager.ts`](../canvas/meshManager.ts) packs sparse chunks at `chunkSize === 32`, [`packSparseChunksForWorker`](../meshWorkerTransfer.ts) uses `keysForChunk` so the main thread does **not** scan the entire voxel `Map`. Optionally lowering `CHUNK_THRESHOLD` in `meshManager` enables that path for mid-size projects (more chunk bookkeeping per frame).
+
+**Dirty / halo chunks** – [`meshChunkHalo.ts`](../canvas/meshChunkHalo.ts) picks which 32³ chunks supply **neighbor** voxels beyond the dirty set (`occlusionVoxels` for greedy mesh). Three modes: **face** (7 chunk ids per key)—only when `aoStrength === 0` or legacy high-scale tiny strokes (`v.size >= 500_000`, `dirtyKeys.size <= 8`, `aoStrength <= 1`); **omitCorners** (19 of 27 offsets)—default for **subtle AO** (`aoStrength === 1`); drops only the 8 chunk-space “corner” offsets (all three of dx,dy,dz are ±1), so **edge-diagonal** neighbors like `(cx+1,cy+1,cz)` remain and holes from face-only halo are avoided, with ~30% fewer halo cells than full; **full** (26 neighbor ids per key)—for **strong AO** (`aoStrength === 2`). Transmissive-heavy regions still fall back to a **full** voxel pack when sparse transmissive count ≥ **256** ([`meshManager.ts`](../canvas/meshManager.ts)).
+
+**Measuring large-stroke behavior** – Set `localStorage.setItem('voxellePerf','1')` and reload for console timings. **Project stats** ([`projectPerfMetrics`](../store/projectPerfMetrics.ts)) reports `lastEditDirtyChunkCount`, `lastEditHaloChunkCount`, `lastWorkerMeshComputeMs`, and end-to-end edit/undo durations.
 
 **Why** – Scales edits on large projects; avoids incorrect thin-glass meshes when only sending a subset of voxels.
 
@@ -136,6 +142,14 @@ This document lists the main **performance-oriented mechanisms** in Voxelle, wha
 - **Scene → HalfFloat RT before bloom** – correct screen-space sampling for `transmission`.
 
 **Why** – Stable visuals and performance on WebGPU without forcing full-scene bloom every frame (glow-only path when no emissive meshes).
+
+## Undo / redo (delta steps)
+
+**Problem** – Cloning the full voxel `Map` (`new Map(m)`) on every undo/redo is **O(voxels)**, and `voxels.set` would rebuild the chunk spatial index for the whole model.
+
+**What we do** – [`undoDeltaInPlace.ts`](../store/undoDeltaInPlace.ts) applies [`UndoDelta`](../store/serialization.ts) **in place** on the existing maps. [`voxels.update`](../store/core.ts) returns the **same** map reference so the chunk index is updated **incrementally** via [`applyVoxelChunkIndexAfterKeyChange`](../store/voxelChunkIndex.ts); [`bumpGlowVoxelCount`](../store/voxelDerivedStats.ts) replaces a full glow scan. Legacy **full snapshot** stack entries (`k: 'f'`) still use deserialize + full index/glow rebuild.
+
+**Why** – Keeps undo/redo synchronous work proportional to the **delta**, not total voxel count.
 
 ## Observability
 

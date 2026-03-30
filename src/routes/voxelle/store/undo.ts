@@ -3,11 +3,15 @@ import type { Writable } from 'svelte/store';
 import { serializeVoxels, deserializeVoxels } from './serialization';
 import type { UndoDelta } from './serialization';
 import {
-  applyUndoDeltaInverse,
-  applyUndoDeltaForward,
   isUndoDeltaEmpty,
   voxelKeysTouchedInUndoDeltaVoxels
 } from './serialization';
+import {
+  applyUndoDeltaForwardToSelectionInPlace,
+  applyUndoDeltaForwardToVoxelsInPlace,
+  applyUndoDeltaInverseToSelectionInPlace,
+  applyUndoDeltaInverseToVoxelsInPlace
+} from './undoDeltaInPlace';
 import type { Voxel } from '../voxelMaterial';
 import { recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 import {
@@ -97,12 +101,14 @@ export function createUndo(
       } else {
         redoStack.push(entry);
         meshDirty?.noteVoxelKeysDirty?.(voxelKeysTouchedInUndoDeltaVoxels(entry.d));
-        const curV = get(voxels);
-        const curS = get(selection);
-        const { v, s } = applyUndoDeltaInverse(curV, curS, entry.d);
-        voxels.set(v);
-        recomputeGlowVoxelCountFromMap(v);
-        selection.set(s);
+        voxels.update((v) => {
+          applyUndoDeltaInverseToVoxelsInPlace(v, entry.d);
+          return v;
+        });
+        selection.update((s) => {
+          applyUndoDeltaInverseToSelectionInPlace(s, entry.d);
+          return s;
+        });
       }
       canUndoStore.set(undoStack.length > 0);
       canRedoStore.set(redoStack.length > 0);
@@ -128,12 +134,14 @@ export function createUndo(
       } else {
         undoStack.push(entry);
         meshDirty?.noteVoxelKeysDirty?.(voxelKeysTouchedInUndoDeltaVoxels(entry.d));
-        const curV = get(voxels);
-        const curS = get(selection);
-        const { v, s } = applyUndoDeltaForward(curV, curS, entry.d);
-        voxels.set(v);
-        recomputeGlowVoxelCountFromMap(v);
-        selection.set(s);
+        voxels.update((v) => {
+          applyUndoDeltaForwardToVoxelsInPlace(v, entry.d);
+          return v;
+        });
+        selection.update((s) => {
+          applyUndoDeltaForwardToSelectionInPlace(s, entry.d);
+          return s;
+        });
       }
       canUndoStore.set(undoStack.length > 0);
       canRedoStore.set(redoStack.length > 0);

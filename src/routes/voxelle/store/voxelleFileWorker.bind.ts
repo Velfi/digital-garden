@@ -8,7 +8,9 @@ export function attachVoxelleFileWorker(self: WorkerMessagePort): void {
     if (result.type === 'serialized') {
       self.postMessage(result, { transfer: [result.bytes] });
     } else {
-      self.postMessage(result);
+      for (const msg of result.messages) {
+        self.postMessage(msg);
+      }
     }
   };
 }

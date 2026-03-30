@@ -4,7 +4,7 @@ Binary format for Voxelle voxel models.
 
 ## Structure
 
-After decompression (if gzipped), the payload is BSON. The logical structure is:
+After decompression (if gzipped), the payload is either **BSON** (v1/v2) or **v3 wire** (see below). The logical model is:
 
 | Field                | Type    | Required | Description                                                                                                                                                       |
 | -------------------- | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -29,9 +29,25 @@ After decompression (if gzipped), the payload is BSON. The logical structure is:
 
 **New files (recommended):** Gzip-compressed BSON. Full key names are used for versioning and tooling.
 
-**Share / blob store:** Same format. The blob stores raw gzipped BSON (binary). Shares use `?m=<id>`; the id refers to the blob.
+**Share / blob store:** Same transport as local files: gzip-compressed bytes. The decompressed payload may be BSON (v1/v2) or v3 wire. Shares use `?m=<id>`; the id refers to the blob.
 
-**Detection:** First 2 bytes `0x1f 0x8b` → gzip. Decompress, then parse as BSON.
+**Detection:** First 2 bytes `0x1f 0x8b` → gzip. Decompress, then: if the next bytes are magic `VX3` + `0x1a` (`56 58 33 1a`), parse as **v3 wire**; otherwise parse as BSON.
+
+## Version 3 wire layout (large models)
+
+Used when saving models with **50,000 or more** voxel rows (visible + hidden combined). Avoids a single huge BSON array while keeping the same logical fields.
+
+| Region | Contents |
+| ------ | -------- |
+| 0–3 | Magic bytes `56 58 33 1a` |
+| 4–7 | `uint32` LE wire version, always **3** |
+| 8–11 | `uint32` LE length of the following BSON header |
+| header | BSON document: `version`, `gridSize`, `scene`, `voxelCount`, `hiddenCount` (no voxel arrays) |
+| body | `voxelCount` + `hiddenCount` contiguous **records**, 20 bytes each |
+
+**Record** (little-endian): `int32 x`, `int32 y`, `int32 z`, `uint32 color` (RGB in lower 24 bits), `uint8` material index (same order as runtime material ids: plastic, metal, rubber, glass, water, glow), then 3 padding bytes (reserved).
+
+Readers still accept v1/v2 BSON-only payloads; v3 is optional on write for large saves.
 
 ## Example (JSON representation)
 

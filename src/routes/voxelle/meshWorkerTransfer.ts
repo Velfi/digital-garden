@@ -1,6 +1,7 @@
 import { parseCoordKeyInts } from './coordUtils';
 import type { Voxel } from './voxelMaterial';
 import { VOXEL_MATERIAL_IDS } from './voxelMaterial';
+import { VOXEL_MESH_CHUNK_SIZE } from './store/voxelChunkIndex';
 
 export type PackedVoxelInput = {
   coords: Int32Array;
@@ -18,6 +19,11 @@ export type PackedSparseChunkInput = {
   totalTransmissiveCount: number;
   dirtyChunks: PackedChunkVoxelInput[];
   haloChunks: PackedChunkVoxelInput[];
+};
+
+/** When set, sparse pack enumerates voxels per chunk via the index (no full `Map` scan). */
+export type PackSparseChunksOptions = {
+  keysForChunk?: (chunkId: string) => string[];
 };
 
 /** Encode voxel map into typed arrays for worker postMessage transfer. */
@@ -103,12 +109,51 @@ function packVoxelEntries(entries: Array<[string, Voxel]>): PackedVoxelInput {
   return { coords, colors, materials };
 }
 
+function collectSparseChunksFromIndex(
+  voxels: Map<string, Voxel>,
+  dirtyChunkIds: readonly string[],
+  haloChunkIds: readonly string[],
+  keysForChunk: (chunkId: string) => string[]
+): {
+  dirtyByChunk: Map<string, Array<[string, Voxel]>>;
+  haloByChunk: Map<string, Array<[string, Voxel]>>;
+  totalTransmissiveCount: number;
+} {
+  const dirtySet = new Set(dirtyChunkIds);
+  const dirtyByChunk = new Map<string, Array<[string, Voxel]>>();
+  const haloByChunk = new Map<string, Array<[string, Voxel]>>();
+  let totalTransmissiveCount = 0;
+
+  const visitChunk = (chunkId: string, intoDirty: boolean) => {
+    for (const key of keysForChunk(chunkId)) {
+      const voxel = voxels.get(key);
+      if (voxel === undefined) continue;
+      if (voxel.material === 'glass' || voxel.material === 'water') totalTransmissiveCount++;
+      const arr = (intoDirty ? dirtyByChunk : haloByChunk).get(chunkId) ?? [];
+      arr.push([key, voxel]);
+      if (intoDirty) dirtyByChunk.set(chunkId, arr);
+      else haloByChunk.set(chunkId, arr);
+    }
+  };
+
+  for (const chunkId of dirtyChunkIds) {
+    visitChunk(chunkId, true);
+  }
+  for (const chunkId of haloChunkIds) {
+    if (dirtySet.has(chunkId)) continue;
+    visitChunk(chunkId, false);
+  }
+
+  return { dirtyByChunk, haloByChunk, totalTransmissiveCount };
+}
+
 /** Pack only requested dirty/halo chunks for incremental worker updates. */
 export function packSparseChunksForWorker(
   voxels: Map<string, Voxel>,
   dirtyChunkIds: readonly string[],
   haloChunkIds: readonly string[],
-  chunkSize: number
+  chunkSize: number,
+  opts?: PackSparseChunksOptions
 ): PackedSparseChunkInput {
   const dirtySet = new Set(dirtyChunkIds);
   const haloSet = new Set(haloChunkIds);
@@ -122,33 +167,48 @@ export function packSparseChunksForWorker(
   if (relevantChunkIds.length === 0) {
     return { chunkSize, totalTransmissiveCount: 0, dirtyChunks: [], haloChunks: [] };
   }
-  const bounds = voxelBoundsForChunkIds(relevantChunkIds, chunkSize);
 
-  for (const [key, voxel] of voxels) {
-    const [x, y, z] = parseCoordKeyInts(key);
-    if (
-      x < bounds.minX ||
-      x > bounds.maxX ||
-      y < bounds.minY ||
-      y > bounds.maxY ||
-      z < bounds.minZ ||
-      z > bounds.maxZ
-    ) {
-      continue;
-    }
-    const chunkId = chunkIdForCoord(x, y, z, chunkSize);
-    if (dirtySet.has(chunkId)) {
-      if (voxel.material === 'glass' || voxel.material === 'water') totalTransmissiveCount++;
-      const arr = dirtyByChunk.get(chunkId) ?? [];
-      arr.push([key, voxel]);
-      dirtyByChunk.set(chunkId, arr);
-      continue;
-    }
-    if (haloSet.has(chunkId)) {
-      if (voxel.material === 'glass' || voxel.material === 'water') totalTransmissiveCount++;
-      const arr = haloByChunk.get(chunkId) ?? [];
-      arr.push([key, voxel]);
-      haloByChunk.set(chunkId, arr);
+  const useIndex =
+    opts?.keysForChunk !== undefined && chunkSize === VOXEL_MESH_CHUNK_SIZE;
+  if (useIndex) {
+    const collected = collectSparseChunksFromIndex(
+      voxels,
+      dirtyChunkIds,
+      haloChunkIds,
+      opts.keysForChunk!
+    );
+    collected.dirtyByChunk.forEach((v, k) => dirtyByChunk.set(k, v));
+    collected.haloByChunk.forEach((v, k) => haloByChunk.set(k, v));
+    totalTransmissiveCount = collected.totalTransmissiveCount;
+  } else {
+    const bounds = voxelBoundsForChunkIds(relevantChunkIds, chunkSize);
+
+    for (const [key, voxel] of voxels) {
+      const [x, y, z] = parseCoordKeyInts(key);
+      if (
+        x < bounds.minX ||
+        x > bounds.maxX ||
+        y < bounds.minY ||
+        y > bounds.maxY ||
+        z < bounds.minZ ||
+        z > bounds.maxZ
+      ) {
+        continue;
+      }
+      const chunkId = chunkIdForCoord(x, y, z, chunkSize);
+      if (dirtySet.has(chunkId)) {
+        if (voxel.material === 'glass' || voxel.material === 'water') totalTransmissiveCount++;
+        const arr = dirtyByChunk.get(chunkId) ?? [];
+        arr.push([key, voxel]);
+        dirtyByChunk.set(chunkId, arr);
+        continue;
+      }
+      if (haloSet.has(chunkId)) {
+        if (voxel.material === 'glass' || voxel.material === 'water') totalTransmissiveCount++;
+        const arr = haloByChunk.get(chunkId) ?? [];
+        arr.push([key, voxel]);
+        haloByChunk.set(chunkId, arr);
+      }
     }
   }
   const dirtyChunks: PackedChunkVoxelInput[] = [];

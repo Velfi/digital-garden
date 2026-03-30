@@ -844,7 +844,7 @@ function addBranchesToCells(
     if (o.branchDepth >= 2 && path.length > 3 && cap.left > 0) {
       const tip = path[path.length - 1]!;
       const rng2 = createRng(stemSeed ^ (b * 0xdeadbeef));
-      const len2 = clamp(Math.floor(childLen * (0.58 + rng() * 0.1)), 3, 42);
+      const len2 = clamp(Math.floor(childLen * (0.58 + rng2() * 0.1)), 3, 42);
       const twigAz =
         azimuthRad + GOLDEN_ANGLE_RAD * 0.37 + rng2() * 1.15;
       const delta2 = branchEndDelta(

@@ -3,6 +3,11 @@ import { parseCoordKey, parseCoordKeyInts } from './coordUtils';
 import { packSparseChunksForWorker } from './meshWorkerTransfer';
 import { plasticVoxel } from './voxelMaterial';
 import { coordKey } from './coordUtils';
+import {
+  getVoxelKeysInChunkForMesh,
+  replaceVoxelChunkIndexFromMap,
+  VOXEL_MESH_CHUNK_SIZE
+} from './store/voxelChunkIndex';
 
 describe('meshWorkerTransfer', () => {
   it('parseCoordKeyInts matches parseCoordKey', () => {
@@ -48,6 +53,33 @@ describe('meshWorkerTransfer', () => {
     expect(a.dirtyChunks[0]!.voxels.colors.length).toBe(fromFull('0,0,0').length);
     if (a.haloChunks.length > 0) {
       expect(a.haloChunks[0]!.voxels.colors.length).toBe(fromFull(a.haloChunks[0]!.chunkId).length);
+    }
+  });
+
+  it('packSparseChunksForWorker keysForChunk path matches bbox scan at chunk size 32', () => {
+    const voxels = new Map<string, ReturnType<typeof plasticVoxel>>();
+    for (let x = 0; x < 10; x++) {
+      for (let y = 0; y < 10; y++) {
+        voxels.set(coordKey(x, y, 0), plasticVoxel(0xaa00ff));
+      }
+    }
+    voxels.set(coordKey(200, 0, 0), plasticVoxel(0x00ff00));
+    replaceVoxelChunkIndexFromMap(voxels, VOXEL_MESH_CHUNK_SIZE);
+    const dirty = ['0,0,0'];
+    const halo = ['1,0,0'];
+    const scan = packSparseChunksForWorker(voxels, dirty, halo, 32);
+    const indexed = packSparseChunksForWorker(voxels, dirty, halo, 32, {
+      keysForChunk: getVoxelKeysInChunkForMesh
+    });
+    expect(indexed.totalTransmissiveCount).toBe(scan.totalTransmissiveCount);
+    expect(indexed.dirtyChunks.length).toBe(scan.dirtyChunks.length);
+    expect(indexed.haloChunks.length).toBe(scan.haloChunks.length);
+    for (let i = 0; i < scan.dirtyChunks.length; i++) {
+      expect(indexed.dirtyChunks[i]!.voxels.coords).toEqual(scan.dirtyChunks[i]!.voxels.coords);
+      expect(indexed.dirtyChunks[i]!.voxels.colors).toEqual(scan.dirtyChunks[i]!.voxels.colors);
+    }
+    for (let i = 0; i < scan.haloChunks.length; i++) {
+      expect(indexed.haloChunks[i]!.voxels.coords).toEqual(scan.haloChunks[i]!.voxels.coords);
     }
   });
 });

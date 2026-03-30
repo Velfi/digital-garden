@@ -37,6 +37,11 @@ import {
 import { bumpGlowVoxelCount, recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 import { createUndo } from './undo';
 import { measureEditDuration } from './projectPerf';
+import {
+  applyVoxelChunkIndexAfterKeyChange,
+  replaceVoxelChunkIndexFromMap,
+  VOXEL_MESH_CHUNK_SIZE
+} from './voxelChunkIndex';
 import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
 import { cloneVoxel } from '../voxelMaterial';
 import {
@@ -194,7 +199,29 @@ export type ToolPane = 'draw' | 'sculpt' | 'squishy' | 'hand' | 'fly' | 'generat
 
 // Stores
 export const gridSize = writable<GridSize>(32);
-export const voxels = writable<Map<string, Voxel>>(new Map());
+
+function createVoxelMapStore() {
+  const inner = writable<Map<string, Voxel>>(new Map());
+  replaceVoxelChunkIndexFromMap(new Map());
+  return {
+    subscribe: inner.subscribe,
+    set: (m: Map<string, Voxel>) => {
+      replaceVoxelChunkIndexFromMap(m);
+      inner.set(m);
+    },
+    update: (updater: (m: Map<string, Voxel>) => Map<string, Voxel>) => {
+      inner.update((m) => {
+        const next = updater(m);
+        if (next !== m) {
+          replaceVoxelChunkIndexFromMap(next);
+        }
+        return next;
+      });
+    }
+  };
+}
+
+export const voxels = createVoxelMapStore();
 /** Hidden voxels are removed from `voxels` until unhidden. */
 export const hiddenVoxels = writable<Map<string, Voxel>>(new Map());
 export const hasHiddenVoxels = derived(hiddenVoxels, (h) => h.size > 0);
@@ -965,6 +992,7 @@ function applyVoxelUpdater(updater: (v: VoxelUpdaterMap) => void): void {
       if (v === OVERLAY_TOMB) readMap.delete(k);
       else readMap.set(k, v);
       dirtyVoxelKeys.add(k);
+      applyVoxelChunkIndexAfterKeyChange(k, before, after, VOXEL_MESH_CHUNK_SIZE);
     }
     return readMap;
   });

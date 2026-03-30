@@ -38,14 +38,26 @@ import {
 } from './atmosphere';
 import { recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 import type { GridSize } from './core';
-import { VOXELLE_FORMAT_VERSION, type VoxelleFileFormat } from './voxelleFormatCore';
+import {
+  VOXELLE_FORMAT_VERSION,
+  type VoxelleFileFormat,
+  type VoxelleFileVoxelRow,
+  decodeV3WireRecord,
+  isV3WirePayload,
+  parseV3WireHeader,
+  VOXELLE_V3_RECORD_SIZE
+} from './voxelleFormatCore';
+import { VOXELLE_FILE_BATCH_ROW_COUNT } from './voxelleFileWorkerLogic';
 import { canonicalizeVoxelMap } from './serialization';
 import type { Voxel } from '../voxelMaterial';
 import { parseVoxelMaterial } from '../voxelMaterial';
 
 export { VOXELLE_FORMAT_VERSION, type VoxelleFileFormat };
 
-export type ParsePayloadImpl = (bytes: Uint8Array) => Promise<VoxelleFileFormat | null>;
+/** `'batched'` = worker already applied maps incrementally (large BSON path). */
+export type ParsePayloadImpl = (
+  bytes: Uint8Array
+) => Promise<VoxelleFileFormat | null | 'batched'>;
 export type SerializeImpl = (data: VoxelleFileFormat) => Promise<Uint8Array>;
 
 /** File System Access API (Chromium); not on `Window` in all TS lib versions. */
@@ -65,18 +77,61 @@ function createFileWorker(): Worker {
 
 let workerNextId = 0;
 
+function yieldToUi(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 function useWorker(): void {
   parsePayloadImpl = (bytes: Uint8Array) =>
     new Promise((resolve, reject) => {
       const id = ++workerNextId;
       const worker = createFileWorker();
       const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      let meta: { version: number; gridSize: number; scene?: VoxelleFileFormat['scene'] } | null =
+        null;
+      const voxelsMap = new Map<string, Voxel>();
+      const hiddenMap = new Map<string, Voxel>();
+
       const handler = (e: MessageEvent) => {
-        if (e.data?.id !== id) return;
-        worker.removeEventListener('message', handler);
-        worker.terminate();
-        if (e.data.type === 'parsed') resolve(e.data.data ?? null);
-        else resolve(null);
+        void (async () => {
+          if (e.data?.id !== id) return;
+          const d = e.data;
+          if (d.type === 'parsed') {
+            worker.removeEventListener('message', handler);
+            worker.terminate();
+            resolve(d.data ?? null);
+            return;
+          }
+          if (d.type === 'parsedBatchedStart') {
+            meta = d.meta;
+            return;
+          }
+          if (d.type === 'parsedVoxelBatch') {
+            mergeVoxelFileRowsIntoMap(voxelsMap, d.rows);
+            await yieldToUi();
+            return;
+          }
+          if (d.type === 'parsedHiddenBatch') {
+            mergeVoxelFileRowsIntoMap(hiddenMap, d.rows);
+            await yieldToUi();
+            return;
+          }
+          if (d.type === 'parsedBatchedDone') {
+            worker.removeEventListener('message', handler);
+            worker.terminate();
+            if (!meta) {
+              resolve(null);
+              return;
+            }
+            finalizeLoadedVoxelMaps(
+              voxelsMap,
+              hiddenMap,
+              meta.gridSize as GridSize,
+              meta.scene
+            );
+            resolve('batched');
+          }
+        })();
       };
       worker.addEventListener('message', handler);
       worker.onerror = () => {
@@ -213,11 +268,8 @@ function isGzipped(bytes: Uint8Array): boolean {
   return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 }
 
-function applyModelData(data: VoxelleFileFormat): void {
-  const voxelsMap = new Map<string, Voxel>();
-  const hiddenMap = new Map<string, Voxel>();
-  const sz = data.gridSize;
-  for (const row of data.voxels) {
+function mergeVoxelFileRowsIntoMap(map: Map<string, Voxel>, rows: VoxelleFileVoxelRow[]): void {
+  for (const row of rows) {
     if (!Array.isArray(row) || row.length < 4) continue;
     const x = row[0] as number;
     const y = row[1] as number;
@@ -227,39 +279,23 @@ function applyModelData(data: VoxelleFileFormat): void {
       row.length >= 5 && typeof row[4] === 'string'
         ? parseVoxelMaterial(row[4])
         : parseVoxelMaterial(0);
-    voxelsMap.set(coordKey(x, y, z), { color: c, material: m });
+    map.set(coordKey(x, y, z), { color: c, material: m });
   }
-  if (Array.isArray(data.hiddenVoxels)) {
-    for (const row of data.hiddenVoxels) {
-      if (!Array.isArray(row) || row.length < 4) continue;
-      const x = row[0] as number;
-      const y = row[1] as number;
-      const z = row[2] as number;
-      const c = ((row[3] as number) >>> 0) & 0xffffff;
-      const m =
-        row.length >= 5 && typeof row[4] === 'string'
-          ? parseVoxelMaterial(row[4])
-          : parseVoxelMaterial(0);
-      hiddenMap.set(coordKey(x, y, z), { color: c, material: m });
-    }
-  }
-  resetUndo();
-  gridSize.set(sz as GridSize);
-  voxels.set(voxelsMap);
-  recomputeGlowVoxelCountFromMap(voxelsMap);
-  hiddenVoxels.set(hiddenMap);
-  if (data.scene) {
+}
+
+function applySceneSettingsFromVoxelleFile(scene?: VoxelleFileFormat['scene']): void {
+  if (scene) {
     if (
-      typeof data.scene.focalLength === 'number' &&
-      data.scene.focalLength >= 15 &&
-      data.scene.focalLength <= 200
+      typeof scene.focalLength === 'number' &&
+      scene.focalLength >= 15 &&
+      scene.focalLength <= 200
     ) {
-      focalLength.set(data.scene.focalLength);
+      focalLength.set(scene.focalLength);
     }
-    if (typeof data.scene.orthographic === 'boolean') {
-      orthographic.set(data.scene.orthographic);
+    if (typeof scene.orthographic === 'boolean') {
+      orthographic.set(scene.orthographic);
     }
-    const atm = data.scene.atmosphere;
+    const atm = scene.atmosphere;
     if (atm && typeof atm === 'object') {
       if (typeof atm.enabled === 'boolean') atmosphereEnabled.set(atm.enabled);
       if (typeof atm.color === 'string' && /^#?[0-9a-fA-F]{6}$/.test(atm.color)) {
@@ -379,6 +415,59 @@ function applyModelData(data: VoxelleFileFormat): void {
   }
 }
 
+function finalizeLoadedVoxelMaps(
+  voxelsMap: Map<string, Voxel>,
+  hiddenMap: Map<string, Voxel>,
+  sz: GridSize,
+  scene?: VoxelleFileFormat['scene']
+): void {
+  resetUndo();
+  gridSize.set(sz);
+  voxels.set(voxelsMap);
+  recomputeGlowVoxelCountFromMap(voxelsMap);
+  hiddenVoxels.set(hiddenMap);
+  applySceneSettingsFromVoxelleFile(scene);
+}
+
+function applyModelData(data: VoxelleFileFormat): void {
+  const voxelsMap = new Map<string, Voxel>();
+  const hiddenMap = new Map<string, Voxel>();
+  mergeVoxelFileRowsIntoMap(voxelsMap, data.voxels);
+  if (Array.isArray(data.hiddenVoxels)) {
+    mergeVoxelFileRowsIntoMap(hiddenMap, data.hiddenVoxels);
+  }
+  finalizeLoadedVoxelMaps(voxelsMap, hiddenMap, data.gridSize as GridSize, data.scene);
+}
+
+/** v3 wire: merge records on the main thread without BSON arrays or file worker parse. */
+async function loadV3WireIncremental(payload: Uint8Array): Promise<boolean> {
+  const head = parseV3WireHeader(payload);
+  if (!head) return false;
+  const voxelsMap = new Map<string, Voxel>();
+  const hiddenMap = new Map<string, Voxel>();
+  let o = head.bodyByteOffset;
+  let processed = 0;
+  for (let i = 0; i < head.voxelCount; i++) {
+    const rec = decodeV3WireRecord(payload, o);
+    if (!rec) return false;
+    o += VOXELLE_V3_RECORD_SIZE;
+    voxelsMap.set(coordKey(rec.x, rec.y, rec.z), rec.voxel);
+    processed++;
+    if (processed % VOXELLE_FILE_BATCH_ROW_COUNT === 0) await yieldToUi();
+  }
+  processed = 0;
+  for (let i = 0; i < head.hiddenCount; i++) {
+    const rec = decodeV3WireRecord(payload, o);
+    if (!rec) return false;
+    o += VOXELLE_V3_RECORD_SIZE;
+    hiddenMap.set(coordKey(rec.x, rec.y, rec.z), rec.voxel);
+    processed++;
+    if (processed % VOXELLE_FILE_BATCH_ROW_COUNT === 0) await yieldToUi();
+  }
+  finalizeLoadedVoxelMaps(voxelsMap, hiddenMap, head.gridSize as GridSize, head.scene);
+  return true;
+}
+
 export async function saveToFile(filename = 'voxelle.voxelle'): Promise<void> {
   const data = serializeToVoxelleFormat();
   const bsonBytes = await serializeImpl(data);
@@ -430,7 +519,11 @@ export async function loadFromBytes(bytes: Uint8Array): Promise<boolean> {
     console.error('[Voxelle] Decompression failed:', e);
     return false;
   }
+  if (isV3WirePayload(payload)) {
+    return loadV3WireIncremental(payload);
+  }
   const data = await parsePayloadImpl(payload);
+  if (data === 'batched') return true;
   if (!data) {
     console.error('[Voxelle] Parse failed. Decompressed payload length:', payload.length);
     return false;

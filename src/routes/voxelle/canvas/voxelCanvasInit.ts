@@ -7,11 +7,48 @@ import { getShareFromIndexedDB } from '../shareStorage';
 /** High enough that ~1 voxel/cell leaves several texels between lines (512 was ~2px/cell → stroked lines merged into a solid mesh). */
 export const PRECISE_GUIDE_TEX_SIZE = 2560;
 
+/** Read fetch body incrementally; optional progress when `Content-Length` is present. */
+export async function streamResponseToUint8Array(
+  res: Response,
+  onProgress?: (loadedBytes: number, totalBytes: number | null) => void
+): Promise<Uint8Array> {
+  const lenHeader = res.headers.get('Content-Length');
+  const total = lenHeader ? parseInt(lenHeader, 10) : null;
+  const parsedTotal = total != null && Number.isFinite(total) && total >= 0 ? total : null;
+  const body = res.body;
+  if (!body) {
+    const buf = await res.arrayBuffer();
+    onProgress?.(buf.byteLength, parsedTotal);
+    return new Uint8Array(buf);
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      loaded += value.byteLength;
+      onProgress?.(loaded, parsedTotal);
+    }
+  }
+  const out = new Uint8Array(loaded);
+  let o = 0;
+  for (const c of chunks) {
+    out.set(c, o);
+    o += c.byteLength;
+  }
+  return out;
+}
+
 export async function loadVoxelCanvasBootstrapModel(options: {
   loadFromBytes: (bytes: Uint8Array) => Promise<boolean>;
   loadFromStorageAsync: () => Promise<boolean>;
   initCanvas: (gridSize: number) => void;
   getGridSize: () => number;
+  /** Bytes received while fetching `?m=` share model (optional). */
+  onShareFetchProgress?: (loadedBytes: number, totalBytes: number | null) => void;
 }): Promise<{ fromUrl: boolean; loadedFromStorage: boolean }> {
   let fromUrl = false;
   if (typeof window !== 'undefined') {
@@ -36,7 +73,7 @@ export async function loadVoxelCanvasBootstrapModel(options: {
         try {
           const res = await fetch(`/api/voxelle/model/${id}`);
           if (res.ok) {
-            const bytes = new Uint8Array(await res.arrayBuffer());
+            const bytes = await streamResponseToUint8Array(res, options.onShareFetchProgress);
             fromUrl = await options.loadFromBytes(bytes);
           }
         } catch {

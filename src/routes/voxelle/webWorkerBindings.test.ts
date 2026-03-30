@@ -75,7 +75,9 @@ describe('web worker bindings (mock global scope)', () => {
       scope.dispatchMessage(input);
       const expected = processVoxelMeshMessage(input);
       const [post] = scope.getPosted();
-      expect(post.data).toEqual(expected);
+      const { workerTimings: _wt, ...postRest } = post.data as unknown as Record<string, unknown>;
+      const { workerTimings: _e, ...expRest } = expected as unknown as Record<string, unknown>;
+      expect(postRest).toEqual(expRest);
       expect(post.options?.transfer).toEqual(transferablesFromMeshResults(expected.results));
     });
   });
@@ -92,9 +94,10 @@ describe('web worker bindings (mock global scope)', () => {
       const msg = { type: 'parse' as const, id: 11, bytes };
       scope.dispatchMessage(msg);
       const expected = processVoxelleFileMessage(msg);
-      const [post] = scope.getPosted();
-      expect(post.data).toEqual(expected);
-      expect(post.options?.transfer).toBeUndefined();
+      if (expected.type !== 'parseMulti') throw new Error('expected parseMulti');
+      const posted = scope.getPosted();
+      expect(posted.map((p) => p.data)).toEqual(expected.messages);
+      expect(posted.every((p) => p.options?.transfer === undefined)).toBe(true);
     });
 
     it('serialize: posts bytes as transferable', () => {
