@@ -21,6 +21,7 @@ export interface GeneratorRmbDeps {
   piscinaPhase: 'pick' | 'shape';
   insectaPhase: 'pick' | 'shape';
   faunaPhase: 'pick' | 'shape';
+  floraPhase: 'pick' | 'shape';
   render: () => void;
   randomSeed32: () => number;
   setNextRockSeed: (n: number) => void;
@@ -58,7 +59,9 @@ export function tryHandleGeneratorToolRmb(ctx: GeneratorRmbDeps, event: PointerE
     return true;
   }
   if (ctx.tool === 'flora') {
-    ctx.setNextFloraSeed(ctx.randomSeed32());
+    if (ctx.floraPhase === 'shape') {
+      ctx.setNextFloraSeed(ctx.randomSeed32());
+    }
     event.preventDefault();
     ctx.render();
     return true;
@@ -151,6 +154,7 @@ export interface GeneratorPrimaryPointerUpDeps {
   piscinaPhase: 'pick' | 'shape';
   insectaPhase: 'pick' | 'shape';
   faunaPhase: 'pick' | 'shape';
+  floraPhase: 'pick' | 'shape';
   getIntersection: () => Intersection | null | undefined;
   updatePointerFromEvent: (e: PointerEvent) => void;
   getAddPosition: (hit: Intersection) => [number, number, number] | null;
@@ -177,6 +181,7 @@ export interface GeneratorPrimaryPointerUpDeps {
   getNextFaunaSeed: () => number;
   setNextFaunaSeed: (n: number) => void;
   commitFaunaSurfacePick: (place: [number, number, number], normal: FaceNormal) => void;
+  commitFloraSurfacePick: (place: [number, number, number], normal: FaceNormal) => void;
   scheduleRender: () => void;
 }
 
@@ -213,14 +218,18 @@ export function applyGeneratorFaceClickPointerDown(
     return;
   }
   if (ctx.tool === 'flora') {
+    ctx.updatePointerFromEvent(event);
+    if (ctx.floraPhase !== 'pick') return;
     const hit = ctx.getIntersection();
     if (!hit) return;
     const place = ctx.getAddPosition(hit);
     const normal = ctx.getFaceNormalFromHit(hit);
     if (!place || !normal) return;
-    const seed = ctx.getNextFloraSeed() === 0 ? ctx.randomSeed32() : ctx.getNextFloraSeed();
-    ctx.placeFlora(place, normal, seed);
-    ctx.setNextFloraSeed(ctx.randomSeed32());
+    if (ctx.getNextFloraSeed() === 0) {
+      ctx.setNextFloraSeed(ctx.randomSeed32());
+    }
+    ctx.commitFloraSurfacePick(place, normal);
+    ctx.scheduleRender();
     return;
   }
   if (ctx.tool === 'ashlar') {

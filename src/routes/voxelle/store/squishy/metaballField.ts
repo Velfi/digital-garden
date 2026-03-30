@@ -52,6 +52,36 @@ export function sampleMetaballFieldAtCellCenter(
   return field;
 }
 
+/**
+ * Same isosurface test as `sampleMetaballFieldAtCellCenter(...) >= threshold`, but stops
+ * summing once the partial field reaches `threshold` (inside cells).
+ */
+export function metaballFieldAtCellCenterMeetsThreshold(
+  balls: readonly SquishyMetaball[],
+  x: number,
+  y: number,
+  z: number,
+  threshold: number,
+  epsilon = DEFAULT_EPSILON
+): boolean {
+  const px = x + 0.5;
+  const py = y + 0.5;
+  const pz = z + 0.5;
+  let field = 0;
+  for (const ball of balls) {
+    const bx = ball.x + 0.5;
+    const by = ball.y + 0.5;
+    const bz = ball.z + 0.5;
+    const dx = px - bx;
+    const dy = py - by;
+    const dz = pz - bz;
+    const distSq = dx * dx + dy * dy + dz * dz;
+    field += (ball.radius * ball.radius) / Math.max(distSq, epsilon);
+    if (field >= threshold) return true;
+  }
+  return false;
+}
+
 export function computeMetaballVoxelPositions(
   balls: readonly SquishyMetaball[],
   options: MetaballFieldOptions = {}
@@ -83,7 +113,8 @@ export function computeMetaballVoxelPositions(
   for (let x = minX; x <= maxX; x++) {
     for (let y = minY; y <= maxY; y++) {
       for (let z = minZ; z <= maxZ; z++) {
-        if (sampleMetaballFieldAtCellCenter(balls, x, y, z, epsilon) < threshold) continue;
+        if (!metaballFieldAtCellCenterMeetsThreshold(balls, x, y, z, threshold, epsilon))
+          continue;
         positions.push([x, y, z]);
         if (positions.length >= maxVoxelCount) return { positions, truncated: true };
       }

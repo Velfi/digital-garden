@@ -75,9 +75,15 @@ import {
   floraBranchDepth,
   floraBranchStart,
   floraBranchSpread,
+  floraBranchPlacement,
+  floraBranchWindYawDeg,
+  floraBranchWindStrength,
   floraBraidStrands,
   floraBraidTwist,
   floraBarkJitter,
+  floraColorMode,
+  floraCanopy,
+  floraStemCrossSection,
   piscinaLength,
   piscinaWidth,
   piscinaThickness,
@@ -314,9 +320,15 @@ export function buildFloraOptionsFromStores(): GenerateFloraOptions {
     branchDepth: get(floraBranchDepth) as number,
     branchStart: get(floraBranchStart) as number,
     branchSpread: get(floraBranchSpread) as number,
+    branchPlacement: get(floraBranchPlacement),
+    branchWindYawDeg: get(floraBranchWindYawDeg) as number,
+    branchWindStrength: get(floraBranchWindStrength) as number,
     braidStrands: get(floraBraidStrands) as number,
     braidTwist: get(floraBraidTwist) as number,
-    barkJitter: get(floraBarkJitter) as number
+    barkJitter: get(floraBarkJitter) as number,
+    colorMode: get(floraColorMode),
+    canopy: get(floraCanopy) as number,
+    stemCrossSection: get(floraStemCrossSection)
   };
 }
 

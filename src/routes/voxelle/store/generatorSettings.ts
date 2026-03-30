@@ -63,10 +63,17 @@ export type FloraPresetId =
   | 'branched'
   | 'braided'
   | 'tuft';
+
+/** How paint / multi-color maps onto generated voxels. */
+export type FloraColorMode = 'world' | 'perPlacement' | 'alongStem';
+
+/** Stem cross-section shape in the tangent plane. */
+export type FloraCrossSection = 'euclidean' | 'chebyshev';
+
 export const floraPreset = writable<FloraPresetId>('stalk');
-/** Flora: segments along +face normal (4–48). */
+/** Flora: segments along +face normal (1–96). */
 export const floraHeight = writable<number>(12);
-/** Flora: cross-section half-width in tangent plane (0–4, 0.5 step supports even sizes). */
+/** Flora: cross-section size in tangent plane (0–20; 0.5 step supports even sizes). */
 export const floraGirth = writable<number>(1);
 /** Flora: lateral wander 0–1. */
 export const floraWobble = writable<number>(0.25);
@@ -90,6 +97,28 @@ export const floraBraidStrands = writable<number>(1);
 export const floraBraidTwist = writable<number>(0.45);
 /** Flora: bark color noise 0–1 (per voxel). */
 export const floraBarkJitter = writable<number>(0);
+/** Flora: multi-color / paint sampling (world = per-voxel world coords; perPlacement = stem root; alongStem = synthetic coords along structure). */
+export const floraColorMode = writable<FloraColorMode>('alongStem');
+/** Flora: terminal foliage density 0–1 (sparse voxels at stem tips). */
+export const floraCanopy = writable<number>(0.2);
+/** Flora: round (euclidean) vs square (chebyshev) stem disks. */
+export const floraStemCrossSection = writable<FloraCrossSection>('euclidean');
+
+/**
+ * Branch attachment on the stem: spiral phyllotaxis (golden angle), decussate (alternating),
+ * or legacy random heights + angles.
+ */
+export type FloraBranchPlacementMode = 'spiral' | 'alternate' | 'random';
+
+/** How lateral branch directions are chosen (see {@link FloraBranchPlacementMode}). */
+export const floraBranchPlacement = writable<FloraBranchPlacementMode>('spiral');
+/**
+ * Horizontal wind / lean direction in world XZ (degrees, 0° = +X). Projected onto stem tangent plane;
+ * branches blend toward this compass direction when {@link floraBranchWindStrength} &gt; 0.
+ */
+export const floraBranchWindYawDeg = writable<number>(0);
+/** 0 = unbiased; 1 = lateral reach aligns with wind direction on the tangent plane. */
+export const floraBranchWindStrength = writable<number>(0);
 
 /** Piscina: body length along surface tangent (nose–tail, voxels). */
 export const piscinaLength = writable<number>(42);

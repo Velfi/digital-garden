@@ -87,16 +87,55 @@ export function voxelCellIntersectsWorkPlane(
   return Math.abs(d) <= extent + 1e-6;
 }
 
+/**
+ * When the scene has more than this many voxels, only copy world cells within
+ * `MERGE_PREVIEW_OCCLUSION_NEAR_RADIUS` (Chebyshev) of a preview cell instead of merging the full map.
+ */
+export const MERGE_PREVIEW_OCCLUSION_FULL_WORLD_MAX = 50_000;
+
+/** Chebyshev dilation around each preview key for near-merge occlusion (face culling + AO neighbors). */
+export const MERGE_PREVIEW_OCCLUSION_NEAR_RADIUS = 3;
+
+/**
+ * Pull world voxels only within Chebyshev distance `chebyshevRadius` of any preview cell.
+ * Avoids O(world) work when the scene is huge; sufficient for local face/AO queries in greedyMeshCore.
+ */
+export function mergePreviewOcclusionNear(
+  previewMap: Map<string, Voxel>,
+  world: Map<string, Voxel>,
+  chebyshevRadius: number
+): Map<string, Voxel> {
+  const out = new Map(previewMap);
+  const r = chebyshevRadius;
+  for (const key of previewMap.keys()) {
+    const [x, y, z] = parseCoordKey(key);
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dz = -r; dz <= r; dz++) {
+          const nk = coordKey(x + dx, y + dy, z + dz);
+          if (out.has(nk)) continue;
+          const v = world.get(nk);
+          if (v !== undefined) out.set(nk, v);
+        }
+      }
+    }
+  }
+  return out;
+}
+
 export function mergePreviewOcclusion(
   previewMap: Map<string, Voxel>,
   world?: Map<string, Voxel>
 ): Map<string, Voxel> | undefined {
   if (!world || world.size === 0) return undefined;
-  const out = new Map(previewMap);
-  for (const [k, v] of world) {
-    if (!out.has(k)) out.set(k, v);
+  if (world.size <= MERGE_PREVIEW_OCCLUSION_FULL_WORLD_MAX) {
+    const out = new Map(previewMap);
+    for (const [k, v] of world) {
+      if (!out.has(k)) out.set(k, v);
+    }
+    return out;
   }
-  return out;
+  return mergePreviewOcclusionNear(previewMap, world, MERGE_PREVIEW_OCCLUSION_NEAR_RADIUS);
 }
 
 function darkenHex(hex: number, factor: number): number {

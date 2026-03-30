@@ -9,6 +9,7 @@ function baseRmbCtx(over: Partial<GeneratorRmbDeps> = {}): GeneratorRmbDeps {
     piscinaPhase: 'pick',
     insectaPhase: 'pick',
     faunaPhase: 'pick',
+    floraPhase: 'pick',
     render: vi.fn(),
     randomSeed32: () => 0x12345678,
     setNextRockSeed: vi.fn(),
@@ -62,6 +63,21 @@ describe('tryHandleGeneratorToolRmb', () => {
     expect(handled).toBe(true);
     expect(cancelDrag).toHaveBeenCalled();
   });
+
+  it('reseeds flora on right-click only in shape phase', () => {
+    const setNextFloraSeed = vi.fn();
+    const render = vi.fn();
+    tryHandleGeneratorToolRmb(
+      baseRmbCtx({ tool: 'flora', floraPhase: 'pick', setNextFloraSeed, render }),
+      rmbEvent()
+    );
+    expect(setNextFloraSeed).not.toHaveBeenCalled();
+    tryHandleGeneratorToolRmb(
+      baseRmbCtx({ tool: 'flora', floraPhase: 'shape', setNextFloraSeed, render }),
+      rmbEvent()
+    );
+    expect(setNextFloraSeed).toHaveBeenCalledWith(0x12345678);
+  });
 });
 
 function baseGeneratorFaceClickCtx(
@@ -73,6 +89,7 @@ function baseGeneratorFaceClickCtx(
     piscinaPhase: 'pick',
     insectaPhase: 'pick',
     faunaPhase: 'pick',
+    floraPhase: 'pick',
     getIntersection: () => null,
     updatePointerFromEvent: vi.fn(),
     getAddPosition: () => null,
@@ -99,6 +116,7 @@ function baseGeneratorFaceClickCtx(
     getNextFaunaSeed: () => 0,
     setNextFaunaSeed: vi.fn(),
     commitFaunaSurfacePick: vi.fn(),
+    commitFloraSurfacePick: vi.fn(),
     scheduleRender: vi.fn(),
     ...over
   };
@@ -191,5 +209,45 @@ describe('applyGeneratorFaceClickPointerDown', () => {
       { button: 0 } as PointerEvent
     );
     expect(commitPiscinaSurfacePick).not.toHaveBeenCalled();
+  });
+
+  it('commits flora surface pick only in pick phase', () => {
+    const commitFloraSurfacePick = vi.fn();
+    const scheduleRender = vi.fn();
+    const updatePointerFromEvent = vi.fn();
+    applyGeneratorFaceClickPointerDown(
+      baseGeneratorFaceClickCtx({
+        tool: 'flora',
+        floraPhase: 'pick',
+        getIntersection: () => hit,
+        getAddPosition: () => [2, 3, 4],
+        getFaceNormalFromHit: () => [0, 0, 1],
+        getNextFloraSeed: () => 0,
+        setNextFloraSeed: vi.fn(),
+        commitFloraSurfacePick,
+        scheduleRender,
+        updatePointerFromEvent
+      }),
+      { button: 0 } as PointerEvent
+    );
+    expect(updatePointerFromEvent).toHaveBeenCalled();
+    expect(commitFloraSurfacePick).toHaveBeenCalledWith([2, 3, 4], [0, 0, 1]);
+    expect(scheduleRender).toHaveBeenCalled();
+  });
+
+  it('does not commit flora pick in shape phase', () => {
+    const commitFloraSurfacePick = vi.fn();
+    applyGeneratorFaceClickPointerDown(
+      baseGeneratorFaceClickCtx({
+        tool: 'flora',
+        floraPhase: 'shape',
+        getIntersection: () => hit,
+        getAddPosition: () => [0, 0, 0],
+        getFaceNormalFromHit: () => [0, 1, 0],
+        commitFloraSurfacePick
+      }),
+      { button: 0 } as PointerEvent
+    );
+    expect(commitFloraSurfacePick).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,10 @@ import {
   buildGreedyMesh,
   buildPreviewGeometry,
   getGreedyMeshFaceArea,
+  mergePreviewOcclusion,
+  mergePreviewOcclusionNear,
+  MERGE_PREVIEW_OCCLUSION_FULL_WORLD_MAX,
+  MERGE_PREVIEW_OCCLUSION_NEAR_RADIUS,
   voxelCellIntersectsWorkPlane
 } from './greedyMesh';
 import { coordKey } from './store/index';
@@ -389,5 +393,54 @@ describe('buildPreviewGeometry plane overlap', () => {
       buckets.add(colors.getX(i) + colors.getY(i) + colors.getZ(i));
     }
     expect(buckets.size).toBeGreaterThan(1);
+  });
+});
+
+describe('mergePreviewOcclusion / mergePreviewOcclusionNear', () => {
+  it('near merge includes world voxels within Chebyshev radius of preview', () => {
+    const preview = new Map<string, Voxel>([[coordKey(0, 0, 0), plasticVoxel(0xff0000)]]);
+    const world = new Map<string, Voxel>([
+      [coordKey(1, 0, 0), plasticVoxel(0x00ff00)],
+      [coordKey(0, 2, 0), plasticVoxel(0x0000ff)]
+    ]);
+    const merged = mergePreviewOcclusionNear(preview, world, MERGE_PREVIEW_OCCLUSION_NEAR_RADIUS);
+    expect(merged.has(coordKey(1, 0, 0))).toBe(true);
+    expect(merged.has(coordKey(0, 2, 0))).toBe(true);
+  });
+
+  it('near merge omits world voxels farther than radius from any preview cell', () => {
+    const preview = new Map<string, Voxel>([[coordKey(0, 0, 0), plasticVoxel(0xff0000)]]);
+    const world = new Map<string, Voxel>([[coordKey(10, 0, 0), plasticVoxel(0x00ff00)]]);
+    const merged = mergePreviewOcclusionNear(preview, world, 3);
+    expect(merged.has(coordKey(10, 0, 0))).toBe(false);
+  });
+
+  it('full merge matches near merge when all world cells lie within radius of preview', () => {
+    const preview = new Map<string, Voxel>([[coordKey(0, 0, 0), plasticVoxel(0xff0000)]]);
+    const world = new Map<string, Voxel>();
+    for (let i = -2; i <= 2; i++) {
+      world.set(coordKey(i, 0, 0), plasticVoxel(0x111111 + i));
+    }
+    expect(world.size).toBeLessThanOrEqual(MERGE_PREVIEW_OCCLUSION_FULL_WORLD_MAX);
+    const full = mergePreviewOcclusion(preview, world)!;
+    const near = mergePreviewOcclusionNear(preview, world, MERGE_PREVIEW_OCCLUSION_NEAR_RADIUS);
+    expect(full.size).toBe(near.size);
+    for (const k of full.keys()) {
+      expect(near.has(k)).toBe(true);
+    }
+  });
+
+  it('large world uses near merge: distant world voxels are not copied', () => {
+    const preview = new Map<string, Voxel>([[coordKey(0, 0, 0), plasticVoxel(0xff0000)]]);
+    const world = new Map<string, Voxel>();
+    for (let i = 0; i <= MERGE_PREVIEW_OCCLUSION_FULL_WORLD_MAX; i++) {
+      world.set(coordKey(i, 0, 0), plasticVoxel(0x333333));
+    }
+    expect(world.size).toBe(MERGE_PREVIEW_OCCLUSION_FULL_WORLD_MAX + 1);
+    const merged = mergePreviewOcclusion(preview, world)!;
+    expect(merged.has(coordKey(100, 0, 0))).toBe(false);
+    expect(merged.has(coordKey(0, 0, 0))).toBe(true);
+    expect(merged.has(coordKey(3, 0, 0))).toBe(true);
+    expect(merged.size).toBeLessThan(world.size);
   });
 });

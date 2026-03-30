@@ -11,6 +11,7 @@ export interface VoxelGeneratorRmbBridge {
   getPiscinaPhase: () => 'pick' | 'shape';
   getInsectaPhase: () => 'pick' | 'shape';
   getFaunaPhase: () => 'pick' | 'shape';
+  getFloraPhase: () => 'pick' | 'shape';
   render: () => void;
   randomSeed32: () => number;
   setNextRockSeed: (n: number) => void;
@@ -36,6 +37,7 @@ export function buildVoxelGeneratorRmbDeps(b: VoxelGeneratorRmbBridge): Generato
     piscinaPhase: b.getPiscinaPhase(),
     insectaPhase: b.getInsectaPhase(),
     faunaPhase: b.getFaunaPhase(),
+    floraPhase: b.getFloraPhase(),
     render: b.render,
     randomSeed32: b.randomSeed32,
     setNextRockSeed: b.setNextRockSeed,
@@ -62,6 +64,7 @@ export interface VoxelGeneratorPrimaryPointerUpBridge {
   getPiscinaPhase: () => 'pick' | 'shape';
   getInsectaPhase: () => 'pick' | 'shape';
   getFaunaPhase: () => 'pick' | 'shape';
+  getFloraPhase: () => 'pick' | 'shape';
   getIntersection: () => Intersection | null | undefined;
   updatePointerFromEvent: (e: PointerEvent) => void;
   getAddPosition: (hit: Intersection) => [number, number, number] | null;
@@ -88,6 +91,7 @@ export interface VoxelGeneratorPrimaryPointerUpBridge {
   getNextFaunaSeed: () => number;
   setNextFaunaSeed: (n: number) => void;
   commitFaunaSurfacePick: (place: [number, number, number], normal: FaceNormal) => void;
+  commitFloraSurfacePick: (place: [number, number, number], normal: FaceNormal) => void;
   scheduleRender: () => void;
 }
 
@@ -100,6 +104,7 @@ export function buildVoxelGeneratorPrimaryPointerUpDeps(
     piscinaPhase: b.getPiscinaPhase(),
     insectaPhase: b.getInsectaPhase(),
     faunaPhase: b.getFaunaPhase(),
+    floraPhase: b.getFloraPhase(),
     getIntersection: b.getIntersection,
     updatePointerFromEvent: b.updatePointerFromEvent,
     getAddPosition: b.getAddPosition,
@@ -126,6 +131,7 @@ export function buildVoxelGeneratorPrimaryPointerUpDeps(
     getNextFaunaSeed: b.getNextFaunaSeed,
     setNextFaunaSeed: b.setNextFaunaSeed,
     commitFaunaSurfacePick: b.commitFaunaSurfacePick,
+    commitFloraSurfacePick: b.commitFloraSurfacePick,
     scheduleRender: b.scheduleRender
   };
 }

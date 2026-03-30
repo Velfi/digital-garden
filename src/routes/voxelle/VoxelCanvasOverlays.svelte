@@ -52,6 +52,9 @@
     faunaPhase: 'pick' | 'shape';
     commitFaunaPlacement: () => void;
     pickAgainFauna: () => void;
+    floraPhase: 'pick' | 'shape';
+    commitFloraPlacement: () => void;
+    pickAgainFlora: () => void;
     squishyHasMetaballs: boolean;
     commitSquishySession: () => void;
     cancelSquishySession: () => void;
@@ -107,6 +110,9 @@
     faunaPhase,
     commitFaunaPlacement,
     pickAgainFauna,
+    floraPhase,
+    commitFloraPlacement,
+    pickAgainFlora,
     squishyHasMetaballs,
     commitSquishySession,
     cancelSquishySession: resetSquishySession,
@@ -573,6 +579,30 @@
       onclick={() => pickAgainFauna()}
       title="Discard pose and pick a different face"
       aria-label="Pick another face"
+    >
+      Cancel
+    </button>
+  </div>
+{/if}
+{#if $tool === 'flora' && floraPhase === 'shape'}
+  <div class="polygon-actions" data-voxelle-no-passthrough>
+    <button
+      type="button"
+      class="polygon-done-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => commitFloraPlacement()}
+      title="Place plant"
+      aria-label="Place plant"
+    >
+      Done
+    </button>
+    <button
+      type="button"
+      class="polygon-cancel-btn"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={() => pickAgainFlora()}
+      title="Cancel"
+      aria-label="Cancel"
     >
       Cancel
     </button>

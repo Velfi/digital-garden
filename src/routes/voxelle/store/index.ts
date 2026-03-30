@@ -127,9 +127,15 @@ export {
   floraBranchDepth,
   floraBranchStart,
   floraBranchSpread,
+  floraBranchPlacement,
+  floraBranchWindYawDeg,
+  floraBranchWindStrength,
   floraBraidStrands,
   floraBraidTwist,
   floraBarkJitter,
+  floraColorMode,
+  floraCanopy,
+  floraStemCrossSection,
   piscinaLength,
   piscinaFinDorsal,
   piscinaFinAnal,
@@ -227,6 +233,9 @@ export {
   faunaLimbDistals,
   faunaSpinePose,
   type FloraPresetId,
+  type FloraColorMode,
+  type FloraCrossSection,
+  type FloraBranchPlacementMode,
   type PiscinaPresetId,
   roofSelectionMethod,
   roofProfileCurve,
@@ -363,6 +372,7 @@ export {
 
 export {
   sampleMetaballFieldAtCellCenter,
+  metaballFieldAtCellCenterMeetsThreshold,
   computeMetaballVoxelPositions,
   shellVoxelPositions,
   type MetaballFieldOptions,
@@ -631,9 +641,13 @@ export {
   generateFloraVoxels,
   getFloraPositions,
   FLORA_PRESET_NUMERIC,
-  FLORA_VOXEL_CAP
+  FLORA_VOXEL_CAP,
+  FLORA_VOXEL_CAP_ABSOLUTE_MAX,
+  FLORA_VOXEL_CAP_MIN,
+  FLORA_GIRTH_MAX,
+  computeFloraVoxelCap
 } from './generators/flora';
-export type { GenerateFloraOptions, FloraNumericFields } from './generators/flora';
+export type { GenerateFloraOptions, FloraNumericFields, FloraCellMeta } from './generators/flora';
 export {
   generatePiscinaVoxels,
   getPiscinaPositions,

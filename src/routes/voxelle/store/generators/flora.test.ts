@@ -3,7 +3,8 @@ import {
   generateFloraVoxels,
   getFloraPositions,
   FLORA_PRESET_NUMERIC,
-  FLORA_VOXEL_CAP,
+  FLORA_VOXEL_CAP_ABSOLUTE_MAX,
+  computeFloraVoxelCap,
   type GenerateFloraOptions
 } from './flora';
 import type { FloraPresetId } from '../core';
@@ -23,9 +24,15 @@ function opts(over: Partial<GenerateFloraOptions> = {}): GenerateFloraOptions {
     branchDepth: 1,
     branchStart: 0.4,
     branchSpread: 2,
+    branchPlacement: 'spiral',
+    branchWindYawDeg: 0,
+    branchWindStrength: 0,
     braidStrands: 1,
     braidTwist: 0.4,
     barkJitter: 0,
+    colorMode: 'alongStem',
+    canopy: 0,
+    stemCrossSection: 'euclidean',
     ...over
   };
 }
@@ -65,10 +72,38 @@ describe('flora generator', () => {
     expect(pos.length).toBe(1);
   });
 
-  it('supports even girth cross-sections with half-step girth', () => {
-    const o = opts({ height: 1, girth: 0.5, wobble: 0, taper: 0 });
+  it('wobble 0 keeps stem collinear with face normal (no lateral drift)', () => {
+    const center: [number, number, number] = [5, 10, 3];
+    const normal: [number, number, number] = [0, 1, 0];
+    const o = opts({
+      height: 14,
+      girth: 0,
+      wobble: 0,
+      stemCount: 1,
+      clusterRadius: 0,
+      canopy: 0,
+      branchCount: 0
+    });
+    const pos = getFloraPositions(0xbeef, center, normal, o);
+    for (const [x, y, z] of pos) {
+      expect(x).toBe(center[0]);
+      expect(z).toBe(center[2]);
+      expect(y).toBeGreaterThanOrEqual(center[1]);
+    }
+  });
+
+  it('supports even girth cross-sections with half-step girth (square / chebyshev)', () => {
+    const o = opts({ height: 1, girth: 0.5, wobble: 0, taper: 0, stemCrossSection: 'chebyshev' });
     const pos = getFloraPositions(42, [0, 0, 0], [0, 1, 0], o);
     expect(pos.length).toBe(4);
+  });
+
+  it('euclidean cross-section differs from chebyshev for girth > 0', () => {
+    const base = opts({ height: 8, girth: 2, wobble: 0, taper: 0, stemCrossSection: 'chebyshev' });
+    const round = opts({ height: 8, girth: 2, wobble: 0, taper: 0, stemCrossSection: 'euclidean' });
+    const a = getFloraPositions(0x33, [0, 0, 0], [0, 1, 0], base).length;
+    const b = getFloraPositions(0x33, [0, 0, 0], [0, 1, 0], round).length;
+    expect(b).not.toBe(a);
   });
 
   it('multi-stem produces more voxels than single when clustered', () => {
@@ -90,10 +125,30 @@ describe('flora generator', () => {
     expect(b).not.toBe(a);
   });
 
-  it('respects voxel cap', () => {
-    const o = opts({ height: 48, girth: 4, stemCount: 8, branchCount: 6 });
+  it('respects dynamic voxel budget and absolute ceiling', () => {
+    const o = opts({ height: 96, girth: 4, stemCount: 8, branchCount: 6 });
+    const budget = computeFloraVoxelCap(o);
     const pos = getFloraPositions(123, [0, 0, 0], [0, 1, 0], o);
-    expect(pos.length).toBeLessThanOrEqual(FLORA_VOXEL_CAP);
+    expect(pos.length).toBeLessThanOrEqual(budget);
+    expect(pos.length).toBeLessThanOrEqual(FLORA_VOXEL_CAP_ABSOLUTE_MAX);
+  });
+
+  it('actual voxel count stays within computeFloraVoxelCap for varied seeds', () => {
+    const o = opts({ height: 24, girth: 2, stemCount: 3, branchCount: 4, canopy: 0.4 });
+    const budget = computeFloraVoxelCap(o);
+    for (let s = 0; s < 40; s++) {
+      const n = getFloraPositions(s * 0x9e3779b1, [0, 0, 0], [0, 0, 1], o).length;
+      expect(n).toBeLessThanOrEqual(budget);
+    }
+  });
+
+  it('computeFloraVoxelCap grows with height and girth', () => {
+    const base = { taper: 0 as const, stemCrossSection: 'chebyshev' as const };
+    const small = computeFloraVoxelCap(opts({ height: 22, girth: 2, ...base }));
+    const tall = computeFloraVoxelCap(opts({ height: 40, girth: 2, ...base }));
+    const thick = computeFloraVoxelCap(opts({ height: 15, girth: 4, ...base }));
+    expect(tall).toBeGreaterThan(small);
+    expect(thick).toBeGreaterThan(computeFloraVoxelCap(opts({ height: 15, girth: 0, ...base })));
   });
 
   it('bark jitter changes colors but not keys', () => {
@@ -109,6 +164,47 @@ describe('flora generator', () => {
     expect(anyDiff).toBe(true);
   });
 
+  it('color mode perPlacement uses stem root for sampling', () => {
+    const getVoxel = (x: number, y: number, z: number) => ({
+      color: (x + y * 100 + z * 10000) & 0xffffff,
+      material: 'plastic' as const
+    });
+    const center: [number, number, number] = [5, 0, 0];
+    const o = opts({ colorMode: 'perPlacement', height: 6, girth: 0, wobble: 0 });
+    const map = generateFloraVoxels(1, center, [0, 1, 0], o, getVoxel);
+    const expected = getVoxel(center[0], center[1], center[2]).color;
+    for (const vx of map.values()) {
+      expect(vx.color).toBe(expected);
+    }
+  });
+
+  it('color mode world uses world coords (differs along stem vs uniform root)', () => {
+    const getVoxel = (x: number, y: number, z: number) => ({
+      color: (x * 17 + y * 3 + z * 11) & 0xffffff,
+      material: 'plastic' as const
+    });
+    const center: [number, number, number] = [0, 0, 0];
+    const normal: [number, number, number] = [0, 0, 1];
+    const worldMap = generateFloraVoxels(2, center, normal, opts({ colorMode: 'world', height: 8, girth: 0 }), getVoxel);
+    const placeMap = generateFloraVoxels(
+      2,
+      center,
+      normal,
+      opts({ colorMode: 'perPlacement', height: 8, girth: 0 }),
+      getVoxel
+    );
+    const worldColors = [...new Set([...worldMap.values()].map((v) => v.color))];
+    const placeColors = [...new Set([...placeMap.values()].map((v) => v.color))];
+    expect(worldColors.length).toBeGreaterThan(1);
+    expect(placeColors.length).toBe(1);
+  });
+
+  it('canopy adds voxels when > 0', () => {
+    const none = getFloraPositions(8, [0, 0, 0], [0, 1, 0], opts({ height: 10, girth: 0, canopy: 0 }));
+    const some = getFloraPositions(8, [0, 0, 0], [0, 1, 0], opts({ height: 10, girth: 0, canopy: 0.9 }));
+    expect(some.length).toBeGreaterThan(none.length);
+  });
+
   it('every preset has valid numeric fields', () => {
     const ids = Object.keys(FLORA_PRESET_NUMERIC) as Exclude<FloraPresetId, 'custom'>[];
     for (const id of ids) {
@@ -116,6 +212,9 @@ describe('flora generator', () => {
       expect(n.height).toBeGreaterThanOrEqual(1);
       expect(n.stemCount).toBeGreaterThanOrEqual(1);
       expect(n.braidStrands).toBeGreaterThanOrEqual(1);
+      expect(n.colorMode).toMatch(/^(world|perPlacement|alongStem)$/);
+      expect(n.canopy).toBeGreaterThanOrEqual(0);
+      expect(n.canopy).toBeLessThanOrEqual(1);
     }
   });
 

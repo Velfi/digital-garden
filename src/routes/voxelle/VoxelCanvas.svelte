@@ -147,6 +147,26 @@
     grassRadius,
     grassDensity,
     grassHeight,
+    floraPreset,
+    floraHeight,
+    floraGirth,
+    floraWobble,
+    floraTaper,
+    floraStemCount,
+    floraClusterRadius,
+    floraBranchCount,
+    floraBranchDepth,
+    floraBranchStart,
+    floraBranchSpread,
+    floraBranchPlacement,
+    floraBranchWindYawDeg,
+    floraBranchWindStrength,
+    floraBraidStrands,
+    floraBraidTwist,
+    floraBarkJitter,
+    floraColorMode,
+    floraCanopy,
+    floraStemCrossSection,
     getFloraPositions,
     piscinaLength,
     piscinaWidth,
@@ -750,6 +770,10 @@
   let sprayIncrementalPathLen = 0;
   /** Latest full-res stroke preview positions when using LOD coarse path (idle refinement reads this). */
   let strokePreviewLodPendingFull: [number, number, number][] | null = null;
+  /** Coalesce metaball preview updates to one per frame while dragging the squishy gizmo. */
+  let squishyPreviewRafId: number | null = null;
+  /** Last inputs used for `squishyPreviewPositions`; skip voxelization when unchanged. */
+  let squishyPreviewVoxelKey: string | null = null;
   /** Branch: pointer down position for view-plane direction and length */
   let branchPointerDownX = 0;
   let branchPointerDownY = 0;
@@ -926,6 +950,12 @@
   let faunaLockedNormal = $state<FaceNormal | null>(null);
   let faunaHoverPlace = $state<[number, number, number] | null>(null);
   let faunaHoverNormal = $state<FaceNormal | null>(null);
+  /** Same two-phase flow as insecta: pick face, preview, Done to commit. */
+  let floraPhase = $state<'pick' | 'shape'>('pick');
+  let floraLockedPlace = $state<[number, number, number] | null>(null);
+  let floraLockedNormal = $state<FaceNormal | null>(null);
+  let floraHoverPlace = $state<[number, number, number] | null>(null);
+  let floraHoverNormal = $state<FaceNormal | null>(null);
   let faunaHandleGroup: THREE.Group | null = null;
   let faunaHandleDragId: string | null = null;
   let faunaHandleDragPointerId: number | null = null;
@@ -1918,6 +1948,32 @@
     render();
   }
 
+  function resetFloraPlacementFlow() {
+    floraPhase = 'pick';
+    floraLockedPlace = null;
+    floraLockedNormal = null;
+    floraHoverPlace = null;
+    floraHoverNormal = null;
+    updatePreviewMesh([]);
+  }
+
+  function pickAgainFlora() {
+    resetFloraPlacementFlow();
+    render();
+  }
+
+  function commitFloraPlacement() {
+    if (floraPhase !== 'shape' || !floraLockedPlace || !floraLockedNormal) return;
+    const seed =
+      nextFloraPlacementSeed === 0
+        ? Math.floor(Math.random() * 0xffffffff)
+        : nextFloraPlacementSeed;
+    placeFlora(floraLockedPlace, floraLockedNormal, seed);
+    nextFloraPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+    resetFloraPlacementFlow();
+    render();
+  }
+
   function getSquishyPickIntersection(): THREE.Intersection | null {
     if (!camera || !squishyPickGroup || squishyPickGroup.children.length === 0) return null;
     raycaster.setFromCamera(pointer, camera);
@@ -1985,9 +2041,38 @@
     squishyGizmo?.sync();
   }
 
-  function squishyVoxelPositionsFromBalls(balls: SquishyMetaball[]): [number, number, number][] {
-    let positions = computeMetaballVoxelPositions(balls, { maxVoxelCount: 120_000 }).positions;
-    if (get(squishyHollow)) {
+  /** Preview caps keep interaction fast; commit must not truncate or Done cuts the mesh at an axis plane. */
+  const SQUISHY_PREVIEW_MAX_VOXELS = 24_000;
+  const SQUISHY_PREVIEW_DRAG_MAX_VOXELS = 12_000;
+
+  /** Stable signature of everything that affects preview voxelization (not mesh style e.g. hold-P). */
+  function squishyPreviewVoxelInputKey(): string {
+    const balls = get(squishyMetaballs);
+    const mode = get(squishyMode);
+    const dragCoarse = squishyGizmo?.isDragging === true;
+    const ballSig = balls
+      .map((b) => `${b.id}\t${b.x}\t${b.y}\t${b.z}\t${b.radius}`)
+      .join('\n');
+    const addSig =
+      mode === 'add' && squishyAddPreviewCenter
+        ? `add:${squishyAddPreviewCenter[0]},${squishyAddPreviewCenter[1]},${squishyAddPreviewCenter[2]}:${get(squishyDefaultRadius)}`
+        : 'noadd';
+    return [mode, dragCoarse ? 'd' : 'f', ballSig, addSig].join('|');
+  }
+
+  function squishyVoxelPositionsFromBalls(
+    balls: SquishyMetaball[],
+    mode: 'commit' | 'preview',
+    dragCoarse = false
+  ): [number, number, number][] {
+    const maxVoxelCount =
+      mode === 'commit'
+        ? Number.POSITIVE_INFINITY
+        : dragCoarse
+          ? SQUISHY_PREVIEW_DRAG_MAX_VOXELS
+          : SQUISHY_PREVIEW_MAX_VOXELS;
+    let positions = computeMetaballVoxelPositions(balls, { maxVoxelCount }).positions;
+    if (get(squishyHollow) && mode === 'commit') {
       const w = Math.max(
         1,
         clampPlaneCuboidHollowWallThickness(get(squishyHollowWallThickness))
@@ -1997,25 +2082,48 @@
     return positions;
   }
 
-  function syncSquishyPreviewMesh(): void {
-    const balls = get(squishyMetaballs);
-    const mode = get(squishyMode);
-    if (mode === 'add' && squishyAddPreviewCenter) {
-      const temp = createSquishyMetaball(
-        squishyAddPreviewCenter[0],
-        squishyAddPreviewCenter[1],
-        squishyAddPreviewCenter[2],
-        get(squishyDefaultRadius)
-      );
-      squishyPreviewPositions = squishyVoxelPositionsFromBalls([...balls, temp]);
-    } else {
-      squishyPreviewPositions = balls.length > 0 ? squishyVoxelPositionsFromBalls(balls) : [];
-    }
+  function syncSquishyPreviewMeshCore(): void {
     if (get(tool) !== 'squishy') return;
+    const voxelKey = squishyPreviewVoxelInputKey();
+    if (voxelKey !== squishyPreviewVoxelKey) {
+      squishyPreviewVoxelKey = voxelKey;
+      const balls = get(squishyMetaballs);
+      const mode = get(squishyMode);
+      const dragCoarse = squishyGizmo?.isDragging === true;
+      if (mode === 'add' && squishyAddPreviewCenter) {
+        const temp = createSquishyMetaball(
+          squishyAddPreviewCenter[0],
+          squishyAddPreviewCenter[1],
+          squishyAddPreviewCenter[2],
+          get(squishyDefaultRadius)
+        );
+        squishyPreviewPositions = squishyVoxelPositionsFromBalls([...balls, temp], 'preview', dragCoarse);
+      } else {
+        squishyPreviewPositions =
+          balls.length > 0 ? squishyVoxelPositionsFromBalls(balls, 'preview', dragCoarse) : [];
+      }
+    }
     const squishyPreviewOpts = squishyPreviewHoldActive
       ? ({ hidePreviewGrid: true, solidAsPlaced: true } as const)
       : undefined;
     updatePreviewMesh(squishyPreviewPositions, null, squishyPreviewOpts);
+  }
+
+  function syncSquishyPreviewMesh(): void {
+    if (squishyGizmo?.isDragging) {
+      if (squishyPreviewRafId === null) {
+        squishyPreviewRafId = requestAnimationFrame(() => {
+          squishyPreviewRafId = null;
+          syncSquishyPreviewMeshCore();
+        });
+      }
+      return;
+    }
+    if (squishyPreviewRafId !== null) {
+      cancelAnimationFrame(squishyPreviewRafId);
+      squishyPreviewRafId = null;
+    }
+    syncSquishyPreviewMeshCore();
   }
 
   function cancelSquishySession() {
@@ -2024,6 +2132,7 @@
     squishyHoveredId = null;
     squishyAddPreviewCenter = null;
     squishyPreviewPositions = [];
+    squishyPreviewVoxelKey = null;
     updatePreviewMesh([]);
     syncSquishyPickMeshes();
     render();
@@ -2032,7 +2141,7 @@
   function commitSquishySession() {
     const balls = get(squishyMetaballs);
     if (balls.length === 0) return;
-    const positions = squishyVoxelPositionsFromBalls(balls);
+    const positions = squishyVoxelPositionsFromBalls(balls, 'commit');
     if (positions.length === 0) {
       cancelSquishySession();
       return;
@@ -2467,6 +2576,10 @@
     displayOpts?: { hidePreviewGrid?: boolean; solidAsPlaced?: boolean }
   ) {
     if (!meshManager) return;
+    if ($tool === 'squishy' && squishyGizmo?.isDragging) {
+      strokePreviewLodScheduler.cancel();
+      strokePreviewLodPendingFull = null;
+    }
     if (positions.length === 0) {
       strokePreviewLodScheduler.cancel();
       strokePreviewLodPendingFull = null;
@@ -2625,19 +2738,23 @@
       const capturedVoxel = previewVoxel;
       const capturedPreviewMeshOpts = previewMeshOpts;
       const capturedExistingForPreview = existingForPreview;
-      strokePreviewLodScheduler.schedule(() => {
-        if (!meshManager) return;
-        const pts = strokePreviewLodPendingFull;
-        if (!pts || pts.length === 0) return;
-        meshManager.updatePreviewMesh(
-          pts,
-          capturedVoxel,
-          capturedExistingForPreview,
-          capturedOverlap,
-          capturedPreviewMeshOpts
-        );
-        markCanvasDirty();
-      });
+      if ($tool === 'squishy' && squishyGizmo?.isDragging) {
+        strokePreviewLodPendingFull = null;
+      } else {
+        strokePreviewLodScheduler.schedule(() => {
+          if (!meshManager) return;
+          const pts = strokePreviewLodPendingFull;
+          if (!pts || pts.length === 0) return;
+          meshManager.updatePreviewMesh(
+            pts,
+            capturedVoxel,
+            capturedExistingForPreview,
+            capturedOverlap,
+            capturedPreviewMeshOpts
+          );
+          markCanvasDirty();
+        });
+      }
       return;
     }
     strokePreviewLodScheduler.cancel();
@@ -3365,6 +3482,7 @@
     getPiscinaPhase: () => piscinaPhase,
     getInsectaPhase: () => insectaPhase,
     getFaunaPhase: () => faunaPhase,
+    getFloraPhase: () => floraPhase,
     render,
     randomSeed32: () => Math.floor(Math.random() * 0xffffffff),
     setNextRockSeed: (n) => {
@@ -3421,6 +3539,7 @@
     getPiscinaPhase: () => piscinaPhase,
     getInsectaPhase: () => insectaPhase,
     getFaunaPhase: () => faunaPhase,
+    getFloraPhase: () => floraPhase,
     getIntersection,
     updatePointerFromEvent,
     getAddPosition,
@@ -3478,6 +3597,13 @@
       faunaHoverPlace = null;
       faunaHoverNormal = null;
       faunaPhase = 'shape';
+    },
+    commitFloraSurfacePick: (place, normal) => {
+      floraLockedPlace = place;
+      floraLockedNormal = normal;
+      floraHoverPlace = null;
+      floraHoverNormal = null;
+      floraPhase = 'shape';
     },
     scheduleRender: () => requestAnimationFrame(() => markCanvasDirty())
   };
@@ -4661,6 +4787,7 @@
         resetPiscinaPlacementFlow();
         resetInsectaPlacementFlow();
         resetFaunaPlacementFlow();
+        resetFloraPlacementFlow();
         squishyPreviewHoldActive = false;
         resetSquishySession();
         selectionGizmo?.clearGizmoHoverCursor();
@@ -5540,29 +5667,44 @@
         render();
         return;
       }
-      // Flora hover preview (same seed as placement so preview matches)
       if ($tool === 'flora') {
-        const hit = getIntersection();
-        if (hit) {
-          const place = getAddPosition(hit);
-          const normal = getFaceNormalFromHit(hit);
-          if (place && normal) {
-            if (nextFloraPlacementSeed === 0) {
-              nextFloraPlacementSeed = Math.floor(Math.random() * 0xffffffff);
-            }
-            const floraOpts = buildFloraOptionsFromStores();
-            const previewPositions = getFloraPositions(
-              nextFloraPlacementSeed,
-              place,
-              normal,
-              floraOpts
-            );
-            updatePreviewMesh(previewPositions);
-            rollOverMesh.visible = false;
-          } else {
-            updatePreviewMesh([]);
-            rollOverMesh.visible = false;
+        if (floraPhase === 'shape' && floraLockedPlace && floraLockedNormal) {
+          if (nextFloraPlacementSeed === 0) {
+            nextFloraPlacementSeed = Math.floor(Math.random() * 0xffffffff);
           }
+          const place = floraLockedPlace;
+          const normal = floraLockedNormal;
+          const floraOpts = buildFloraOptionsFromStores();
+          updatePreviewMesh(
+            getFloraPositions(nextFloraPlacementSeed, place, normal, floraOpts)
+          );
+          rollOverMesh.visible = false;
+        } else if (floraPhase === 'pick') {
+          const hit = getIntersection();
+          if (hit) {
+            const place = getAddPosition(hit);
+            const normal = getFaceNormalFromHit(hit);
+            if (place && normal) {
+              if (nextFloraPlacementSeed === 0) {
+                nextFloraPlacementSeed = Math.floor(Math.random() * 0xffffffff);
+              }
+              floraHoverPlace = place;
+              floraHoverNormal = normal;
+              const floraOpts = buildFloraOptionsFromStores();
+              updatePreviewMesh(
+                getFloraPositions(nextFloraPlacementSeed, place, normal, floraOpts)
+              );
+            } else {
+              floraHoverPlace = null;
+              floraHoverNormal = null;
+              updatePreviewMesh([]);
+            }
+          } else {
+            floraHoverPlace = null;
+            floraHoverNormal = null;
+            updatePreviewMesh([]);
+          }
+          rollOverMesh.visible = false;
         } else {
           updatePreviewMesh([]);
           rollOverMesh.visible = false;
@@ -6261,6 +6403,10 @@
       pickAgainFauna();
       e.preventDefault();
     }
+    if (e.key === 'Escape' && get(tool) === 'flora' && floraPhase === 'shape') {
+      pickAgainFlora();
+      e.preventDefault();
+    }
     if (e.key === 'Enter' && get(tool) === 'piscina' && piscinaPhase === 'shape') {
       if (!activeIsInput) {
         commitPiscinaFish();
@@ -6276,6 +6422,12 @@
     if (e.key === 'Enter' && get(tool) === 'fauna' && faunaPhase === 'shape') {
       if (!activeIsInput) {
         commitFaunaPlacement();
+        e.preventDefault();
+      }
+    }
+    if (e.key === 'Enter' && get(tool) === 'flora' && floraPhase === 'shape') {
+      if (!activeIsInput) {
+        commitFloraPlacement();
         e.preventDefault();
       }
     }
@@ -7622,6 +7774,37 @@
   });
 
   $effect(() => {
+    void $floraPreset;
+    void $floraHeight;
+    void $floraGirth;
+    void $floraWobble;
+    void $floraTaper;
+    void $floraStemCount;
+    void $floraClusterRadius;
+    void $floraBranchCount;
+    void $floraBranchDepth;
+    void $floraBranchStart;
+    void $floraBranchSpread;
+    void $floraBranchPlacement;
+    void $floraBranchWindYawDeg;
+    void $floraBranchWindStrength;
+    void $floraBraidStrands;
+    void $floraBraidTwist;
+    void $floraBarkJitter;
+    void $floraColorMode;
+    void $floraCanopy;
+    void $floraStemCrossSection;
+    void $tool;
+    if ($tool !== 'flora' || nextFloraPlacementSeed === 0) return;
+    const place = floraPhase === 'shape' ? floraLockedPlace : floraHoverPlace;
+    const normal = floraPhase === 'shape' ? floraLockedNormal : floraHoverNormal;
+    if (!place || !normal) return;
+    const opts = buildFloraOptionsFromStores();
+    updatePreviewMesh(getFloraPositions(nextFloraPlacementSeed, place, normal, opts));
+    markCanvasDirty();
+  });
+
+  $effect(() => {
     const sel = $selection;
     rebuildSelectionOverlay(sel);
     markCanvasDirty();
@@ -7866,6 +8049,7 @@
         (get(tool) === 'piscina' && piscinaPhase === 'shape') ||
         (get(tool) === 'insecta' && insectaPhase === 'shape') ||
         (get(tool) === 'fauna' && faunaPhase === 'shape') ||
+        (get(tool) === 'flora' && floraPhase === 'shape') ||
         faunaHandleDragPointerId !== null ||
         squishyGizmo?.isDragging === true,
       getSelection: () => get(selection),
@@ -8065,11 +8249,18 @@
     if (prevTool !== null && prevTool !== 'fauna' && t === 'fauna') {
       resetFaunaPlacementFlow();
     }
+    if (prevTool === 'flora' && t !== 'flora') {
+      resetFloraPlacementFlow();
+    }
+    if (prevTool !== null && prevTool !== 'flora' && t === 'flora') {
+      resetFloraPlacementFlow();
+    }
     if (prevTool === 'squishy' && t !== 'squishy') {
       squishyPreviewHoldActive = false;
       squishyHoveredId = null;
       squishyAddPreviewCenter = null;
       squishyPreviewPositions = [];
+      squishyPreviewVoxelKey = null;
       syncSquishyPickMeshes();
       updatePreviewMesh([]);
     }
@@ -8113,6 +8304,7 @@
       resetPiscinaPlacementFlow();
       resetInsectaPlacementFlow();
       resetFaunaPlacementFlow();
+      resetFloraPlacementFlow();
       squishyPreviewHoldActive = false;
       resetSquishySession();
       squishyHoveredId = null;
@@ -8418,6 +8610,10 @@
       cancelAnimationFrame(canvasResizeRaf);
       canvasResizeRaf = 0;
     }
+    if (squishyPreviewRafId !== null) {
+      cancelAnimationFrame(squishyPreviewRafId);
+      squishyPreviewRafId = null;
+    }
     window.removeEventListener('resize', scheduleCanvasResize);
     window.removeEventListener(VOXELLE_FIT_CAMERA_ON_PROJECT_OPEN_EVENT, onProjectOpenFitCamera);
     window.removeEventListener('keydown', handleFlyKeyDown, true);
@@ -8568,6 +8764,9 @@
     faunaPhase={faunaPhase}
     commitFaunaPlacement={commitFaunaPlacement}
     pickAgainFauna={pickAgainFauna}
+    floraPhase={floraPhase}
+    commitFloraPlacement={commitFloraPlacement}
+    pickAgainFlora={pickAgainFlora}
     squishyHasMetaballs={$squishyMetaballs.length > 0}
     commitSquishySession={commitSquishySession}
     cancelSquishySession={cancelSquishySession}

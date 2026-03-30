@@ -13,10 +13,20 @@
     floraBranchDepth,
     floraBranchStart,
     floraBranchSpread,
+    floraBranchPlacement,
+    floraBranchWindYawDeg,
+    floraBranchWindStrength,
     floraBraidStrands,
     floraBraidTwist,
     floraBarkJitter,
-    type FloraPresetId
+    FLORA_GIRTH_MAX,
+    floraColorMode,
+    floraCanopy,
+    floraStemCrossSection,
+    type FloraPresetId,
+    type FloraColorMode,
+    type FloraCrossSection,
+    type FloraBranchPlacementMode
   } from '../store/index';
 
   function applyFloraPreset(id: FloraPresetId) {
@@ -33,9 +43,15 @@
     floraBranchDepth.set(n.branchDepth);
     floraBranchStart.set(n.branchStart);
     floraBranchSpread.set(n.branchSpread);
+    floraBranchPlacement.set(n.branchPlacement);
+    floraBranchWindYawDeg.set(n.branchWindYawDeg);
+    floraBranchWindStrength.set(n.branchWindStrength);
     floraBraidStrands.set(n.braidStrands);
     floraBraidTwist.set(n.braidTwist);
     floraBarkJitter.set(n.barkJitter);
+    floraColorMode.set(n.colorMode);
+    floraCanopy.set(n.canopy);
+    floraStemCrossSection.set(n.stemCrossSection);
   }
 
   function floraMarkCustom() {
@@ -70,14 +86,14 @@
         <input
           type="range"
           min="1"
-          max="48"
+          max="96"
           step="1"
           value={$floraHeight}
           oninput={(e) => {
             floraHeight.set(Number((e.target as HTMLInputElement).value));
             floraMarkCustom();
           }}
-          title="Segments along face normal (1–48)"
+          title="Segments along face normal (1–96)"
         />
         <span class="tool-panel-value">{$floraHeight}</span>
       </div>
@@ -86,14 +102,14 @@
         <input
           type="range"
           min="0"
-          max="4"
+          max={FLORA_GIRTH_MAX}
           step="0.5"
           value={$floraGirth}
           oninput={(e) => {
             floraGirth.set(Number((e.target as HTMLInputElement).value));
             floraMarkCustom();
           }}
-          title="Cross-section in tangent plane (1x1 to 9x9, supports even sizes)"
+          title="Cross-section in tangent plane (1×1 up to about (2×girth+1)×(2×girth+1) for square mode; 0.5 steps)"
         />
         <span class="tool-panel-value">{Math.floor($floraGirth * 2) + 1}x{Math.floor($floraGirth * 2) + 1}</span>
       </div>
@@ -234,6 +250,56 @@
           />
           <span class="tool-panel-value">{$floraBranchSpread}</span>
         </div>
+        <div class="tool-panel-row tool-panel-row--wide-label">
+          <span class="tool-panel-label">Placement</span>
+          <select
+            class="tool-panel-select"
+            value={$floraBranchPlacement}
+            onchange={(e) => {
+              floraBranchPlacement.set(
+                (e.target as HTMLSelectElement).value as FloraBranchPlacementMode
+              );
+              floraMarkCustom();
+            }}
+            title="Spiral: golden-angle phyllotaxis + even heights. Alternate: decussate pairs. Random: legacy."
+          >
+            <option value="spiral">Spiral (phyllotaxis)</option>
+            <option value="alternate">Alternate (decussate)</option>
+            <option value="random">Random</option>
+          </select>
+        </div>
+        <div class="tool-panel-row tool-panel-row--wide-label">
+          <span class="tool-panel-label">Wind yaw</span>
+          <input
+            type="range"
+            min="0"
+            max="360"
+            step="1"
+            value={$floraBranchWindYawDeg}
+            oninput={(e) => {
+              floraBranchWindYawDeg.set(Number((e.target as HTMLInputElement).value));
+              floraMarkCustom();
+            }}
+            title="Horizontal lean direction in world XZ (0° = +X). Blends with placement when strength &gt; 0."
+          />
+          <span class="tool-panel-value">{$floraBranchWindYawDeg}°</span>
+        </div>
+        <div class="tool-panel-row tool-panel-row--wide-label">
+          <span class="tool-panel-label">Wind str.</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={Math.round($floraBranchWindStrength * 100)}
+            oninput={(e) => {
+              floraBranchWindStrength.set(Number((e.target as HTMLInputElement).value) / 100);
+              floraMarkCustom();
+            }}
+            title="Blend lateral growth toward wind yaw on the stem tangent plane (0 = off)"
+          />
+          <span class="tool-panel-value">{Math.round($floraBranchWindStrength * 100)}%</span>
+        </div>
       {/if}
     </details>
     <details class="flora-details" open>
@@ -276,6 +342,53 @@
     <details class="flora-details">
       <summary>Surface</summary>
       <div class="tool-panel-row tool-panel-row--wide-label">
+        <span class="tool-panel-label">Color map</span>
+        <select
+          class="tool-panel-select tool-panel-select--grow"
+          value={$floraColorMode}
+          onchange={(e) => {
+            floraColorMode.set((e.target as HTMLSelectElement).value as FloraColorMode);
+            floraMarkCustom();
+          }}
+          title="How multi-color / paint applies: along stem (default), per stem root, or world position"
+        >
+          <option value="alongStem">Along stem</option>
+          <option value="perPlacement">Per stem root</option>
+          <option value="world">World position</option>
+        </select>
+      </div>
+      <div class="tool-panel-row tool-panel-row--wide-label">
+        <span class="tool-panel-label">Stem shape</span>
+        <select
+          class="tool-panel-select tool-panel-select--grow"
+          value={$floraStemCrossSection}
+          onchange={(e) => {
+            floraStemCrossSection.set((e.target as HTMLSelectElement).value as FloraCrossSection);
+            floraMarkCustom();
+          }}
+          title="Round (Euclidean) vs square (Chebyshev) cross-section"
+        >
+          <option value="euclidean">Round</option>
+          <option value="chebyshev">Square</option>
+        </select>
+      </div>
+      <div class="tool-panel-row">
+        <span class="tool-panel-label">Canopy</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value={Math.round($floraCanopy * 100)}
+          oninput={(e) => {
+            floraCanopy.set(Number((e.target as HTMLInputElement).value) / 100);
+            floraMarkCustom();
+          }}
+          title="Sparse foliage voxels at stem tips (0–100%)"
+        />
+        <span class="tool-panel-value">{Math.round($floraCanopy * 100)}%</span>
+      </div>
+      <div class="tool-panel-row tool-panel-row--wide-label">
         <span class="tool-panel-label">Bark</span>
         <input
           type="range"
@@ -296,6 +409,11 @@
 {/if}
 
 <style>
+  .tool-panel-select--grow {
+    flex: 1;
+    min-width: 0;
+  }
+
   .tool-panel-select {
     flex: 1;
     min-width: 0;

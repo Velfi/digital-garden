@@ -1,10 +1,36 @@
 import { coordKey, parseCoordKey } from '../../coordUtils';
-import type { FaceNormal, FloraPresetId } from '../core';
+import type { FaceNormal } from '../core';
+import type {
+  FloraPresetId,
+  FloraColorMode,
+  FloraCrossSection,
+  FloraBranchPlacementMode
+} from '../generatorSettings';
 import type { Voxel } from '../../voxelMaterial';
 import { cloneVoxel } from '../../voxelMaterial';
 
-/** Max voxels per flora placement (performance / runaway guard). */
-export const FLORA_VOXEL_CAP = 1400;
+/**
+ * Hard ceiling: abusive slider combos cannot allocate unbounded memory or freeze meshing.
+ * Normal placements use {@link computeFloraVoxelCap} from current options instead.
+ */
+export const FLORA_VOXEL_CAP_ABSOLUTE_MAX = 150_000;
+
+/** Minimum budget so overlap-heavy clumps rarely hit the cap mid-stroke. */
+export const FLORA_VOXEL_CAP_MIN = 512;
+
+/** @deprecated Use {@link FLORA_VOXEL_CAP_ABSOLUTE_MAX} or {@link computeFloraVoxelCap}. */
+export const FLORA_VOXEL_CAP = FLORA_VOXEL_CAP_ABSOLUTE_MAX;
+
+/** Max stem cross-section parameter (0 = single column; Chebyshev disk spans up to `floor(girth×2)+1` per axis). */
+export const FLORA_GIRTH_MAX = 20;
+
+/** Extra headroom over the analytic gross voxel sum (overlap, path length, braid offset). */
+const FLORA_VOXEL_BUDGET_SLACK = 1.22;
+
+/** Golden-angle phyllotaxis step (≈137.5°): successive lateral organs spiral around the stem. */
+const GOLDEN_ANGLE_RAD = Math.PI * (3 - Math.sqrt(5));
+
+export type { FloraColorMode, FloraCrossSection } from '../generatorSettings';
 
 export type GenerateFloraOptions = {
   preset: FloraPresetId;
@@ -18,9 +44,28 @@ export type GenerateFloraOptions = {
   branchDepth: number;
   branchStart: number;
   branchSpread: number;
+  /** Spiral phyllotaxis, decussate (alternating), or random attachment. */
+  branchPlacement: FloraBranchPlacementMode;
+  /** World XZ compass (°): horizontal bias projected onto tangent plane for wind-shaped crowns. */
+  branchWindYawDeg: number;
+  /** 0–1: blend lateral growth toward {@link branchWindYawDeg} on the tangent plane. */
+  branchWindStrength: number;
   braidStrands: number;
   braidTwist: number;
   barkJitter: number;
+  /** How paint / multi-color is sampled for each voxel. */
+  colorMode: FloraColorMode;
+  /** 0 = none, 1 = dense terminal foliage voxels around stem and branch tips. */
+  canopy: number;
+  stemCrossSection: FloraCrossSection;
+};
+
+export type FloraCellMeta = {
+  stemRoot: [number, number, number];
+  along: number;
+  stemId: number;
+  branchDepth: number;
+  strandIndex: number;
 };
 
 export type FloraNumericFields = Omit<GenerateFloraOptions, 'preset'>;
@@ -38,9 +83,15 @@ export const FLORA_PRESET_NUMERIC: Record<Exclude<FloraPresetId, 'custom'>, Flor
     branchDepth: 1,
     branchStart: 0.5,
     branchSpread: 1,
+    branchPlacement: 'spiral',
+    branchWindYawDeg: 0,
+    branchWindStrength: 0,
     braidStrands: 1,
     braidTwist: 0.35,
-    barkJitter: 0
+    barkJitter: 0,
+    colorMode: 'alongStem',
+    canopy: 0.18,
+    stemCrossSection: 'euclidean'
   },
   trunk: {
     height: 20,
@@ -53,9 +104,15 @@ export const FLORA_PRESET_NUMERIC: Record<Exclude<FloraPresetId, 'custom'>, Flor
     branchDepth: 1,
     branchStart: 0.5,
     branchSpread: 1,
+    branchPlacement: 'spiral',
+    branchWindYawDeg: 0,
+    branchWindStrength: 0,
     braidStrands: 1,
     braidTwist: 0.35,
-    barkJitter: 0.08
+    barkJitter: 0.08,
+    colorMode: 'alongStem',
+    canopy: 0.06,
+    stemCrossSection: 'euclidean'
   },
   contorted: {
     height: 22,
@@ -68,9 +125,15 @@ export const FLORA_PRESET_NUMERIC: Record<Exclude<FloraPresetId, 'custom'>, Flor
     branchDepth: 1,
     branchStart: 0.5,
     branchSpread: 2,
+    branchPlacement: 'spiral',
+    branchWindYawDeg: 0,
+    branchWindStrength: 0,
     braidStrands: 1,
     braidTwist: 0.45,
-    barkJitter: 0.05
+    barkJitter: 0.05,
+    colorMode: 'alongStem',
+    canopy: 0.12,
+    stemCrossSection: 'euclidean'
   },
   multi_stem: {
     height: 16,
@@ -83,9 +146,15 @@ export const FLORA_PRESET_NUMERIC: Record<Exclude<FloraPresetId, 'custom'>, Flor
     branchDepth: 1,
     branchStart: 0.5,
     branchSpread: 2,
+    branchPlacement: 'spiral',
+    branchWindYawDeg: 0,
+    branchWindStrength: 0,
     braidStrands: 1,
     braidTwist: 0.35,
-    barkJitter: 0
+    barkJitter: 0,
+    colorMode: 'alongStem',
+    canopy: 0.22,
+    stemCrossSection: 'euclidean'
   },
   branched: {
     height: 18,
@@ -98,9 +167,15 @@ export const FLORA_PRESET_NUMERIC: Record<Exclude<FloraPresetId, 'custom'>, Flor
     branchDepth: 2,
     branchStart: 0.48,
     branchSpread: 2,
+    branchPlacement: 'spiral',
+    branchWindYawDeg: 0,
+    branchWindStrength: 0,
     braidStrands: 1,
     braidTwist: 0.35,
-    barkJitter: 0.06
+    barkJitter: 0.06,
+    colorMode: 'alongStem',
+    canopy: 0.38,
+    stemCrossSection: 'euclidean'
   },
   braided: {
     height: 16,
@@ -113,9 +188,15 @@ export const FLORA_PRESET_NUMERIC: Record<Exclude<FloraPresetId, 'custom'>, Flor
     branchDepth: 1,
     branchStart: 0.5,
     branchSpread: 1,
+    branchPlacement: 'spiral',
+    branchWindYawDeg: 0,
+    branchWindStrength: 0,
     braidStrands: 3,
     braidTwist: 0.52,
-    barkJitter: 0.04
+    barkJitter: 0.04,
+    colorMode: 'alongStem',
+    canopy: 0.1,
+    stemCrossSection: 'euclidean'
   },
   tuft: {
     height: 6,
@@ -128,9 +209,15 @@ export const FLORA_PRESET_NUMERIC: Record<Exclude<FloraPresetId, 'custom'>, Flor
     branchDepth: 1,
     branchStart: 0.5,
     branchSpread: 1,
+    branchPlacement: 'spiral',
+    branchWindYawDeg: 0,
+    branchWindStrength: 0,
     braidStrands: 1,
     braidTwist: 0.35,
-    barkJitter: 0
+    barkJitter: 0,
+    colorMode: 'alongStem',
+    canopy: 0.52,
+    stemCrossSection: 'euclidean'
   }
 };
 
@@ -181,8 +268,8 @@ function clamp(n: number, lo: number, hi: number): number {
 function clampOptions(o: GenerateFloraOptions): GenerateFloraOptions {
   return {
     preset: o.preset,
-    height: clamp(Math.floor(o.height), 1, 48),
-    girth: clamp(o.girth, 0, 4),
+    height: clamp(Math.floor(o.height), 1, 96),
+    girth: clamp(o.girth, 0, FLORA_GIRTH_MAX),
     wobble: clamp(o.wobble, 0, 1),
     taper: clamp(o.taper, 0, 1),
     stemCount: clamp(Math.floor(o.stemCount), 1, 8),
@@ -191,9 +278,18 @@ function clampOptions(o: GenerateFloraOptions): GenerateFloraOptions {
     branchDepth: clamp(Math.floor(o.branchDepth), 1, 2),
     branchStart: clamp(o.branchStart, 0, 0.9),
     branchSpread: clamp(Math.floor(o.branchSpread), 0, 3),
+    branchPlacement:
+      o.branchPlacement === 'alternate' || o.branchPlacement === 'random'
+        ? o.branchPlacement
+        : 'spiral',
+    branchWindYawDeg: ((o.branchWindYawDeg % 360) + 360) % 360,
+    branchWindStrength: clamp(o.branchWindStrength, 0, 1),
     braidStrands: clamp(Math.floor(o.braidStrands), 1, 5),
     braidTwist: clamp(o.braidTwist, 0, 1),
-    barkJitter: clamp(o.barkJitter, 0, 1)
+    barkJitter: clamp(o.barkJitter, 0, 1),
+    colorMode: o.colorMode === 'world' || o.colorMode === 'perPlacement' || o.colorMode === 'alongStem' ? o.colorMode : 'alongStem',
+    canopy: clamp(o.canopy, 0, 1),
+    stemCrossSection: o.stemCrossSection === 'chebyshev' ? 'chebyshev' : 'euclidean'
   };
 }
 
@@ -203,36 +299,135 @@ function effectiveGirthAt(
   baseGirth: number,
   taper01: number
 ): number {
-  const g = clamp(baseGirth, 0, 4);
+  const g = clamp(baseGirth, 0, FLORA_GIRTH_MAX);
   if (g === 0) return 0;
   if (taper01 <= 0 || height <= 1) return g;
   const t = stepIndex / (height - 1);
   return Math.max(0, g * (1 - taper01 * t));
 }
 
-function tryAddKey(keys: Set<string>, key: string, cap: { left: number }): boolean {
-  if (keys.has(key)) return true;
+/** Limb thickness at fork: scales with trunk girth; lower forks stay slightly thicker than high ones. */
+function branchBaseRadiusAtFork(trunkGirth: number, heightFrac01: number): number {
+  if (trunkGirth <= 0) return 0;
+  const limbScale = 0.38 + 0.32 * (1 - clamp(heightFrac01, 0, 1));
+  return clamp(Math.round(trunkGirth * limbScale), 0, FLORA_GIRTH_MAX);
+}
+
+/** Disk R along branch: slow taper from fork to tip (avoids single-voxel “filaments”). */
+function branchDiskRAtStep(baseR: number, segIndex: number, segCount: number): number {
+  if (baseR <= 0) return 0;
+  if (segCount <= 1) return Math.max(0, Math.round(baseR));
+  const t = segIndex / (segCount - 1);
+  return Math.max(0, Math.round(baseR * (1 - t * 0.82)));
+}
+
+/** Euclidean radius in tangent integer steps (similar visual weight to legacy Chebyshev). */
+function euclideanRadiusSteps(R: number): number {
+  const radius = Math.max(0, R);
+  return Math.max(0, Math.round(radius * 1.85));
+}
+
+/** Cell count for one stem disk (matches addDiskChebyshev / addDiskEuclidean worst case). */
+function countEuclideanDiskCells(r: number): number {
+  if (r <= 0) return 1;
+  let n = 0;
+  const r2 = r * r;
+  for (let u = -r; u <= r; u++) {
+    for (let v = -r; v <= r; v++) {
+      if (u * u + v * v <= r2) n++;
+    }
+  }
+  return n;
+}
+
+function diskCellBudget(R: number, section: FloraCrossSection): number {
+  if (section === 'chebyshev') {
+    const radius = Math.max(0, R);
+    const side = Math.max(1, Math.floor(radius * 2) + 1);
+    return side * side;
+  }
+  return countEuclideanDiskCells(euclideanRadiusSteps(R));
+}
+
+/**
+ * Predicts a safe voxel budget for one flora placement from clamped dimensions.
+ * Tight enough for small plants, scales with height × girth × stems × branches × canopy.
+ */
+export function computeFloraVoxelCap(raw: GenerateFloraOptions): number {
+  const o = clampOptions(raw);
+  let gross = 0;
+  const h = o.height;
+  const strandN = o.braidStrands;
+  const gMinus = strandN > 1 ? 1 : 0;
+
+  let spinePerStrand = 0;
+  for (let k = 0; k < h; k++) {
+    const R = Math.max(0, effectiveGirthAt(k, h, o.girth, o.taper) - gMinus);
+    spinePerStrand += diskCellBudget(R, o.stemCrossSection);
+  }
+  gross += o.stemCount * strandN * spinePerStrand;
+
+  if (h >= 3 && o.branchCount > 0) {
+    const startK = clamp(Math.ceil(o.branchStart * (h - 1)), 1, h - 2);
+    const endK = h - 2;
+    if (startK <= endK) {
+      const forkCount = Math.min(o.branchCount, endK - startK + 1, 8);
+      const childLenMax = clamp(Math.floor(h * 0.72 + o.girth * 3 + 12), 3, 64);
+      const brSpread = o.branchSpread;
+      const path1Max = Math.min(168, Math.floor(childLenMax * 2.9) + brSpread * 10 + 28);
+      const maxBranchR = clamp(Math.round(o.girth * 0.78), 0, FLORA_GIRTH_MAX);
+      const dBranch = diskCellBudget(maxBranchR, o.stemCrossSection);
+      let perFork = path1Max * dBranch;
+      if (o.branchDepth >= 2) {
+        const len2Max = clamp(Math.floor(childLenMax * 0.72), 3, 42);
+        const path2Max = Math.min(168, Math.floor(len2Max * 2.9) + Math.max(1, brSpread) * 10 + 28);
+        const child2R = clamp(Math.round(maxBranchR * 0.78), 0, FLORA_GIRTH_MAX);
+        perFork += path2Max * diskCellBudget(child2R, o.stemCrossSection);
+      }
+      gross += o.stemCount * forkCount * perFork;
+    }
+  }
+
+  if (o.canopy > 0) {
+    const layers = 1 + Math.floor(o.canopy * 2);
+    const r = 1 + Math.floor(2 * o.canopy);
+    const perTip = layers * (2 * r + 1) * (2 * r + 1);
+    gross += o.stemCount * strandN * perTip;
+  }
+
+  const padded = Math.ceil(gross * FLORA_VOXEL_BUDGET_SLACK);
+  return clamp(padded, FLORA_VOXEL_CAP_MIN, FLORA_VOXEL_CAP_ABSOLUTE_MAX);
+}
+
+function tryAddCell(
+  cells: Map<string, FloraCellMeta>,
+  key: string,
+  meta: FloraCellMeta,
+  cap: { left: number }
+): boolean {
+  if (cells.has(key)) return true;
   if (cap.left <= 0) return false;
-  keys.add(key);
+  cells.set(key, meta);
   cap.left--;
   return true;
 }
 
 function addDiskChebyshev(
-  keys: Set<string>,
+  cells: Map<string, FloraCellMeta>,
   px: number,
   py: number,
   pz: number,
   t1: FaceNormal,
   t2: FaceNormal,
   R: number,
-  cap: { left: number }
+  cap: { left: number },
+  meta: FloraCellMeta
 ): void {
   if (cap.left <= 0) return;
   const radius = Math.max(0, R);
   const side = Math.max(1, Math.floor(radius * 2) + 1);
   if (side <= 1) {
-    tryAddKey(keys, coordKey(px, py, pz), cap);
+    tryAddCell(cells, coordKey(px, py, pz), meta, cap);
     return;
   }
   const lo = -Math.floor((side - 1) / 2);
@@ -242,38 +437,167 @@ function addDiskChebyshev(
       const x = px + u * t1[0] + v * t2[0];
       const y = py + u * t1[1] + v * t2[1];
       const z = pz + u * t1[2] + v * t2[2];
-      if (!tryAddKey(keys, coordKey(x, y, z), cap)) return;
+      if (!tryAddCell(cells, coordKey(x, y, z), meta, cap)) return;
     }
   }
 }
 
-/** Integer 3D walk from start toward end, at most maxSteps new cells (excluding start if already visited). */
-function walkToward(
-  sx: number,
-  sy: number,
-  sz: number,
-  ex: number,
-  ey: number,
-  ez: number,
-  maxSteps: number
-): [number, number, number][] {
-  const out: [number, number, number][] = [];
-  let x = sx;
-  let y = sy;
-  let z = sz;
-  out.push([x, y, z]);
-  for (let i = 0; i < maxSteps; i++) {
-    if (x === ex && y === ey && z === ez) break;
-    const adx = Math.abs(ex - x);
-    const ady = Math.abs(ey - y);
-    const adz = Math.abs(ez - z);
-    if (adx >= ady && adx >= adz && adx > 0) x += Math.sign(ex - x);
-    else if (ady >= adz && ady > 0) y += Math.sign(ey - y);
-    else if (adz > 0) z += Math.sign(ez - z);
-    else break;
-    out.push([x, y, z]);
+function addDiskEuclidean(
+  cells: Map<string, FloraCellMeta>,
+  px: number,
+  py: number,
+  pz: number,
+  t1: FaceNormal,
+  t2: FaceNormal,
+  R: number,
+  cap: { left: number },
+  meta: FloraCellMeta
+): void {
+  if (cap.left <= 0) return;
+  const r = euclideanRadiusSteps(R);
+  if (r <= 0) {
+    tryAddCell(cells, coordKey(px, py, pz), meta, cap);
+    return;
   }
-  return out;
+  const r2 = r * r;
+  for (let u = -r; u <= r; u++) {
+    for (let v = -r; v <= r; v++) {
+      if (u * u + v * v > r2) continue;
+      const x = px + u * t1[0] + v * t2[0];
+      const y = py + u * t1[1] + v * t2[1];
+      const z = pz + u * t1[2] + v * t2[2];
+      if (!tryAddCell(cells, coordKey(x, y, z), meta, cap)) return;
+    }
+  }
+}
+
+function addStemDisk(
+  cells: Map<string, FloraCellMeta>,
+  px: number,
+  py: number,
+  pz: number,
+  t1: FaceNormal,
+  t2: FaceNormal,
+  R: number,
+  cap: { left: number },
+  meta: FloraCellMeta,
+  section: FloraCrossSection
+): void {
+  if (section === 'chebyshev') {
+    addDiskChebyshev(cells, px, py, pz, t1, t2, R, cap, meta);
+  } else {
+    addDiskEuclidean(cells, px, py, pz, t1, t2, R, cap, meta);
+  }
+}
+
+/** 3D Bresenham line; inclusive endpoints; capped length. */
+function line3DBresenham(
+  x1: number,
+  y1: number,
+  z1: number,
+  x2: number,
+  y2: number,
+  z2: number,
+  maxPoints: number
+): [number, number, number][] {
+  const points: [number, number, number][] = [];
+  if (maxPoints <= 0) return points;
+  let x = x1;
+  let y = y1;
+  let z = z1;
+  points.push([x, y, z]);
+  if (x1 === x2 && y1 === y2 && z1 === z2) return points;
+
+  const dx = Math.abs(x2 - x1);
+  const dy = Math.abs(y2 - y1);
+  const dz = Math.abs(z2 - z1);
+  const xs = x2 > x1 ? 1 : x2 < x1 ? -1 : 0;
+  const ys = y2 > y1 ? 1 : y2 < y1 ? -1 : 0;
+  const zs = z2 > z1 ? 1 : z2 < z1 ? -1 : 0;
+
+  if (dx >= dy && dx >= dz) {
+    let p1 = 2 * dy - dx;
+    let p2 = 2 * dz - dx;
+    while (x !== x2) {
+      x += xs;
+      if (p1 >= 0) {
+        y += ys;
+        p1 -= 2 * dx;
+      }
+      if (p2 >= 0) {
+        z += zs;
+        p2 -= 2 * dx;
+      }
+      p1 += 2 * dy;
+      p2 += 2 * dz;
+      points.push([x, y, z]);
+      if (points.length >= maxPoints) return points;
+    }
+  } else if (dy >= dx && dy >= dz) {
+    let p1 = 2 * dx - dy;
+    let p2 = 2 * dz - dy;
+    while (y !== y2) {
+      y += ys;
+      if (p1 >= 0) {
+        x += xs;
+        p1 -= 2 * dy;
+      }
+      if (p2 >= 0) {
+        z += zs;
+        p2 -= 2 * dy;
+      }
+      p1 += 2 * dx;
+      p2 += 2 * dz;
+      points.push([x, y, z]);
+      if (points.length >= maxPoints) return points;
+    }
+  } else {
+    let p1 = 2 * dy - dz;
+    let p2 = 2 * dx - dz;
+    while (z !== z2) {
+      z += zs;
+      if (p1 >= 0) {
+        y += ys;
+        p1 -= 2 * dz;
+      }
+      if (p2 >= 0) {
+        x += xs;
+        p2 -= 2 * dz;
+      }
+      p1 += 2 * dy;
+      p2 += 2 * dx;
+      points.push([x, y, z]);
+      if (points.length >= maxPoints) return points;
+    }
+  }
+  return points;
+}
+
+function branchPath(
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  maxPoints: number,
+  rng: () => number,
+  t1: FaceNormal,
+  t2: FaceNormal
+): [number, number, number][] {
+  const jku = rng() < 0.5 ? -1 : 1;
+  const jkv = rng() < 0.5 ? -1 : 1;
+  const mx = Math.round((ax + bx) / 2) + jku * t1[0] + jkv * t2[0];
+  const my = Math.round((ay + by) / 2) + jku * t1[1] + jkv * t2[1];
+  const mz = Math.round((az + bz) / 2) + jku * t1[2] + jkv * t2[2];
+  const half = Math.max(1, Math.floor(maxPoints * 0.55));
+  const p0 = line3DBresenham(ax, ay, az, mx, my, mz, half);
+  const tip = p0[p0.length - 1]!;
+  const rest = Math.max(1, maxPoints - p0.length);
+  const p1 = line3DBresenham(tip[0], tip[1], tip[2], bx, by, bz, rest);
+  const out: [number, number, number][] = [...p0];
+  for (let i = 1; i < p1.length; i++) out.push(p1[i]!);
+  return out.slice(0, maxPoints);
 }
 
 function buildMeanBackbone(
@@ -289,6 +613,8 @@ function buildMeanBackbone(
   const maxDrift = 2 + Math.floor(height * 0.42 * wobble);
   let u = 0;
   let v = 0;
+  const biasU = rng() < 0.5 ? -1 : 1;
+  const biasV = rng() < 0.5 ? -1 : 1;
   const out: [number, number, number][] = [];
   const [cx, cy, cz] = root;
   for (let k = 0; k < height; k++) {
@@ -296,11 +622,11 @@ function buildMeanBackbone(
     const y = cy + k * ny + u * t1[1] + v * t2[1];
     const z = cz + k * nz + u * t1[2] + v * t2[2];
     out.push([x, y, z]);
-    if (k < height - 1) {
+    if (k < height - 1 && wobble > 0) {
       if (rng() < 0.15 + wobble * 0.75) {
         const roll = rng();
-        if (roll < 1 / 3) u += rng() < 0.5 ? -1 : 1;
-        else if (roll < 2 / 3) v += rng() < 0.5 ? -1 : 1;
+        if (roll < 1 / 3) u += (rng() < 0.55 ? biasU : -biasU);
+        else if (roll < 2 / 3) v += (rng() < 0.55 ? biasV : -biasV);
         else {
           u += rng() < 0.5 ? -1 : 1;
           v += rng() < 0.5 ? -1 : 1;
@@ -338,12 +664,117 @@ function clusterOffset(
   return [du * t1[0] + dv * t2[0], du * t1[1] + dv * t2[1], du * t1[2] + dv * t2[2]];
 }
 
-function addBranchesToKeys(
-  keys: Set<string>,
+type StemWork = {
+  root: [number, number, number];
+  stemSeed: number;
+  meanB: [number, number, number][];
+  spines: [number, number, number][][];
+};
+
+/** World horizontal wind / lean direction (Y-up, XZ plane) projected onto stem tangent plane. */
+function windBiasInTangentPlane(
+  windYawDeg: number,
+  t1: FaceNormal,
+  t2: FaceNormal
+): [number, number] {
+  const rad = (windYawDeg * Math.PI) / 180;
+  const wx = Math.cos(rad);
+  const wy = 0;
+  const wz = Math.sin(rad);
+  let bu = wx * t1[0] + wy * t1[1] + wz * t1[2];
+  let bv = wx * t2[0] + wy * t2[1] + wz * t2[2];
+  const len = Math.hypot(bu, bv);
+  if (len < 1e-8) return [0, 0];
+  return [bu / len, bv / len];
+}
+
+/** Evenly spaced fork heights between startK and endK (real trees: avoid clumped random whorls unless whorled mode). */
+function partitionForkHeights(startK: number, endK: number, forkCount: number): number[] {
+  const span = endK - startK;
+  const n = Math.min(forkCount, span + 1);
+  const out: number[] = [];
+  if (n <= 0) return out;
+  if (n === 1) {
+    out.push(clamp(Math.round((startK + endK) / 2), startK, endK));
+    return out;
+  }
+  for (let b = 0; b < n; b++) {
+    const fk = startK + Math.round(((b + 1) / (n + 1)) * span);
+    out.push(clamp(fk, startK, endK));
+  }
+  return out;
+}
+
+function branchAzimuthRad(
+  mode: FloraBranchPlacementMode,
+  branchIndex: number,
+  stemSeed: number,
+  rng: () => number
+): number {
+  if (mode === 'random') return rng() * Math.PI * 2;
+  if (mode === 'alternate') {
+    const base = ((stemSeed & 0xff) / 256) * Math.PI * 2;
+    return (branchIndex % 2) * Math.PI + base;
+  }
+  return branchIndex * GOLDEN_ANGLE_RAD + ((stemSeed & 0xfff) / 4096) * Math.PI * 2;
+}
+
+/**
+ * Branch tip offset: lateral direction from azimuth in (t1,t2), optional wind blend,
+ * insertion angle from fork height (lower limbs more horizontal).
+ */
+function branchEndDelta(
+  childLen: number,
+  spread: number,
+  normal: FaceNormal,
+  t1: FaceNormal,
+  t2: FaceNormal,
+  rng: () => number,
+  azimuthRad: number,
+  forkHeightFrac: number,
+  windU: number,
+  windV: number,
+  windStrength: number
+): { dx: number; dy: number; dz: number; pathBudget: number } {
+  const [nx, ny, nz] = normal;
+  const s = Math.max(0, spread);
+  const upShareBase = clamp(0.52 / (1 + s * 0.7) + 0.06, 0.1, 0.52);
+  const insertion = clamp(0.36 + 0.64 * forkHeightFrac, 0.22, 1.05);
+  const upShare = clamp(upShareBase * insertion, 0.08, 0.55);
+  const upLen = clamp(Math.floor(childLen * upShare + rng() - 0.3), 1, Math.max(1, childLen - 1));
+  const lateralMin = Math.max(1, childLen - upLen + Math.floor(s * 2.2));
+  const latMag = Math.max(2, lateralMin + Math.floor(rng() * (5 + s * 3)));
+  let du = Math.round(Math.cos(azimuthRad) * latMag);
+  let dv = Math.round(Math.sin(azimuthRad) * latMag);
+  const ws = clamp(windStrength, 0, 1);
+  if (ws > 0 && (Math.abs(windU) > 1e-8 || Math.abs(windV) > 1e-8)) {
+    const duW = windU * latMag;
+    const dvW = windV * latMag;
+    du = Math.round(du * (1 - ws) + duW * ws);
+    dv = Math.round(dv * (1 - ws) + dvW * ws);
+  }
+  if (du === 0 && dv === 0) {
+    du = rng() < 0.5 ? -1 : 1;
+  }
+  const dx = nx * upLen + du * t1[0] + dv * t2[0];
+  const dy = ny * upLen + du * t1[1] + dv * t2[1];
+  const dz = nz * upLen + du * t1[2] + dv * t2[2];
+  const pathBudget = clamp(
+    upLen + Math.abs(du) + Math.abs(dv) + 14,
+    childLen + 8,
+    Math.min(168, Math.floor(childLen * 2.85) + s * 10 + 18)
+  );
+  return { dx, dy, dz, pathBudget };
+}
+
+function addBranchesToCells(
+  cells: Map<string, FloraCellMeta>,
   meanBackbone: [number, number, number][],
   normal: FaceNormal,
   t1: FaceNormal,
   t2: FaceNormal,
+  root: [number, number, number],
+  stemId: number,
   o: GenerateFloraOptions,
   stemSeed: number,
   cap: { left: number }
@@ -357,64 +788,200 @@ function addBranchesToKeys(
 
   const forkCount = Math.min(bc, endK - startK + 1, 8);
   const rng = createRng(stemSeed ^ 0x51d1e4f);
+  const spread = o.branchSpread;
+  const placement = o.branchPlacement;
+  const [windU, windV] = windBiasInTangentPlane(o.branchWindYawDeg, t1, t2);
+  const windStrength = o.branchWindStrength;
+
   const used = new Set<number>();
-  for (let b = 0; b < forkCount; b++) {
+
+  function placeOneBranch(fk: number, b: number, azimuthRad: number): void {
     if (cap.left <= 0) return;
-    let fk = startK + Math.floor(rng() * (endK - startK + 1));
-    let guard = 0;
-    while (used.has(fk) && guard++ < 32) {
-      fk = startK + Math.floor(rng() * (endK - startK + 1));
-    }
-    used.add(fk);
     const P = meanBackbone[fk]!;
-    const spread = o.branchSpread;
-    const childLen = clamp(Math.floor(height * 0.38 + rng() * 4), 2, 24);
-    const du = Math.floor((rng() * 2 - 1) * (spread + 1));
-    const dv = Math.floor((rng() * 2 - 1) * (spread + 1));
-    const [nx, ny, nz] = normal;
-    const ex = P[0] + nx * childLen + du * t1[0] + dv * t2[0];
-    const ey = P[1] + ny * childLen + du * t1[1] + dv * t2[1];
-    const ez = P[2] + nz * childLen + du * t1[2] + dv * t2[2];
-    const path = walkToward(P[0], P[1], P[2], ex, ey, ez, childLen + 2);
-    const girthB = Math.max(0, effectiveGirthAt(fk, height, o.girth, o.taper) - 1);
+    const trunkG = effectiveGirthAt(fk, height, o.girth, o.taper);
+    const heightFrac = fk / Math.max(1, height - 1);
+    const lenFromHeight = height * (0.5 + rng() * 0.12);
+    const lenFromGirth = trunkG * 1.35;
+    const lenFromPosition = 1 + 0.26 * (1 - heightFrac);
+    const childLen = clamp(
+      Math.floor(lenFromHeight * lenFromPosition + lenFromGirth + rng() * 6),
+      3,
+      64
+    );
+    const delta = branchEndDelta(
+      childLen,
+      spread,
+      normal,
+      t1,
+      t2,
+      rng,
+      azimuthRad,
+      heightFrac,
+      windU,
+      windV,
+      windStrength
+    );
+    const ex = P[0] + delta.dx;
+    const ey = P[1] + delta.dy;
+    const ez = P[2] + delta.dz;
+    const maxPts = delta.pathBudget;
+    const path = branchPath(P[0], P[1], P[2], ex, ey, ez, maxPts, rng, t1, t2);
+    const baseBranchR = branchBaseRadiusAtFork(trunkG, heightFrac);
+    const segCount = Math.max(1, path.length - 1);
     for (let i = 1; i < path.length; i++) {
       if (cap.left <= 0) return;
       const [px, py, pz] = path[i]!;
-      const gStep = Math.max(0, girthB - Math.floor(i / 3));
-      addDiskChebyshev(keys, px, py, pz, t1, t2, gStep, cap);
+      const gStep = branchDiskRAtStep(baseBranchR, i - 1, segCount);
+      const meta: FloraCellMeta = {
+        stemRoot: root,
+        along: fk + i,
+        stemId,
+        branchDepth: 1,
+        strandIndex: 0
+      };
+      addStemDisk(cells, px, py, pz, t1, t2, gStep, cap, meta, o.stemCrossSection);
     }
     if (o.branchDepth >= 2 && path.length > 3 && cap.left > 0) {
       const tip = path[path.length - 1]!;
       const rng2 = createRng(stemSeed ^ (b * 0xdeadbeef));
-      const du2 = Math.floor((rng2() * 2 - 1) * spread);
-      const dv2 = Math.floor((rng2() * 2 - 1) * spread);
-      const len2 = clamp(Math.floor(childLen * 0.55), 2, 12);
-      const ex2 = tip[0] + du2 * t1[0] + dv2 * t2[0] + nx * len2;
-      const ey2 = tip[1] + du2 * t1[1] + dv2 * t2[1] + ny * len2;
-      const ez2 = tip[2] + du2 * t1[2] + dv2 * t2[2] + nz * len2;
-      const path2 = walkToward(tip[0], tip[1], tip[2], ex2, ey2, ez2, len2 + 1);
+      const len2 = clamp(Math.floor(childLen * (0.58 + rng() * 0.1)), 3, 42);
+      const twigAz =
+        azimuthRad + GOLDEN_ANGLE_RAD * 0.37 + rng2() * 1.15;
+      const delta2 = branchEndDelta(
+        len2,
+        Math.max(1, spread),
+        normal,
+        t1,
+        t2,
+        rng2,
+        twigAz,
+        0.94,
+        windU,
+        windV,
+        windStrength
+      );
+      const ex2 = tip[0] + delta2.dx;
+      const ey2 = tip[1] + delta2.dy;
+      const ez2 = tip[2] + delta2.dz;
+      const path2 = branchPath(tip[0], tip[1], tip[2], ex2, ey2, ez2, delta2.pathBudget, rng2, t1, t2);
+      const parentTipR = branchDiskRAtStep(baseBranchR, segCount - 1, segCount);
+      const child2BaseR = Math.max(
+        0,
+        Math.round(parentTipR * (0.62 + rng2() * 0.18))
+      );
+      const seg2 = Math.max(1, path2.length - 1);
       for (let j = 1; j < path2.length; j++) {
         if (cap.left <= 0) return;
         const [px, py, pz] = path2[j]!;
-        addDiskChebyshev(keys, px, py, pz, t1, t2, 0, cap);
+        const g2 = branchDiskRAtStep(child2BaseR, j - 1, seg2);
+        const meta: FloraCellMeta = {
+          stemRoot: root,
+          along: fk + path.length + j,
+          stemId,
+          branchDepth: 2,
+          strandIndex: 0
+        };
+        addStemDisk(cells, px, py, pz, t1, t2, g2, cap, meta, o.stemCrossSection);
+      }
+    }
+  }
+
+  if (placement === 'random') {
+    for (let b = 0; b < forkCount; b++) {
+      if (cap.left <= 0) return;
+      let fk = startK + Math.floor(rng() * (endK - startK + 1));
+      let guard = 0;
+      while (used.has(fk) && guard++ < 32) {
+        fk = startK + Math.floor(rng() * (endK - startK + 1));
+      }
+      used.add(fk);
+      const az = branchAzimuthRad('random', b, stemSeed, rng);
+      placeOneBranch(fk, b, az);
+    }
+  } else {
+    const fks = partitionForkHeights(startK, endK, forkCount);
+    for (let b = 0; b < fks.length; b++) {
+      const fk = fks[b]!;
+      const az = branchAzimuthRad(placement, b, stemSeed, rng);
+      placeOneBranch(fk, b, az);
+    }
+  }
+}
+
+function addCanopyAt(
+  cells: Map<string, FloraCellMeta>,
+  tip: [number, number, number],
+  normal: FaceNormal,
+  t1: FaceNormal,
+  t2: FaceNormal,
+  stemRoot: [number, number, number],
+  stemId: number,
+  alongBase: number,
+  canopy01: number,
+  rng: () => number,
+  cap: { left: number }
+): void {
+  if (cap.left <= 0 || canopy01 <= 0) return;
+  const [nx, ny, nz] = normal;
+  const r = 1 + Math.floor(rng() * 2 * canopy01);
+  const layers = 1 + Math.floor(canopy01 * 2);
+  for (let layer = 0; layer < layers; layer++) {
+    for (let u = -r; u <= r; u++) {
+      for (let v = -r; v <= r; v++) {
+        if (u * u + v * v > r * r + 1) continue;
+        if (rng() > 0.35 + canopy01 * 0.55) continue;
+        const x = tip[0] + u * t1[0] + v * t2[0] + layer * nx;
+        const y = tip[1] + u * t1[1] + v * t2[1] + layer * ny;
+        const z = tip[2] + u * t1[2] + v * t2[2] + layer * nz;
+        const meta: FloraCellMeta = {
+          stemRoot,
+          along: alongBase + layer * 10 + Math.abs(u) + Math.abs(v),
+          stemId,
+          branchDepth: 0,
+          strandIndex: 7
+        };
+        tryAddCell(cells, coordKey(x, y, z), meta, cap);
+        if (cap.left <= 0) return;
       }
     }
   }
 }
 
-function collectFloraKeys(
+function addCanopyPass(
+  cells: Map<string, FloraCellMeta>,
+  stems: StemWork[],
+  normal: FaceNormal,
+  t1: FaceNormal,
+  t2: FaceNormal,
+  o: GenerateFloraOptions,
+  seed: number,
+  cap: { left: number }
+): void {
+  if (o.canopy <= 0 || cap.left <= 0) return;
+  for (let si = 0; si < stems.length; si++) {
+    const sw = stems[si]!;
+    for (const spine of sw.spines) {
+      if (spine.length === 0) continue;
+      const tip = spine[spine.length - 1]!;
+      const rng = createRng((seed ^ sw.stemSeed ^ si * 0x1234abcd) >>> 0);
+      addCanopyAt(cells, tip, normal, t1, t2, sw.root, si, spine.length, o.canopy, rng, cap);
+    }
+  }
+}
+
+function collectFloraCells(
   seed: number,
   center: [number, number, number],
   normal: FaceNormal,
   raw: GenerateFloraOptions
-): Set<string> {
+): Map<string, FloraCellMeta> {
   const o = clampOptions(raw);
-  const keys = new Set<string>();
-  const cap = { left: FLORA_VOXEL_CAP };
+  const cells = new Map<string, FloraCellMeta>();
+  const cap = { left: computeFloraVoxelCap(o) };
   const [t1, t2] = getTangentVectors(normal);
-  const stemCount = o.stemCount;
+  const stems: StemWork[] = [];
 
-  for (let si = stemCount - 1; si >= 0; si--) {
+  for (let si = 0; si < o.stemCount; si++) {
     const stemSeed = (seed ^ (si * 0x85ebca6b)) >>> 0;
     const [ox, oy, oz] = clusterOffset(si, seed, o.clusterRadius, t1, t2);
     const root: [number, number, number] = [center[0] + ox, center[1] + oy, center[2] + oz];
@@ -439,21 +1006,40 @@ function collectFloraKeys(
         spines.push(strand);
       }
     }
+    stems.push({ root, stemSeed, meanB, spines });
+  }
 
-    for (const spine of spines) {
+  for (let si = 0; si < stems.length; si++) {
+    const sw = stems[si]!;
+    for (let s = 0; s < sw.spines.length; s++) {
+      const spine = sw.spines[s]!;
       for (let k = 0; k < spine.length; k++) {
         if (cap.left <= 0) break;
         const [px, py, pz] = spine[k]!;
         let R = effectiveGirthAt(k, o.height, o.girth, o.taper);
         if (o.braidStrands > 1) R = Math.max(0, R - 1);
-        addDiskChebyshev(keys, px, py, pz, t1, t2, R, cap);
+        const meta: FloraCellMeta = {
+          stemRoot: sw.root,
+          along: k,
+          stemId: si,
+          branchDepth: 0,
+          strandIndex: s
+        };
+        addStemDisk(cells, px, py, pz, t1, t2, R, cap, meta, o.stemCrossSection);
       }
     }
-
-    addBranchesToKeys(keys, meanB, normal, t1, t2, o, stemSeed, cap);
   }
 
-  return keys;
+  for (let si = 0; si < stems.length; si++) {
+    const sw = stems[si]!;
+    addBranchesToCells(cells, sw.meanB, normal, t1, t2, sw.root, si, o, sw.stemSeed, cap);
+  }
+
+  if (o.canopy > 0) {
+    addCanopyPass(cells, stems, normal, t1, t2, o, seed, cap);
+  }
+
+  return cells;
 }
 
 function jitterColor(base: Voxel, amount: number, key: string, seed: number): Voxel {
@@ -466,14 +1052,35 @@ function jitterColor(base: Voxel, amount: number, key: string, seed: number): Vo
   return { ...base, color: c };
 }
 
+function resolveFloraColor(
+  mode: FloraColorMode,
+  getVoxel: (x: number, y: number, z: number) => Voxel,
+  wx: number,
+  wy: number,
+  wz: number,
+  meta: FloraCellMeta
+): Voxel {
+  if (mode === 'world') {
+    return cloneVoxel(getVoxel(wx, wy, wz));
+  }
+  if (mode === 'perPlacement') {
+    const [rx, ry, rz] = meta.stemRoot;
+    return cloneVoxel(getVoxel(rx, ry, rz));
+  }
+  const ax = meta.along * 3 + meta.branchDepth * 120;
+  const ay = meta.stemId * 17 + meta.strandIndex * 4;
+  const az = meta.branchDepth * 31;
+  return cloneVoxel(getVoxel(ax, ay, az));
+}
+
 export function getFloraPositions(
   seed: number,
   center: [number, number, number],
   normal: FaceNormal,
   options: GenerateFloraOptions
 ): [number, number, number][] {
-  const keys = collectFloraKeys(seed, center, normal, options);
-  return [...keys].sort().map((k) => parseCoordKey(k) as [number, number, number]);
+  const cells = collectFloraCells(seed, center, normal, options);
+  return [...cells.keys()].sort().map((k) => parseCoordKey(k) as [number, number, number]);
 }
 
 export function generateFloraVoxels(
@@ -483,13 +1090,15 @@ export function generateFloraVoxels(
   options: GenerateFloraOptions,
   getVoxel: (x: number, y: number, z: number) => Voxel
 ): Map<string, Voxel> {
-  const keys = collectFloraKeys(seed, center, normal, options);
-  const sorted = [...keys].sort();
+  const o = clampOptions(options);
+  const cells = collectFloraCells(seed, center, normal, o);
+  const sorted = [...cells.keys()].sort();
   const out = new Map<string, Voxel>();
-  const jitter = clamp(options.barkJitter, 0, 1);
+  const jitter = clamp(o.barkJitter, 0, 1);
   for (const key of sorted) {
-    const [x, y, z] = parseCoordKey(key);
-    const base = cloneVoxel(getVoxel(x, y, z));
+    const meta = cells.get(key)!;
+    const [wx, wy, wz] = parseCoordKey(key);
+    const base = resolveFloraColor(o.colorMode, getVoxel, wx, wy, wz, meta);
     out.set(key, jitter > 0 ? jitterColor(base, jitter, key, seed) : base);
   }
   return out;
