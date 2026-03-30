@@ -19,6 +19,7 @@ export type { SelectionBounds } from '../coordUtils';
 export {
   gridSize,
   MAX_GRID_SIZE,
+  MAX_NEW_PROJECT_GRID_SIZE,
   MAX_BRUSH_SIZE,
   STROKE_TOOLS,
   voxels,

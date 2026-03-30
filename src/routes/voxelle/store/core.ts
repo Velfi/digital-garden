@@ -110,6 +110,8 @@ export type DrawBrushShape = 'sphere' | 'cube' | 'pyramid';
 const DEFAULT_COLOR = 0x888888;
 /** Maximum grid size when not unbounded. Unbounded projects have no placement limit. */
 export const MAX_GRID_SIZE = 65536;
+/** Cap for File → New project / New grid modal (matches Voxelle Desktop viewer). */
+export const MAX_NEW_PROJECT_GRID_SIZE = 256;
 /** Max brush/stamp size in voxels (index 0..MAX_BRUSH_SIZE-1 => 1..MAX_BRUSH_SIZE). */
 export const MAX_BRUSH_SIZE = 64;
 

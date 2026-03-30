@@ -1,6 +1,6 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { gridSize, resetCanvas, MAX_GRID_SIZE } from '../store/index';
+  import { gridSize, resetCanvas, MAX_NEW_PROJECT_GRID_SIZE } from '../store/index';
   import type { StartShape } from '../store/index';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -10,12 +10,12 @@
 
   $effect(() => {
     if (open) {
-      newGridSize = get(gridSize);
+      newGridSize = Math.min(MAX_NEW_PROJECT_GRID_SIZE, Math.max(1, get(gridSize)));
     }
   });
 
   function createGrid() {
-    const size = Math.max(1, Math.min(MAX_GRID_SIZE, Math.floor(newGridSize)));
+    const size = Math.max(1, Math.min(MAX_NEW_PROJECT_GRID_SIZE, Math.floor(newGridSize)));
     gridSize.set(size);
     resetCanvas(size, newGridShape);
     newGridSize = size;
@@ -35,8 +35,8 @@
     <div class="modal">
       <h3>New grid</h3>
       <label>
-        Grid size (1–{MAX_GRID_SIZE.toLocaleString()})
-        <input type="number" min="1" max={MAX_GRID_SIZE} step="1" bind:value={newGridSize} />
+        Grid size (1–{MAX_NEW_PROJECT_GRID_SIZE.toLocaleString()})
+        <input type="number" min="1" max={MAX_NEW_PROJECT_GRID_SIZE} step="1" bind:value={newGridSize} />
       </label>
       <label>
         Starting shape
