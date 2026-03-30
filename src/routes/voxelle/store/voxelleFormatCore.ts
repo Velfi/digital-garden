@@ -129,6 +129,40 @@ function parseFullFormat(raw: unknown): VoxelleFileFormat | null {
 /** Magic: `VX3` + 0x1a — v3 wire layout after gzip (if any). */
 export const VOXELLE_V3_MAGIC = Uint8Array.from([0x56, 0x58, 0x33, 0x1a]);
 
+/** Magic: `VX4` + 0x1a — desktop v4 container: u32 uncompressed len, u32 CRC32, gzip(inner). */
+export const VOXELLE_V4_MAGIC = Uint8Array.from([0x56, 0x58, 0x34, 0x1a]);
+
+const CRC32_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) {
+      c = c & 1 ? (0xedb88320 ^ (c >>> 1)) : c >>> 1;
+    }
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+
+/** CRC-32 (IEEE / zlib); matches Rust `crc32fast::hash` used by Voxelle desktop v4. */
+export function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < data.length; i++) {
+    crc = CRC32_TABLE[(crc ^ data[i]!) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+export function isV4ContainerPayload(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 12 &&
+    bytes[0] === VOXELLE_V4_MAGIC[0] &&
+    bytes[1] === VOXELLE_V4_MAGIC[1] &&
+    bytes[2] === VOXELLE_V4_MAGIC[2] &&
+    bytes[3] === VOXELLE_V4_MAGIC[3]
+  );
+}
+
 /** Fixed binary voxel record: xyz int32 LE, color uint32 LE, material index uint8, pad 3. */
 export const VOXELLE_V3_RECORD_SIZE = 20;
 
@@ -196,7 +230,8 @@ export function parseV3WireHeader(bytes: Uint8Array): V3WireHeader | null {
   const dv = new DataView(bytes.buffer);
   const b = bytes.byteOffset;
   const wireVersion = dv.getUint32(b + 4, true);
-  if (wireVersion !== 3) return null;
+  // Desktop dense wire uses wire_version 4; web-generated v3 uses 3. Body layout is identical.
+  if (wireVersion !== 3 && wireVersion !== 4) return null;
   const headerLen = dv.getUint32(b + 8, true);
   if (headerLen < 8 || 12 + headerLen > bytes.length) return null;
   const headerSlice = bytes.subarray(12, 12 + headerLen);

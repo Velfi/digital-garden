@@ -11,7 +11,9 @@ import {
 } from './voxelleFile';
 import { plasticVoxel } from '../voxelMaterial';
 import {
+  crc32,
   isV3WirePayload,
+  isV4ContainerPayload,
   parseFormatPayload,
   serializeFormatToBson,
   serializeFormatToWireBytes,
@@ -165,6 +167,29 @@ describe('loadFromBytes / encodeForTransport with injected impls', () => {
     expect(get(orthographic)).toBe(true);
   });
 
+  it('loadFromBytes decodes V4 container (desktop Save) with BSON inner', async () => {
+    const data: VoxelleFileFormat = {
+      version: 4,
+      gridSize: 8,
+      voxels: [[0, 0, 0, 0xff0000, 'plastic']],
+      scene: { focalLength: 35, orthographic: true }
+    };
+    const inner = serializeFormatToBson(data);
+    const gz = await gzipCompress(inner);
+    const container = new Uint8Array(12 + gz.length);
+    container.set([0x56, 0x58, 0x34, 0x1a], 0);
+    const dv = new DataView(container.buffer);
+    dv.setUint32(4, inner.length, true);
+    dv.setUint32(8, crc32(inner), true);
+    container.set(gz, 12);
+    expect(isV4ContainerPayload(container)).toBe(true);
+    const result = await loadFromBytes(container);
+    expect(result).toBe(true);
+    expect(get(gridSize)).toBe(8);
+    expect(get(voxels).get('0,0,0')).toEqual(plasticVoxel(0xff0000));
+    expect(get(focalLength)).toBe(35);
+  });
+
   it('loadFromBytes decodes gzipped BSON and applies to store', async () => {
     const data: VoxelleFileFormat = {
       version: 1,
@@ -222,6 +247,29 @@ describe('loadFromBytes / encodeForTransport with injected impls', () => {
 });
 
 describe('v3 wire format', () => {
+  it('parseFormatPayload accepts v3 wire with wire_version 4 (desktop dense)', () => {
+    const rows = Array.from({ length: 50001 }, (_, i) => [
+      (i % 8) - 4,
+      0,
+      0,
+      0x888888,
+      'plastic'
+    ]) as VoxelleFileFormat['voxels'];
+    const data: VoxelleFileFormat = {
+      version: 2,
+      gridSize: 32,
+      voxels: rows,
+      hiddenVoxels: [],
+      scene: { focalLength: 40, orthographic: false }
+    };
+    const wire = serializeFormatToWireBytes(data);
+    const dv = new DataView(wire.buffer, wire.byteOffset, wire.byteLength);
+    dv.setUint32(4, 4, true);
+    const parsed = parseFormatPayload(wire);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.voxels.length).toBe(50001);
+  });
+
   it('serializeFormatToWireBytes uses v3 for large voxel counts and round-trips', () => {
     const rows = Array.from({ length: 50001 }, (_, i) => [
       (i % 8) - 4,
