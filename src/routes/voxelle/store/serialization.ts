@@ -34,10 +34,16 @@ export function deserializeVoxels(json: string): Map<string, Voxel> {
       m.set(k, normalizeLegacyVoxel(val));
     } else if (val && typeof val === 'object' && typeof (val as Voxel).color === 'number') {
       const v = val as Voxel;
-      m.set(k, {
+      const base = {
         color: v.color & 0xffffff,
         material: parseVoxelMaterial(v.material)
-      });
+      };
+      m.set(
+        k,
+        typeof v.objectId === 'number' && v.objectId !== 0
+          ? { ...base, objectId: v.objectId }
+          : base
+      );
     }
   }
   return m;
@@ -67,7 +73,12 @@ export function computeUndoDelta(
   const selectionRemoved: [string, Voxel][] = [];
   for (const [k, c] of newV) {
     const oldC = oldV.get(k);
-    if (!oldC || oldC.color !== c.color || oldC.material !== c.material) {
+    if (
+      !oldC ||
+      oldC.color !== c.color ||
+      oldC.material !== c.material ||
+      (oldC.objectId ?? 0) !== (c.objectId ?? 0)
+    ) {
       voxelAdded.push([k, c]);
       if (oldC) voxelRemoved.push([k, oldC]);
     }
@@ -77,7 +88,12 @@ export function computeUndoDelta(
   }
   for (const [k, c] of newS) {
     const oldC = oldS.get(k);
-    if (!oldC || oldC.color !== c.color || oldC.material !== c.material) {
+    if (
+      !oldC ||
+      oldC.color !== c.color ||
+      oldC.material !== c.material ||
+      (oldC.objectId ?? 0) !== (c.objectId ?? 0)
+    ) {
       selectionAdded.push([k, c]);
       if (oldC) selectionRemoved.push([k, oldC]);
     }

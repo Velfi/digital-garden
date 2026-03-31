@@ -245,8 +245,11 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
-function computeMarchingCubesBucket(voxels: Map<string, Voxel>): MarchingCubesCoreResult | null {
-  const field = buildMarchingLatticeField(voxels);
+function computeMarchingCubesBucket(
+  voxels: Map<string, Voxel>,
+  allVoxels: Map<string, Voxel>
+): MarchingCubesCoreResult | null {
+  const field = buildMarchingLatticeField(voxels, allVoxels);
   if (!field) return null;
   const {
     nodeMinX,
@@ -508,7 +511,7 @@ export function computeMarchingCubes(
 
   const result = new Map<string, MarchingCubesCoreResult>();
   for (const [bucketKey, bucketVoxels] of grouped) {
-    const mesh = computeMarchingCubesBucket(bucketVoxels);
+    const mesh = computeMarchingCubesBucket(bucketVoxels, voxels);
     if (mesh) result.set(bucketKey, mesh);
   }
   return result;

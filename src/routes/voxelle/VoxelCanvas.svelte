@@ -6851,6 +6851,7 @@
     const postGrain = wantsGrain && !isRay;
     const wanted = wantsFog || postDistanceTint || postGrain || wantsSunShafts;
     const hasGlow = sceneHasGlowMesh || hasGlowInVoxelGroup(voxelGroup);
+    if (bloomMixPass) bloomMixPass.enabled = hasGlow;
     if (!wanted) {
       planarAtmospherePassGL.enabled = false;
       distanceTintPassGL.enabled = false;
@@ -6870,7 +6871,6 @@
     atmosphereOnlyDistanceTintPass.enabled = !hasGlow && postDistanceTint;
     atmosphereOnlySunShaftsPass.enabled = !hasGlow && wantsSunShafts;
     atmosphereOnlyGrainPass.enabled = !hasGlow && postGrain;
-    if (bloomMixPass) bloomMixPass.enabled = hasGlow;
     const el = renderer.domElement;
     const sunUv = getSunScreenUv(camera as THREE.Camera, false);
     const opts = {

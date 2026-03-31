@@ -7,7 +7,12 @@ const PLASTIC: VoxelMaterialId = 'plastic';
 export const VOXEL_MATERIAL_IDS = ['plastic', 'metal', 'rubber', 'glass', 'water', 'glow'] as const;
 export type VoxelMaterialId = (typeof VOXEL_MATERIAL_IDS)[number];
 
-export type Voxel = { color: number; material: VoxelMaterialId };
+export type Voxel = {
+  color: number;
+  material: VoxelMaterialId;
+  /** Desktop v4 object grouping; omitted when 0 / legacy. */
+  objectId?: number;
+};
 
 /** Solid plastic voxel (common default for generators / import). */
 export function plasticVoxel(color: number): Voxel {
@@ -40,16 +45,32 @@ export function parseVoxelMaterial(
 }
 
 export function voxelBucketKey(v: Voxel): string {
+  if (v.objectId !== undefined && v.objectId !== 0) {
+    return `${v.color}|${v.material}|${v.objectId}`;
+  }
   return `${v.color}|${v.material}`;
 }
 
-export function parseBucketKey(key: string): { color: number; material: VoxelMaterialId } | null {
-  const i = key.lastIndexOf('|');
-  if (i <= 0) return null;
-  const color = Number(key.slice(0, i));
-  const mat = key.slice(i + 1);
-  if (!Number.isInteger(color) || !isVoxelMaterialId(mat)) return null;
-  return { color, material: mat };
+export function parseBucketKey(key: string): {
+  color: number;
+  material: VoxelMaterialId;
+  objectId?: number;
+} | null {
+  const parts = key.split('|');
+  if (parts.length === 2) {
+    const color = Number(parts[0]);
+    const mat = parts[1];
+    if (!Number.isInteger(color) || !isVoxelMaterialId(mat!)) return null;
+    return { color, material: mat! };
+  }
+  if (parts.length === 3) {
+    const color = Number(parts[0]);
+    const mat = parts[1];
+    const oid = Number(parts[2]);
+    if (!Number.isInteger(color) || !isVoxelMaterialId(mat!) || !Number.isInteger(oid)) return null;
+    return { color, material: mat!, objectId: oid };
+  }
+  return null;
 }
 
 /** `THREE.Mesh.userData` key: selective post-process bloom applies only when `true` (glow buckets). */
@@ -104,7 +125,10 @@ export function blendVoxelsForSmooth(neighbors: Voxel[]): Voxel {
 
 export function cloneVoxel(v: Voxel | number): Voxel {
   if (typeof v === 'number') return normalizeLegacyVoxel(v);
-  return { color: v.color & 0xffffff, material: v.material };
+  const base = { color: v.color & 0xffffff, material: v.material };
+  return v.objectId !== undefined && v.objectId !== 0
+    ? { ...base, objectId: v.objectId }
+    : base;
 }
 
 /**

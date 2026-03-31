@@ -10,6 +10,7 @@ import {
   setWorkerImpls
 } from './voxelleFile';
 import { plasticVoxel } from '../voxelMaterial';
+import { serialize as bsonSerialize, type Document } from 'bson';
 import {
   crc32,
   isV3WirePayload,
@@ -17,6 +18,8 @@ import {
   parseFormatPayload,
   serializeFormatToBson,
   serializeFormatToWireBytes,
+  VOXELLE_V3_MAGIC,
+  VOXELLE_V4_WIRE_RECORD_SIZE,
   type VoxelleFileFormat
 } from './voxelleFormatCore';
 
@@ -167,6 +170,32 @@ describe('loadFromBytes / encodeForTransport with injected impls', () => {
     expect(get(orthographic)).toBe(true);
   });
 
+  it('loadFromBytes applies v4 BSON object translation to world grid', async () => {
+    const data: VoxelleFileFormat = {
+      version: 4,
+      gridSize: 64,
+      voxels: [[5, 6, 7, 0xaabbcc, 'plastic', 0]],
+      objects: [
+        {
+          id: 0,
+          parentId: null,
+          name: 'Scene',
+          visible: true,
+          sortOrder: 0,
+          translation: [10, 0, 0],
+          rotation: [0, 0, 0, 1],
+          scale: [1, 1, 1]
+        }
+      ],
+      scene: { focalLength: 40, orthographic: false }
+    };
+    const bson = serializeFormatToBson(data);
+    const ok = await loadFromBytes(bson);
+    expect(ok).toBe(true);
+    expect(get(voxels).get('15,6,7')).toEqual(plasticVoxel(0xaabbcc));
+    expect(get(voxels).get('5,6,7')).toBeUndefined();
+  });
+
   it('loadFromBytes decodes V4 container (desktop Save) with BSON inner', async () => {
     const data: VoxelleFileFormat = {
       version: 4,
@@ -244,10 +273,45 @@ describe('loadFromBytes / encodeForTransport with injected impls', () => {
     const fromB64 = Uint8Array.from(atob(asB64), (c) => c.charCodeAt(0));
     expect(asBytes).toEqual(fromB64);
   });
+
+  it('round-trips store through encodeForTransportBytes and loadFromBytes', async () => {
+    voxels.set(
+      new Map([
+        ['0,0,0', plasticVoxel(0xff0000)],
+        ['1,2,3', plasticVoxel(0x00ff00)],
+        ['-3,-2,-1', plasticVoxel(0x0000ff)]
+      ])
+    );
+    hiddenVoxels.set(new Map([['4,4,4', plasticVoxel(0xaabbcc)]]));
+    gridSize.set(16);
+    focalLength.set(42);
+    orthographic.set(true);
+
+    const encoded = await encodeForTransportBytes();
+
+    // Reset store to different state before loading
+    voxels.set(new Map());
+    hiddenVoxels.set(new Map());
+    gridSize.set(8);
+    focalLength.set(29);
+    orthographic.set(false);
+
+    const ok = await loadFromBytes(encoded);
+    expect(ok).toBe(true);
+    expect(get(gridSize)).toBe(16);
+    expect(get(focalLength)).toBe(42);
+    expect(get(orthographic)).toBe(true);
+    expect(get(voxels).size).toBe(3);
+    expect(get(voxels).get('0,0,0')).toEqual(plasticVoxel(0xff0000));
+    expect(get(voxels).get('1,2,3')).toEqual(plasticVoxel(0x00ff00));
+    expect(get(voxels).get('-3,-2,-1')).toEqual(plasticVoxel(0x0000ff));
+    expect(get(hiddenVoxels).size).toBe(1);
+    expect(get(hiddenVoxels).get('4,4,4')).toEqual(plasticVoxel(0xaabbcc));
+  });
 });
 
 describe('v3 wire format', () => {
-  it('parseFormatPayload accepts v3 wire with wire_version 4 (desktop dense)', () => {
+  it('parseFormatPayload accepts large v3 wire (version 3, 20-byte records)', () => {
     const rows = Array.from({ length: 50001 }, (_, i) => [
       (i % 8) - 4,
       0,
@@ -263,8 +327,6 @@ describe('v3 wire format', () => {
       scene: { focalLength: 40, orthographic: false }
     };
     const wire = serializeFormatToWireBytes(data);
-    const dv = new DataView(wire.buffer, wire.byteOffset, wire.byteLength);
-    dv.setUint32(4, 4, true);
     const parsed = parseFormatPayload(wire);
     expect(parsed).not.toBeNull();
     expect(parsed!.voxels.length).toBe(50001);
@@ -325,5 +387,76 @@ describe('v3 wire format', () => {
     expect(offsetView!.voxels[50000]).toEqual(direct!.voxels[50000]);
     expect(offsetView!.hiddenVoxels).toEqual(direct!.hiddenVoxels);
     expect(offsetView!.gridSize).toBe(direct!.gridSize);
+  });
+
+  it('parseFormatPayload accepts VX3 wire version 4 (24-byte records, object_id)', () => {
+    const headerDoc = {
+      version: 4,
+      gridSize: 16,
+      voxelCount: 2,
+      hiddenCount: 0,
+      objects: [
+        {
+          id: 0,
+          parent: null,
+          name: 'Scene',
+          visible: true,
+          sortOrder: 0,
+          t: [0, 0, 0],
+          r: [0, 0, 0, 1],
+          s: [1, 1, 1]
+        },
+        {
+          id: 1,
+          parent: null,
+          name: 'B',
+          visible: true,
+          sortOrder: 1,
+          t: [2, 0, 0],
+          r: [0, 0, 0, 1],
+          s: [1, 1, 1]
+        }
+      ],
+      activeObjectId: 1
+    };
+    const headerBytes = bsonSerialize(headerDoc as Document, {
+      minInternalBufferSize: 65536
+    } as Parameters<typeof bsonSerialize>[1] & { minInternalBufferSize: number });
+    const hb = new Uint8Array(
+      headerBytes.buffer.slice(
+        headerBytes.byteOffset,
+        headerBytes.byteOffset + headerBytes.byteLength
+      )
+    );
+    const bodyLen = 2 * VOXELLE_V4_WIRE_RECORD_SIZE;
+    const total = 12 + hb.length + bodyLen;
+    const wire = new Uint8Array(total);
+    wire.set(VOXELLE_V3_MAGIC, 0);
+    const dv = new DataView(wire.buffer, wire.byteOffset, wire.byteLength);
+    dv.setUint32(4, 4, true);
+    dv.setUint32(8, hb.length, true);
+    wire.set(hb, 12);
+    let o = 12 + hb.length;
+    const writeRec = (x: number, y: number, z: number, color: number, mat: number, oid: number) => {
+      dv.setInt32(o, x, true);
+      dv.setInt32(o + 4, y, true);
+      dv.setInt32(o + 8, z, true);
+      dv.setUint32(o + 12, color >>> 0, true);
+      dv.setUint8(o + 16, mat);
+      dv.setUint8(o + 17, 0);
+      dv.setUint16(o + 18, 0, true);
+      dv.setUint32(o + 20, oid >>> 0, true);
+      o += VOXELLE_V4_WIRE_RECORD_SIZE;
+    };
+    writeRec(0, 0, 0, 0xff0000, 0, 0);
+    writeRec(0, 0, 0, 0x00ff00, 0, 1);
+    const parsed = parseFormatPayload(wire);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.version).toBe(4);
+    expect(parsed!.objects).toHaveLength(2);
+    expect(parsed!.voxels).toEqual([
+      [0, 0, 0, 0xff0000, 'plastic'],
+      [0, 0, 0, 0x00ff00, 'plastic', 1]
+    ]);
   });
 });

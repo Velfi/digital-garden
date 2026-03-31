@@ -24,6 +24,7 @@ function hasOccludingVoxelAt(
  * - Transmissive culls only against the same material so boundaries against other materials remain visible.
  */
 function isFaceOccludedByNeighbor(source: Voxel, neighbor: Voxel): boolean {
+  if ((source.objectId ?? 0) !== (neighbor.objectId ?? 0)) return false;
   if (isTransmissiveMaterial(source.material)) return source.material === neighbor.material;
   return !isTransmissiveMaterial(neighbor.material);
 }
@@ -110,13 +111,15 @@ function getTransmissiveThicknessAtFace(
   axis: number,
   sign: number,
   material: Voxel['material'],
-  voxels: Map<string, Voxel>
+  voxels: Map<string, Voxel>,
+  ownerObjectId: number
 ): number {
   let [x, y, z] = pos;
   let depth = 0;
   while (true) {
     const v = voxels.get(coordKey(x, y, z));
     if (!v || v.material !== material) break;
+    if ((v.objectId ?? 0) !== ownerObjectId) break;
     depth++;
     if (axis === 0) x -= sign;
     else if (axis === 1) y -= sign;
@@ -152,6 +155,17 @@ function getAONeighborCoords(
   return [toWorld(du1, dv1), toWorld(du2, dv2), toWorld(du3, dv3)];
 }
 
+function aoCellOccludesForOwner(
+  voxels: Map<string, Voxel>,
+  pos: Vec3,
+  sourceObjectId: number
+): boolean {
+  const vx = voxels.get(coordKey(pos[0], pos[1], pos[2]));
+  if (!vx) return false;
+  if ((vx.objectId ?? 0) !== sourceObjectId) return false;
+  return !isTransmissiveMaterial(vx.material);
+}
+
 function getCornerAO(
   axis: number,
   sign: number,
@@ -159,12 +173,13 @@ function getCornerAO(
   cu: number,
   cv: number,
   cornerIndex: number,
-  voxels: Map<string, Voxel>
+  voxels: Map<string, Voxel>,
+  sourceObjectId: number
 ): number {
   const [n1, n2, n3] = getAONeighborCoords(axis, sign, depth, cu, cv, cornerIndex);
-  const s1 = hasOccludingVoxelAt(voxels, n1[0], n1[1], n1[2]) ? 1 : 0;
-  const s2 = hasOccludingVoxelAt(voxels, n2[0], n2[1], n2[2]) ? 1 : 0;
-  const c = hasOccludingVoxelAt(voxels, n3[0], n3[1], n3[2]) ? 1 : 0;
+  const s1 = aoCellOccludesForOwner(voxels, n1, sourceObjectId) ? 1 : 0;
+  const s2 = aoCellOccludesForOwner(voxels, n2, sourceObjectId) ? 1 : 0;
+  const c = aoCellOccludesForOwner(voxels, n3, sourceObjectId) ? 1 : 0;
   return getAOState(s1, s2, c);
 }
 
@@ -187,6 +202,8 @@ function precomputeVertexAO(
   for (const f of faces) {
     const [x, y, z] = f.pos;
     const { axis, sign } = f;
+    const sourceVoxel = voxels.get(coordKey(x, y, z));
+    const sourceOid = sourceVoxel?.objectId ?? 0;
     const depth = axis === 0 ? x : axis === 1 ? y : z;
     const u = axis === 0 ? y : axis === 1 ? x : x;
     const v = axis === 0 ? z : axis === 1 ? z : y;
@@ -202,7 +219,7 @@ function precomputeVertexAO(
     ];
     for (let ci = 0; ci < 4; ci++) {
       const [cu, cv] = cornerUV[ci];
-      const ao = getCornerAO(axis, sign, depth, cu, cv, ci, voxels);
+      const ao = getCornerAO(axis, sign, depth, cu, cv, ci, voxels, sourceOid);
       let wx: number, wy: number, wz: number;
       if (axis === 0) {
         wx = depth + faceOffset;
@@ -389,9 +406,18 @@ export function computeGreedyMesh(
         const u = f.axis === 0 ? y : f.axis === 1 ? x : x;
         const v = f.axis === 0 ? z : f.axis === 1 ? z : y;
         const cellKey = `${f.axis},${f.sign},${depth},${u},${v}`;
+        const fv = occlusionVoxels.get(coordKey(f.pos[0], f.pos[1], f.pos[2]));
+        const ownerOid = fv?.objectId ?? 0;
         transmissiveThicknessByCell.set(
           cellKey,
-          getTransmissiveThicknessAtFace(f.pos, f.axis, f.sign, material, occlusionVoxels)
+          getTransmissiveThicknessAtFace(
+            f.pos,
+            f.axis,
+            f.sign,
+            material,
+            occlusionVoxels,
+            ownerOid
+          )
         );
       }
     }
@@ -488,6 +514,12 @@ export function computeGreedyMesh(
       const u0 = axis === 0 ? Math.floor(py + 0.5) : Math.floor(px + 0.5);
       const v0 = axis === 2 ? Math.floor(py + 0.5) : Math.floor(pz + 0.5);
 
+      const voxelOnFaceSlice = (cu: number, cv: number): Vec3 => {
+        if (axis === 0) return [depth, cu, cv];
+        if (axis === 1) return [cu, depth, cv];
+        return [cu, cv, depth];
+      };
+
       const getAO = (cu: number, cv: number, ci: number): number => {
         const k = vertexKey(
           axis === 0 ? depth + 0.5 * sign : cu - 0.5,
@@ -497,7 +529,13 @@ export function computeGreedyMesh(
           ny,
           nz
         );
-        return vertexAO.get(k) ?? getCornerAO(axis, sign, depth, cu, cv, ci, occlusionVoxels);
+        const [vx, vy, vz] = voxelOnFaceSlice(cu, cv);
+        const src = occlusionVoxels.get(coordKey(vx, vy, vz));
+        const cornerOid = src?.objectId ?? 0;
+        return (
+          vertexAO.get(k) ??
+          getCornerAO(axis, sign, depth, cu, cv, ci, occlusionVoxels, cornerOid)
+        );
       };
 
       const signN = nx !== 0 ? nx : ny !== 0 ? ny : nz;

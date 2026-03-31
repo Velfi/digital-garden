@@ -163,18 +163,18 @@ export function renderVoxelCanvasPrimaryScene(p: VoxelPrimaryRenderParams): void
         webgpuBloomPipeline.renderPipeline.render();
       } else {
         webgpuBloomPipeline.renderSceneToTarget(rw, scene, camera);
-        const savedWebGpuBloomBg = scene.background;
         withBloomMaterialStash(scene, bloomDarkMaterial, bloomMaterialStash, () => {
-          if (bloomPassBackground) scene.background = bloomPassBackground;
-          try {
-            webgpuBloomPipeline.renderBloomSourceToTarget(
-              renderer as Parameters<WebGPUBloomPipeline['renderBloomSourceToTarget']>[0],
-              scene,
-              camera
-            );
-          } finally {
-            scene.background = savedWebGpuBloomBg;
-          }
+          /**
+           * Do NOT set `scene.background` to a Color on WebGPU — reverse-Z depth
+           * can drop scene geometry when clearing with a flat Color background
+           * (see `applyPresentationFromStores`).  `renderBloomSourceToTarget`
+           * already calls `r.clear(true, true, false)` so the RT starts black.
+           */
+          webgpuBloomPipeline.renderBloomSourceToTarget(
+            renderer as Parameters<WebGPUBloomPipeline['renderBloomSourceToTarget']>[0],
+            scene,
+            camera
+          );
         });
         webgpuBloomPipeline.renderPipeline.render();
       }

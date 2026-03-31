@@ -580,7 +580,6 @@
           Delete selected
         </button>
         <button type="button" role="menuitem" onclick={handlePaste}> Paste </button>
-        <div class="menu-separator" role="separator"></div>
       </div>
     {/if}
   </div>

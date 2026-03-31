@@ -40,19 +40,24 @@ import { recomputeGlowVoxelCountFromMap } from './voxelDerivedStats';
 import type { GridSize } from './core';
 import {
   VOXELLE_FORMAT_VERSION,
+  type SceneObjectFile,
   type VoxelleFileFormat,
   type VoxelleFileVoxelRow,
   crc32,
-  decodeV3WireRecord,
+  decodeWireVoxelRecord,
   isV3WirePayload,
   isV4ContainerPayload,
   parseV3WireHeader,
-  VOXELLE_V3_RECORD_SIZE
+  rowToVoxel
 } from './voxelleFormatCore';
+import {
+  isObjectVisibleInFile,
+  objectWorldMatrix,
+  transformLocalVoxelToWorldCell
+} from './voxelleObjectTransform';
 import { VOXELLE_FILE_BATCH_ROW_COUNT } from './voxelleFileWorkerLogic';
 import { canonicalizeVoxelMap } from './serialization';
 import type { Voxel } from '../voxelMaterial';
-import { parseVoxelMaterial } from '../voxelMaterial';
 
 export { VOXELLE_FORMAT_VERSION, type VoxelleFileFormat };
 
@@ -89,8 +94,12 @@ function useWorker(): void {
       const id = ++workerNextId;
       const worker = createFileWorker();
       const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-      let meta: { version: number; gridSize: number; scene?: VoxelleFileFormat['scene'] } | null =
-        null;
+      let meta: {
+        version: number;
+        gridSize: number;
+        scene?: VoxelleFileFormat['scene'];
+        objects?: SceneObjectFile[];
+      } | null = null;
       const voxelsMap = new Map<string, Voxel>();
       const hiddenMap = new Map<string, Voxel>();
 
@@ -109,12 +118,18 @@ function useWorker(): void {
             return;
           }
           if (d.type === 'parsedVoxelBatch') {
-            mergeVoxelFileRowsIntoMap(voxelsMap, d.rows);
+            mergeVoxelFileRowsIntoMap(voxelsMap, d.rows, {
+              version: meta?.version ?? 2,
+              objects: meta?.objects
+            });
             await yieldToUi();
             return;
           }
           if (d.type === 'parsedHiddenBatch') {
-            mergeVoxelFileRowsIntoMap(hiddenMap, d.rows);
+            mergeVoxelFileRowsIntoMap(hiddenMap, d.rows, {
+              version: meta?.version ?? 2,
+              objects: meta?.objects
+            });
             await yieldToUi();
             return;
           }
@@ -287,18 +302,39 @@ async function decodeV4Container(bytes: Uint8Array): Promise<Uint8Array | null> 
   return inner;
 }
 
-function mergeVoxelFileRowsIntoMap(map: Map<string, Voxel>, rows: VoxelleFileVoxelRow[]): void {
+type VoxelMergeContext = {
+  version: number;
+  objects?: SceneObjectFile[];
+};
+
+function placeParsedVoxelInMap(
+  map: Map<string, Voxel>,
+  parsed: NonNullable<ReturnType<typeof rowToVoxel>>,
+  ctx?: VoxelMergeContext
+): void {
+  let { x, y, z, voxel, objectId } = parsed;
+  const useScene = Boolean(
+    ctx && ctx.version >= 4 && ctx.objects && ctx.objects.length > 0
+  );
+  if (useScene) {
+    if (!isObjectVisibleInFile(ctx!.objects, objectId)) return;
+    const wm = objectWorldMatrix(ctx!.objects!, objectId);
+    [x, y, z] = transformLocalVoxelToWorldCell(wm, x, y, z);
+  }
+  const placed: Voxel =
+    objectId !== 0 ? { ...voxel, objectId } : { ...voxel };
+  map.set(coordKey(x, y, z), placed);
+}
+
+function mergeVoxelFileRowsIntoMap(
+  map: Map<string, Voxel>,
+  rows: VoxelleFileVoxelRow[],
+  ctx?: VoxelMergeContext
+): void {
   for (const row of rows) {
-    if (!Array.isArray(row) || row.length < 4) continue;
-    const x = row[0] as number;
-    const y = row[1] as number;
-    const z = row[2] as number;
-    const c = ((row[3] as number) >>> 0) & 0xffffff;
-    const m =
-      row.length >= 5 && typeof row[4] === 'string'
-        ? parseVoxelMaterial(row[4])
-        : parseVoxelMaterial(0);
-    map.set(coordKey(x, y, z), { color: c, material: m });
+    const parsed = rowToVoxel(row);
+    if (!parsed) continue;
+    placeParsedVoxelInMap(map, parsed, ctx);
   }
 }
 
@@ -451,9 +487,10 @@ function finalizeLoadedVoxelMaps(
 function applyModelData(data: VoxelleFileFormat): void {
   const voxelsMap = new Map<string, Voxel>();
   const hiddenMap = new Map<string, Voxel>();
-  mergeVoxelFileRowsIntoMap(voxelsMap, data.voxels);
+  const mergeCtx: VoxelMergeContext = { version: data.version, objects: data.objects };
+  mergeVoxelFileRowsIntoMap(voxelsMap, data.voxels, mergeCtx);
   if (Array.isArray(data.hiddenVoxels)) {
-    mergeVoxelFileRowsIntoMap(hiddenMap, data.hiddenVoxels);
+    mergeVoxelFileRowsIntoMap(hiddenMap, data.hiddenVoxels, mergeCtx);
   }
   finalizeLoadedVoxelMaps(voxelsMap, hiddenMap, data.gridSize as GridSize, data.scene);
 }
@@ -464,22 +501,27 @@ async function loadV3WireIncremental(payload: Uint8Array): Promise<boolean> {
   if (!head) return false;
   const voxelsMap = new Map<string, Voxel>();
   const hiddenMap = new Map<string, Voxel>();
+  const mergeCtx: VoxelMergeContext = {
+    version: head.fileVersion,
+    objects: head.objects
+  };
   let o = head.bodyByteOffset;
   let processed = 0;
+  const { recordSize } = head;
   for (let i = 0; i < head.voxelCount; i++) {
-    const rec = decodeV3WireRecord(payload, o);
+    const rec = decodeWireVoxelRecord(payload, o, recordSize);
     if (!rec) return false;
-    o += VOXELLE_V3_RECORD_SIZE;
-    voxelsMap.set(coordKey(rec.x, rec.y, rec.z), rec.voxel);
+    o += recordSize;
+    placeParsedVoxelInMap(voxelsMap, rec, mergeCtx);
     processed++;
     if (processed % VOXELLE_FILE_BATCH_ROW_COUNT === 0) await yieldToUi();
   }
   processed = 0;
   for (let i = 0; i < head.hiddenCount; i++) {
-    const rec = decodeV3WireRecord(payload, o);
+    const rec = decodeWireVoxelRecord(payload, o, recordSize);
     if (!rec) return false;
-    o += VOXELLE_V3_RECORD_SIZE;
-    hiddenMap.set(coordKey(rec.x, rec.y, rec.z), rec.voxel);
+    o += recordSize;
+    placeParsedVoxelInMap(hiddenMap, rec, mergeCtx);
     processed++;
     if (processed % VOXELLE_FILE_BATCH_ROW_COUNT === 0) await yieldToUi();
   }

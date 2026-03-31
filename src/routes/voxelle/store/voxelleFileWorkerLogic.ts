@@ -3,7 +3,7 @@ import {
   serializeFormatToBson,
   serializeFormatToWireBytes
 } from './voxelleFormatCore';
-import type { VoxelleFileFormat, VoxelleFileVoxelRow } from './voxelleFormatCore';
+import type { SceneObjectFile, VoxelleFileFormat, VoxelleFileVoxelRow } from './voxelleFormatCore';
 import { LARGE_PROJECT_OPEN_VOXEL_THRESHOLD } from './projectLoad';
 
 export type ParseMessage = { type: 'parse'; id: number; bytes: ArrayBuffer };
@@ -15,7 +15,12 @@ export type VoxelleFileParsePosted =
   | {
       type: 'parsedBatchedStart';
       id: number;
-      meta: { version: number; gridSize: number; scene?: VoxelleFileFormat['scene'] };
+      meta: {
+        version: number;
+        gridSize: number;
+        scene?: VoxelleFileFormat['scene'];
+        objects?: SceneObjectFile[];
+      };
     }
   | { type: 'parsedVoxelBatch'; id: number; rows: VoxelleFileVoxelRow[] }
   | { type: 'parsedHiddenBatch'; id: number; rows: VoxelleFileVoxelRow[] }
@@ -45,7 +50,12 @@ export function buildParsePostedMessages(
     {
       type: 'parsedBatchedStart',
       id,
-      meta: { version: data.version, gridSize: data.gridSize, scene: data.scene }
+      meta: {
+        version: data.version,
+        gridSize: data.gridSize,
+        scene: data.scene,
+        objects: data.objects
+      }
     }
   ];
   for (let i = 0; i < data.voxels.length; i += batch) {

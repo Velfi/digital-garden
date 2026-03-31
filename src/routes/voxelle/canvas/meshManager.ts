@@ -472,6 +472,9 @@ export function createMeshManager(
     meshWorker = new Worker(new URL('../voxelMeshWorker.ts', import.meta.url), {
       type: 'module'
     });
+    meshWorker.onerror = (e) => {
+      console.error('Voxel mesh worker error:', e.message, e);
+    };
     meshWorker.onmessage = (e: MessageEvent<VoxelMeshWorkerOutput>) => {
       if (e.data.gen !== meshRebuildGen) return;
       const workerRequestAt = workerRequestStartByGen.get(meshRebuildGen);
