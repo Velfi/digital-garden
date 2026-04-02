@@ -35,11 +35,11 @@
       <input
         type="range"
         min="1"
-        max="6"
+        max="40"
         step="1"
         value={$grassHeight}
         oninput={(e) => grassHeight.set(Number((e.target as HTMLInputElement).value))}
-        title="Max blade height (1–6 voxels)"
+        title="Max blade height (1–40 voxels)"
       />
       <span class="tool-panel-value">{$grassHeight}</span>
     </div>

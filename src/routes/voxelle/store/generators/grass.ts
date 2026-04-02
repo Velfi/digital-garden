@@ -3,6 +3,13 @@ import type { FaceNormal } from '../core';
 import type { Voxel } from '../../voxelMaterial';
 import { plasticVoxel } from '../../voxelMaterial';
 
+/** Blades shorter than this grow perfectly straight. */
+const BEND_THRESHOLD = 5;
+/** Base lateral drift per voxel of height above the threshold. */
+const BEND_RATE_BASE = 0.15;
+/** +/- variation applied to the bend rate per blade. */
+const BEND_RATE_VARIANCE = 0.1;
+
 /** Seeded RNG (mulberry32). Returns 0–1. */
 function createRng(seed: number): () => number {
   let state = seed >>> 0;
@@ -49,7 +56,7 @@ export function generateGrassVoxels(
 ): Map<string, Voxel> {
   const out = new Map<string, Voxel>();
   const R = Math.max(0, Math.floor(radius));
-  const maxH = Math.max(1, Math.min(6, Math.floor(height)));
+  const maxH = Math.max(1, Math.min(40, Math.floor(height)));
   const dens = Math.max(0, Math.min(1, density));
   const [t1, t2] = getTangentVectors(normal);
   const [cx, cy, cz] = center;
@@ -64,10 +71,21 @@ export function generateGrassVoxels(
       const by = cy + i * t1[1] + j * t2[1];
       const bz = cz + i * t1[2] + j * t2[2];
       const bladeH = 1 + Math.floor(rng() * maxH);
+      const bendAngle = rng() * Math.PI * 2;
+      const bendRate = Math.max(0.02, BEND_RATE_BASE + (rng() - 0.5) * 2 * BEND_RATE_VARIANCE);
+      const bendD1 = Math.cos(bendAngle);
+      const bendD2 = Math.sin(bendAngle);
       for (let k = 0; k < bladeH; k++) {
-        const x = bx + k * normal[0];
-        const y = by + k * normal[1];
-        const z = bz + k * normal[2];
+        let off1 = 0,
+          off2 = 0;
+        if (bladeH >= BEND_THRESHOLD && k >= BEND_THRESHOLD) {
+          const progress = k - BEND_THRESHOLD;
+          off1 = Math.round(bendD1 * bendRate * progress);
+          off2 = Math.round(bendD2 * bendRate * progress);
+        }
+        const x = bx + k * normal[0] + off1 * t1[0] + off2 * t2[0];
+        const y = by + k * normal[1] + off1 * t1[1] + off2 * t2[1];
+        const z = bz + k * normal[2] + off1 * t1[2] + off2 * t2[2];
         out.set(coordKey(x, y, z), plasticVoxel(baseColor));
       }
     }
@@ -89,7 +107,7 @@ export function getGrassPositions(
 ): [number, number, number][] {
   const positions: [number, number, number][] = [];
   const R = Math.max(0, Math.floor(radius));
-  const maxH = Math.max(1, Math.min(6, Math.floor(height)));
+  const maxH = Math.max(1, Math.min(40, Math.floor(height)));
   const dens = Math.max(0, Math.min(1, density));
   const [t1, t2] = getTangentVectors(normal);
   const [cx, cy, cz] = center;
@@ -104,8 +122,23 @@ export function getGrassPositions(
       const by = cy + i * t1[1] + j * t2[1];
       const bz = cz + i * t1[2] + j * t2[2];
       const bladeH = 1 + Math.floor(rng() * maxH);
+      const bendAngle = rng() * Math.PI * 2;
+      const bendRate = Math.max(0.02, BEND_RATE_BASE + (rng() - 0.5) * 2 * BEND_RATE_VARIANCE);
+      const bendD1 = Math.cos(bendAngle);
+      const bendD2 = Math.sin(bendAngle);
       for (let k = 0; k < bladeH; k++) {
-        positions.push([bx + k * normal[0], by + k * normal[1], bz + k * normal[2]]);
+        let off1 = 0,
+          off2 = 0;
+        if (bladeH >= BEND_THRESHOLD && k >= BEND_THRESHOLD) {
+          const progress = k - BEND_THRESHOLD;
+          off1 = Math.round(bendD1 * bendRate * progress);
+          off2 = Math.round(bendD2 * bendRate * progress);
+        }
+        positions.push([
+          bx + k * normal[0] + off1 * t1[0] + off2 * t2[0],
+          by + k * normal[1] + off1 * t1[1] + off2 * t2[1],
+          bz + k * normal[2] + off1 * t1[2] + off2 * t2[2],
+        ]);
       }
     }
   }
