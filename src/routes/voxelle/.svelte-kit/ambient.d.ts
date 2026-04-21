@@ -39,6 +39,13 @@
  */
 declare module '$env/static/private' {
 	export const ANTHROPIC_API_KEY: string;
+	export const APPLE_API_ISSUER: string;
+	export const APPLE_API_KEY: string;
+	export const APPLE_API_KEY_PATH: string;
+	export const APPLE_ID: string;
+	export const APPLE_PASSWORD: string;
+	export const APPLE_SIGNING_IDENTITY: string;
+	export const APPLE_TEAM_ID: string;
 	export const COMMAND_MODE: string;
 	export const HOME: string;
 	export const HOMEBREW_CELLAR: string;
@@ -62,7 +69,7 @@ declare module '$env/static/private' {
 	export const SSH_AUTH_SOCK: string;
 	export const STARSHIP_SESSION_KEY: string;
 	export const STARSHIP_SHELL: string;
-	export const TAURI_SIGNING_PRIVATE_KEY_PATH: string;
+	export const TAURI_SIGNING_PRIVATE_KEY: string;
 	export const TMPDIR: string;
 	export const USER: string;
 	export const VSCODE_CODE_CACHE_PATH: string;
@@ -185,6 +192,13 @@ declare module '$env/static/public' {
 declare module '$env/dynamic/private' {
 	export const env: {
 		ANTHROPIC_API_KEY: string;
+		APPLE_API_ISSUER: string;
+		APPLE_API_KEY: string;
+		APPLE_API_KEY_PATH: string;
+		APPLE_ID: string;
+		APPLE_PASSWORD: string;
+		APPLE_SIGNING_IDENTITY: string;
+		APPLE_TEAM_ID: string;
 		COMMAND_MODE: string;
 		HOME: string;
 		HOMEBREW_CELLAR: string;
@@ -208,7 +222,7 @@ declare module '$env/dynamic/private' {
 		SSH_AUTH_SOCK: string;
 		STARSHIP_SESSION_KEY: string;
 		STARSHIP_SHELL: string;
-		TAURI_SIGNING_PRIVATE_KEY_PATH: string;
+		TAURI_SIGNING_PRIVATE_KEY: string;
 		TMPDIR: string;
 		USER: string;
 		VSCODE_CODE_CACHE_PATH: string;

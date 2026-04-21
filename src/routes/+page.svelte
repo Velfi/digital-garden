@@ -99,6 +99,7 @@
     <li><a href={resolve('/art/2025-belize-trip')}>2025 Belize Trip</a></li>
     <li><a href={resolve('/kaleidopaint')}>Kaleidopaint</a></li>
     <li><a href={resolve('/voxelle')}>Voxelle</a></li>
+    <li><a href={resolve('/badger')}>Badger</a></li>
   </ul>
 
   <h3>Wallpapers</h3>

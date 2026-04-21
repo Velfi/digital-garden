@@ -11,8 +11,8 @@
   } from '../store/index';
   import {
     MATERIAL_BUILTIN_PALETTE_HEX,
-    VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX
-  } from '../store/materialBuiltinPalette';
+    MATERIAL_DEFAULT_BRUSH_HEX
+  } from '$lib/materialPalette';
   import PalettePicker from '$lib/components/PalettePicker.svelte';
   import { safeColorInputValue } from '$lib/colorInput';
   import MultiColorPaintSection from './MultiColorPaintSection.svelte';
@@ -87,7 +87,7 @@
     {palette}
     {selectedColors}
     builtinPalette={MATERIAL_BUILTIN_PALETTE_HEX}
-    builtinDefaultHex={VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX}
+    builtinDefaultHex={MATERIAL_DEFAULT_BRUSH_HEX}
     multiColorHint={multiColorHint ?? undefined}
   />
   {#if $selectedColors.length > 1}

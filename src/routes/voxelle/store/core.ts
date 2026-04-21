@@ -46,8 +46,8 @@ import type { Voxel, VoxelMaterialId } from '../voxelMaterial';
 import { cloneVoxel } from '../voxelMaterial';
 import {
   MATERIAL_BUILTIN_PALETTE_HEX,
-  VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX
-} from './materialBuiltinPalette';
+  MATERIAL_DEFAULT_BRUSH_HEX
+} from '$lib/materialPalette';
 import {
   buildPaintColorResolver,
   paintColorDistribution,
@@ -373,12 +373,12 @@ export const drawBrushSize = writable<number>(0);
 /** When true, offset brush along face normal so it sits on surface instead of through it. */
 export const drawBrushSnapToSurface = writable<boolean>(true);
 /** Default brush color; must appear in DEFAULT_PALETTE (Material Blue 500). */
-export const color = writable<string>(VOXELLE_BUILTIN_DEFAULT_BRUSH_HEX);
+export const color = writable<string>(MATERIAL_DEFAULT_BRUSH_HEX);
 /** Active material for new paint / voxel / sculpt strokes. */
 export const voxelMaterial = writable<VoxelMaterialId>('plastic');
 /** Palette colors selected for painting (shift+click). Empty = use color. */
 export const selectedColors = writable<string[]>([]);
-/** Material Design builtin palette; see materialBuiltinPalette.ts. */
+/** Material Design builtin palette; see $lib/materialPalette.ts. */
 const DEFAULT_PALETTE: string[] = [...MATERIAL_BUILTIN_PALETTE_HEX];
 export const palette = writable<string[]>([...DEFAULT_PALETTE]);
 export const sidebarOpen = writable<boolean>(true);

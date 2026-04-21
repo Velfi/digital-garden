@@ -244,6 +244,9 @@ export const VOXELLE_V3_MAGIC = Uint8Array.from([0x56, 0x58, 0x33, 0x1a]);
 /** Magic: `VX4` + 0x1a — desktop v4 container: u32 uncompressed len, u32 CRC32, gzip(inner). */
 export const VOXELLE_V4_MAGIC = Uint8Array.from([0x56, 0x58, 0x34, 0x1a]);
 
+/** Magic: `VX5` + 0x1a — desktop v5 container: u32 uncompressed len, u32 CRC32, zstd(inner). */
+export const VOXELLE_V5_MAGIC = Uint8Array.from([0x56, 0x58, 0x35, 0x1a]);
+
 const CRC32_TABLE = (() => {
   const t = new Uint32Array(256);
   for (let i = 0; i < 256; i++) {
@@ -272,6 +275,16 @@ export function isV4ContainerPayload(bytes: Uint8Array): boolean {
     bytes[1] === VOXELLE_V4_MAGIC[1] &&
     bytes[2] === VOXELLE_V4_MAGIC[2] &&
     bytes[3] === VOXELLE_V4_MAGIC[3]
+  );
+}
+
+export function isV5ContainerPayload(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 12 &&
+    bytes[0] === VOXELLE_V5_MAGIC[0] &&
+    bytes[1] === VOXELLE_V5_MAGIC[1] &&
+    bytes[2] === VOXELLE_V5_MAGIC[2] &&
+    bytes[3] === VOXELLE_V5_MAGIC[3]
   );
 }
 

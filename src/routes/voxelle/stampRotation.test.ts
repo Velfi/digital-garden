@@ -15,44 +15,38 @@ describe('rotatePositionAroundOrigin', () => {
     expect(rotatePositionAroundOrigin(pos, [0, 0, 0])).toEqual(pos);
   });
 
-  it('rotateX: 1 quarter-turn maps Y↔Z (Y→-Z, Z→Y)', () => {
-    // Implementation: [x, -z, y]
-    expect(norm(rotatePositionAroundOrigin([0, 1, 0], [1, 0, 0]))).toEqual([0, 0, 1]);
-    expect(norm(rotatePositionAroundOrigin([0, 0, 1], [1, 0, 0]))).toEqual([0, -1, 0]);
+  it('rotateX: 90° maps Y↔Z (Y→Z, Z→-Y)', () => {
+    expect(norm(rotatePositionAroundOrigin([0, 1, 0], [90, 0, 0]))).toEqual([0, 0, 1]);
+    expect(norm(rotatePositionAroundOrigin([0, 0, 1], [90, 0, 0]))).toEqual([0, -1, 0]);
   });
 
-  it('rotateY: 1 quarter-turn maps X↔Z (X→Z, Z→-X)', () => {
-    // Implementation: [z, y, -x]
-    expect(norm(rotatePositionAroundOrigin([1, 0, 0], [0, 1, 0]))).toEqual([0, 0, -1]);
-    expect(norm(rotatePositionAroundOrigin([0, 0, 1], [0, 1, 0]))).toEqual([1, 0, 0]);
+  it('rotateY: 90° maps X↔Z (X→-Z, Z→X)', () => {
+    expect(norm(rotatePositionAroundOrigin([1, 0, 0], [0, 90, 0]))).toEqual([0, 0, -1]);
+    expect(norm(rotatePositionAroundOrigin([0, 0, 1], [0, 90, 0]))).toEqual([1, 0, 0]);
   });
 
-  it('rotateZ: 1 quarter-turn maps X↔Y (X→-Y, Y→X)', () => {
-    // Implementation: [-y, x, z]
-    expect(norm(rotatePositionAroundOrigin([1, 0, 0], [0, 0, 1]))).toEqual([0, 1, 0]);
-    expect(norm(rotatePositionAroundOrigin([0, 1, 0], [0, 0, 1]))).toEqual([-1, 0, 0]);
+  it('rotateZ: 90° maps X↔Y (X→Y, Y→-X)', () => {
+    expect(norm(rotatePositionAroundOrigin([1, 0, 0], [0, 0, 90]))).toEqual([0, 1, 0]);
+    expect(norm(rotatePositionAroundOrigin([0, 1, 0], [0, 0, 90]))).toEqual([-1, 0, 0]);
   });
 
-  it('4 quarter-turns returns to original', () => {
+  it('four 90° X-rotations return to original', () => {
     const pos: [number, number, number] = [5, -3, 2];
-    expect(rotatePositionAroundOrigin(pos, [4, 4, 4])).toEqual(pos);
-    expect(rotatePositionAroundOrigin(pos, [1, 1, 1])).not.toEqual(pos);
-    expect(
-      rotatePositionAroundOrigin(rotatePositionAroundOrigin(pos, [1, 1, 1]), [1, 1, 1])
-    ).not.toEqual(pos);
+    expect(rotatePositionAroundOrigin(pos, [360, 360, 360])).toEqual(pos);
+    expect(rotatePositionAroundOrigin(pos, [90, 90, 90])).not.toEqual(pos);
     const rot4 = rotatePositionAroundOrigin(
       rotatePositionAroundOrigin(
-        rotatePositionAroundOrigin(rotatePositionAroundOrigin(pos, [1, 0, 0]), [1, 0, 0]),
-        [1, 0, 0]
+        rotatePositionAroundOrigin(rotatePositionAroundOrigin(pos, [90, 0, 0]), [90, 0, 0]),
+        [90, 0, 0]
       ),
-      [1, 0, 0]
+      [90, 0, 0]
     );
     expect(rot4).toEqual(pos);
   });
 
-  it('composes X then Y then Z correctly', () => {
-    // (1,0,0) rotX=1 → (1,0,0), rotY=1 → (0,0,-1), rotZ=1 → (0,0,-1)
-    expect(norm(rotatePositionAroundOrigin([1, 0, 0], [1, 1, 1]))).toEqual([0, 0, -1]);
+  it('composes X then Y then Z correctly at 90° each', () => {
+    // (1,0,0): rotX=90 → (1,0,0), rotY=90 → (0,0,-1), rotZ=90 → (0,0,-1)
+    expect(norm(rotatePositionAroundOrigin([1, 0, 0], [90, 90, 90]))).toEqual([0, 0, -1]);
   });
 });
 
@@ -101,7 +95,7 @@ describe('getStampOffsetForFace', () => {
 
 describe('stamp positions (rotate + offset)', () => {
   it('rotated selection + offset produces correct final positions', () => {
-    // Single voxel at origin, rotate 1 quarter around Y, place on +X face of (2,0,0)
+    // Single voxel at origin, rotate 90° around Y, place on +X face of (2,0,0)
     const center: [number, number, number] = [0, 0, 0];
     const pos: [number, number, number] = [0, 0, 0];
     const centered: [number, number, number] = [
@@ -109,7 +103,7 @@ describe('stamp positions (rotate + offset)', () => {
       pos[1] - center[1],
       pos[2] - center[2]
     ];
-    const rotated = rotatePositionAroundOrigin(centered, [0, 1, 0]);
+    const rotated = rotatePositionAroundOrigin(centered, [0, 90, 0]);
     const uncentered: [number, number, number] = [
       rotated[0] + center[0],
       rotated[1] + center[1],

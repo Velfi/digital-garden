@@ -1,2 +1,3 @@
 - Figure out how to embed twitter posts in markdown
 - Figure out how to embed youtube videos in markdown properly so that I don't have to write those posts as svelte pages.
+- Patcher: an embroidery-version of badger. Render designs as embroidered patches (thread fills, satin stitch, merrowed border) instead of enamel pins. Likely shares badger's path/cell topology but swaps the renderer and manufacturing constraints.

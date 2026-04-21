@@ -47,9 +47,11 @@ import {
   decodeWireVoxelRecord,
   isV3WirePayload,
   isV4ContainerPayload,
+  isV5ContainerPayload,
   parseV3WireHeader,
   rowToVoxel
 } from './voxelleFormatCore';
+import { decompress as zstdDecompress } from 'fzstd';
 import {
   isObjectVisibleInFile,
   objectWorldMatrix,
@@ -295,6 +297,23 @@ async function decodeV4Container(bytes: Uint8Array): Promise<Uint8Array | null> 
   let inner: Uint8Array;
   try {
     inner = await gzipDecompress(tail);
+  } catch {
+    return null;
+  }
+  if (inner.length !== ulen || crc32(inner) !== crcExp) return null;
+  return inner;
+}
+
+/** Desktop `.voxelle` v5: `VX5` + u32 uncompressed len + u32 CRC32 + zstd(inner). Inner is BSON or VX3 wire. */
+function decodeV5Container(bytes: Uint8Array): Uint8Array | null {
+  if (bytes.length < 13) return null;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const ulen = dv.getUint32(4, true);
+  const crcExp = dv.getUint32(8, true);
+  const tail = bytes.subarray(12);
+  let inner: Uint8Array;
+  try {
+    inner = zstdDecompress(tail);
   } catch {
     return null;
   }
@@ -573,7 +592,14 @@ export async function saveToFile(filename = 'voxelle.voxelle'): Promise<void> {
 export async function loadFromBytes(bytes: Uint8Array): Promise<boolean> {
   let payload = bytes;
   try {
-    if (isV4ContainerPayload(bytes)) {
+    if (isV5ContainerPayload(bytes)) {
+      const inner = decodeV5Container(bytes);
+      if (!inner) {
+        console.error('[Voxelle] V5 container decode failed (CRC, length, or zstd).');
+        return false;
+      }
+      payload = inner;
+    } else if (isV4ContainerPayload(bytes)) {
       const inner = await decodeV4Container(bytes);
       if (!inner) {
         console.error('[Voxelle] V4 container decode failed (CRC, length, or gzip).');
