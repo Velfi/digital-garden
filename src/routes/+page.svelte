@@ -72,6 +72,7 @@
         ><small>(check out that sweet visitor counter!)</small></sup
       >
     </li>
+    <li><a href="https://aehse.neocities.org">fractal desert</a></li>
     <li><a href={resolve('/neat-internet')}>Neat things the internet exposed me to</a></li>
   </ul>
 
@@ -176,6 +177,7 @@
     </li>
     <li><a href="https://timeline-of-you.vercel.app">My timeline creator and viewer app</a></li>
     <li><a href={resolve('/programming/particle-life')}>Particle Life Simulation</a></li>
+    <li><a href={resolve('/programming/procedural-candle-flame')}>Procedural Candle Flame</a></li>
   </ul>
 
   <h2>Thoughts</h2>
