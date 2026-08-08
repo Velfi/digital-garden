@@ -138,7 +138,27 @@ export function cflNumber(params: RippleSimParams, cell = RIPPLE_CELL): number {
 
 export const RIPPLE_CFL_LIMIT = Math.SQRT1_2;
 
-/** The three coefficients the stepper actually runs on. */
+/**
+ * Seconds for the field as a whole to fall to 1/e, whatever it is doing.
+ *
+ * A last resort, and only that. `rippleKernel` is zero-volume analytically, so
+ * in exact arithmetic the water line never moves and this is never needed — but
+ * the kernel is sampled onto a grid, and what a grid gives back is zero plus a
+ * rounding error, every time a source fires. That residue is the one thing the
+ * damping cannot otherwise touch, so it would accumulate for as long as the tab
+ * stayed open.
+ *
+ * Applied by scaling the whole state, both channels together, which is a plain
+ * exponential envelope on the field and leaves the dynamics inside it alone.
+ * Damping the height on its own would not: it would show up in the next step's
+ * velocity as motion that nothing physical caused.
+ *
+ * Long enough against `decaySec` that ripples are gone on their own account well
+ * before this has done anything to them.
+ */
+export const RIPPLE_LEVEL_TAU = 8;
+
+/** The four coefficients the stepper actually runs on. */
 export interface RippleCoefficients {
   /** `(c dt / cell)^2`, the weight on the laplacian. */
   wave: number;
@@ -146,6 +166,8 @@ export interface RippleCoefficients {
   drag: number;
   /** Diffusion of that velocity, which is the wavenumber-squared damping. */
   viscosity: number;
+  /** What is left of the whole field after a step. See `RIPPLE_LEVEL_TAU`. */
+  levelKeep: number;
 }
 
 export function rippleCoefficients(
@@ -155,8 +177,18 @@ export function rippleCoefficients(
   return {
     wave: cflNumber(params, cell) ** 2,
     drag: RIPPLE_STEP_SEC / Math.max(1e-3, params.decaySec),
-    viscosity: params.viscosity
+    viscosity: params.viscosity,
+    levelKeep: 1 - RIPPLE_STEP_SEC / RIPPLE_LEVEL_TAU
   };
+}
+
+/**
+ * How a source is spread over the water — the TypeScript twin of `rippleKernel`
+ * in the GLSL above, where the reasoning for its shape is written down.
+ */
+export function rippleKernel(t: number): number {
+  const bump = 1 - t * t;
+  return bump * bump * (1 - 4 * t * t);
 }
 
 export const RIPPLE_STEP_GLSL = /* glsl */ `
@@ -168,8 +200,36 @@ uniform float uWave;
 uniform float uDrag;
 uniform float uViscosity;
 uniform vec4  uDrops[${RIPPLE_MAX_DROPS}];  // xy centre in uv, z radius in uv, w millimetres
+uniform float uLevelKeep;
 
 varying vec2 vUv;
+
+/**
+ * How a source is spread over the water: a core that lifts, and a ring around it
+ * that makes room for the lift.
+ *
+ * It integrates to exactly zero over the disc, and that is the whole point. The
+ * jar is closed and full — nothing that happens on the surface adds water to it.
+ * A bubble bursting, a marimo rising, a stir: every one of them moves water
+ * about, and a kernel that is positive everywhere quietly invents some each time
+ * it fires. Nothing takes it away again either, because with a wall all the way
+ * round, the wave equation conserves volume exactly: the mean of the field is
+ * the one thing in here that the damping cannot reach, since a level surface has
+ * no velocity to drag on and no curvature to spread.
+ *
+ * Left as it was, every disturbance nudged the water line and it never came
+ * back. Four minutes of ordinary fizz moved it a twentieth of a millimetre, an
+ * hour would have moved it most of one, and the ripples riding on top of the
+ * drift steadily lost the float precision to be seen properly — which showed up
+ * as a shimmer that would not settle.
+ *
+ * Smooth to first order at the rim, so a source that moves does not leave a step
+ * behind it for the laplacian to ring on.
+ */
+float rippleKernel(float t) {
+  float bump = 1.0 - t * t;
+  return bump * bump * (1.0 - 4.0 * t * t);
+}
 
 /**
  * The wall.
@@ -201,14 +261,12 @@ void main() {
     vec4 drop = uDrops[i];
     if (drop.z > 0.0) {
       float t = clamp(length((vUv - drop.xy) / drop.z), 0.0, 1.0);
-      // Smooth to zero at the rim, so a moving source does not leave a step
-      // behind it for the laplacian to ring on.
-      float falloff = 1.0 - t * t;
-      next += drop.w * falloff * falloff;
+      next += drop.w * rippleKernel(t);
     }
   }
 
-  gl_FragColor = vec4(next, c.r, 0.0, 1.0);
+  // The whole state, scaled together. See RIPPLE_LEVEL_TAU.
+  gl_FragColor = vec4(next, c.r, 0.0, 1.0) * uLevelKeep;
 }
 `;
 
@@ -275,13 +333,15 @@ export function stepRippleField(
         const dx = (i + 0.5) * cell - spanX / 2 - drop.x;
         const dz = (j + 0.5) * cell - spanZ / 2 - drop.z;
         const t = Math.min(1, Math.hypot(dx, dz) / drop.radius);
-        const falloff = 1 - t * t;
-        value += drop.strength * falloff * falloff;
+        value += drop.strength * rippleKernel(t);
       }
 
-      next[v] = value;
+      next[v] = value * coefficients.levelKeep;
     }
   }
+
+  // Both channels scaled together, so the envelope is the only thing it does.
+  for (let i = 0; i < now.length; i++) now[i] *= coefficients.levelKeep;
 
   field.prev = now;
   field.now = next;
@@ -316,17 +376,36 @@ export interface RippleSim {
 }
 
 /**
- * Half float, not float. The field is stored in millimetres precisely so that it
- * fits: heights run to a millimetre or so, where a half's ten-bit mantissa is
- * worth about a thousandth of one, and storing metres instead would throw three
- * decimal digits away for nothing. Linear filtering is on because the surface
- * shader samples this at whatever resolution the water happens to cover, and
- * only the step pass needs texel-exact reads — which it gets anyway, drawing
- * one-to-one.
+ * Full float, and it has to be.
+ *
+ * Half was the obvious choice and it is wrong here, for a reason that has
+ * nothing to do with how big the heights are. What this scheme does per step is
+ * multiply the state by numbers very close to one: the velocity keeps
+ * `1 - 9.3e-4` of itself, the field keeps `1 - 5.2e-4`. A half's relative
+ * spacing is `4.9e-4`. Both of those factors are the same size as the gap
+ * between one representable number and the next, so the multiply rounds back to
+ * where it started more often than not, and the damping simply does not happen —
+ * the water rings for ever.
+ *
+ * The viscous term is worse: it is `lapNow - lapPrev`, a difference between two
+ * nearly equal small numbers, which at half precision is mostly the subtraction
+ * of one rounding error from another.
+ *
+ * Measured, not assumed: at float32 the field settles to a slope of 1e-12 after
+ * thirty untouched seconds, and at half it stops at 1e-5 and stays there.
+ * `rippleSim.test.ts` holds both ends of that.
+ *
+ * Two targets at this size cost under a megabyte together, so there was never
+ * anything to save. Heights stay in millimetres regardless — it costs nothing
+ * and keeps the numbers readable in a debugger.
+ *
+ * Linear filtering is on because the surface shader samples this at whatever
+ * resolution the water happens to cover; the step pass needs texel-exact reads
+ * and gets them anyway, drawing one-to-one.
  */
-function createTarget(cols: number, rows: number): THREE.WebGLRenderTarget {
+function createTarget(cols: number, rows: number, type: THREE.TextureDataType) {
   return new THREE.WebGLRenderTarget(cols, rows, {
-    type: THREE.HalfFloatType,
+    type,
     format: THREE.RGBAFormat,
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
@@ -338,11 +417,19 @@ function createTarget(cols: number, rows: number): THREE.WebGLRenderTarget {
 }
 
 export function createRippleSim(
+  renderer: THREE.WebGLRenderer,
   params: RippleSimParams = DEFAULT_RIPPLE_SIM,
   cols = RIPPLE_COLS,
   rows = RIPPLE_ROWS
 ): RippleSim {
-  let targets = [createTarget(cols, rows), createTarget(cols, rows)];
+  // Rendering to a 32-bit float target needs this in WebGL2. It is close to
+  // universal, but where it is missing the choice is half or nothing, and half
+  // is at least still water with the damping half-working rather than a blank
+  // surface. See `createTarget` for what is lost.
+  const floatTargets = renderer.getContext().getExtension('EXT_color_buffer_float') !== null;
+  const type = floatTargets ? THREE.FloatType : THREE.HalfFloatType;
+
+  let targets = [createTarget(cols, rows, type), createTarget(cols, rows, type)];
   let front = 0;
 
   const dropUniform: THREE.Vector4[] = Array.from(
@@ -357,6 +444,7 @@ export function createRippleSim(
       uWave: { value: 0 },
       uDrag: { value: 0 },
       uViscosity: { value: 0 },
+      uLevelKeep: { value: 1 },
       uDrops: { value: dropUniform }
     },
     vertexShader: QUAD_VERTEX,
@@ -377,6 +465,7 @@ export function createRippleSim(
     material.uniforms.uWave.value = coefficients.wave;
     material.uniforms.uDrag.value = coefficients.drag;
     material.uniforms.uViscosity.value = coefficients.viscosity;
+    material.uniforms.uLevelKeep.value = coefficients.levelKeep;
   }
   writeCoefficients();
 

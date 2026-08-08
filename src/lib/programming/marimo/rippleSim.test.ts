@@ -3,8 +3,10 @@ import {
   DEFAULT_RIPPLE_SIM,
   RIPPLE_CELL,
   RIPPLE_CFL_LIMIT,
+  RIPPLE_LEVEL_TAU,
   RIPPLE_STEP_SEC,
   cflNumber,
+  rippleKernel,
   createRippleField,
   rippleCoefficients,
   rippleRms,
@@ -163,6 +165,118 @@ describe('damping', () => {
     const before = rippleRms(field);
     run(field, params, 240); // One second.
     expect(rippleRms(field) / before).toBeLessThan(0.2);
+  });
+});
+
+describe('the water line', () => {
+  /**
+   * The regression these exist for: the surface never settling.
+   *
+   * With a wall all the way round, the wave equation conserves the mean of the
+   * field exactly — a level surface has no velocity for the drag to work on and
+   * no curvature to spread. So the mean is the one thing the damping cannot
+   * reach, and any source that adds volume moves the water line permanently. The
+   * old kernel was positive everywhere, so every bubble did.
+   */
+  it('moves water about without inventing any', () => {
+    // The kernel integrated over its own disc, which is what a source adds to
+    // the jar. Weighted by radius, because it is spread over a disc.
+    let volume = 0;
+    const steps = 20000;
+    for (let n = 0; n < steps; n++) {
+      const t = (n + 0.5) / steps;
+      volume += rippleKernel(t) * 2 * t * (1 / steps);
+    }
+    expect(Math.abs(volume)).toBeLessThan(1e-6);
+
+    // And it is a lift with a ring around it, not a lift with a hole in it.
+    expect(rippleKernel(0)).toBeGreaterThan(0);
+    expect(rippleKernel(0.8)).toBeLessThan(0);
+    // Smooth to zero at the rim, so a moving source leaves no step behind it.
+    expect(Math.abs(rippleKernel(1))).toBe(0);
+  });
+
+  it('leaves the water line where it found it', () => {
+    const coefficients = rippleCoefficients(DEFAULT_RIPPLE_SIM);
+    const field = createRippleField();
+    const mean = () => {
+      let sum = 0;
+      for (const h of field.now) sum += h;
+      return sum / field.now.length;
+    };
+
+    for (let bubble = 0; bubble < 20; bubble++) {
+      for (let n = 0; n < 5; n++) {
+        stepRippleField(field, coefficients, [
+          {
+            x: (((bubble * 37) % 100) / 100 - 0.5) * 0.08,
+            z: (((bubble * 53) % 100) / 100 - 0.5) * 0.06,
+            radius: 0.001,
+            strength: (n < 2 ? 1 : -1) * 0.09
+          }
+        ]);
+      }
+      for (let n = 0; n < 40; n++) stepRippleField(field, coefficients, []);
+    }
+
+    // Nanometres. Left as it was this was tens of micrometres and climbing with
+    // every bubble, for as long as the tab stayed open.
+    expect(Math.abs(mean())).toBeLessThan(1e-4);
+  });
+
+  it('needs more precision than a half float has', () => {
+    // Not a preference. The scheme works by multiplying the state by numbers
+    // very close to one, and if the format cannot tell those numbers from one,
+    // the damping does not happen. Both of these are under a half's relative
+    // spacing of 4.88e-4, which is why the targets are FloatType.
+    const coefficients = rippleCoefficients(DEFAULT_RIPPLE_SIM);
+    const halfUlp = 2 ** -11;
+    expect(coefficients.drag).toBeLessThan(halfUlp * 2);
+    expect(1 - coefficients.levelKeep).toBeLessThan(halfUlp * 2);
+
+    // Float32 has room to spare for both, which is the claim being made.
+    const floatUlp = 2 ** -24;
+    expect(coefficients.drag).toBeGreaterThan(floatUlp * 1000);
+    expect(1 - coefficients.levelKeep).toBeGreaterThan(floatUlp * 1000);
+  });
+
+  it('settles to flat, and stays flat, at the precision it is given', () => {
+    const coefficients = rippleCoefficients(DEFAULT_RIPPLE_SIM);
+    const slopeOf = (field: RippleField) => {
+      let total = 0;
+      for (let j = 1; j < field.rows - 1; j++)
+        for (let i = 1; i < field.cols - 1; i++)
+          total += (field.now[j * field.cols + i + 1] - field.now[j * field.cols + i - 1]) ** 2;
+      return Math.sqrt(total / (field.cols * field.rows));
+    };
+
+    const settle = (round: (x: number) => number) => {
+      const field = createRippleField(64, 64);
+      for (let n = 0; n < 5; n++) {
+        stepRippleField(field, coefficients, [
+          { x: 0, z: 0, radius: 0.004, strength: n < 2 ? 0.2 : -0.2 }
+        ]);
+      }
+      for (let n = 0; n < 20 / RIPPLE_STEP_SEC; n++) {
+        stepRippleField(field, coefficients, []);
+        for (let i = 0; i < field.now.length; i++) {
+          field.now[i] = round(field.now[i]);
+          field.prev[i] = round(field.prev[i]);
+        }
+      }
+      return slopeOf(field);
+    };
+
+    // Twenty untouched seconds, against a settle time of four and a half.
+    expect(settle(Math.fround)).toBeLessThan(1e-9);
+    // And the same run at half, which is what a HalfFloatType target would do:
+    // it stops damping and the surface keeps moving for ever. Pinned so that
+    // going back to half fails here rather than being noticed a week later.
+    expect(settle(Math.f16round)).toBeGreaterThan(1e-7);
+  });
+
+  it('bleeds off drift slower than ripples die, so it never shapes them', () => {
+    expect(RIPPLE_LEVEL_TAU).toBeGreaterThan(DEFAULT_RIPPLE_SIM.decaySec * 1.5);
   });
 });
 

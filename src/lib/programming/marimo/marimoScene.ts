@@ -676,7 +676,11 @@ export function createMarimoScene(
    */
   let rippleSim: RippleSim | null = null;
   try {
-    rippleSim = createRippleSim(DEFAULT_RIPPLE_SIM);
+    rippleSim = createRippleSim(renderer, DEFAULT_RIPPLE_SIM);
+    // A new target's contents are specified to be zero, but the water starting
+    // flat is not a thing to leave to a specification — a jar that opens with a
+    // frame of noise in it would ring for seconds before anyone touched it.
+    rippleSim.reset(renderer);
   } catch {
     rippleSim = null;
   }
@@ -698,20 +702,37 @@ export function createMarimoScene(
 
   /** Depth over which a rising marimo starts to show on the surface, metres. */
   const RIPPLE_BALL_REACH = 0.025;
-  /** Millimetres of push per step per metre-per-second of the ball's rise. */
-  const RIPPLE_BALL_PUSH = 1.4;
-  /** Millimetres of push per step from a fully stirred jar. */
-  const RIPPLE_STIR_PUSH = 0.06;
+  /**
+   * Millimetres of push per step per metre-per-second of the ball's rise.
+   * Two seconds of bobbing at 20 mm/s comes to about a third of a millimetre.
+   */
+  const RIPPLE_BALL_PUSH = 0.5;
+  /** Millimetres of push per step from a fully stirred jar. Peaks near 0.8 mm. */
+  const RIPPLE_STIR_PUSH = 0.015;
   /** How fast a stir slops the water back and forth, rad/s. */
   const RIPPLE_STIR_CHOP = 31;
   /**
-   * Millimetres of push per step per millimetre of bursting bubble.
+   * Millimetres of push per step, per millimetre of the bubble that made it.
    *
-   * Measured rather than guessed: at this value the jar's usual half-millimetre
-   * bubble leaves a ring about a fifth of a millimetre high, and the biggest
-   * ones about half. Both are gone inside three seconds.
+   * Size tells twice over, which is why the spread is as wide as it is: a bigger
+   * bubble pushes harder *and* pushes on more water, since the kernel is laid
+   * down at its own radius. The ring it leaves ends up going roughly as the
+   * square of it.
+   *
+   * Bigger than it looks like it should be, because `rippleKernel` displaces no
+   * net water and a source that displaces none is a far quieter radiator than
+   * one that invents some — most of what it emits cancels against its own ring
+   * before it gets anywhere. Correcting the volume cost about a factor of twenty
+   * of reach, and this is paying it back.
+   *
+   * Measured across the range the jar actually makes — bubbles run 0.26 to
+   * 1.35 mm and are heavily biased to the small end. A tenth of a second after
+   * it goes, the smallest leaves a ring of about 0.07 mm, a middling one 0.33 mm
+   * and the rare big one 1.2 mm; a seventeenfold spread, which is the point. All
+   * of them are gone inside a second, because a ring that tight is short
+   * wavelength and viscosity takes those first.
    */
-  const RIPPLE_BURST_PUSH = 0.3;
+  const RIPPLE_BURST_PUSH = 2;
   /** Steps a burst goes on pushing for. About a fiftieth of a second. */
   const RIPPLE_BURST_STEPS = 5;
 

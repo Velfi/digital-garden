@@ -192,7 +192,7 @@ export function createRippleBench(container: HTMLElement, params: RippleSimParam
 
   // The bench runs the same simulation the jar does, at the same step, so what
   // is on screen here is not a re-implementation of the water — it is the water.
-  const sim = createRippleSim(params);
+  const sim = createRippleSim(renderer, params);
   ripple.uRippleTexture.value = sim.texture;
   const drops: RippleDrop[] = [];
   const bursts: { x: number; z: number; radius: number; left: number }[] = [];
@@ -217,7 +217,7 @@ export function createRippleBench(container: HTMLElement, params: RippleSimParam
         x: burst.x,
         z: burst.z,
         radius: burst.radius * 2.5,
-        strength: (burst.left > 2 ? 1 : -1) * burst.radius * 1000 * 0.3
+        strength: (burst.left > 2 ? 1 : -1) * burst.radius * 1000 * 2
       });
       if (--burst.left <= 0) bursts.splice(i, 1);
     }
@@ -230,7 +230,7 @@ export function createRippleBench(container: HTMLElement, params: RippleSimParam
         x: Math.cos(stirPhase) * orbit,
         z: Math.sin(stirPhase) * orbit,
         radius: 0.013,
-        strength: Math.sin(stirChop) * 0.06 * agitation
+        strength: Math.sin(stirChop) * 0.015 * agitation
       });
     }
 
