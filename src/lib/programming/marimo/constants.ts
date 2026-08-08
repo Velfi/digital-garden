@@ -261,13 +261,23 @@ export const FACET_MERGE_COS = 0.906;
 export const FACET_AXIS_TRACK = 0.6;
 
 /**
- * How hard a flat-sided marimo tips itself flat-side-down when it is resting.
+ * Moment arm of the gravel's reaction under a tipped flat, as a fraction of the
+ * mean radius.
  *
  * The point of the whole exercise: a flattened marimo does not sit on its flat
  * because it was drawn that way, it sits on it because that is the stable place
- * to be. Scaled by depth, so a barely-marked ball is not visibly magnetic.
+ * to be. But it gets there as a *torque* — the support point sits under the low
+ * edge of the face rather than under the middle of the ball, and the offset is
+ * a lever on the ball's weight. Scaled by depth, so a barely-marked ball is not
+ * visibly magnetic.
+ *
+ * Smaller than the bare geometry says, and deliberately: the true offset is a
+ * good tenth of the radius, but the ball has to roll its contact patch through
+ * the gravel to use it, and rolling resistance on loose grains eats most of it.
+ * What is left is tuned so a marimo leans over onto its face across a couple of
+ * seconds and rocks once — the water decides the rest.
  */
-export const FACET_SETTLE_GAIN = 1.2;
+export const FACET_SETTLE_ARM = 0.03;
 /** Above this speed it is rolling, not settling, and the tipping is switched off. */
 export const FACET_SETTLE_SPEED = 0.02;
 
@@ -333,11 +343,16 @@ export const WATER_DRIFT_TAU = 1.5;
 export const SWIRL_MAX_OMEGA = 4;
 export const SWIRL_MAX_VY = 0.09;
 /**
- * How fast rotation catches up with what the water (or your hand) is doing.
+ * How fast rotation catches up with what your hand is doing.
  *
- * Must stay well under the period of a typical drag. At 1.2 s it low-passed the
- * back-and-forth of rolling the ball, so the target reversed before it ever
- * spun up and handling it registered as barely turning at all.
+ * A hand is a grip, not a nudge: it sets the rolling rate rather than pulling
+ * the ball toward it, and this is only the lag on getting there. Must stay well
+ * under the period of a typical drag. At 1.2 s it low-passed the back-and-forth
+ * of rolling the ball, so the target reversed before it ever spun up and
+ * handling it registered as barely turning at all.
+ *
+ * The water does *not* use this. Water resists turning; it does not dictate a
+ * rate. See `SPIN_COAT_DRAG`.
  */
 export const SPIN_COUPLE_TAU = 0.18;
 
@@ -378,6 +393,41 @@ export const FLOOR_BED_ACCEL = 0.02;
  * about its centre — the one place this model does admit to having one.
  */
 export const SPIN_FRICTION_COEF = 2.5;
+
+// -------------------------------------------------------- turning underwater
+
+/** Dynamic viscosity of water at room temperature, Pa·s. */
+export const WATER_VISCOSITY = 1.0e-3;
+
+/**
+ * Stokes rotational drag over the inertia of a solid sphere: 8π / ((2/5)·(4/3)π).
+ *
+ * A sphere turning in a viscous fluid feels `8*pi*mu*R^3*w` opposing it. Divided
+ * by `(2/5)*m*R^2` the radius cancels down to `15*mu/(rho*R^2)` — a rate, in
+ * 1/s, and the whole of why a big marimo goes on turning long after a small one
+ * has stopped.
+ */
+export const SPIN_VISCOUS_COEF = 15;
+
+/**
+ * How much more the coat resists turning than the bare ball would.
+ *
+ * A marimo is not a sphere in water, it is 3 mm of loose filament in water, and
+ * the shear happens right through that mat rather than across a clean boundary.
+ * Eight is the difference between a spun ball coasting for a couple of seconds
+ * and coasting for fifteen, and two seconds is what the real thing does.
+ */
+export const SPIN_COAT_DRAG = 8;
+
+/**
+ * Form drag on the rotation: `15*C_rot / (8*pi)`, again over a sphere's inertia.
+ *
+ * Quadratic in spin, so it is nothing at all at the rates a settling marimo
+ * reaches and the dominant term when one has been flicked hard. That asymmetry
+ * is the signature of a thing turning in water rather than one being eased
+ * toward a number: fast spins die fast, slow spins linger.
+ */
+export const SPIN_FORM_COEF = 0.35;
 
 // ------------------------------------------------------------------ catch-up
 

@@ -250,6 +250,50 @@ describe('bodyToWorld', () => {
   });
 });
 
+describe('turning underwater', () => {
+  /** A ball spun about +Y and then left to itself in open water. */
+  function spun(omegaY: number, radiusM = 0.012) {
+    const e = env(0.5, radiusM);
+    const body = newBody(0);
+    body.omega[1] = omegaY;
+    return { body, e };
+  }
+
+  it('coasts to a stop rather than being clamped to the water', () => {
+    // Water resists turning; it does not dictate a rate. A marimo let go of
+    // mid-jar goes on turning for a second or two, which is the difference
+    // between a thing moving through water and a thing being animated.
+    const { body, e } = spun(3);
+    drift(body, e, 0.3);
+    expect(body.omega[1]).toBeGreaterThan(1.2);
+    drift(body, e, 6);
+    expect(Math.abs(body.omega[1])).toBeLessThan(0.02);
+  });
+
+  it('lets a big marimo turn long after a small one has stopped', () => {
+    // The damping is 15*mu/(rho*R^2), so it falls off as the square of the
+    // radius: size shows up in how long a ball coasts, not only in how big it
+    // looks. Nothing else in the model would have told you they differ.
+    const small = spun(3, 0.01);
+    const large = spun(3, 0.03);
+    drift(small.body, small.e, 2);
+    drift(large.body, large.e, 2);
+    expect(large.body.omega[1]).toBeGreaterThan(small.body.omega[1] * 3);
+  });
+
+  it('sheds a fast spin faster than a slow one', () => {
+    // Form drag is quadratic, so a flicked marimo loses a larger *fraction* of
+    // its spin per second than a drifting one does. Anything linear — the old
+    // relaxation included — loses the same fraction from any speed, which is
+    // what made a hard flick and a nudge look like the same gesture.
+    const fast = spun(8);
+    const slow = spun(0.2);
+    drift(fast.body, fast.e, 1);
+    drift(slow.body, slow.e, 1);
+    expect(fast.body.omega[1] / 8).toBeLessThan(slow.body.omega[1] / 0.2);
+  });
+});
+
 describe('lying on a flat side', () => {
   /** A sunken marimo with one flat face, tipped `radians` off flat-side-down. */
   function flatOnFloor(depth: number, radians: number): { body: BodyState; e: BodyEnv } {
@@ -326,8 +370,86 @@ describe('lying on a flat side', () => {
     // taken its friction bite out of the velocity the test just handed it — a
     // bite of one step's worth of deceleration, so a shade under the full rate.
     expect(fast.body.omega[2]).toBeCloseTo(-0.06 / 0.012, 1);
-    // The one merely nudged has still found its face.
-    expect(tilt(slow.body, slow.e)).toBeLessThan(0.2);
+
+    // The one merely nudged has come most of the way down, and settles at the
+    // angle where the two disagree: the nudge rolls it off its face at
+    // `v / R` and the face pulls it back at whatever the water will allow, so
+    // where they balance is a real number and not a tuned one.
+    expect(tilt(slow.body, slow.e)).toBeLessThan(0.35);
+
+    // Stop nudging and it lies all the way down.
+    settle(slow.body, slow.e, 6);
+    expect(tilt(slow.body, slow.e)).toBeLessThan(0.02);
+  });
+
+  it('starts from rest and gathers pace, the way a torque does', () => {
+    // It used to relax toward a target *rate*, so the ball turned at its
+    // fastest the instant it was released and only ever slowed: a lopsided
+    // marimo revolved evenly in place until it ran out of angle. A torque has
+    // to accelerate it against the water first, so the quickest part of lying
+    // down is the middle of it.
+    const { body, e } = flatOnFloor(0.15, 0.9);
+    settle(body, e, 0.05);
+    const early = Math.abs(body.omega[2]);
+    settle(body, e, 0.7);
+    const mid = Math.abs(body.omega[2]);
+    expect(early).toBeLessThan(0.1 * mid);
+  });
+
+  it('turns fastest halfway down and eases into its face', () => {
+    // The shape of the fall is the fluid's, not a constant's: the torque falls
+    // off as the face comes round, the water is still resisting, so the ball
+    // arrives slowly and lies down rather than stopping mid-turn. Under a fixed
+    // target rate the fastest moment was the first one.
+    const { body, e } = flatOnFloor(0.15, 0.9);
+    const dt = 1 / 240;
+    let peak = 0;
+    let peakAt = 0;
+    for (let i = 0; i < 240 * 6; i++) {
+      stepBody(body, e, dt);
+      const w = Math.abs(body.omega[2]);
+      if (w > peak) {
+        peak = w;
+        peakAt = i / 240;
+      }
+    }
+    expect(peakAt).toBeGreaterThan(0.4);
+    expect(peakAt).toBeLessThan(2);
+    // And it does not overshoot: the gravel takes the arrival, so a marimo
+    // lies down on its face rather than bouncing on it like a dropped die.
+    expect(tilt(body, e)).toBeLessThan(0.01);
+
+    // Then it is over — no creep left behind to turn the ball for the rest of
+    // the afternoon, which is the failure this whole file is organised against.
+    settle(body, e, 20);
+    expect(tilt(body, e)).toBeLessThan(1e-3);
+    expect(Math.hypot(...body.omega)).toBeLessThan(1e-6);
+  });
+
+  it('can still be rolled off its face by a current', () => {
+    // The one that matters. A marimo lying flat is tipped by nothing, so the
+    // axis its own settling wants is exactly the axis a current has to turn it
+    // about to get it off its flat — and a settling term that simply claimed
+    // that axis deadlocked the ball, which then slid along the gravel keeping
+    // the same side down forever. Rolling is the only thing that mends a flat,
+    // so it has to survive contact with the thing that makes them.
+    const { body, e } = flatOnFloor(0.15, 0);
+    // Carrying some gas, as one resting on the gravel does — waterlogged, it is
+    // simply too heavy for a current this size to shift at all, which is the
+    // gravel's stiction doing its job and a different test.
+    e.gas = 0.3;
+    settle(body, e, 1);
+    expect(tilt(body, e)).toBeLessThan(0.01); // lying on it to start with
+
+    e.waterVel = [0.06, 0, 0];
+    const dt = 1 / 240;
+    let rolled = 0;
+    for (let i = 0; i < 240 * 3; i++) {
+      stepBody(body, e, dt);
+      body.position[0] = 0; // held off the glass; the wall would stop the roll
+      rolled = Math.max(rolled, tilt(body, e));
+    }
+    expect(rolled).toBeGreaterThan(1);
   });
 
   it('is gentler about a shallow face than a deep one', () => {

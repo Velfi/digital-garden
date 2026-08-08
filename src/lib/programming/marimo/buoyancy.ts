@@ -6,10 +6,17 @@
  * spends most of its time near neutral buoyancy where the added mass of the
  * water it has to shove aside is comparable to its own.
  *
- * Rotation skips a full inertia tensor and just relaxes toward a target, which
- * is unconditionally stable at any timestep and one line. When the ball is on
- * the gravel the target is the rolling-without-slipping solution, so shoving it
- * around makes it roll — and rolling is what re-rounds a marimo.
+ * Rotation skips a full inertia tensor — the ball is a sphere to within a few
+ * per cent, so `(2/5) m R^2` is the only number it needs — but it is otherwise
+ * the same kind of model as the translation: torques over inertia, with the
+ * water resisting rather than commanding. Rotational drag is `15*mu/(rho*R^2)`
+ * plus a quadratic term, which is why a spun marimo coasts down over a couple
+ * of seconds instead of snapping to a number, and why a large one coasts longer
+ * than a small one.
+ *
+ * A contact is still solved as a constraint rather than a force: on the gravel
+ * or in a hand the ball is relaxed toward the rolling-without-slipping rate, so
+ * shoving it around makes it roll — and rolling is what re-rounds a marimo.
  *
  * The gravel contact is Coulomb rather than viscous, in both the sliding and
  * the turning: a bounded bite per step, capped so it can never push past the
@@ -22,7 +29,7 @@ import {
   DRAG_COEF,
   FACET_MAX_DEPTH,
   FACET_MIN_DEPTH,
-  FACET_SETTLE_GAIN,
+  FACET_SETTLE_ARM,
   FACET_SETTLE_SPEED,
   FLOOR_BED_ACCEL,
   FLOOR_MU_ROLL,
@@ -34,10 +41,14 @@ import {
   RHO_AIR,
   RHO_ALGA,
   RHO_WATER,
+  SPIN_COAT_DRAG,
   SPIN_COUPLE_TAU,
+  SPIN_FORM_COEF,
   SPIN_FRICTION_COEF,
+  SPIN_VISCOUS_COEF,
   TANK_HALF_X,
   TANK_HALF_Z,
+  WATER_VISCOSITY,
   WATER_Y
 } from './constants';
 import { clamp } from './careSim';
@@ -280,61 +291,127 @@ export function stepBody(body: BodyState, env: BodyEnv, dt: number): boolean {
   }
 
   // --- rotation -------------------------------------------------------------
-  let targetX: number;
-  let targetY: number;
-  let targetZ: number;
+  // Three things turn the ball, and they are three different kinds of thing.
+  //
+  // The water is a *resistance*. It never dictates a rate; it only opposes the
+  // difference between how the ball is turning and how the water around it is,
+  // and everything the water has to say about rotation is said here.
+  //
+  // A contact — gravel underneath, or a hand around it — is a *constraint*. It
+  // does set a rate: rolling without slipping, up to what friction can carry.
+  //
+  // A flat face pressed into the gravel is a *torque*, which is the part that
+  // changed. It used to be a target rate, so a lopsided marimo turned at a
+  // speed set by a gain and by nothing else: it revolved, evenly and forever,
+  // slowing only because the angle it was chasing was running out. As a torque
+  // it has to accelerate the ball against the water, so it starts from rest,
+  // gathers pace, arrives with some momentum and rocks once or twice before the
+  // water takes it out. The dynamics belong to the fluid now, not to a constant.
+  const waterSpinX = body.omega[0];
+  const waterSpinY = body.omega[1] - env.waterOmegaY;
+  const waterSpinZ = body.omega[2];
+  const waterSlip = Math.hypot(waterSpinX, waterSpinY, waterSpinZ);
+  // Viscous, plus a quadratic form term that only wakes up at speed. Both are
+  // rates in 1/s once divided by a sphere's inertia, and both are honest
+  // functions of size: `15*mu/(rho*R^2)` means doubling the radius quarters the
+  // damping, so a big marimo keeps turning long after a small one stops.
+  const spinDragRate =
+    (SPIN_VISCOUS_COEF * WATER_VISCOSITY * SPIN_COAT_DRAG) / (rhoEff * R * R) +
+    SPIN_FORM_COEF * (RHO_WATER / rhoEff) * waterSlip;
+  if (waterSlip > 0) {
+    // Taken as an exponential rather than `rate * dt`, so that however coarse
+    // the step, the ball is slowed toward the water's rotation and never past it.
+    const keep = Math.exp(-spinDragRate * dt);
+    body.omega[0] = waterSpinX * keep;
+    body.omega[1] = env.waterOmegaY + waterSpinY * keep;
+    body.omega[2] = waterSpinZ * keep;
+  }
 
-  const hand = env.handRoll;
-  if (hand) {
-    // Rolling without slipping against an arbitrary surface: omega = (n x v) / R.
-    const [vx, vy, vz] = body.velocity;
-    targetX = (hand[1] * vz - hand[2] * vy) / R;
-    targetY = (hand[2] * vx - hand[0] * vz) / R;
-    targetZ = (hand[0] * vy - hand[1] * vx) / R;
-  } else if (body.grounded) {
-    // Same thing, against a floor with normal +Y.
-    targetX = body.velocity[2] / R;
-    targetY = 0;
-    targetZ = -body.velocity[0] / R;
-
-    // A flat side is a stable place to lie, so a ball that has one finds it.
-    // This is the whole point of modelling flats as flats: the shape does not
-    // merely look pressed, it behaves pressed — it settles onto its face, and
-    // it takes a real shove to roll it off one.
+  // A flat side is a stable place to lie, so a ball that has one finds it. This
+  // is the whole point of modelling flats as flats: the shape does not merely
+  // look pressed, it behaves pressed — it settles onto its face, and it takes a
+  // real shove to roll it off one.
+  //
+  // Kept as an axis as well as an acceleration, because the friction below has
+  // to know which way the ball is rocking.
+  let rockX = 0;
+  let rockZ = 0;
+  if (body.grounded) {
     const facet = deepestFacet(env.shape);
     if (facet && facet.depth > FACET_MIN_DEPTH) {
       const speed = Math.hypot(body.velocity[0], body.velocity[1], body.velocity[2]);
       const settling = 1 - clamp(speed / FACET_SETTLE_SPEED, 0, 1);
       if (settling > 0) {
         bodyToWorld(body.quaternion, facet.d[0], facet.d[1], facet.d[2], faceScratch);
-        // Turn the face toward straight down: omega = gain * (face x down),
-        // which vanishes exactly when it is lying on it.
-        const gain = FACET_SETTLE_GAIN * settling * clamp(facet.depth / FACET_MAX_DEPTH, 0, 1);
-        targetX += faceScratch[2] * gain;
-        targetZ += -faceScratch[0] * gain;
+        // The reaction under the low edge of the face, levered on the ball's
+        // weight: alpha = N * arm / I, and for a solid sphere I = (2/5) m R^2,
+        // so the mass cancels and the 2.5 is the same one the friction uses.
+        // `face x down` supplies both the axis and the sin of how far off flat
+        // it is, which is what makes the torque vanish exactly when it is lying
+        // on the face rather than merely near it.
+        const alpha =
+          (SPIN_FRICTION_COEF *
+            grip *
+            FACET_SETTLE_ARM *
+            settling *
+            clamp(facet.depth / FACET_MAX_DEPTH, 0, 1)) /
+          R;
+        rockX = faceScratch[2] * alpha;
+        rockZ = -faceScratch[0] * alpha;
+        body.omega[0] += rockX * dt;
+        body.omega[2] += rockZ * dt;
       }
     }
-  } else {
-    targetX = 0;
-    targetY = env.waterOmegaY;
-    targetZ = 0;
   }
 
-  const couple = 1 - Math.exp(-dt / SPIN_COUPLE_TAU);
-  body.omega[0] += (targetX - body.omega[0]) * couple;
-  body.omega[1] += (targetY - body.omega[1]) * couple;
-  body.omega[2] += (targetZ - body.omega[2]) * couple;
+  const hand = env.handRoll;
+  if (hand) {
+    // Rolling without slipping against an arbitrary surface: omega = (n x v) / R.
+    const [vx, vy, vz] = body.velocity;
+    const targetX = (hand[1] * vz - hand[2] * vy) / R;
+    const targetY = (hand[2] * vx - hand[0] * vz) / R;
+    const targetZ = (hand[0] * vy - hand[1] * vx) / R;
+    const couple = 1 - Math.exp(-dt / SPIN_COUPLE_TAU);
+    body.omega[0] += (targetX - body.omega[0]) * couple;
+    body.omega[1] += (targetY - body.omega[1]) * couple;
+    body.omega[2] += (targetZ - body.omega[2]) * couple;
+  } else if (body.grounded) {
+    // Friction at the contact patch. The gap between the rolling rate and the
+    // one the ball actually has is the slip there — the ball turning against
+    // gravel that is not moving — and the gravel takes it out at a bounded rate
+    // rather than asymptotically. This is what stops a resting marimo dead: the
+    // water alone only ever halves the difference, so a ball spun up by a stir
+    // would go on quietly revolving for as long as anyone watched it.
+    const targetX = body.velocity[2] / R;
+    const targetZ = -body.velocity[0] / R;
+    let dx = targetX - body.omega[0];
+    let dy = -body.omega[1];
+    let dz = targetZ - body.omega[2];
 
-  // Friction at the contact patch. Whatever is left of `target - omega` is the
-  // slip rate there — the ball turning against gravel that is not moving — and
-  // the gravel takes it out at a bounded rate rather than asymptotically. This
-  // is what actually stops a resting marimo: the relaxation above only ever
-  // halves the difference, so a ball spun up by a stir went on quietly
-  // revolving in place for as long as anyone watched it.
-  if (body.grounded) {
-    const dx = targetX - body.omega[0];
-    const dy = targetY - body.omega[1];
-    const dz = targetZ - body.omega[2];
+    // Rocking onto a flat face is not sliding: the ball pivots on the rim of
+    // the face and the contact rolls, so there is nothing there for the grains
+    // to bite on, and the friction meant to stop a spun ball must not be what
+    // holds a tipped one up on its edge instead.
+    //
+    // But only up to the rate the water would allow it — `torque / drag`, the
+    // speed the tipping settles at. Below that the gravel is told the ball is
+    // already turning as fast as it means to and finds no slip to work on;
+    // above it, the excess is slip like any other. Exempting the whole axis
+    // instead deadlocks it: a face-down marimo is tipped by nothing, so the
+    // axis it may not be turned about is exactly the one a current would have
+    // to roll it around, and a stir slid it along the gravel without ever
+    // rolling it off its face — which is the one thing that mends a flat.
+    const rock = Math.hypot(rockX, rockZ);
+    if (rock > 0) {
+      const ax = rockX / rock;
+      const az = rockZ / rock;
+      const free = rock / spinDragRate;
+      const spin = body.omega[0] * ax + body.omega[2] * az;
+      const allowed = clamp(spin, -free, free);
+      dx += allowed * ax;
+      dz += allowed * az;
+    }
+
     const slip = Math.hypot(dx, dy, dz);
     if (slip > 0) {
       const k = Math.min(1, (SPIN_FRICTION_COEF * FLOOR_MU_SLIDE * grip * dt) / R / slip);
