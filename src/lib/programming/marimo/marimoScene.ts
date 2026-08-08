@@ -314,7 +314,16 @@ export function createMarimoScene(
     water,
     light
   });
-  /** Everything reduced motion touches, in one place so it can be changed live. */
+  /**
+   * Everything reduced motion touches, in one place so it can be changed live.
+   *
+   * The sway is damped; the water is switched off outright. A ripple is not a
+   * large movement to begin with — what it is is a fast one, spread across the
+   * whole surface, and damping it leaves the same flicker at a smaller
+   * amplitude. Flat glass is the honest answer, and it is one the surface
+   * shader already knows how to draw: it is what a jar looks like on a context
+   * that would not give the simulation its render targets.
+   */
   function applyMotionPreference() {
     motionScale = reducedMotion ? 0.35 : 1;
     marimo.setSwayScale(motionScale);
@@ -739,6 +748,20 @@ export function createMarimoScene(
   /** Bursts still in progress: x, z, radius, steps left. */
   const bursts: { x: number; z: number; radius: number; left: number }[] = [];
 
+  /**
+   * Back to glass, with nothing queued against it.
+   *
+   * Both edges of the reduced-motion switch need this. Going in, so a ring
+   * already crossing the jar is not frozen there for as long as the setting
+   * lasts; coming out, so the water starts from flat rather than resuming a
+   * wave that was launched minutes ago.
+   */
+  function stillWater() {
+    bursts.length = 0;
+    rippleStepsOwed = 0;
+    rippleSim?.reset(renderer);
+  }
+
   function collectRippleDrops(): RippleDrop[] {
     rippleDrops.length = 0;
 
@@ -957,7 +980,7 @@ export function createMarimoScene(
     // tinting anything at all.
     water.uWaterBoxMax.value.y = waterLevel;
 
-    tank.setRippleTexture(rippleSim?.texture ?? null);
+    tank.setRippleTexture(reducedMotion ? null : (rippleSim?.texture ?? null));
 
     particles.setBall(
       body.position[0],
@@ -1043,8 +1066,18 @@ export function createMarimoScene(
       }
     }
 
-    rippleSim?.step(renderer, rippleStepsOwed, collectRippleDrops());
-    rippleStepsOwed = 0;
+    if (reducedMotion) {
+      // The bubbles go on reporting their arrivals whether or not the water is
+      // listening, and that list is only ever emptied by being read. Drain it
+      // and drop it, rather than letting a session's worth of bursts pile up
+      // behind a switch.
+      particles.takeBubbleSurfacings(surfacings);
+      surfacings.length = 0;
+      rippleStepsOwed = 0;
+    } else {
+      rippleSim?.step(renderer, rippleStepsOwed, collectRippleDrops());
+      rippleStepsOwed = 0;
+    }
 
     pushVisuals(dtClamped);
     if (useTargets) renderTargets();
@@ -1193,6 +1226,7 @@ export function createMarimoScene(
       if (reduced === reducedMotion) return;
       reducedMotion = reduced;
       applyMotionPreference();
+      stillWater();
     },
 
     setLighting(next) {
