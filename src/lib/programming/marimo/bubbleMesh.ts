@@ -347,6 +347,13 @@ export interface BubbleBundle {
   /** How many bubbles are currently stuck to the marimo, waiting to let go. */
   clingingCount(): number;
   /**
+   * Bubbles that have just reached the underside of the surface, drained into
+   * `out` as `(x, z, radius)` triples and forgotten. Each bubble reports once,
+   * on the frame it arrives — the ripple it throws is a single event, not
+   * something that goes on for as long as the film takes to give way.
+   */
+  takeSurfacings(out: number[]): void;
+  /**
    * Every bubble within `padPx` of a point on screen, as handles for `pop`.
    *
    * All of them, deliberately, rather than the best of them. A bubble is a few
@@ -402,6 +409,15 @@ export function createBubbles(
   const age = new Float32Array(POOL);
   const life = new Float32Array(POOL);
   const baseAspect = new Float32Array(POOL);
+
+  /**
+   * Set once a bubble has touched the surface, so its arrival is reported once
+   * rather than on every frame of the second or so it spends dying there.
+   * Cleared when the slot is recycled.
+   */
+  const surfaced = new Uint8Array(POOL);
+  /** Drained by `takeSurfacings`: flat (x, z, radius) triples. */
+  const surfacings: number[] = [];
 
   // A transient velocity on top of the rise and the spiral, with its own decay
   // rate. Zero for every bubble the jar makes by itself — the only thing that
@@ -561,6 +577,7 @@ export function createBubbles(
   /** Empty a slot outright: no fade, nothing drawn, available immediately. */
   function killSlot(i: number) {
     attached[i] = 0;
+    surfaced[i] = 0;
     life[i] = 0;
     fades[i] = 0;
     radii[i] = 0;
@@ -573,6 +590,7 @@ export function createBubbles(
 
   function spawn(x: number, y: number, z: number, radius: number, attach: boolean) {
     const i = claimSlot();
+    surfaced[i] = 0;
 
     const r = sampleRadius(Math.random());
 
@@ -692,6 +710,12 @@ export function createBubbles(
         if (!attached[i] || life[i] <= 0) continue;
         if (chance >= 1 || Math.random() < chance) detach(i);
       }
+    },
+
+    takeSurfacings(out) {
+      out.length = 0;
+      for (const value of surfacings) out.push(value);
+      surfacings.length = 0;
     },
 
     clingingCount() {
@@ -856,6 +880,10 @@ export function createBubbles(
         // Surface: flatten against the underside of the film, then pop.
         const top = centres[o + 1] + radii[i];
         if (top >= WATER_Y) {
+          if (!surfaced[i]) {
+            surfaced[i] = 1;
+            surfacings.push(centres[o], centres[o + 2], radii[i]);
+          }
           life[i] = Math.max(0, life[i] - dt * 7);
           aspects[i] *= Math.max(0.35, life[i]);
         }

@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { TANK_HALF_X, TANK_HALF_Z, WATER_Y } from './constants';
 import { createSurfaceGeometry } from './meniscus';
+import { RIPPLE_GLSL, createRippleUniforms, writeRippleUniforms } from './ripple';
 import {
-  RIPPLE_GLSL,
-  createRippleUniforms,
-  writeRippleUniforms,
-  type RippleParams
-} from './ripple';
+  RIPPLE_STEP_SEC,
+  createRippleSim,
+  type RippleDrop,
+  type RippleSimParams
+} from './rippleSim';
 import { SURFACE_STEP, createSurfaceMaterial, mirrorCameraMatrix } from './tankMesh';
 import { createRoomUniforms, createWaterUniforms, waterCoefficients } from './waterShader';
 
@@ -61,23 +62,23 @@ precision highp float;
 
 ${RIPPLE_GLSL}
 
-uniform float uTime;
-uniform float uAgitation;
 uniform float uMode;        // 0 normals, 1 height, 2 slope
 
 varying vec3 vWorld;
 
 void main() {
-  vec3 field = rippleField(vWorld.xz, uTime, uAgitation);
+  vec3 field = rippleField(vWorld.xz);
   vec3 colour;
 
   if (uMode < 0.5) {
     vec3 n = normalize(vec3(-field.y, 1.0, -field.z));
     colour = n * 0.5 + 0.5;
   } else if (uMode < 1.5) {
-    // Signed height against the amplitude actually in force, so the view keeps
-    // its full range as the agitation slider moves rather than fading to grey.
-    float span = uRippleAmp * mix(uRippleIdle, 1.0, clamp(uAgitation, 0.0, 1.0));
+    // Signed height over plus or minus one millimetre of field, which is about
+    // what a well-stirred jar reaches. A fixed range rather than one that tracks
+    // the current amplitude: the point of this view is to see the water get
+    // rougher when it is stirred, and a self-scaling one would hide exactly that.
+    float span = uRippleRelief * 2.0;
     float h = clamp(field.x / max(span * 0.5, 1e-6) * 0.5 + 0.5, 0.0, 1.0);
     colour = mix(vec3(0.05, 0.18, 0.32), vec3(1.0, 0.86, 0.58), h);
   } else {
@@ -124,7 +125,11 @@ function checkerTexture(): THREE.DataTexture {
 export interface RippleBench {
   resize(): void;
   render(timeMs: number): void;
-  setParams(params: RippleParams): void;
+  setParams(params: RippleSimParams): void;
+  /** Flatten the water. Left alone it stays that way — nothing drives it. */
+  reset(): void;
+  /** Burst a bubble at the surface, which is what the jar mostly gets. */
+  burst(): void;
   setMode(mode: BenchMode): void;
   setAgitation(amount: number): void;
   setPaused(paused: boolean): void;
@@ -136,7 +141,7 @@ export interface RippleBench {
   dispose(): void;
 }
 
-export function createRippleBench(container: HTMLElement, params: RippleParams): RippleBench {
+export function createRippleBench(container: HTMLElement, params: RippleSimParams): RippleBench {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0x0b1113, 1);
@@ -161,8 +166,6 @@ export function createRippleBench(container: HTMLElement, params: RippleParams):
   const debugMaterial = new THREE.ShaderMaterial({
     uniforms: {
       ...ripple,
-      uTime: { value: 0 },
-      uAgitation: { value: 0 },
       uMode: { value: 0 }
     },
     vertexShader: DEBUG_VERTEX,
@@ -186,6 +189,53 @@ export function createRippleBench(container: HTMLElement, params: RippleParams):
   let paused = false;
   let clock = 0;
   let lastFrameMs = 0;
+
+  // The bench runs the same simulation the jar does, at the same step, so what
+  // is on screen here is not a re-implementation of the water — it is the water.
+  const sim = createRippleSim(params);
+  ripple.uRippleTexture.value = sim.texture;
+  const drops: RippleDrop[] = [];
+  const bursts: { x: number; z: number; radius: number; left: number }[] = [];
+  let stepsOwed = 0;
+  let stirPhase = 0;
+  let stirChop = 0;
+
+  /**
+   * What is pushing on the bench's water.
+   *
+   * Nothing, unless something is done to it — the same as the jar. The
+   * `agitation` slider is a stir, and `burst` drops in the ripple a bubble
+   * leaves, so the two things that actually move the water in the tank are the
+   * two things that move it here.
+   */
+  function collectDrops(dt: number): RippleDrop[] {
+    drops.length = 0;
+
+    for (let i = bursts.length - 1; i >= 0; i--) {
+      const burst = bursts[i];
+      drops.push({
+        x: burst.x,
+        z: burst.z,
+        radius: burst.radius * 2.5,
+        strength: (burst.left > 2 ? 1 : -1) * burst.radius * 1000 * 0.3
+      });
+      if (--burst.left <= 0) bursts.splice(i, 1);
+    }
+
+    if (agitation > 0.01) {
+      stirPhase += dt * 2.2;
+      stirChop += dt * 31;
+      const orbit = Math.min(TANK_HALF_X, TANK_HALF_Z) * 0.55;
+      drops.push({
+        x: Math.cos(stirPhase) * orbit,
+        z: Math.sin(stirPhase) * orbit,
+        radius: 0.013,
+        strength: Math.sin(stirChop) * 0.06 * agitation
+      });
+    }
+
+    return drops;
+  }
 
   function placeCamera() {
     camera.position.set(
@@ -246,21 +296,44 @@ export function createRippleBench(container: HTMLElement, params: RippleParams):
     resize,
 
     render(timeMs) {
+      let dt = 0;
       if (lastFrameMs > 0 && !paused) {
-        clock += Math.min((timeMs - lastFrameMs) / 1000, 0.05);
+        dt = Math.min((timeMs - lastFrameMs) / 1000, 0.05);
+        clock += dt;
+        stepsOwed += dt / RIPPLE_STEP_SEC;
       }
       lastFrameMs = timeMs;
 
-      surfaceMaterial.uniforms.uTime.value = clock;
-      surfaceMaterial.uniforms.uAgitation.value = agitation;
-      debugMaterial.uniforms.uTime.value = clock;
-      debugMaterial.uniforms.uAgitation.value = agitation;
+      const steps = Math.floor(stepsOwed);
+      if (steps > 0) {
+        sim.step(renderer, steps, collectDrops(dt));
+        stepsOwed -= steps;
+        ripple.uRippleTexture.value = sim.texture;
+      }
 
       renderer.render(scene, camera);
     },
 
     setParams(next) {
+      sim.setParams(next);
       writeRippleUniforms(ripple, next);
+    },
+
+    reset() {
+      sim.reset(renderer);
+      bursts.length = 0;
+    },
+
+    burst() {
+      // Somewhere in the middle two-thirds, at the size the jar's own fizz runs
+      // to. Random on purpose: the point of the button is to watch a ring spread
+      // and bounce, and always seeing it from the same place teaches less.
+      bursts.push({
+        x: (Math.random() - 0.5) * TANK_HALF_X * 1.3,
+        z: (Math.random() - 0.5) * TANK_HALF_Z * 1.3,
+        radius: 0.0003 + Math.random() * 0.0008,
+        left: 5
+      });
     },
 
     setMode(next) {
@@ -314,6 +387,7 @@ export function createRippleBench(container: HTMLElement, params: RippleParams):
       surfaceMaterial.dispose();
       debugMaterial.dispose();
       mirror.dispose();
+      sim.dispose();
       renderer.dispose();
       if (renderer.domElement.parentElement === container) {
         container.removeChild(renderer.domElement);

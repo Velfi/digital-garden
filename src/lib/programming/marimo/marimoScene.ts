@@ -10,6 +10,8 @@ import {
   MAX_FACETS,
   OMEGA_REF,
   SWIRL_MAX_OMEGA,
+  TANK_HALF_X,
+  TANK_HALF_Z,
   VENT_THRESHOLD,
   WATER_CHANGE_MIN_FOULING,
   WATER_Y
@@ -34,6 +36,7 @@ import { flushMarimo, loadMarimo, saveMarimo } from './persist';
 import { createRoom, type RoomBundle } from './roomMesh';
 import { newSwirl, stepSwirl, stirSwirl, waterSpinAt, waterVelocityAt } from './swirl';
 import { createTank, mirrorCameraMatrix, type TankBundle } from './tankMesh';
+import { DEFAULT_RIPPLE_SIM, createRippleSim, type RippleDrop, type RippleSim } from './rippleSim';
 import {
   applyLighting,
   createLightUniforms,
@@ -606,6 +609,10 @@ export function createMarimoScene(
       env.handRoll = null;
     }
 
+    rippleStepsOwed++;
+    stirPhase += swirl.omegaY * dt;
+    stirChop += RIPPLE_STIR_CHOP * dt;
+
     if (tumbleTimer > 0) {
       tumbleTimer -= dt;
       body.omega[0] = TUMBLE_OMEGA * 0.7;
@@ -659,6 +666,124 @@ export function createMarimoScene(
    */
   const useTargets = variant === 'full';
   let reflectionTarget: THREE.WebGLRenderTarget | null = null;
+
+  /**
+   * The wave field.
+   *
+   * Half-float render targets are the one thing here that a context can refuse.
+   * If it does, the sim is simply absent and the surface shader reads a null
+   * texture as flat — a glassy jar rather than a broken one.
+   */
+  let rippleSim: RippleSim | null = null;
+  try {
+    rippleSim = createRippleSim(DEFAULT_RIPPLE_SIM);
+  } catch {
+    rippleSim = null;
+  }
+
+  /**
+   * What is pushing on the water.
+   *
+   * Nothing keeps this going in the background. Left alone the jar damps to
+   * glass and stays there, which is what a jar does. Everything on this list is
+   * an event: gas arriving at the top and bursting, the marimo coming up far
+   * enough to matter, and the water being stirred on purpose.
+   */
+  const rippleDrops: RippleDrop[] = [];
+  /** Flat (x, z, radius) triples, drained from the bubbles each frame. */
+  const surfacings: number[] = [];
+  let rippleStepsOwed = 0;
+  let stirPhase = 0;
+  let stirChop = 0;
+
+  /** Depth over which a rising marimo starts to show on the surface, metres. */
+  const RIPPLE_BALL_REACH = 0.025;
+  /** Millimetres of push per step per metre-per-second of the ball's rise. */
+  const RIPPLE_BALL_PUSH = 1.4;
+  /** Millimetres of push per step from a fully stirred jar. */
+  const RIPPLE_STIR_PUSH = 0.06;
+  /** How fast a stir slops the water back and forth, rad/s. */
+  const RIPPLE_STIR_CHOP = 31;
+  /**
+   * Millimetres of push per step per millimetre of bursting bubble.
+   *
+   * Measured rather than guessed: at this value the jar's usual half-millimetre
+   * bubble leaves a ring about a fifth of a millimetre high, and the biggest
+   * ones about half. Both are gone inside three seconds.
+   */
+  const RIPPLE_BURST_PUSH = 0.3;
+  /** Steps a burst goes on pushing for. About a fiftieth of a second. */
+  const RIPPLE_BURST_STEPS = 5;
+
+  /** Bursts still in progress: x, z, radius, steps left. */
+  const bursts: { x: number; z: number; radius: number; left: number }[] = [];
+
+  function collectRippleDrops(): RippleDrop[] {
+    rippleDrops.length = 0;
+
+    // A bubble reaching the top. The cavity it leaves collapses and rings, which
+    // is the one thing that disturbs an otherwise untouched jar — and the reason
+    // a marimo that is photosynthesising has a surface that moves at all.
+    particles.takeBubbleSurfacings(surfacings);
+    for (let i = 0; i + 2 < surfacings.length; i += 3) {
+      bursts.push({
+        x: surfacings[i],
+        z: surfacings[i + 1],
+        radius: Math.max(surfacings[i + 2], 0.0015),
+        left: RIPPLE_BURST_STEPS
+      });
+    }
+    for (let i = bursts.length - 1; i >= 0; i--) {
+      const burst = bursts[i];
+      rippleDrops.push({
+        x: burst.x,
+        z: burst.z,
+        radius: burst.radius * 2.5,
+        // Up on the first half, down on the second: the film lifts and the
+        // cavity falls back in, which is what leaves a ring behind rather than
+        // a permanent dimple.
+        strength:
+          (burst.left > RIPPLE_BURST_STEPS / 2 ? 1 : -1) * burst.radius * 1000 * RIPPLE_BURST_PUSH
+      });
+      if (--burst.left <= 0) bursts.splice(i, 1);
+    }
+
+    // The marimo, pressing up into the surface from below. It only counts as it
+    // gets close: a ball on the gravel is 60 mm down and the water above it does
+    // not know it is there.
+    const radiusM = state.radiusMm / 1000;
+    const gap = waterLevel - (body.position[1] + radiusM);
+    const reach = 1 - Math.min(1, Math.max(0, gap) / RIPPLE_BALL_REACH);
+    if (reach > 0) {
+      rippleDrops.push({
+        x: body.position[0],
+        z: body.position[2],
+        radius: Math.max(radiusM, 0.006),
+        // Rising presses the surface up, sinking pulls it down. A ball hanging
+        // motionless makes no waves, which is right — it is displacement that
+        // radiates, not presence, and it is also what keeps this source from
+        // holding one sign for long enough to dig a hole.
+        strength: body.velocity[1] * RIPPLE_BALL_PUSH * reach
+      });
+    }
+
+    // Stirring. The swirl is a rotation of the whole body of water, and what
+    // that does to the surface is slop it from side to side while dragging the
+    // slop round the jar. One source going round at the water's own rate, beating
+    // as it goes, says that.
+    const spin = Math.min(1, Math.abs(swirl.omegaY) / SWIRL_MAX_OMEGA);
+    if (spin > 0.01) {
+      const orbit = Math.min(TANK_HALF_X, TANK_HALF_Z) * 0.55;
+      rippleDrops.push({
+        x: Math.cos(stirPhase) * orbit,
+        z: Math.sin(stirPhase) * orbit,
+        radius: 0.013,
+        strength: Math.sin(stirChop) * RIPPLE_STIR_PUSH * spin
+      });
+    }
+
+    return rippleDrops;
+  }
   const reflectionCamera = new THREE.PerspectiveCamera(35, 1, 0.005, 3);
 
   function makeTarget(w: number, h: number) {
@@ -811,9 +936,7 @@ export function createMarimoScene(
     // tinting anything at all.
     water.uWaterBoxMax.value.y = waterLevel;
 
-    const agitation = Math.min(1, Math.abs(swirl.omegaY) / SWIRL_MAX_OMEGA);
-    tank.setAgitation(agitation);
-    tank.setTime(simTime);
+    tank.setRippleTexture(rippleSim?.texture ?? null);
 
     particles.setBall(
       body.position[0],
@@ -898,6 +1021,9 @@ export function createMarimoScene(
         doSqueeze();
       }
     }
+
+    rippleSim?.step(renderer, rippleStepsOwed, collectRippleDrops());
+    rippleStepsOwed = 0;
 
     pushVisuals(dtClamped);
     if (useTargets) renderTargets();
@@ -1070,6 +1196,7 @@ export function createMarimoScene(
     dispose() {
       flushMarimo(state);
       reflectionTarget?.dispose();
+      rippleSim?.dispose();
       surroundings.dispose();
       tank.dispose();
       marimo.dispose();

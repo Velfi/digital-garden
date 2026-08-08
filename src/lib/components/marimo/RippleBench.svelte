@@ -1,8 +1,15 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
-  import { TANK_HALF_X, TANK_HALF_Z } from '$lib/programming/marimo/constants';
-  import { DEFAULT_RIPPLE, wavesAcross, type RippleParams } from '$lib/programming/marimo/ripple';
+  import {
+    DEFAULT_RIPPLE_SIM,
+    RIPPLE_CFL_LIMIT,
+    RIPPLE_CELL,
+    RIPPLE_COLS,
+    RIPPLE_ROWS,
+    cflNumber,
+    type RippleSimParams
+  } from '$lib/programming/marimo/rippleSim';
   import {
     createRippleBench,
     type BenchMode,
@@ -10,7 +17,7 @@
   } from '$lib/programming/marimo/rippleBench';
 
   interface Slider {
-    key: keyof RippleParams;
+    key: keyof RippleSimParams;
     label: string;
     min: number;
     max: number;
@@ -18,51 +25,29 @@
     hint: string;
   }
 
-  // Ordered the way you actually reach for them: shape of the biggest wave
-  // first, then how the octaves stack, then motion.
+  // Four numbers now instead of thirteen. The shape of the water is no longer
+  // something to be dialled in — it is what the simulation does — so what is
+  // left is only how fast waves cross it, how long they last, and how hard the
+  // room and the stir push.
   const SLIDERS: Slider[] = [
-    { key: 'wavelengthMm', label: 'wavelength', min: 4, max: 80, step: 0.5, hint: 'mm' },
     {
-      key: 'amplitudeMm',
-      label: 'amplitude',
-      min: 0,
-      max: 4,
-      step: 0.05,
-      hint: 'mm peak-to-trough'
-    },
-    {
-      key: 'steepness',
-      label: 'steepness',
-      min: 0,
-      max: 1,
-      step: 0.01,
-      hint: 'sine → sharp crests'
-    },
-    { key: 'chop', label: 'chop', min: 0, max: 1.5, step: 0.01, hint: 'lean into the slope' },
-    { key: 'octaves', label: 'octaves', min: 1, max: 6, step: 1, hint: 'how many waves stack' },
-    { key: 'freqStep', label: 'freq step', min: 1.2, max: 3, step: 0.01, hint: '× per octave' },
-    { key: 'ampStep', label: 'amp step', min: 0.2, max: 0.8, step: 0.01, hint: '× per octave' },
-    { key: 'speed', label: 'speed', min: 0, max: 60, step: 0.5, hint: 'rad/s' },
-    {
-      key: 'reflection',
-      label: 'reflection',
-      min: 0,
-      max: 1,
-      step: 0.01,
-      hint: 'travels → stands'
-    },
-    {
-      key: 'reflectionTurnDeg',
-      label: 'return turn',
-      min: 0,
-      max: 90,
+      key: 'speedMmPerSec',
+      label: 'wave speed',
+      min: 10,
+      max: 140,
       step: 1,
-      hint: 'degrees off reverse'
+      hint: 'mm/s — watch the Courant number'
     },
-    { key: 'speedStep', label: 'speed step', min: 1, max: 2.5, step: 0.01, hint: '× per octave' },
-    { key: 'baseAngleDeg', label: 'direction', min: 0, max: 360, step: 1, hint: 'degrees' },
-    { key: 'turnDeg', label: 'octave turn', min: 0, max: 180, step: 0.5, hint: 'degrees' },
-    { key: 'idleFraction', label: 'idle', min: 0, max: 1, step: 0.01, hint: 'amplitude at rest' }
+    { key: 'decaySec', label: 'settle time', min: 0.3, max: 20, step: 0.1, hint: 'seconds to 1/e' },
+    {
+      key: 'viscosity',
+      label: 'viscosity',
+      min: 0,
+      max: 0.06,
+      step: 0.001,
+      hint: 'short ripples die first'
+    },
+    { key: 'reliefScale', label: 'relief', min: 0, max: 3, step: 0.05, hint: 'how deep it is drawn' }
   ];
 
   const MODES: { value: BenchMode; label: string }[] = [
@@ -77,7 +62,7 @@
   let bench: RippleBench | null = null;
   let webglSupported = $state(true);
 
-  let params = $state<RippleParams>({ ...DEFAULT_RIPPLE });
+  let params = $state<RippleSimParams>({ ...DEFAULT_RIPPLE_SIM });
   let mode = $state<BenchMode>('surface');
   let agitation = $state(0.5);
   let fouling = $state(0);
@@ -89,15 +74,15 @@
   let lastY = 0;
   let rafId = 0;
 
-  // The number that matters most and is least obvious from the slider: a
-  // wavelength longer than the jar puts under one wave on the water, and the
-  // surface stops reading as ripples entirely.
-  const wavesLong = $derived(wavesAcross(params, TANK_HALF_X * 2));
-  const wavesShort = $derived(wavesAcross(params, TANK_HALF_Z * 2));
-  const tooLong = $derived(wavesShort < 3);
+  // The number that matters most and is least obvious from the slider. An
+  // explicit wave equation is stable below 1/sqrt(2) and produces a screenful of
+  // NaN above it, so this is not a quality setting — it is the edge of the cliff.
+  const courant = $derived(cflNumber(params));
+  const unstable = $derived(courant >= RIPPLE_CFL_LIMIT);
+  const gridMm = $derived(RIPPLE_CELL * 1000);
 
   const source = $derived(
-    `export const DEFAULT_RIPPLE: RippleParams = {\n` +
+    `export const DEFAULT_RIPPLE_SIM: RippleSimParams = {\n` +
       SLIDERS.map((s) => `  ${s.key}: ${params[s.key]}`).join(',\n') +
       `\n};`
   );
@@ -195,7 +180,7 @@
   <div class="controls">
     <div class="scene-row">
       <label>
-        <span>agitation</span>
+        <span>stir</span>
         <input type="range" min="0" max="1" step="0.01" bind:value={agitation} />
         <output>{agitation.toFixed(2)}</output>
       </label>
@@ -205,11 +190,14 @@
         <output>{fouling.toFixed(2)}</output>
       </label>
       <button type="button" onclick={() => (paused = !paused)}>{paused ? 'play' : 'pause'}</button>
+      <button type="button" onclick={() => bench?.burst()}>pop a bubble</button>
+      <button type="button" onclick={() => bench?.reset()}>still water</button>
     </div>
 
-    <p class="readout" class:warn={tooLong}>
-      {wavesLong.toFixed(1)} × {wavesShort.toFixed(1)} waves across the jar
-      {#if tooLong}<strong> — too few to read as ripples</strong>{/if}
+    <p class="readout" class:warn={unstable}>
+      Courant {courant.toFixed(3)} of {RIPPLE_CFL_LIMIT.toFixed(3)} · {RIPPLE_COLS} × {RIPPLE_ROWS} grid
+      at {gridMm.toFixed(2)} mm
+      {#if unstable}<strong> — over the limit, this will blow up</strong>{/if}
     </p>
 
     <div class="sliders">
@@ -230,7 +218,7 @@
     </div>
 
     <div class="actions">
-      <button type="button" onclick={() => (params = { ...DEFAULT_RIPPLE })}>reset</button>
+      <button type="button" onclick={() => (params = { ...DEFAULT_RIPPLE_SIM })}>reset</button>
       <button type="button" onclick={copySource}>{copied ? 'copied' : 'copy as TS'}</button>
     </div>
 

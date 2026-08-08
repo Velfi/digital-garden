@@ -113,6 +113,12 @@ export interface ParticleBundle {
   /** Ambient photosynthetic fizz from the marimo's surface. */
   trickleBubbles(x: number, y: number, z: number, radius: number, dt: number, rate: number): void;
   /**
+   * Bubbles that have just reached the underside of the surface, as flat
+   * (x, z, radius) triples. Drained: each one is reported once. What the ripple
+   * simulation listens to.
+   */
+  takeBubbleSurfacings(out: number[]): void;
+  /**
    * Shake bubbles off the marimo's coat outright, `chance` per clinging bubble.
    * A squeeze lets go of everything the coat was holding.
    */
@@ -199,6 +205,10 @@ export function createParticles(
 
     burstBubbles(x, y, z, radius, count) {
       bubbles.burst(x, y, z, radius, count);
+    },
+
+    takeBubbleSurfacings(out) {
+      bubbles.takeSurfacings(out);
     },
 
     trickleBubbles(x, y, z, radius, dt, rate) {

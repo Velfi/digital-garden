@@ -3,13 +3,12 @@ import { FLOOR_Y, TANK_HALF_X, TANK_HALF_Z, WATER_Y } from './constants';
 import { createSurfaceGeometry, meniscusRise } from './meniscus';
 import { mulberry32 } from './rng';
 import {
-  DEFAULT_RIPPLE,
   RIPPLE_GLSL,
   createRippleUniforms,
   writeRippleUniforms,
-  type RippleParams,
   type RippleUniforms
 } from './ripple';
+import { DEFAULT_RIPPLE_SIM, type RippleSimParams } from './rippleSim';
 import {
   IOR_AIR,
   IOR_GLASS,
@@ -120,8 +119,6 @@ ${RIPPLE_GLSL}
 
 uniform sampler2D uReflectionTexture; // the tank, mirrored through this plane
 uniform mat4  uReflectionMatrix;      // and the view-projection that drew it
-uniform float uTime;
-uniform float uAgitation;
 uniform float uWaterLevel;
 uniform float uHasTargets;
 
@@ -145,7 +142,7 @@ void main() {
   // height field. The waves are faded out as the fillet takes over: the contact
   // line is held by the glass, so a ripple arriving at the wall runs out of
   // surface to move rather than tilting the whole fillet with it.
-  vec2 slope = rippleField(vWorld.xz, uTime, uAgitation).yz * (1.0 - climb) + vMeniscusSlope;
+  vec2 slope = rippleField(vWorld.xz).yz * (1.0 - climb) + vMeniscusSlope;
   vec3 up = normalize(vec3(-slope.x, 1.0, -slope.y));
 
   // Which face of the sheet the ray arrives on. Decided per fragment from the
@@ -290,10 +287,10 @@ export interface TankBundle {
   group: THREE.Group;
   /** Hidden while filling the mirror target — the surface must not reflect itself. */
   hideForReflection: THREE.Object3D[];
-  setTime(seconds: number): void;
-  setAgitation(amount: number): void;
-  /** Retune the wave field live. Driven by the bench at `/marimo/ripples`. */
-  setRipple(params: RippleParams): void;
+  /** The simulation's state texture, from `rippleSim.ts`. */
+  setRippleTexture(texture: THREE.Texture | null): void;
+  /** Retune how much relief the field is drawn with. Driven by the bench. */
+  setRipple(params: RippleSimParams): void;
   setWaterLevel(y: number): void;
   setReflectionTexture(texture: THREE.Texture | null): void;
   /**
@@ -327,8 +324,6 @@ export function createSurfaceMaterial(
       ...ripple,
       uReflectionTexture: { value: null },
       uReflectionMatrix: { value: new THREE.Matrix4() },
-      uTime: { value: 0 },
-      uAgitation: { value: 0 },
       uWaterLevel: { value: WATER_Y },
       uHasTargets: { value: 0 }
     },
@@ -493,7 +488,7 @@ export function createTank(
 
   // --- water surface --------------------------------------------------------
   const surfaceGeometry = createSurfaceGeometry(TANK_HALF_X, TANK_HALF_Z, SURFACE_STEP);
-  const rippleUniforms = createRippleUniforms(DEFAULT_RIPPLE);
+  const rippleUniforms = createRippleUniforms(DEFAULT_RIPPLE_SIM);
   const surfaceMaterial = createSurfaceMaterial(water, room, rippleUniforms);
   const surface = new THREE.Mesh(surfaceGeometry, surfaceMaterial);
   surface.position.y = WATER_Y;
@@ -506,11 +501,8 @@ export function createTank(
     // Everything else stays visible in the mirror pass, including the far wall,
     // which is the backdrop the reflection needs.
     hideForReflection: [surface, glassNear, edges],
-    setTime(seconds) {
-      surfaceMaterial.uniforms.uTime.value = seconds;
-    },
-    setAgitation(amount) {
-      surfaceMaterial.uniforms.uAgitation.value = Math.max(0, Math.min(1, amount));
+    setRippleTexture(texture) {
+      rippleUniforms.uRippleTexture.value = texture;
     },
     setRipple(params) {
       writeRippleUniforms(rippleUniforms, params);
