@@ -83,6 +83,10 @@
         >An AI-generated phrasal template word game</a
       >
     </li>
+    <li>
+      <a href={resolve('/marimo')}>Marimo</a> &mdash; a moss ball in a jar that grows on real time
+      <em><small>(interactive)</small></em>
+    </li>
   </ul>
 
   <h2>Arts</h2>
@@ -178,6 +182,10 @@
     <li><a href="https://timeline-of-you.vercel.app">My timeline creator and viewer app</a></li>
     <li><a href={resolve('/programming/particle-life')}>Particle Life Simulation</a></li>
     <li><a href={resolve('/programming/procedural-candle-flame')}>Procedural Candle Flame</a></li>
+    <li>
+      <a href={resolve('/programming/marimo-moss-ball')}>Marimo Tank</a>
+      <em><small>(interactive)</small></em>
+    </li>
   </ul>
 
   <h2>Thoughts</h2>
