@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { BUBBLE_MAX_RADIUS, BUBBLE_MIN_RADIUS } from './bubblePhysics';
 import {
   DEFAULT_RIPPLE_SIM,
+  RIPPLE_BURST_STEPS,
   RIPPLE_CELL,
   RIPPLE_CFL_LIMIT,
   RIPPLE_LEVEL_TAU,
   RIPPLE_STEP_SEC,
+  burstDrop,
   cflNumber,
   rippleKernel,
   createRippleField,
@@ -308,18 +311,21 @@ describe('being pushed', () => {
     const coefficients = rippleCoefficients(params);
     const field = createRippleField();
 
-    // A bubble the size the jar actually makes, lifting the film and then
-    // letting the cavity fall back in.
-    const burst: RippleDrop = { x: 0.01, z: -0.008, radius: 0.003, strength: 0.12 };
-    for (let n = 0; n < 5; n++) {
-      stepRippleField(field, coefficients, [{ ...burst, strength: n < 2 ? 0.12 : -0.12 }]);
+    // The biggest bubble the jar makes, lifting the film and then letting the
+    // cavity fall back in — raised the way the scene raises it. The big one,
+    // because this is about how far a ring gets, and the small ones do not get
+    // anywhere: a ring that tight is short wavelength and viscosity has it
+    // before it has crossed a finger's width. That is the water being right,
+    // not the test being lenient — see the ring test below for the sizes.
+    for (let left = RIPPLE_BURST_STEPS; left > 0; left--) {
+      stepRippleField(field, coefficients, [burstDrop(0.01, -0.008, BUBBLE_MAX_RADIUS, left)]);
     }
 
     // Whole-jar RMS is the wrong measure of a half-millimetre bubble; what it
     // leaves is a small ring, so the peak is what says it rang at all.
     const peak = () => Math.max(...Array.from(field.now, Math.abs));
     const rang = peak();
-    expect(rang).toBeGreaterThan(0.05);
+    expect(rang).toBeGreaterThan(0.02);
     expect(rang).toBeLessThan(1);
 
     // It travels: a ring 20 mm out that was flat when the bubble went.
@@ -339,5 +345,66 @@ describe('being pushed', () => {
     // Micrometres. Stated absolutely rather than as a fraction, because what
     // matters is that there is nothing left for the shader to find a normal in.
     expect(peak()).toBeLessThan(0.005);
+  });
+
+  /**
+   * What a burst is worth has to come from the bubble, and it did not.
+   *
+   * The scene used to floor the burst radius at 1.5 mm before deriving the push
+   * from it — above the whole range the jar makes, so every bubble in the tank
+   * landed as the same maximum-strength source and left the same 1.25 mm ring.
+   * That is both far too loud for a fizz and the death of the size spread the
+   * bubbles go to the trouble of having. The floor belongs on the ring the grid
+   * is asked to draw, not on what the bubble is worth.
+   */
+  it('leaves a ring that grows with the bubble, and a quiet one', () => {
+    const coefficients = rippleCoefficients(DEFAULT_RIPPLE_SIM);
+
+    const ring = (radius: number) => {
+      const field = createRippleField();
+      for (let left = RIPPLE_BURST_STEPS; left > 0; left--) {
+        stepRippleField(field, coefficients, [burstDrop(0, 0, radius, left)]);
+      }
+      for (let n = 0; n < 0.1 / RIPPLE_STEP_SEC; n++) stepRippleField(field, coefficients, []);
+      return Math.max(...Array.from(field.now, Math.abs));
+    };
+
+    const small = ring(BUBBLE_MIN_RADIUS);
+    const big = ring(BUBBLE_MAX_RADIUS);
+
+    // The spread is the point: the rare big one is worth several of the fizz.
+    expect(big).toBeGreaterThan(small * 4);
+
+    // And the loudest of them is still quieter than a stir, which peaks near
+    // 0.8 mm. A bubble is something you notice; a stir is something you did.
+    expect(big).toBeLessThan(0.5);
+    expect(small).toBeGreaterThan(0.005);
+  });
+
+  /**
+   * The two halves of a burst have to cancel.
+   *
+   * `rippleKernel` displaces no water, so a balanced burst leaves the jar's mean
+   * height where it found it. An unbalanced one — an odd step count, or a split
+   * that is not down the middle — leaves a kernel-shaped dent that the wave
+   * equation cannot take back, once per bubble, for as long as the tab is open.
+   */
+  it('gives the water back what a burst borrowed', () => {
+    expect(RIPPLE_BURST_STEPS % 2).toBe(0);
+
+    const coefficients = rippleCoefficients(DEFAULT_RIPPLE_SIM);
+    const field = createRippleField();
+    let lifted = 0;
+    for (let left = RIPPLE_BURST_STEPS; left > 0; left--) {
+      const drop = burstDrop(0.004, -0.002, BUBBLE_MAX_RADIUS, left);
+      lifted += drop.strength;
+      stepRippleField(field, coefficients, [drop]);
+    }
+    expect(lifted).toBeCloseTo(0, 12);
+
+    const mean = Array.from(field.now).reduce((a, b) => a + b, 0) / field.now.length;
+    // Nanometres, and all of it the grid's rounding of a kernel that integrates
+    // to zero. The push itself contributes nothing, which is the point.
+    expect(Math.abs(mean)).toBeLessThan(1e-5);
   });
 });

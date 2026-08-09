@@ -3,7 +3,9 @@ import { TANK_HALF_X, TANK_HALF_Z, WATER_Y } from './constants';
 import { createSurfaceGeometry } from './meniscus';
 import { RIPPLE_GLSL, createRippleUniforms, writeRippleUniforms } from './ripple';
 import {
+  RIPPLE_BURST_STEPS,
   RIPPLE_STEP_SEC,
+  burstDrop,
   createRippleSim,
   type RippleDrop,
   type RippleSimParams
@@ -213,12 +215,7 @@ export function createRippleBench(container: HTMLElement, params: RippleSimParam
 
     for (let i = bursts.length - 1; i >= 0; i--) {
       const burst = bursts[i];
-      drops.push({
-        x: burst.x,
-        z: burst.z,
-        radius: burst.radius * 2.5,
-        strength: (burst.left > 2 ? 1 : -1) * burst.radius * 1000 * 2
-      });
+      drops.push(burstDrop(burst.x, burst.z, burst.radius, burst.left));
       if (--burst.left <= 0) bursts.splice(i, 1);
     }
 
@@ -332,7 +329,7 @@ export function createRippleBench(container: HTMLElement, params: RippleSimParam
         x: (Math.random() - 0.5) * TANK_HALF_X * 1.3,
         z: (Math.random() - 0.5) * TANK_HALF_Z * 1.3,
         radius: 0.0003 + Math.random() * 0.0008,
-        left: 5
+        left: RIPPLE_BURST_STEPS
       });
     },
 

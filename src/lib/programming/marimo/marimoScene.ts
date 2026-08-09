@@ -36,7 +36,14 @@ import { flushMarimo, loadMarimo, saveMarimo } from './persist';
 import { createRoom, type RoomBundle } from './roomMesh';
 import { newSwirl, stepSwirl, stirSwirl, waterSpinAt, waterVelocityAt } from './swirl';
 import { createTank, mirrorCameraMatrix, type TankBundle } from './tankMesh';
-import { DEFAULT_RIPPLE_SIM, createRippleSim, type RippleDrop, type RippleSim } from './rippleSim';
+import {
+  DEFAULT_RIPPLE_SIM,
+  RIPPLE_BURST_STEPS,
+  burstDrop,
+  createRippleSim,
+  type RippleDrop,
+  type RippleSim
+} from './rippleSim';
 import {
   applyLighting,
   createLightUniforms,
@@ -720,30 +727,6 @@ export function createMarimoScene(
   const RIPPLE_STIR_PUSH = 0.015;
   /** How fast a stir slops the water back and forth, rad/s. */
   const RIPPLE_STIR_CHOP = 31;
-  /**
-   * Millimetres of push per step, per millimetre of the bubble that made it.
-   *
-   * Size tells twice over, which is why the spread is as wide as it is: a bigger
-   * bubble pushes harder *and* pushes on more water, since the kernel is laid
-   * down at its own radius. The ring it leaves ends up going roughly as the
-   * square of it.
-   *
-   * Bigger than it looks like it should be, because `rippleKernel` displaces no
-   * net water and a source that displaces none is a far quieter radiator than
-   * one that invents some — most of what it emits cancels against its own ring
-   * before it gets anywhere. Correcting the volume cost about a factor of twenty
-   * of reach, and this is paying it back.
-   *
-   * Measured across the range the jar actually makes — bubbles run 0.26 to
-   * 1.35 mm and are heavily biased to the small end. A tenth of a second after
-   * it goes, the smallest leaves a ring of about 0.07 mm, a middling one 0.33 mm
-   * and the rare big one 1.2 mm; a seventeenfold spread, which is the point. All
-   * of them are gone inside a second, because a ring that tight is short
-   * wavelength and viscosity takes those first.
-   */
-  const RIPPLE_BURST_PUSH = 2;
-  /** Steps a burst goes on pushing for. About a fiftieth of a second. */
-  const RIPPLE_BURST_STEPS = 5;
 
   /** Bursts still in progress: x, z, radius, steps left. */
   const bursts: { x: number; z: number; radius: number; left: number }[] = [];
@@ -773,22 +756,18 @@ export function createMarimoScene(
       bursts.push({
         x: surfacings[i],
         z: surfacings[i + 1],
-        radius: Math.max(surfacings[i + 2], 0.0015),
+        // Its own radius, whatever it is. What the grid can draw is `burstDrop`'s
+        // problem, and it is not this one: a bubble too small to be resolved is
+        // still a bubble too small to be heard.
+        radius: surfacings[i + 2],
         left: RIPPLE_BURST_STEPS
       });
     }
     for (let i = bursts.length - 1; i >= 0; i--) {
       const burst = bursts[i];
-      rippleDrops.push({
-        x: burst.x,
-        z: burst.z,
-        radius: burst.radius * 2.5,
-        // Up on the first half, down on the second: the film lifts and the
-        // cavity falls back in, which is what leaves a ring behind rather than
-        // a permanent dimple.
-        strength:
-          (burst.left > RIPPLE_BURST_STEPS / 2 ? 1 : -1) * burst.radius * 1000 * RIPPLE_BURST_PUSH
-      });
+      // Up on the first half, down on the second: the film lifts and the cavity
+      // falls back in, which is what leaves a ring behind rather than a dimple.
+      rippleDrops.push(burstDrop(burst.x, burst.z, burst.radius, burst.left));
       if (--burst.left <= 0) bursts.splice(i, 1);
     }
 

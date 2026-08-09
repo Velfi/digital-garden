@@ -126,6 +126,79 @@ export interface RippleDrop {
 }
 
 /**
+ * Steps a bursting bubble goes on pushing for, and how they are split.
+ *
+ * Even, and split down the middle, because the two halves have to cancel. The
+ * film lifts and then the cavity falls back in, and what a burst is *for* is the
+ * ring that leaves behind — not a dimple. An odd count cannot be balanced: the
+ * leftover half-cycle is a net impulse, which is a kernel-shaped dent that
+ * nothing in the wave equation takes back, and every bubble in the jar adds
+ * another one. Six at 240 Hz is a fortieth of a second, which is about how long
+ * a millimetre bubble's cavity actually takes to close.
+ */
+export const RIPPLE_BURST_STEPS = 6;
+
+/**
+ * Millimetres of push per step, per millimetre of the bubble that made it.
+ *
+ * Bigger than it looks like it should be, because `rippleKernel` displaces no
+ * net water, and a source that displaces none is a far quieter radiator than one
+ * that invents some — most of what it emits cancels against its own ring before
+ * it gets anywhere.
+ *
+ * Measured on the twin stepper across the range the jar actually makes, a tenth
+ * of a second after the bubble goes: the smallest leaves a ring of 0.04 mm, a
+ * middling one 0.10 mm, and the rare big one 0.34 mm. All of them are gone
+ * inside a second, because a ring that tight is short wavelength and viscosity
+ * takes those first. That puts even the loudest burst well under a deliberate
+ * stir, which is the right order: fizz is something you notice, a stir is
+ * something you did.
+ */
+export const RIPPLE_BURST_PUSH = 0.5;
+
+/** How much wider than the bubble the ring it leaves is. */
+export const RIPPLE_BURST_SPREAD = 2.5;
+
+/**
+ * Smallest ring the grid is allowed to be asked for, in cells.
+ *
+ * A kernel narrower than a couple of cells is not a small ripple, it is a lone
+ * bright texel: the sampling misses the ring that is supposed to cancel the
+ * core, so the source stops being volume-neutral and starts being a spike for
+ * the laplacian to ring on. Most of the jar's bubbles are under a cell across,
+ * so without this most of the jar's bubbles are that spike.
+ *
+ * It floors the ring only. What a burst is *worth* comes from the bubble's own
+ * radius, so a small bubble drawn at the grid's smallest ring is still a quiet
+ * one — which is the whole spread this used to have and lost when the floor was
+ * applied to the strength as well.
+ */
+export const RIPPLE_BURST_MIN_CELLS = 2.5;
+
+/**
+ * The push a bursting bubble makes on step `stepsLeft` of its life, counting
+ * down from `RIPPLE_BURST_STEPS`. Radius in metres, as the bubbles carry it.
+ *
+ * One place, because the jar and the bench both raise bursts and a burst that
+ * behaves differently in the bench is a bench that cannot be used to tune it.
+ */
+export function burstDrop(
+  x: number,
+  z: number,
+  radius: number,
+  stepsLeft: number,
+  cell = RIPPLE_CELL
+): RippleDrop {
+  const lifting = stepsLeft > RIPPLE_BURST_STEPS / 2;
+  return {
+    x,
+    z,
+    radius: Math.max(radius * RIPPLE_BURST_SPREAD, cell * RIPPLE_BURST_MIN_CELLS),
+    strength: (lifting ? 1 : -1) * radius * 1000 * RIPPLE_BURST_PUSH
+  };
+}
+
+/**
  * Courant number for a set of parameters: `c * dt / cell`.
  *
  * The explicit scheme is stable below `1/sqrt(2)` in two dimensions and blows up
