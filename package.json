@@ -54,6 +54,7 @@
     "encoding": "^0.1.13",
     "fflate": "^0.8.2",
     "fzstd": "^0.1.1",
+    "jolt-physics": "^1.1.0",
     "marked": "^17.0.4",
     "opentype.js": "^1.3.4",
     "polygon-clipping": "^0.15.7",

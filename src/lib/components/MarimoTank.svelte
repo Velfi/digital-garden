@@ -6,7 +6,9 @@
   import FragmentChooser from './marimo/FragmentChooser.svelte';
   import OffscreenMarkerBadge from './marimo/OffscreenMarker.svelte';
   import OptionsModal from './marimo/OptionsModal.svelte';
+  import StickerSheet from './marimo/StickerSheet.svelte';
   import { createMarimoScene, type MarimoScene } from '$lib/programming/marimo/marimoScene';
+  import { loadJolt } from '$lib/programming/marimo/joltWorld';
   import { resolveLighting, roomToneById } from '$lib/programming/marimo/lighting';
   import { describeAbsence, describePet } from '$lib/programming/marimo/careDescription';
   import {
@@ -22,6 +24,15 @@
     type FragmentStarter
   } from '$lib/programming/marimo/fragments';
   import { clearMarimo, readMarimo } from '$lib/programming/marimo/persist';
+  import { loadDecor, saveDecor, type DecorState } from '$lib/programming/marimo/decor';
+  import {
+    makeStone,
+    stoneKindById,
+    stoneOffers,
+    type PlacedStone,
+    type Stone,
+    type StoneSize
+  } from '$lib/programming/marimo/stones';
   import type { OffscreenMarker } from '$lib/programming/marimo/offscreen';
   import type { MarimoState } from '$lib/programming/marimo/types';
 
@@ -55,6 +66,21 @@
   let optionsOpen = $state(false);
   let settings = $state<MarimoSettings>(loadSettings());
   let systemPrefersReduced = $state(false);
+
+  /**
+   * The box of stuff, and what has come out of it.
+   *
+   * The decor file is read here rather than inside the scene because the sheet
+   * has to be drawable before there is a tank — a visitor who has yet to pick a
+   * fragment has no scene at all — and because the scene has no business owning
+   * a sticker sheet. What it owns is stones in water.
+   */
+  let decor = $state<DecorState>(loadDecor());
+  let boxOpen = $state(false);
+  /** What is in the jar. Mirrored out of the scene so the sheet can list it. */
+  let placedStones = $state<PlacedStone[]>([]);
+
+  const sheet = $derived(stoneOffers(decor.sheetSeed, decor.kind, decor.size, decor.gen));
 
   let rafId = 0;
   let loopRunning = false;
@@ -108,12 +134,123 @@
     }
   }
 
-  function pointerNdc(event: PointerEvent): [number, number] {
+  function ndcFromClient(clientX: number, clientY: number): [number, number] {
     const rect = container!.getBoundingClientRect();
     return [
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      1 - ((event.clientY - rect.top) / rect.height) * 2
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      1 - ((clientY - rect.top) / rect.height) * 2
     ];
+  }
+
+  function pointerNdc(event: PointerEvent): [number, number] {
+    return ndcFromClient(event.clientX, event.clientY);
+  }
+
+  /** Whether a point in the page is over the glass. The sheet asks before dropping. */
+  function isOverTank(clientX: number, clientY: number): boolean {
+    if (!container || !scene) return false;
+    const rect = container.getBoundingClientRect();
+    return (
+      clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+    );
+  }
+
+  /** The stones from storage, as the scene wants them. Unreadable ones are dropped. */
+  function restoredStones(): PlacedStone[] {
+    const restored: PlacedStone[] = [];
+    for (const stored of decor.stones) {
+      const kind = stoneKindById(stored.k);
+      if (!kind) continue;
+      restored.push({
+        id: restored.length + 1,
+        stone: makeStone(kind, stored.s, stored.z),
+        position: [...stored.p],
+        quaternion: [...stored.q]
+      });
+    }
+    return restored;
+  }
+
+  /**
+   * Write down what is in the jar.
+   *
+   * Called on every change *and* again when a dropped stone stops moving, which
+   * is the only moment its resting place is final — see `onStonesChanged`. Only
+   * the kind, the seed and the position go in the file; the rock itself is a
+   * pure function of the first two, so it cannot come back looking different.
+   */
+  function rememberStones(stones: PlacedStone[]) {
+    placedStones = stones;
+    decor = {
+      ...decor,
+      stones: stones.map((placed) => ({
+        k: placed.stone.kind,
+        s: placed.stone.seed,
+        z: placed.stone.size,
+        p: [...placed.position] as [number, number, number],
+        q: [...placed.quaternion] as [number, number, number, number]
+      }))
+    };
+    saveDecor(decor);
+  }
+
+  /**
+   * Take a sticker off the sheet and drop the stone it shows into the water.
+   *
+   * `0, 0` for the coordinates means there was no pointer — a keyboard press or
+   * a tap — and the jar is left to find the stone somewhere clear rather than
+   * being handed an aim that was never taken.
+   */
+  function placeStone(
+    stone: Stone,
+    clientX: number,
+    clientY: number,
+    radiusPx: number | null
+  ): boolean {
+    if (!scene || !container) return false;
+
+    const aimed = clientX !== 0 || clientY !== 0;
+    const [nx, ny] = aimed ? ndcFromClient(clientX, clientY) : [null, null];
+
+    const placed = scene.dropStone(stone, nx, ny, radiusPx);
+    if (!placed) return false;
+
+    // Peeled. The slot it came out of shows the next stone down the pile, so
+    // the sticker you took is the one in the jar and the sheet has not quietly
+    // handed out the same stone twice — while the other three slots stay
+    // exactly as they were, because you were still choosing between them.
+    const slot = sheet.findIndex(
+      (candidate) => candidate.seed === stone.seed && candidate.kind === stone.kind
+    );
+    if (slot >= 0) {
+      const gen = [...decor.gen];
+      gen[slot] += 1;
+      decor = { ...decor, gen };
+    }
+    rememberStones(scene.stones());
+    return true;
+  }
+
+  /** Pick a different rock. The four shapes on offer are redrawn for it. */
+  function chooseKind(kind: string) {
+    decor = { ...decor, kind };
+    saveDecor(decor);
+  }
+
+  function chooseSize(size: StoneSize) {
+    decor = { ...decor, size };
+    saveDecor(decor);
+  }
+
+  /** Four more shapes of the same rock. Every slot moves on. */
+  function reroll() {
+    decor = { ...decor, gen: decor.gen.map((generation) => generation + 1) };
+    saveDecor(decor);
+  }
+
+  function removeStone(id: number) {
+    if (!scene?.removeStone(id)) return;
+    rememberStones(scene.stones());
   }
 
   /**
@@ -187,22 +324,39 @@
     if (result) absenceLine = describeAbsence(result.elapsedSec, result.ventCount);
   }
 
+  /** The physics engine, loaded once and shared by every tank on the page. */
+  let physics: Awaited<ReturnType<typeof loadJolt>> | null = null;
+
   /**
    * Stand up the tank. `startWith` is only for a pet that has just been chosen —
    * an existing one is left to the scene to load, so it goes through catch-up
    * rather than being treated as newly hatched.
+   *
+   * Asynchronous now, because the jar has a physics engine in it and that is two
+   * megabytes of WebAssembly. Everything after the await re-checks its
+   * assumptions: a tank can be unmounted, or can have started a second time,
+   * while the download was in flight.
    */
-  function startScene(startWith?: MarimoState) {
-    if (!browser || !container || scene) return;
+  async function startScene(startWith?: MarimoState) {
+    if (!browser) return;
+    const jolt = (physics ??= await loadJolt());
+    if (!container || scene) return;
+
     try {
       scene = createMarimoScene(container, {
+        jolt,
         variant,
         reducedMotion: resolveReducedMotion(settings, systemPrefersReduced),
         detail: settings.detail,
         lighting: resolveLighting(settings),
-        startWith
+        startWith,
+        // The ambient tank in the post is an illustration, not a jar anyone
+        // owns, so it gets no stones and offers no box.
+        stones: variant === 'full' ? restoredStones() : [],
+        onStonesChanged: rememberStones
       });
       scene.resize();
+      placedStones = scene.stones();
 
       const arrival = scene.takeArrivalResult();
       if (arrival) absenceLine = describeAbsence(arrival.elapsedSec, arrival.ventCount);
@@ -224,6 +378,7 @@
     scene = null;
     snapshot = null;
     offscreen = null;
+    placedStones = [];
   }
 
   function chooseFragment(fragment: FragmentStarter) {
@@ -337,109 +492,158 @@
   {#if !webglSupported}
     <p class="fallback">This jar needs WebGL, which is not available in this browser.</p>
   {:else}
-    <div class="viewport-wrap" class:fullscreen={isFullscreen} bind:this={wrap}>
-      <div
-        class="viewport"
-        class:holding
-        bind:this={container}
-        role="application"
-        aria-label="A marimo moss ball in a jar of water"
-        onpointerdown={(event) => {
-          if (!container || !scene) return;
-          container.setPointerCapture(event.pointerId);
-          const [nx, ny] = pointerNdc(event);
-          scene.pointerDown(nx, ny, event.button === 2 || event.shiftKey);
-        }}
-        onpointermove={(event) => {
-          if (!container || !scene) return;
-          if (event.buttons === 0) return;
-          const [nx, ny] = pointerNdc(event);
-          scene.pointerMove(nx, ny);
-        }}
-        onpointerup={() => scene?.pointerUp()}
-        onpointercancel={() => scene?.pointerUp()}
-        oncontextmenu={(event) => event.preventDefault()}
-      ></div>
+    <!--
+      The jar and the box under it are one column of the layout; the care panel
+      is the other. Wrapped rather than placed by hand in the grid, so the two
+      cannot be separated by an auto-placement rule nobody remembers writing.
+    -->
+    <div class="tank-column">
+      <div class="viewport-wrap" class:fullscreen={isFullscreen} bind:this={wrap}>
+        <div
+          class="viewport"
+          class:holding
+          bind:this={container}
+          role="application"
+          aria-label="A marimo moss ball in a jar of water"
+          onpointerdown={(event) => {
+            if (!container || !scene) return;
+            container.setPointerCapture(event.pointerId);
+            const [nx, ny] = pointerNdc(event);
+            scene.pointerDown(nx, ny, event.button === 2 || event.shiftKey);
+          }}
+          onpointermove={(event) => {
+            if (!container || !scene) return;
+            if (event.buttons === 0) return;
+            const [nx, ny] = pointerNdc(event);
+            scene.pointerMove(nx, ny);
+          }}
+          onpointerup={() => scene?.pointerUp()}
+          onpointercancel={() => scene?.pointerUp()}
+          oncontextmenu={(event) => event.preventDefault()}
+        ></div>
 
-      <!--
+        <!--
         Ahead of the chrome in the markup, so the tools and the readout stack
         over it without anything having to claim a z-index.
       -->
-      {#if offscreen && snapshot}
-        <OffscreenMarkerBadge
-          marker={offscreen}
-          state={snapshot}
-          onGrab={grabFromMarker}
-          onRecall={recallFromMarker}
-        />
-      {/if}
+        {#if offscreen && snapshot}
+          <OffscreenMarkerBadge
+            marker={offscreen}
+            state={snapshot}
+            onGrab={grabFromMarker}
+            onRecall={recallFromMarker}
+          />
+        {/if}
 
-      <!--
+        <!--
         One row, so the buttons keep their spacing however many of them there
         are — fullscreen is absent on iOS, and options only exists on the app.
       -->
-      <div class="tools">
-        {#if fullscreenAvailable}
-          <button
-            type="button"
-            onclick={toggleFullscreen}
-            aria-pressed={isFullscreen}
-            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-          >
-            <span class="visually-hidden">{isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              {#if isFullscreen}
-                <path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" />
-              {:else}
-                <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" />
-              {/if}
-            </svg>
-          </button>
+        <div class="tools">
+          {#if fullscreenAvailable}
+            <button
+              type="button"
+              onclick={toggleFullscreen}
+              aria-pressed={isFullscreen}
+              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              <span class="visually-hidden">{isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                {#if isFullscreen}
+                  <path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" />
+                {:else}
+                  <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" />
+                {/if}
+              </svg>
+            </button>
+          {/if}
+
+          {#if variant === 'full'}
+            <button
+              type="button"
+              onclick={toggleLights}
+              aria-pressed={lightsOn}
+              title={lightsOn ? 'Turn the lights off' : 'Turn the lights on'}
+            >
+              <span class="visually-hidden">
+                {lightsOn ? 'Turn the lights off' : 'Turn the lights on'}
+              </span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                {#if lightsOn}
+                  <!-- Lights on, so the switch offers the dark room back. -->
+                  <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1z" />
+                {:else}
+                  <circle cx="12" cy="12" r="4" />
+                  <path
+                    d="M12 2.5v2M12 19.5v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2.5 12h2M19.5 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+                  />
+                {/if}
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onclick={() => (boxOpen = !boxOpen)}
+              aria-pressed={boxOpen}
+              title={boxOpen ? 'Close the box of stuff' : 'Open the box of stuff'}
+            >
+              <span class="visually-hidden">
+                {boxOpen ? 'Close the box of stuff' : 'Open the box of stuff'}
+              </span>
+              <!-- An open carton, seen from the front: lid flaps, and a box. -->
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M3 9h18v11H3z" />
+                <path d="M3 9l3-5h12l3 5" />
+                <path d="M12 4v5" />
+              </svg>
+            </button>
+
+            <button type="button" onclick={() => (optionsOpen = true)} title="Options">
+              <span class="visually-hidden">Options</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="3.2" />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                />
+              </svg>
+            </button>
+          {/if}
+        </div>
+
+        {#if variant === 'full' && settings.showFps}
+          <div class="fps" aria-hidden="true">
+            <span class="fps-label">FPS</span><span class="fps-value">{fpsText}</span>
+          </div>
         {/if}
 
-        {#if variant === 'full'}
-          <button
-            type="button"
-            onclick={toggleLights}
-            aria-pressed={lightsOn}
-            title={lightsOn ? 'Turn the lights off' : 'Turn the lights on'}
-          >
-            <span class="visually-hidden">
-              {lightsOn ? 'Turn the lights off' : 'Turn the lights on'}
-            </span>
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              {#if lightsOn}
-                <!-- Lights on, so the switch offers the dark room back. -->
-                <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1z" />
-              {:else}
-                <circle cx="12" cy="12" r="4" />
-                <path
-                  d="M12 2.5v2M12 19.5v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2.5 12h2M19.5 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
-                />
-              {/if}
-            </svg>
-          </button>
-
-          <button type="button" onclick={() => (optionsOpen = true)} title="Options">
-            <span class="visually-hidden">Options</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <circle cx="12" cy="12" r="3.2" />
-              <path
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-              />
-            </svg>
-          </button>
+        {#if variant === 'ambient'}
+          <a class="visit" href={resolve('/marimo')}>Visit the tank &rarr;</a>
         {/if}
       </div>
 
-      {#if variant === 'full' && settings.showFps}
-        <div class="fps" aria-hidden="true">
-          <span class="fps-label">FPS</span><span class="fps-value">{fpsText}</span>
-        </div>
-      {/if}
+      <!--
+      Directly under the glass, and outside it. Inside the frame is the tempting
+      place — a shorter drag — but the gravel is the bottom two inches of the
+      jar and a tray over it hides the one thing a visitor is trying to aim at.
+      See `StickerSheet.svelte` for why it is a tray and not a modal at all.
 
-      {#if variant === 'ambient'}
-        <a class="visit" href={resolve('/marimo')}>Visit the tank &rarr;</a>
+      `snapshot` rather than `scene`: it is the reactive proof there is a tank.
+    -->
+      {#if boxOpen && variant === 'full' && snapshot}
+        <StickerSheet
+          {sheet}
+          kind={decor.kind}
+          size={decor.size}
+          inTank={placedStones}
+          onKind={chooseKind}
+          onSize={chooseSize}
+          onReroll={reroll}
+          onPlace={placeStone}
+          onRemove={removeStone}
+          onClose={() => (boxOpen = false)}
+          {isOverTank}
+          reducedMotion={resolveReducedMotion(settings, systemPrefersReduced)}
+        />
       {/if}
     </div>
 
@@ -492,6 +696,14 @@
 
   .marimo-tank.ambient {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The jar, with the box of stuff stacked under it. */
+  .tank-column {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-width: 0;
   }
 
   .viewport-wrap {

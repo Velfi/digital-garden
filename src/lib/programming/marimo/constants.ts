@@ -482,3 +482,81 @@ export const FILAMENT_SWAY_GAIN = 0.5;
 export const FILAMENT_SWAY_FLOW_REF = 1.2;
 
 export const ICOSPHERE_DETAIL = 4;
+
+// -------------------------------------------------------------------- stones
+
+/**
+ * Icosphere subdivisions a river stone is built from.
+ *
+ * The same as the marimo's, for a different reason. The marimo needs the
+ * vertices because it is displaced in the vertex shader every frame and its coat
+ * needs somewhere to stand; a stone is deformed once on the CPU and then never
+ * moves a vertex again. What needs the detail here is the *colour*, which is
+ * baked per vertex — bedding and speckle are the difference between a rock and a
+ * bead — and the flat faces, whose edges are only as sharp as the triangles
+ * crossing them.
+ */
+export const STONE_DETAIL = 4;
+
+/**
+ * Quartz-ish, kg/m^3. Well over water, which is the point: stones sink.
+ *
+ * This, the friction and the restitution below are the whole of the stones'
+ * physics tuning. Everything else — mass, inertia, buoyancy, drag, how they
+ * fall and how they stack — is the engine integrating over the real shapes at
+ * real scale. See `joltWorld.ts`.
+ */
+export const STONE_DENSITY = 2650;
+
+/** Rock on gravel, and rock on rock. High: none of this is meant to slide far. */
+export const STONE_FRICTION = 0.62;
+/** Stone onto gravel is a thud, not a bounce. */
+export const STONE_RESTITUTION = 0.08;
+
+/** How far a resting stone sits down into the gravel bed, metres. */
+export const STONE_BED_DEPTH = 0.0015;
+
+/**
+ * Where a dropped stone appears, relative to the waterline, in metres.
+ *
+ * Zero: it arrives lying *in* the surface, and sinks from there.
+ *
+ * Dropping it in from a height was the first thing tried and there is nowhere
+ * to drop it from. The camera is held below the waterline looking very slightly
+ * up, so the surface sits within a few pixels of the top of the frame — a stone
+ * is drawn a good deal larger than the entire strip of air above it, and popping
+ * one in up there does the whole animation off the top of the picture and
+ * arrives as a splash from nowhere.
+ *
+ * Starting on the line turns out to be the better reading anyway: the sticker
+ * lies flat on the water, becomes a stone, and goes under. That is the moment
+ * the whole feature is about, and it happens where it can be watched.
+ */
+export const STONE_SPAWN_HEIGHT = 0;
+
+/** How long the 2D sticker takes to inflate into a 3D stone, seconds. */
+export const STONE_POP_SEC = 0.42;
+/**
+ * How far past full size the pop overshoots before it settles.
+ *
+ * This is the entire difference between a stone that grows and a stone that
+ * pops. Small, because it is read at the end of a fast move and a large
+ * overshoot on a rock reads as rubber.
+ */
+export const STONE_POP_OVERSHOOT = 0.11;
+
+/**
+ * Room for as many as this in the jar at once.
+ *
+ * Four. The jar is eleven centimetres across and these are proper cobbles now;
+ * past four the gravel is paved over, the marimo has nowhere to roll, and a
+ * collection stops reading as an arrangement and starts reading as a pile.
+ */
+export const STONE_MAX_IN_TANK = 4;
+
+/** How many shapes the box offers at once. One row, one per slot. */
+export const STONE_OFFER_COUNT = 4;
+/** How close to the glass a stone may be placed, metres. */
+export const STONE_WALL_MARGIN = 0.0015;
+/** Tries at finding a spot that overlaps nothing before taking the best one. */
+export const STONE_PLACEMENT_TRIES = 32;

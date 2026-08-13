@@ -116,6 +116,42 @@ export function neutralGas(): number {
   return (RHO_ALGA - RHO_WATER) / (GAS_FULL_FRACTION * (RHO_ALGA - RHO_AIR));
 }
 
+/**
+ * How fast the water takes spin out of the coat, 1/s.
+ *
+ * Viscous, plus a quadratic form term that only wakes up at speed. Both are
+ * rates in 1/s once divided by a sphere's inertia, and both are honest
+ * functions of size: `15*mu/(rho*R^2)` is the exact laminar result for a smooth
+ * sphere, `SPIN_COAT_DRAG` is how many times worse a coat of filaments makes
+ * it, and doubling the radius quarters the damping — a big marimo keeps
+ * turning long after a small one stops.
+ *
+ * Exported because the scene applies it as a torque on the engine's body now;
+ * `stepBody` keeps using it too, so the model and the tank cannot disagree.
+ */
+export function spinDragRate(rhoEff: number, radiusM: number, slipRadPerSec: number): number {
+  return (
+    (SPIN_VISCOUS_COEF * WATER_VISCOSITY * SPIN_COAT_DRAG) / (rhoEff * radiusM * radiusM) +
+    SPIN_FORM_COEF * (RHO_WATER / rhoEff) * slipRadPerSec
+  );
+}
+
+/**
+ * Contact load per unit effective mass, m/s²: whatever is left of the ball's
+ * weight once the water has held up as much of it as it can, and never less
+ * than what it takes to climb out of its own dimple in the gravel bed.
+ *
+ * The volume cancels out of the ratio, which is why this needs no radius: a
+ * near-neutral ball presses on the floor in proportion to its density excess
+ * alone, however big it is.
+ */
+export function contactGrip(rhoEff: number): number {
+  return Math.max(
+    ((rhoEff - RHO_WATER) * GRAVITY) / (rhoEff + ADDED_MASS_COEF * RHO_WATER),
+    FLOOR_BED_ACCEL
+  );
+}
+
 /** Rotate a world-space vector into the body frame by the conjugate of `q`. */
 export function worldToBody(
   q: readonly [number, number, number, number],
@@ -225,10 +261,8 @@ export function stepBody(body: BodyState, env: BodyEnv, dt: number): boolean {
   body.velocity[2] += (fz / effectiveMass) * dt;
 
   // --- gravel ---------------------------------------------------------------
-  // Contact load per unit effective mass: whatever is left of the ball's weight
-  // once the water has held up as much of it as it can, and never less than what
-  // it takes to climb out of its own dimple in the bed.
-  const grip = Math.max(((rhoEff - RHO_WATER) * volume * GRAVITY) / effectiveMass, FLOOR_BED_ACCEL);
+  // See `contactGrip` — the volume cancels, so it is a pure function of density.
+  const grip = contactGrip(rhoEff);
 
   // Rolling resistance: a fixed bite out of the speed, capped at the speed
   // itself. The cap is what makes this a friction law rather than a damping
@@ -315,13 +349,11 @@ export function stepBody(body: BodyState, env: BodyEnv, dt: number): boolean {
   // rates in 1/s once divided by a sphere's inertia, and both are honest
   // functions of size: `15*mu/(rho*R^2)` means doubling the radius quarters the
   // damping, so a big marimo keeps turning long after a small one stops.
-  const spinDragRate =
-    (SPIN_VISCOUS_COEF * WATER_VISCOSITY * SPIN_COAT_DRAG) / (rhoEff * R * R) +
-    SPIN_FORM_COEF * (RHO_WATER / rhoEff) * waterSlip;
+  const dragRate = spinDragRate(rhoEff, R, waterSlip);
   if (waterSlip > 0) {
     // Taken as an exponential rather than `rate * dt`, so that however coarse
     // the step, the ball is slowed toward the water's rotation and never past it.
-    const keep = Math.exp(-spinDragRate * dt);
+    const keep = Math.exp(-dragRate * dt);
     body.omega[0] = waterSpinX * keep;
     body.omega[1] = env.waterOmegaY + waterSpinY * keep;
     body.omega[2] = waterSpinZ * keep;
@@ -385,7 +417,7 @@ export function stepBody(body: BodyState, env: BodyEnv, dt: number): boolean {
     const targetX = body.velocity[2] / R;
     const targetZ = -body.velocity[0] / R;
     let dx = targetX - body.omega[0];
-    let dy = -body.omega[1];
+    const dy = -body.omega[1];
     let dz = targetZ - body.omega[2];
 
     // Rocking onto a flat face is not sliding: the ball pivots on the rim of
@@ -405,7 +437,7 @@ export function stepBody(body: BodyState, env: BodyEnv, dt: number): boolean {
     if (rock > 0) {
       const ax = rockX / rock;
       const az = rockZ / rock;
-      const free = rock / spinDragRate;
+      const free = rock / dragRate;
       const spin = body.omega[0] * ax + body.omega[2] * az;
       const allowed = clamp(spin, -free, free);
       dx += allowed * ax;
