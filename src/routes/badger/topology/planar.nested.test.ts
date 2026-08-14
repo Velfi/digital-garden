@@ -42,11 +42,11 @@ function ngon(cx: number, cy: number, r: number, sides: number): Vec2[] {
 function makeDoc(paths: BadgePath[], width = 200, height = 200): BadgeDocument {
   return {
     canvas: { width, height },
-    metal: { paths, texts: [], baseThickness: 1.6, wallHeight: 1.2, bevelRadius: 0.2, minWallWidth: 1 },
+    metal: { paths, texts: [], baseThickness: 1.6, wallHeight: 1.2, bevelRatio: 0.5, minWallWidth: 1 },
     colorAssignments: {},
     materialAssignments: {},
     palette: [],
-    render: { finish: 'gold', metalSurface: 'polished', enamelFinish: 'soft', background: '#000' }
+    render: { finish: 'gold', metalSurface: 'polished', enamelFinish: 'soft', background: '#000', maxSamples: 256 }
   };
 }
 

@@ -18,10 +18,10 @@ export function assembleBadgeMesh(data: BadgeMeshData): BadgeMeshResult {
   const metalMat = new THREE.MeshPhysicalMaterial({
     color: data.finishColor,
     metalness: 1,
-    roughness: data.metalSurface === 'polished' ? 0.08 : 0.55,
-    envMapIntensity: data.metalSurface === 'polished' ? 1.4 : 0.9,
+    roughness: data.metalSurface === 'polished' ? 0.035 : 0.55,
+    envMapIntensity: data.metalSurface === 'polished' ? 1.85 : 0.9,
     clearcoat: data.metalSurface === 'polished' ? 1 : 0,
-    clearcoatRoughness: data.metalSurface === 'polished' ? 0.05 : 0.4
+    clearcoatRoughness: data.metalSurface === 'polished' ? 0.02 : 0.4
   });
   disposables.push(metalMat);
 
@@ -72,6 +72,7 @@ function createEnamelMaterial(
   enamelFinish: 'soft' | 'hard'
 ): THREE.MeshPhysicalMaterial {
   const color = new THREE.Color(colorHex);
+  const cloisonneIor = 1.52;
 
   if (material === 'metallic') {
     // Real pins fire colored metallic enamel by suspending mica/aluminum
@@ -80,24 +81,48 @@ function createEnamelMaterial(
     return new THREE.MeshPhysicalMaterial({
       color,
       metalness: 0.85,
-      roughness: enamelFinish === 'hard' ? 0.18 : 0.28,
-      envMapIntensity: 1.2,
+      roughness: enamelFinish === 'hard' ? 0.08 : 0.12,
+      envMapIntensity: 1.45,
       clearcoat: 1,
-      clearcoatRoughness: enamelFinish === 'hard' ? 0.05 : 0.12,
-      reflectivity: 0.6
+      clearcoatRoughness: enamelFinish === 'hard' ? 0.014 : 0.04,
+      ior: cloisonneIor,
+      reflectivity: 0.76
     });
   }
 
   const base = new THREE.MeshPhysicalMaterial({
     color,
     metalness: 0,
-    roughness: enamelFinish === 'hard' ? 0.12 : 0.3,
+    roughness: enamelFinish === 'hard' ? 0.035 : 0.08,
     clearcoat: 1,
-    clearcoatRoughness: enamelFinish === 'hard' ? 0.04 : 0.15,
-    reflectivity: 0.5
+    clearcoatRoughness: enamelFinish === 'hard' ? 0.008 : 0.025,
+    envMapIntensity: enamelFinish === 'hard' ? 1.32 : 1.18,
+    ior: cloisonneIor,
+    reflectivity: 0.82
   });
+  // Enamel-stack absorption for the PT. Each enamel cell is modelled as a
+  // tinted resin coat (~0.5mm) over a pigment-filled substrate; the coat's
+  // absorption spectrum is the *complement* of the base colour so light
+  // entering white and coming back out gets the pigment's hue, darkening
+  // at grazing angles where the path through the resin is longer.
+  const tint = new THREE.Color(colorHex);
+  const satBoost = 1.0 - Math.min(tint.r, Math.min(tint.g, tint.b));
+  const k = 0.6 * satBoost;
+  const absorption: [number, number, number] = [
+    k * (1 - tint.r),
+    k * (1 - tint.g),
+    k * (1 - tint.b)
+  ];
+  base.userData.ptAbsorption = absorption;
 
-  if (material === 'plain') return base;
+  if (material === 'plain') {
+    // Bit 4 = isEnamelStack. The shader applies Beer-Lambert through the
+    // virtual coat using the absorption pulled from userData.ptAbsorption.
+    base.userData.ptFlags = 16;
+    return base;
+  }
+  // Glitter keeps the enamel-stack bit alongside the glitter bit.
+  base.userData.ptFlags = 1 | 16;
 
   // --- glitter ---
   // Real glitter is a field of tiny tilted mirrors suspended in the enamel.

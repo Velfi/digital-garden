@@ -129,7 +129,13 @@ export function validateBadgeDocument(raw: unknown): BadgeDocument | null {
   d.metal.texts = texts;
   if (isNum(metal.baseThickness)) d.metal.baseThickness = metal.baseThickness;
   if (isNum(metal.wallHeight)) d.metal.wallHeight = metal.wallHeight;
-  if (isNum(metal.bevelRadius)) d.metal.bevelRadius = metal.bevelRadius;
+  if (isNum(metal.bevelRatio)) {
+    d.metal.bevelRatio = Math.max(0, Math.min(1, metal.bevelRatio));
+  } else if (isNum(metal.bevelRadius)) {
+    // Legacy docs stored bevelRadius in mm (slider was 0..0.5). Convert to
+    // the new 0..1 ratio by dividing by the same 0.5 ceiling.
+    d.metal.bevelRatio = Math.max(0, Math.min(1, metal.bevelRadius / 0.5));
+  }
   if (isNum(metal.minWallWidth)) d.metal.minWallWidth = metal.minWallWidth;
 
   if (isObj(raw.colorAssignments)) {
@@ -169,6 +175,9 @@ export function validateBadgeDocument(raw: unknown): BadgeDocument | null {
       d.render.enamelFinish = r.enamelFinish;
     }
     if (isHex(r.background)) d.render.background = r.background;
+    if (isNum(r.maxSamples)) {
+      d.render.maxSamples = Math.max(32, Math.min(1024, Math.round(r.maxSamples)));
+    }
   }
   return d;
 }

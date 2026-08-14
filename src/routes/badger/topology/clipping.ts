@@ -133,6 +133,33 @@ export function subtractPolygons(shapes: UnionShape[], holes: Vec2[][]): UnionSh
   return fromMultiPolygon(result);
 }
 
+// Subtract a set of shapes-with-holes from a set of shapes. Unlike
+// subtractPolygons, the subtrahend can carry holes — necessary when the
+// thing being removed is itself an annular region (e.g. a Minkowski-sum
+// band whose inner boundary bounds the shrunk shape). Passing only the
+// band's outer ring would collapse the whole original shape since that
+// outer, treated as a solid, contains the entire original.
+export function subtractShapes(shapes: UnionShape[], subtrahends: UnionShape[]): UnionShape[] {
+  if (shapes.length === 0) return [];
+  const validSubs = subtrahends.filter((s) => s.outer.length >= 3);
+  if (validSubs.length === 0) return shapes;
+  const subject: MultiPolygon = shapes.map((s) => [
+    toRing(s.outer),
+    ...s.holes.filter((h) => h.length >= 3).map((h) => toRing(h))
+  ]);
+  const subMP: MultiPolygon = validSubs.map((s) => [
+    toRing(s.outer),
+    ...s.holes.filter((h) => h.length >= 3).map((h) => toRing(h))
+  ]);
+  let result: MultiPolygon;
+  try {
+    result = polygonClipping.difference(subject, subMP);
+  } catch {
+    return shapes;
+  }
+  return fromMultiPolygon(result);
+}
+
 function fromMultiPolygon(mp: MultiPolygon): UnionShape[] {
   const out: UnionShape[] = [];
   for (const poly of mp) {

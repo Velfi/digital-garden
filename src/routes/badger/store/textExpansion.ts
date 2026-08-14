@@ -20,61 +20,8 @@
 // as SVG), which matches badger's world space directly, so no axis flip.
 
 import type opentype from 'opentype.js';
+import { offsetRingSingle } from '../topology/offset';
 import type { BadgePath, BadgeText, PathNode, Vec2 } from './types';
-
-// Mitred polygon offset. Positive `amount` shrinks (inset), negative grows
-// (inflate). Returns [] if a positive inset collapses the polygon. Matches
-// the behavior of geometry/buildBadgeMeshData.ts:insetPolygon; duplicated
-// here to avoid a circular import between buildBadgeMeshData (which imports
-// effectiveMetalPaths, which imports this file) and this expansion module.
-function polygonSignedArea(poly: Vec2[]): number {
-  let s = 0;
-  for (let i = 0; i < poly.length; i++) {
-    const a = poly[i];
-    const b = poly[(i + 1) % poly.length];
-    s += a.x * b.y - b.x * a.y;
-  }
-  return s / 2;
-}
-
-function offsetPolygon(poly: Vec2[], amount: number): Vec2[] {
-  if (poly.length < 3 || amount === 0) return [...poly];
-  const n = poly.length;
-  const ccw = polygonSignedArea(poly) > 0;
-  const src = ccw ? poly : [...poly].reverse();
-  const out: Vec2[] = [];
-  for (let i = 0; i < n; i++) {
-    const prev = src[(i - 1 + n) % n];
-    const cur = src[i];
-    const next = src[(i + 1) % n];
-    const d1x = cur.x - prev.x;
-    const d1y = cur.y - prev.y;
-    const d2x = next.x - cur.x;
-    const d2y = next.y - cur.y;
-    const L1 = Math.hypot(d1x, d1y) || 1;
-    const L2 = Math.hypot(d2x, d2y) || 1;
-    const n1 = { x: d1y / L1, y: -d1x / L1 };
-    const n2 = { x: d2y / L2, y: -d2x / L2 };
-    const nx = n1.x + n2.x;
-    const ny = n1.y + n2.y;
-    const L = Math.hypot(nx, ny) || 1;
-    const sx = nx / L;
-    const sy = ny / L;
-    const dot = n1.x * sx + n1.y * sy || 1;
-    const scale = Math.min(4, 1 / Math.max(0.25, dot));
-    out.push({ x: cur.x - sx * amount * scale, y: cur.y - sy * amount * scale });
-  }
-  if (amount > 0) {
-    let a = 0;
-    for (let i = 0; i < out.length; i++) {
-      const p = out[i];
-      const q = out[(i + 1) % out.length];
-      a += p.x * q.y - q.x * p.y;
-    }
-    if (Math.abs(a / 2) < 0.01) return [];
-  }
-  return ccw ? out : out.reverse();
-}
 
 function signedArea(pts: Vec2[]): number {
   let a = 0;
@@ -250,16 +197,16 @@ export function expandText(
       }
       if (ring.length < 3) continue;
 
-      // Offset +halfStroke and -halfStroke produce two concentric rings.
-      // The one enclosing the larger area is the ribbon's outer boundary
-      // (shape); the smaller-area one is the inner boundary (cutout).
-      // Works uniformly for outer glyph contours and for hole contours —
-      // in both cases the ribbon straddles the original line.
-      const a = offsetPolygon(ring, halfStroke);
-      const b = offsetPolygon(ring, -halfStroke);
+      // Grow and shrink by halfStroke to produce two concentric rings
+      // straddling the contour. The one enclosing the larger area is the
+      // ribbon's outer boundary (shape); the smaller is the inner boundary
+      // (cutout). Works uniformly for outer glyph contours and hole
+      // contours — in both cases the ribbon straddles the original line.
+      const a = offsetRingSingle(ring, halfStroke);
+      const b = offsetRingSingle(ring, -halfStroke);
       if (a.length < 3 || b.length < 3) continue;
-      const areaA = Math.abs(polygonSignedArea(a));
-      const areaB = Math.abs(polygonSignedArea(b));
+      const areaA = Math.abs(signedArea(a));
+      const areaB = Math.abs(signedArea(b));
       const outerRing = areaA >= areaB ? a : b;
       const innerRing = areaA >= areaB ? b : a;
 

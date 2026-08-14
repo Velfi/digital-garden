@@ -330,11 +330,13 @@
     return { x: (sx - rect.left - panX) / scale, y: (sy - rect.top - panY) / scale };
   }
 
-  // Path anchors (start + each node.to) quantize to a 1px grid so endpoints
+  // Path anchors (start + each node.to) quantize to a 1mm grid so endpoints
   // from different paths land on the same point and topology stitching can
-  // merge them. Bezier control handles are intentionally left unsnapped.
-  // When the user opts out in Options, anchors are left at sub-mm precision
-  // — topology still merges near-coincident vertices via SNAP_DIST.
+  // merge them exactly. Bezier control handles are intentionally left
+  // unsnapped. When the user opts out in Options, anchors are left at
+  // sub-mm precision, and two paths only join if the user places anchors at
+  // exactly the same coordinates — topology's GRAPH_SNAP_DIST is a pure
+  // numerical-noise floor, not a UX forgiveness radius.
   const ANCHOR_GRID = 1;
   function snapAnchor(p: Vec2): Vec2 {
     if (!get(snapEnabled)) return { x: p.x, y: p.y };
@@ -1450,7 +1452,10 @@
 
   function commitDraft(closed: boolean) {
     if (!draftPath) return;
-    const draft = draftPath;
+    // Unwrap the $state proxy into plain data before it enters the store. The
+    // store is later structured-cloned (history, cloneDoc, and postMessage to
+    // the mesh worker); Svelte proxies survive neither, throwing DataCloneError.
+    const draft: BadgePath = $state.snapshot(draftPath);
     draft.closed = closed;
     // scrub trailing cubic placeholder if c2 equals to (happens when a node
     // was added but no drag followed — pen-click-only case remains a line)
@@ -2428,6 +2433,39 @@
         <stop offset="0.55" stop-color="rgba(0,0,0,0)" />
         <stop offset="1" stop-color="rgba(0,0,0,0.35)" />
       </linearGradient>
+      <linearGradient
+        id="badger-metal-material-cloisonne-sheen"
+        x1="0"
+        y1="0"
+        x2="1"
+        y2="1"
+      >
+        <stop offset="0" stop-color="rgba(255,255,255,0.42)" />
+        <stop offset="0.18" stop-color="rgba(255,255,255,0.18)" />
+        <stop offset="0.42" stop-color="rgba(255,255,255,0)" />
+        <stop offset="0.72" stop-color="rgba(32,18,8,0.04)" />
+        <stop offset="1" stop-color="rgba(0,0,0,0.16)" />
+      </linearGradient>
+      <radialGradient
+        id="badger-metal-material-cloisonne-depth"
+        cx="35%"
+        cy="28%"
+        r="80%"
+      >
+        <stop offset="0" stop-color="rgba(255,255,255,0.16)" />
+        <stop offset="0.45" stop-color="rgba(255,255,255,0.04)" />
+        <stop offset="0.72" stop-color="rgba(0,0,0,0)" />
+        <stop offset="1" stop-color="rgba(0,0,0,0.14)" />
+      </radialGradient>
+      <pattern
+        id="badger-metal-unassigned-hatch"
+        patternUnits="userSpaceOnUse"
+        width="1.2"
+        height="1.2"
+        patternTransform="rotate(45)"
+      >
+        <line x1="0" y1="0" x2="0" y2="1.2" stroke="rgba(0,0,0,0.28)" stroke-width="0.35" />
+      </pattern>
     </defs>
 
     {#if $referenceImage && $referenceVisible && $referenceLayer === 'behind'}
@@ -2443,16 +2481,60 @@
       />
     {/if}
 
+    {#if $outlineClipD}
+      <!-- Metal base: fill the entire silhouette with the finish color so any
+           gap between a cell polygon and the silver stroke rim (at rounded
+           joins, concave notches, etc.) reveals metal rather than canvas
+           background. Matches physical reality — the whole base is metal,
+           enamel fills pockets on top. -->
+      <path d={$outlineClipD} fill={finishHex($docStore.render.finish)} fill-rule="nonzero" pointer-events="none" />
+    {/if}
+
     {#each $cells as cell (cell.id)}
       {@const material = $docStore.materialAssignments[cell.id]}
+      {@const assigned = $docStore.colorAssignments[cell.id]}
       <path
         d={cellToSvgD(cell)}
-        fill={$docStore.colorAssignments[cell.id] ?? 'none'}
+        fill={assigned ?? 'none'}
         fill-rule="evenodd"
         stroke={$showCellBorders ? 'rgba(0,0,0,0.25)' : 'none'}
         stroke-width={0.5 / scale}
         class:hover={$hoveredCellId === cell.id}
       />
+      {#if assigned}
+        <path
+          d={cellToSvgD(cell)}
+          fill="url(#badger-metal-material-cloisonne-depth)"
+          fill-rule="evenodd"
+          stroke="none"
+          pointer-events="none"
+        />
+        <path
+          d={cellToSvgD(cell)}
+          fill="url(#badger-metal-material-cloisonne-sheen)"
+          fill-rule="evenodd"
+          stroke="none"
+          pointer-events="none"
+        />
+      {/if}
+      {#if !assigned}
+        <path
+          d={cellToSvgD(cell)}
+          fill="url(#badger-metal-unassigned-hatch)"
+          fill-rule="evenodd"
+          stroke="none"
+          pointer-events="none"
+        />
+        <path
+          d={cellToSvgD(cell)}
+          fill="none"
+          stroke="white"
+          stroke-width={1 / scale}
+          fill-rule="evenodd"
+          pointer-events="none"
+          style="mix-blend-mode: difference"
+        />
+      {/if}
       {#if material === 'glitter' || material === 'metallic'}
         <path
           d={cellToSvgD(cell)}

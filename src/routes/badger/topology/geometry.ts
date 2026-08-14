@@ -1,7 +1,18 @@
 import type { Vec2, BadgePath, PathNode } from '../store/types';
 
 export const EPS = 1e-6;
-export const SNAP_DIST = 0.5; // px — vertices closer than this are merged
+// UX threshold: two user-placed anchors closer than this are treated as
+// coincident. Used only by isEffectivelyClosed to auto-close a path whose
+// endpoints visually touch. Keep this in the "millimeter" range — it's a
+// forgiveness radius for hand-drawn input, not a numerical tolerance.
+export const AUTO_CLOSE_DIST = 0.5; // mm
+// Numerical tolerance for merging vertices during planar-graph construction.
+// Must be small enough that two genuinely distinct features (e.g. opposite
+// edges of a thin divider, or the four corners of a thin X-crossing between
+// two dividers) never collapse to the same vertex. 1 µm is well below any
+// feature we can render or fabricate, but still large enough to absorb the
+// float noise introduced by polygon-clipping and bezier flattening.
+export const GRAPH_SNAP_DIST = 1e-3; // mm
 
 export function v(x: number, y: number): Vec2 {
   return { x, y };
@@ -43,7 +54,7 @@ export function isEffectivelyClosed(p: BadgePath): boolean {
   if (p.closed) return true;
   const last = p.nodes[p.nodes.length - 1];
   if (!last) return false;
-  return vDist(p.start, last.to) < SNAP_DIST;
+  return vDist(p.start, last.to) < AUTO_CLOSE_DIST;
 }
 
 export function vDot(a: Vec2, b: Vec2): number {
@@ -275,9 +286,10 @@ export function thickenPolylineTagged(
     right.push(vSub(poly[i], vScale(n, half)));
   }
 
-  // ~arc resolution: enough segments that a half-circle feels round at typical
-  // stroke widths without flooding the segment graph.
-  const CAP_SEGMENTS = 8;
+  // Arc resolution for round caps. 64 segments per full circle (so ~32 per
+  // half-circle cap) keeps the cap silhouette within ~0.05% of the rendered
+  // stroke-linecap=round preview — sub-pixel at any practical zoom.
+  const CAP_SEGMENTS = 32;
   // Forward tangent at the last point, and backward tangent at the first.
   // Caps bow outward along these tangents.
   const endTangent = vNorm(vSub(poly[poly.length - 1], poly[poly.length - 2]));
@@ -384,10 +396,13 @@ export function strokeClosedPath(centerline: Vec2[], width: number): Vec2[][] {
   // silhouette meets both adjacent rectangles flush at the corners, so the
   // union has no protrusions.
   //
-  // Target segment count ≈ 12 around the full circle to match the old
-  // roundness/union-cost balance; we approximate it per-arc based on the arc's
-  // angular span so thin slivers don't get over-tessellated.
-  const TARGET_SEGMENTS = 12;
+  // Target segment count ≈ 64 around the full circle so the per-vertex disk
+  // silhouette stays within ~0.05% of the true offset circle — sub-pixel at
+  // any practical zoom, which eliminates the visible fringe between the cell
+  // fill polygon and the SVG stroke-linejoin=round preview. Approximated
+  // per-arc based on the arc's angular span so thin slivers don't get
+  // over-tessellated.
+  const TARGET_SEGMENTS = 64;
   const TAU = Math.PI * 2;
   const targetStep = TAU / TARGET_SEGMENTS;
   for (let i = 0; i < n; i++) {

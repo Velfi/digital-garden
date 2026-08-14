@@ -87,6 +87,11 @@
       <a href={resolve('/marimo')}>Marimo</a> &mdash; a moss ball in a jar that grows on real time
       <em><small>(interactive)</small></em>
     </li>
+    <li>
+      <a href={resolve('/slime')}>Pet slime</a> &mdash; a soft-body slime that arrives in the post
+      as a dry crust, and wakes up if you mist it
+      <em><small>(interactive)</small></em>
+    </li>
   </ul>
 
   <h2>Arts</h2>

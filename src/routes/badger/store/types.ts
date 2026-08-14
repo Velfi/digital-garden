@@ -106,7 +106,11 @@ export type BadgeDocument = {
     texts: BadgeText[];
     baseThickness: number; // mm
     wallHeight: number; // mm
-    bevelRadius: number; // mm
+    // 0..1 — fraction of half-wall-width used as the top round-over radius.
+    // 0 = square top, 1 = fully rounded dome whose radius equals half the
+    // thinnest wall. Expressed as a ratio so the geometric meaning stays
+    // invariant across changes in wall width.
+    bevelRatio: number;
     minWallWidth: number; // mm
   };
   colorAssignments: Record<CellId, string>;
@@ -120,10 +124,14 @@ export type BadgeDocument = {
     metalSurface: MetalSurface;
     enamelFinish: EnamelFinish;
     background: string;
+    // Cap on path-tracer samples per idle session. Higher = cleaner image at
+    // the cost of longer time-to-converge; adaptive sampling already skips
+    // low-variance pixels so the practical cost scales sub-linearly.
+    maxSamples: number;
   };
 };
 
-export type Mode = 'metal' | 'colors' | 'render';
+export type Mode = 'metal' | 'colors' | 'pbr' | 'rt';
 
 export type MetalTool =
   | 'select'
@@ -167,7 +175,7 @@ export function emptyDocument(width = 30, height = 30): BadgeDocument {
       texts: [],
       baseThickness: 0.5,
       wallHeight: 1.2,
-      bevelRadius: 0.2,
+      bevelRatio: 0.5,
       minWallWidth: 0.2
     },
     colorAssignments: {},
@@ -177,7 +185,8 @@ export function emptyDocument(width = 30, height = 30): BadgeDocument {
       finish: 'gold',
       metalSurface: 'polished',
       enamelFinish: 'soft',
-      background: '#262626'
+      background: '#262626',
+      maxSamples: 32
     }
   };
 }

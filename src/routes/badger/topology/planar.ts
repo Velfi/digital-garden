@@ -2,7 +2,7 @@ import type { BadgeDocument, BadgePath, Cell, CellId, Vec2 } from '../store/type
 import { clipPolygonToOutlines, normalizeClosedRing } from './clipping';
 import {
   EPS,
-  SNAP_DIST,
+  GRAPH_SNAP_DIST,
   flattenPathTagged,
   isEffectivelyClosed,
   thickenPolylineTagged,
@@ -16,9 +16,11 @@ import {
 // Max deviation of the flattened polyline from the true bezier, in mm. Cells
 // are filled as SVG polygons while metal strokes render as real beziers, so
 // any mismatch shows up as a visible fringe between the fill and the stroke.
-// 0.05 mm at ~50–100 px/mm on screen is sub-pixel — tight enough that the
-// two curves look identical, loose enough to keep segment counts sane.
-const CELL_FLATNESS_MM = 0.05;
+// At extreme zoom (>10000%) the gap is visible even at 0.05 mm, so we go
+// down to 0.002 mm — sub-pixel at any practical inspection zoom, at the
+// cost of ~5× more flattened samples per curve (the bezier subdivision is
+// O(log(1/tol)), not linear, so the hit is much less than the ratio suggests).
+const CELL_FLATNESS_MM = 0.002;
 
 export type Topology = {
   cells: Cell[];
@@ -251,7 +253,7 @@ function snapKey(p: Vec2, cell: number): string {
 }
 
 function buildGraph(segs: Seg[]): { vertices: Vertex[]; halfEdges: HalfEdge[] } {
-  const cell = SNAP_DIST;
+  const cell = GRAPH_SNAP_DIST;
   const vmap = new Map<string, Vertex>();
   const vertices: Vertex[] = [];
 
@@ -263,7 +265,7 @@ function buildGraph(segs: Seg[]): { vertices: Vertex[]; halfEdges: HalfEdge[] } 
       for (let dy = -1; dy <= 1; dy++) {
         const k = `${kx + dx}:${ky + dy}`;
         const existing = vmap.get(k);
-        if (existing && vDist(existing.p, p) < SNAP_DIST) return existing;
+        if (existing && vDist(existing.p, p) < GRAPH_SNAP_DIST) return existing;
       }
     }
     const v: Vertex = { id: vertices.length, p: { ...p }, outgoing: [], curved: false };
@@ -553,7 +555,7 @@ function computeNeighbors(cells: Cell[]) {
 }
 
 function edgeKey(a: Vec2, b: Vec2): string {
-  const cell = SNAP_DIST;
+  const cell = GRAPH_SNAP_DIST;
   const k1 = `${Math.round(a.x / cell)}:${Math.round(a.y / cell)}`;
   const k2 = `${Math.round(b.x / cell)}:${Math.round(b.y / cell)}`;
   return k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`;

@@ -3,9 +3,10 @@ import fc from 'fast-check';
 import type { BadgeDocument, BadgePath, Cell, Vec2 } from '../store/types';
 import { computeTopology } from './planar';
 
-// Min boundary gap between any two outline rings. Keeps vertex snapping
-// (SNAP_DIST = 0.5mm) from fusing a parent's boundary into a child's — which
-// would genuinely change the topology in a way our invariants don't allow for.
+// Min boundary gap between any two outline rings. Guarantees that parent and
+// child boundaries stay apart by a comfortable margin so flattening error at
+// the outline polygons (CELL_FLATNESS_MM) can't accidentally put a parent's
+// sampled vertex on top of a child's, which would change the topology.
 const MIN_GAP = 2;
 // Min radius of any generated outline. Smaller rings trigger the "area ≤ 0.5"
 // drop inside computeTopology, which the invariants below aren't written to
@@ -37,11 +38,11 @@ function polyPath(id: string, pts: Vec2[]): BadgePath {
 function makeDoc(paths: BadgePath[], size = 400): BadgeDocument {
   return {
     canvas: { width: size, height: size },
-    metal: { paths, texts: [], baseThickness: 1.6, wallHeight: 1.2, bevelRadius: 0.2, minWallWidth: 1 },
+    metal: { paths, texts: [], baseThickness: 1.6, wallHeight: 1.2, bevelRatio: 0.5, minWallWidth: 1 },
     colorAssignments: {},
     materialAssignments: {},
     palette: [],
-    render: { finish: 'gold', metalSurface: 'polished', enamelFinish: 'soft', background: '#000' }
+    render: { finish: 'gold', metalSurface: 'polished', enamelFinish: 'soft', background: '#000', maxSamples: 256 }
   };
 }
 

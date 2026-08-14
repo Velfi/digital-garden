@@ -19,7 +19,8 @@
   } from './store';
   import MetalCanvas from './MetalCanvas.svelte';
   import ColorsCanvas from './ColorsCanvas.svelte';
-  import RenderCanvas from './RenderCanvas.svelte';
+  import PbrCanvas from './PbrCanvas.svelte';
+  import RtCanvas from './RtCanvas.svelte';
   import MenuBar from './MenuBar.svelte';
   import Sidebar from './Sidebar.svelte';
   import NewBadgeModal from './NewBadgeModal.svelte';
@@ -146,10 +147,13 @@
       showOptions = true;
       modalRequest.set(null);
     }
-    // exportPng and exportGlb are handled inside RenderCanvas when mode === 'render'.
-    // If user asks for them while not in render mode, flip the mode first.
+    // exportPng and exportGlb are handled inside PbrCanvas/RtCanvas when the
+    // mode is one of them. If the user asks while in metal/colors, flip to
+    // PBR — faster, no sample accumulation, and legacy shares with mode
+    // === 'render' land here as well.
     if (req === 'exportPng' || req === 'exportGlb') {
-      if (get(mode) !== 'render') mode.set('render');
+      const m = get(mode);
+      if (m !== 'pbr' && m !== 'rt') mode.set('pbr');
     }
   });
 
@@ -196,7 +200,8 @@
     // mode shortcuts
     if (e.key === '1') mode.set('metal');
     else if (e.key === '2') mode.set('colors');
-    else if (e.key === '3') mode.set('render');
+    else if (e.key === '3') mode.set('pbr');
+    else if (e.key === '4') mode.set('rt');
     // metal tool shortcuts
     if ($mode === 'metal') {
       if (e.key === 'v') metalTool.set('select');
@@ -254,11 +259,20 @@
       <button
         type="button"
         role="tab"
-        class:active={$mode === 'render'}
-        aria-selected={$mode === 'render'}
-        onclick={() => mode.set('render')}
+        class:active={$mode === 'pbr'}
+        aria-selected={$mode === 'pbr'}
+        onclick={() => mode.set('pbr')}
       >
-        Render
+        PBR
+      </button>
+      <button
+        type="button"
+        role="tab"
+        class:active={$mode === 'rt'}
+        aria-selected={$mode === 'rt'}
+        onclick={() => mode.set('rt')}
+      >
+        RT
       </button>
     </div>
   </header>
@@ -270,8 +284,10 @@
         <MetalCanvas />
       {:else if $mode === 'colors'}
         <ColorsCanvas />
+      {:else if $mode === 'pbr'}
+        <PbrCanvas />
       {:else}
-        <RenderCanvas />
+        <RtCanvas />
       {/if}
     </div>
   </div>
@@ -341,13 +357,18 @@
     align-items: stretch;
     flex: 1 1 0;
     min-height: 0;
-    height: 0;
   }
 
   .canvas-area {
-    flex: 1;
+    flex: 1 1 0;
     min-width: 0;
     min-height: 0;
     display: flex;
+    align-self: stretch;
+  }
+
+  .canvas-area :global(.viewport) {
+    flex: 1 1 auto;
+    min-height: 24rem;
   }
 </style>

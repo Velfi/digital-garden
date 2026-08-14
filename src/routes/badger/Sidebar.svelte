@@ -4,7 +4,8 @@
   import { mode, sidebarOpen } from './store';
   import MetalPane from './sidebar/MetalPane.svelte';
   import ColorsPane from './sidebar/ColorsPane.svelte';
-  import RenderPane from './sidebar/RenderPane.svelte';
+  import PbrPane from './sidebar/PbrPane.svelte';
+  import RtPane from './sidebar/RtPane.svelte';
   import WarningsPane from './sidebar/WarningsPane.svelte';
 </script>
 
@@ -14,7 +15,9 @@
     <WarningsPane />
   {:else if $mode === 'colors'}
     <ColorsPane />
+  {:else if $mode === 'pbr'}
+    <PbrPane />
   {:else}
-    <RenderPane />
+    <RtPane />
   {/if}
 </ArtSidebar>

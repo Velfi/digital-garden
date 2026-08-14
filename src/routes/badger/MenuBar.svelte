@@ -236,9 +236,15 @@
         >
         <button
           onclick={() => {
-            mode.set('render');
+            mode.set('pbr');
             closeMenus();
-          }}>Render mode</button
+          }}>PBR mode</button
+        >
+        <button
+          onclick={() => {
+            mode.set('rt');
+            closeMenus();
+          }}>RT mode</button
         >
       </div>
     {/if}

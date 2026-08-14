@@ -281,7 +281,43 @@
         <stop offset="0.55" stop-color="rgba(0,0,0,0)" />
         <stop offset="1" stop-color="rgba(0,0,0,0.35)" />
       </linearGradient>
+      <linearGradient
+        id="badger-material-cloisonne-sheen"
+        x1="0"
+        y1="0"
+        x2="1"
+        y2="1"
+      >
+        <stop offset="0" stop-color="rgba(255,255,255,0.42)" />
+        <stop offset="0.18" stop-color="rgba(255,255,255,0.18)" />
+        <stop offset="0.42" stop-color="rgba(255,255,255,0)" />
+        <stop offset="0.72" stop-color="rgba(32,18,8,0.04)" />
+        <stop offset="1" stop-color="rgba(0,0,0,0.16)" />
+      </linearGradient>
+      <radialGradient
+        id="badger-material-cloisonne-depth"
+        cx="35%"
+        cy="28%"
+        r="80%"
+      >
+        <stop offset="0" stop-color="rgba(255,255,255,0.16)" />
+        <stop offset="0.45" stop-color="rgba(255,255,255,0.04)" />
+        <stop offset="0.72" stop-color="rgba(0,0,0,0)" />
+        <stop offset="1" stop-color="rgba(0,0,0,0.14)" />
+      </radialGradient>
     </defs>
+    {#if $outlineClipD}
+      <!-- Metal base: fill the silhouette with the finish color so any gap
+           between a cell polygon and the stroke rim (rounded joins, notches
+           at crossings, bezier flattening) reveals metal rather than the
+           canvas background. Matches MetalCanvas and physical reality. -->
+      <path
+        d={$outlineClipD}
+        fill={finishHex($docStore.render.finish)}
+        fill-rule="nonzero"
+        pointer-events="none"
+      />
+    {/if}
     {#each $cells as cell (cell.id)}
       {@const material = $docStore.materialAssignments[cell.id]}
       <path
@@ -291,6 +327,20 @@
         stroke={$hoveredCellId === cell.id ? '#3c7fb8' : $showCellBorders ? 'rgba(0,0,0,0.3)' : 'none'}
         stroke-width={$hoveredCellId === cell.id ? 2 / scale : 0.5 / scale}
         class:selected={$selectedCellIds.has(cell.id)}
+      />
+      <path
+        d={cellD(cell)}
+        fill="url(#badger-material-cloisonne-depth)"
+        fill-rule="evenodd"
+        stroke="none"
+        pointer-events="none"
+      />
+      <path
+        d={cellD(cell)}
+        fill="url(#badger-material-cloisonne-sheen)"
+        fill-rule="evenodd"
+        stroke="none"
+        pointer-events="none"
       />
       {#if material === 'glitter' || material === 'metallic'}
         <path

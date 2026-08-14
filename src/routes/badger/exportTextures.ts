@@ -30,7 +30,7 @@ export function finishHex(finish: MetalFinish): string {
     case 'gold':
       return '#d4a44e';
     case 'silver':
-      return '#c8ccd1';
+      return '#f2f4f7';
     case 'black_nickel':
       return '#2a2b2d';
     case 'copper':

@@ -71,6 +71,47 @@ function wallCoversDocPoint(
   return false;
 }
 
+function wallTopCapCoversDocPoint(
+  pieces: { role: string; positions: Float32Array; indices: Uint32Array }[],
+  docX: number,
+  docY: number,
+  docW: number,
+  docH: number,
+  zTop: number
+): boolean {
+  const worldX = docX - docW / 2;
+  const worldY = -(docY - docH / 2);
+  for (const piece of pieces) {
+    if (piece.role !== 'wall') continue;
+    const pos = piece.positions;
+    const idx = piece.indices;
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t] * 3;
+      const b = idx[t + 1] * 3;
+      const c = idx[t + 2] * 3;
+      const az = pos[a + 2];
+      const bz = pos[b + 2];
+      const cz = pos[c + 2];
+      if (Math.abs(az - zTop) > 1e-6 || Math.abs(bz - zTop) > 1e-6 || Math.abs(cz - zTop) > 1e-6) {
+        continue;
+      }
+      const ax = pos[a];
+      const ay = pos[a + 1];
+      const bx = pos[b];
+      const by = pos[b + 1];
+      const cx = pos[c];
+      const cy = pos[c + 1];
+      const den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+      if (Math.abs(den) < 1e-6) continue;
+      const u = ((by - cy) * (worldX - cx) + (cx - bx) * (worldY - cy)) / den;
+      const v = ((cy - ay) * (worldX - cx) + (ax - cx) * (worldY - cy)) / den;
+      const w = 1 - u - v;
+      if (u >= -1e-6 && v >= -1e-6 && w >= -1e-6) return true;
+    }
+  }
+  return false;
+}
+
 describe('outline wall — self-intersecting closed outlines', () => {
   it('wall traces every stroke of a self-crossing outline, including inner-loop boundaries', () => {
     // Closed path: a CCW outer square immediately followed by a CW inner
@@ -197,6 +238,46 @@ describe('outline wall — self-intersecting closed outlines', () => {
     expect(
       wallCoversDocPoint(data.pieces, 100, 80 + half + margin, 200, 200),
       'wall must NOT extend beyond half-width below interior centerline (old 2× bug)'
+    ).toBe(false);
+  });
+
+  it('closed wall bevel shrinks the top cap from the hole side too', () => {
+    const doc = emptyDocument(200, 200);
+    doc.metal.wallHeight = 1.2;
+    doc.metal.minWallWidth = 0.2;
+    doc.metal.bevelRatio = 0.9;
+    doc.metal.paths = [
+      linePath(
+        'outer',
+        'shape',
+        [
+          { x: 10, y: 10 },
+          { x: 190, y: 10 },
+          { x: 190, y: 190 },
+          { x: 10, y: 190 }
+        ],
+        4,
+        true
+      ),
+      linePath(
+        'ring',
+        'shape',
+        [
+          { x: 80, y: 80 },
+          { x: 120, y: 80 },
+          { x: 120, y: 120 },
+          { x: 80, y: 120 }
+        ],
+        1.2,
+        true
+      )
+    ];
+    const topo = computeTopology(doc);
+    const data = buildBadgeMeshData(doc, topo.cells, 0xd4a44e, 'polished', 'hard');
+
+    expect(
+      wallTopCapCoversDocPoint(data.pieces, 100, 81.7, 200, 200, doc.metal.wallHeight),
+      'top cap should no longer stay flat all the way to the original inner edge'
     ).toBe(false);
   });
 
