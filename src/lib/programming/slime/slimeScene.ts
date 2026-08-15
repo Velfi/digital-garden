@@ -858,6 +858,17 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
   let anticipation = 0;
   const ANTICIPATION_TAU = 4;
   let chaseThrillCooldownSec = 0;
+  // The chase lure eases toward the quarry instead of snapping to it: a
+  // springtail's furcula ping covers real ground in one ~70 ms burst
+  // (`ESCAPE_SEC` in springtails.ts), and without this the corral would
+  // yank the whole body to face the new spot instantly, every ping — a
+  // stutter in the *direction* of travel that no framerate fixes. Snaps
+  // (not eases) the instant the quarry itself changes, so picking a fresh
+  // target doesn't drag the old one's trail along.
+  let chaseLureX = 0;
+  let chaseLureZ = 0;
+  let chaseLureQuarry = -1;
+  const CHASE_LURE_EASE_SEC = 0.15;
   // The slurp-and-ptooey: a chase that actually corners its quarry sucks
   // the critter in, savors it a beat, and spits it out in a lofted arc.
   // The critter is safe the whole time; the indignity is the game.
@@ -1469,7 +1480,18 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
             particles.clearLure();
             roaming = false;
           } else if (quarry) {
-            particles.setLure(quarry[0], quarry[1], (0.5 + 0.8 * mood.arousal) * motionScale);
+            if (chaseLureQuarry !== errand.quarryIndex) {
+              chaseLureX = quarry[0];
+              chaseLureZ = quarry[1];
+              chaseLureQuarry = errand.quarryIndex;
+            } else {
+              const ease = Math.min(1, frameSec / CHASE_LURE_EASE_SEC);
+              chaseLureX += (quarry[0] - chaseLureX) * ease;
+              chaseLureZ += (quarry[1] - chaseLureZ) * ease;
+            }
+            particles.setLure(chaseLureX, chaseLureZ, (0.5 + 0.8 * mood.arousal) * motionScale);
+            // The eyes track the critter itself, not the eased lure — a
+            // real-time saccade reads as alert, not laggy.
             attentionWorld.set(quarry[0], FLOOR_Y + 0.002, quarry[1]);
             attentionWant = 1;
             roaming = true;
@@ -1519,11 +1541,7 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
         }
         // The popcorn hop, planned by the arbiter, thrown by the solver.
         if (errandOut.hop) {
-          particles.hop(
-            errandOut.hop.impulse * motionScale,
-            errandOut.hop.dx,
-            errandOut.hop.dz
-          );
+          particles.hop(errandOut.hop.impulse * motionScale, errandOut.hop.dx, errandOut.hop.dz);
         }
 
         // Anticipation's watch: a promising tool in the hand draws the eyes
@@ -1594,7 +1612,7 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
       }
 
       if (particles) {
-        particles.readPositions(particlePositions);
+        particles.readPositions(particlePositions, timeMs);
         const particleCount = particles.particleCount;
 
         // Watchdog, continuum edition. The material cannot shred, but while

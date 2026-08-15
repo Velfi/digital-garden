@@ -37,8 +37,11 @@
 
   let { variant = 'full', showPanel = variant === 'full', showDevTools = false }: Props = $props();
 
+  let wrap = $state<HTMLDivElement>();
   let container = $state<HTMLDivElement>();
   let webglSupported = $state(true);
+  let fullscreenAvailable = $state(false);
+  let isFullscreen = $state(false);
   let scene: SlimeScene | null = null;
   let resizeObserver: ResizeObserver | null = null;
   let viewObserver: IntersectionObserver | null = null;
@@ -96,6 +99,41 @@
   /** The wall switch — the same one the marimo's tank chrome has. */
   function toggleLights() {
     applySettings({ ...settings, roomTone: lightsOn ? 'dark' : 'cream' });
+  }
+
+  // Safari only picked up the unprefixed element fullscreen API in 16.4, and
+  // iOS has never had it at all — hence the fallbacks and the availability
+  // check that keeps the button from appearing where it could not do
+  // anything. Copied verbatim from the marimo's tank chrome.
+  type WebkitElement = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
+  type WebkitDocument = Document & {
+    webkitFullscreenElement?: Element | null;
+    webkitFullscreenEnabled?: boolean;
+    webkitExitFullscreen?: () => Promise<void> | void;
+  };
+
+  function currentFullscreenElement(): Element | null {
+    const doc = document as WebkitDocument;
+    return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+  }
+
+  async function toggleFullscreen() {
+    const doc = document as WebkitDocument;
+    const element = wrap as WebkitElement | undefined;
+    if (!element) return;
+    try {
+      if (currentFullscreenElement()) {
+        if (doc.exitFullscreen) await doc.exitFullscreen();
+        else await doc.webkitExitFullscreen?.();
+      } else if (element.requestFullscreen) {
+        await element.requestFullscreen();
+      } else {
+        await element.webkitRequestFullscreen?.();
+      }
+    } catch {
+      // The browser can refuse (permissions policy, untrusted gesture). The
+      // fullscreenchange listener keeps our flag honest either way.
+    }
   }
 
   /**
@@ -277,6 +315,11 @@
       }
     };
     const onPageHide = () => scene?.flush();
+    // Covers the Escape key and the browser's own fullscreen chrome, not just
+    // our button.
+    const onFullscreenChange = () => {
+      isFullscreen = currentFullscreenElement() === wrap;
+    };
 
     const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null;
     systemPrefersReduced = motionQuery?.matches ?? false;
@@ -287,13 +330,21 @@
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
     motionQuery?.addEventListener('change', onMotionChange);
+
+    const doc = document as WebkitDocument;
+    fullscreenAvailable = Boolean(doc.fullscreenEnabled || doc.webkitFullscreenEnabled);
+    onFullscreenChange();
 
     startScene();
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
       motionQuery?.removeEventListener('change', onMotionChange);
       stopScene();
     };
@@ -305,81 +356,106 @@
     <p class="fallback">This terrarium needs WebGL, which is not available in this browser.</p>
   {:else}
     <div class="terrarium-column">
-      <div
-        class="viewport"
-        class:holding
-        class:tool-aimed={tool !== 'hand' && tool !== 'pet'}
-        bind:this={container}
-        role="application"
-        aria-label="A pet slime in a glass terrarium"
-        onpointerdown={(event) => {
-          if (!container || !scene) return;
-          container.setPointerCapture(event.pointerId);
-          const [nx, ny] = pointerNdc(event);
-          scene.pointerDown(nx, ny, event.button === 2 || event.shiftKey);
-        }}
-        onpointermove={(event) => {
-          if (!container || !scene) return;
-          // Hover moves go through too: the eyes follow the pointer whether
-          // or not it is pressing anything.
-          const [nx, ny] = pointerNdc(event);
-          scene.pointerMove(nx, ny);
-        }}
-        onpointerup={() => scene?.pointerUp()}
-        onpointercancel={() => scene?.pointerUp()}
-        oncontextmenu={(event) => event.preventDefault()}
-      ></div>
+      <div class="viewport-wrap" class:fullscreen={isFullscreen} bind:this={wrap}>
+        <div
+          class="viewport"
+          class:holding
+          class:tool-aimed={tool !== 'hand' && tool !== 'pet'}
+          bind:this={container}
+          role="application"
+          aria-label="A pet slime in a glass terrarium"
+          onpointerdown={(event) => {
+            if (!container || !scene) return;
+            container.setPointerCapture(event.pointerId);
+            const [nx, ny] = pointerNdc(event);
+            scene.pointerDown(nx, ny, event.button === 2 || event.shiftKey);
+          }}
+          onpointermove={(event) => {
+            if (!container || !scene) return;
+            // Hover moves go through too: the eyes follow the pointer whether
+            // or not it is pressing anything.
+            const [nx, ny] = pointerNdc(event);
+            scene.pointerMove(nx, ny);
+          }}
+          onpointerup={() => scene?.pointerUp()}
+          onpointercancel={() => scene?.pointerUp()}
+          oncontextmenu={(event) => event.preventDefault()}
+        ></div>
+
+        {#if variant === 'full'}
+          <ToolDrawer
+            {tool}
+            grimy={grimeWorst > 0.08}
+            {canFeed}
+            {moldy}
+            dormant={snapshot?.stage === 'sclerotium'}
+            {canSparkle}
+            {ballOut}
+            onSelect={selectTool}
+            onToggleBall={() => scene?.toggleBall()}
+          />
+          <div class="tools">
+            {#if fullscreenAvailable}
+              <button
+                type="button"
+                onclick={toggleFullscreen}
+                aria-pressed={isFullscreen}
+                title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              >
+                <span class="visually-hidden"
+                  >{isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</span
+                >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  {#if isFullscreen}
+                    <path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" />
+                  {:else}
+                    <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" />
+                  {/if}
+                </svg>
+              </button>
+            {/if}
+            <button
+              type="button"
+              onclick={toggleLights}
+              aria-pressed={lightsOn}
+              title={lightsOn ? 'Turn the lights off' : 'Turn the lights on'}
+            >
+              <span class="visually-hidden">
+                {lightsOn ? 'Turn the lights off' : 'Turn the lights on'}
+              </span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                {#if lightsOn}
+                  <!-- Lights on, so the switch offers the dark room back. -->
+                  <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1z" />
+                {:else}
+                  <circle cx="12" cy="12" r="4" />
+                  <path
+                    d="M12 2.5v2M12 19.5v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2.5 12h2M19.5 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+                  />
+                {/if}
+              </svg>
+            </button>
+            <button type="button" onclick={() => (optionsOpen = true)} title="Options">
+              <span class="visually-hidden">Options</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="3.2" />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82V15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                />
+              </svg>
+            </button>
+          </div>
+        {/if}
+
+        {#if variant === 'ambient'}
+          <a class="visit" href={resolve('/slime')}>Visit the terrarium &rarr;</a>
+        {/if}
+      </div>
 
       {#if showBreedPicker}
         <BreedPicker onChoose={chooseBreed} />
       {:else if showArrivalNote}
         <ArrivalNote />
-      {/if}
-
-      {#if variant === 'full'}
-        <ToolDrawer
-          {tool}
-          grimy={grimeWorst > 0.08}
-          {canFeed}
-          {moldy}
-          dormant={snapshot?.stage === 'sclerotium'}
-          {canSparkle}
-          {ballOut}
-          onSelect={selectTool}
-          onToggleBall={() => scene?.toggleBall()}
-        />
-        <div class="tools">
-          <button
-            type="button"
-            onclick={toggleLights}
-            aria-pressed={lightsOn}
-            title={lightsOn ? 'Turn the lights off' : 'Turn the lights on'}
-          >
-            <span class="visually-hidden">
-              {lightsOn ? 'Turn the lights off' : 'Turn the lights on'}
-            </span>
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              {#if lightsOn}
-                <!-- Lights on, so the switch offers the dark room back. -->
-                <path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1z" />
-              {:else}
-                <circle cx="12" cy="12" r="4" />
-                <path
-                  d="M12 2.5v2M12 19.5v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2.5 12h2M19.5 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
-                />
-              {/if}
-            </svg>
-          </button>
-          <button type="button" onclick={() => (optionsOpen = true)} title="Options">
-            <span class="visually-hidden">Options</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <circle cx="12" cy="12" r="3.2" />
-              <path
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82V15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-              />
-            </svg>
-          </button>
-        </div>
       {/if}
 
       {#if devEnabled}
@@ -420,10 +496,6 @@
           </div>
           <SimControls {settings} onChange={applySettings} />
         </div>
-      {/if}
-
-      {#if variant === 'ambient'}
-        <a class="visit" href={resolve('/slime')}>Visit the terrarium &rarr;</a>
       {/if}
     </div>
 
@@ -479,6 +551,36 @@
     flex-direction: column;
     gap: 0.6rem;
     min-width: 0;
+  }
+
+  .viewport-wrap {
+    position: relative;
+  }
+
+  /*
+   * The class is driven by the fullscreenchange listener rather than a
+   * `:fullscreen` selector, so the prefixed and unprefixed pseudo-classes do
+   * not have to be written out twice (one unknown selector would void the
+   * whole list). Same reasoning as the marimo's tank chrome.
+   */
+  .viewport-wrap.fullscreen {
+    width: 100%;
+    height: 100%;
+    background: #101214;
+
+    /* Edge to edge: no glass shape, no frame, no rounded corners on a screen. */
+    .viewport {
+      height: 100%;
+      aspect-ratio: auto;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    /* A link out of the page is the wrong thing to offer mid-immersion. */
+    .visit {
+      display: none;
+    }
   }
 
   .viewport {

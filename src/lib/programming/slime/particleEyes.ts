@@ -33,7 +33,10 @@ const EYE_RADIUS = 0.0022;
  * the jelly surface, half the bead proud of the goo. Positive sinks the
  * centre inward (the old buried look), negative would float it clear. */
 const EYE_SINK = 0;
-/** The pair's azimuth off the camera-facing +z, radians. */
+/** The pair's spread off the body-to-gaze azimuth, radians — recomputed
+ * live each frame (see `bodyAzimuth` below) so the pair sits on whichever
+ * side of the dome actually faces what the pet is looking at, not a fixed
+ * side and not (necessarily) the viewer. */
 const EYE_AZIMUTH = 0.38;
 /** Where on the body's height the orbs float. Surfaced by default (user
  * mandate 2026-08-14): a neutral pet's bubbles ride high on the dome, and
@@ -63,6 +66,19 @@ const SEEK_SEC = 0.16;
  * seconds — quick enough to track a rolling ball, slow enough to read as
  * aiming rather than snapping. */
 const AIM_SEC = 0.22;
+/**
+ * How far the turret can swivel off its own socket's outward normal before
+ * it clamps, radians. The pupil is a ~44°-radius cap (see the shader's
+ * `pole` smoothstep) centred on wherever `aim` points; swing it too far from
+ * the socket's own forward and that cap starts sliding onto the bead's far,
+ * unseen side. The socket itself already turns to face whatever's being
+ * looked at (see `bodyAzimuth`), so this is just the fine vergence on top —
+ * how far the two eyes can additionally cross or splay for a close target —
+ * and stays generous enough for that without needing to know anything about
+ * the camera.
+ */
+const MAX_AIM_FROM_NORMAL = THREE.MathUtils.degToRad(65);
+const MAX_AIM_FROM_NORMAL_COS = Math.cos(MAX_AIM_FROM_NORMAL);
 /** Blink length and gap bounds, seconds. */
 const BLINK_SEC = 0.13;
 const BLINK_GAP_MIN = 1.6;
@@ -81,14 +97,18 @@ const BIRTH_HEIGHT = 0.22;
 export interface ParticleEyesBundle {
   group: THREE.Group;
   /**
-   * Reposition from the particle cloud. `gaze` is a world point to glance
-   * toward or null; `emotion` (see emotion.ts) sets orb size, float height
-   * and blink cadence — valence droops and lowers, arousal widens and
-   * snaps the blinks; `poke` swims the beads to crowd a poked world point,
-   * `ease` 0..1 owned by the caller. `squint` 0..1 squashes the orbs into
-   * contented crescents — the being-petted face — eased by the caller.
-   * `perk` 0..1 is anticipation: a small lift and widening on top of the
-   * mood's pose — the ears-up face of a pet that saw the treat jar move.
+   * Reposition from the particle cloud. `gaze` is a world point to look
+   * toward or null for a neutral forward rest — it drives both where the
+   * eye sockets sit on the dome (see `bodyAzimuth`) and where the pupils
+   * aim within them, so the whole eye visibly turns toward whatever the
+   * pet is actually attending to, not just the pupil. `emotion` (see
+   * emotion.ts) sets orb size, float height and blink cadence — valence
+   * droops and lowers, arousal widens and snaps the blinks; `poke` swims
+   * the beads to crowd a poked world point, `ease` 0..1 owned by the
+   * caller. `squint` 0..1 squashes the orbs into contented crescents — the
+   * being-petted face — eased by the caller. `perk` 0..1 is anticipation:
+   * a small lift and widening on top of the mood's pose — the ears-up face
+   * of a pet that saw the treat jar move.
    */
   update(
     positions: Float32Array,
@@ -197,6 +217,9 @@ export function createParticleEyes(
   /** This blink's length, fixed at its start from the arousal of the moment. */
   let blinkSec = BLINK_SEC;
   let lastTime = -1;
+  /** The sockets' last azimuth around the body — see `bodyAzimuth` in
+   * `update`, which holds this steady on a null or overhead gaze. */
+  let lastBodyAzimuth = 0;
 
   /** Smoothed eye offsets from the body centroid — the leash: the body
    * carries the bubbles, only motion through the goo is smoothed. NaN
@@ -225,6 +248,22 @@ export function createParticleEyes(
   const basis = new THREE.Matrix4();
   const scratch = new THREE.Vector3();
   const wantAim = new THREE.Vector3();
+  const conePerp = new THREE.Vector3();
+
+  /** Pulls `vec` (unit) to within `cosMax` of `axis` (unit) if it's past
+   * that cone — the turret's hard stop. */
+  function clampToCone(vec: THREE.Vector3, axis: THREE.Vector3, cosMax: number): void {
+    const cosAngle = vec.dot(axis);
+    if (cosAngle >= cosMax) return;
+    conePerp.copy(vec).addScaledVector(axis, -cosAngle);
+    const perpLen = conePerp.length();
+    if (perpLen < 1e-6) {
+      vec.copy(axis);
+      return;
+    }
+    const sinMax = Math.sqrt(Math.max(0, 1 - cosMax * cosMax));
+    vec.copy(axis).multiplyScalar(cosMax).addScaledVector(conePerp, sinMax / perpLen);
+  }
 
   return {
     group,
@@ -300,10 +339,25 @@ export function createParticleEyes(
 
       const ease = poke && poke.point ? Math.min(1, Math.max(0, poke.ease)) : 0;
 
+      // Which side of the dome the pair sits on: the body-centre-to-gaze
+      // azimuth, so the sockets themselves turn toward whatever the pet is
+      // actually looking at — a springtail off to the side, the oats, the
+      // mister — not just the pupil inside a socket that never moves. Holds
+      // its last value on a null or degenerate (gaze ~directly overhead)
+      // reading rather than snapping to some default, so a momentary gap in
+      // the signal doesn't twitch the face.
+      if (gaze) {
+        const gx = gaze[0] - cx;
+        const gz = gaze[2] - cz;
+        if (gx * gx + gz * gz > 1e-8) lastBodyAzimuth = Math.atan2(gx, gz);
+      }
+      const bodyAzimuth = lastBodyAzimuth;
+
       for (let eye = 0; eye < 2; eye++) {
         const side = eye === 0 ? -1 : 1;
-        const dirX = Math.sin(side * EYE_AZIMUTH);
-        const dirZ = Math.cos(side * EYE_AZIMUTH);
+        const eyeAzimuth = bodyAzimuth + side * EYE_AZIMUTH;
+        const dirX = Math.sin(eyeAzimuth);
+        const dirZ = Math.cos(eyeAzimuth);
 
         // Radial extent of the body along this eye's direction, in a slab
         // around eye level — the surface the bead should sit just inside.
@@ -415,6 +469,10 @@ export function createParticleEyes(
         } else {
           wantAim.copy(normal);
         }
+        // The fine vergence on top of the socket's own turn — cap how far
+        // the pupil can additionally cross toward a very close target so it
+        // never slides past its own socket's forward.
+        clampToCone(wantAim, normal, MAX_AIM_FROM_NORMAL_COS);
         const aim = aims[eye];
         aim.lerp(wantAim, Math.min(1, dt / AIM_SEC));
         if (aim.lengthSq() < 1e-8) aim.copy(wantAim);

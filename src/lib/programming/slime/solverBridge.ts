@@ -1,3 +1,4 @@
+import { SIM_STEP_SEC } from './constants';
 import { buildSeedPositions, type SolverRock } from './pbdWorld';
 import type {
   BallPose,
@@ -7,6 +8,16 @@ import type {
   SolverRay,
   SolverToMain
 } from './solverProtocol';
+
+/**
+ * How far into the past `readPositions` renders, so it almost always has a
+ * real pair of snapshots to blend between instead of only ever serving
+ * whichever one last happened to land before the current frame. About 2.5
+ * worker snapshot intervals — enough margin for the worker's own clock to
+ * jitter against the display's without collapsing back to a raw serve, and
+ * short enough that the added lag is invisible on a puddle of goo.
+ */
+const INTERP_DELAY_MS = SIM_STEP_SEC * 1000 * 2.5;
 
 /**
  * The scene's handle on the solver worker — the main-thread half of
@@ -19,10 +30,14 @@ import type {
  * scene just reads the freshest positions each frame.
  *
  * Honesty at the seams:
- * - `readPositions` serves the latest snapshot the worker has posted.
- *   Between spawn and the worker's first word it serves the deterministic
- *   seed lattice — the same positions the solver itself starts from, so
- *   the first frames render the true newborn body, not zeros at origin.
+ * - `readPositions` interpolates between the two most recent snapshots the
+ *   worker has posted, rendering `INTERP_DELAY_MS` into the past so there's
+ *   almost always a real pair to blend between (see its doc). Between spawn
+ *   and the worker's first word — and for any call made without a `nowMs`,
+ *   or before two snapshots have landed — it serves the freshest snapshot
+ *   verbatim, which starts as the deterministic seed lattice: the same
+ *   positions the solver itself starts from, so the first frames render the
+ *   true newborn body, not zeros at origin.
  * - `hand.state()` is the state as of the last snapshot, one message behind
  *   the worker's truth. Every consumer (poke bookkeeping, the will's
  *   hand-outranks check, the UI chip) reads it per frame and tolerates a
@@ -39,8 +54,10 @@ export interface SolverBridge {
    * the worker's first snapshot lands. */
   spawn(): void;
   despawn(): void;
-  /** Copy the freshest particle positions (xyz per particle) into `out`. */
-  readPositions(out: Float32Array): void;
+  /** Copy particle positions (xyz per particle) into `out`, interpolated to
+   * `nowMs` (typically the render callback's own timestamp) when given;
+   * omit it to get the freshest snapshot verbatim. */
+  readPositions(out: Float32Array, nowMs?: number): void;
   setLure(x: number, z: number, urgency: number): void;
   clearLure(): void;
   /** Aim the feeding pseudopod at a world point (see `ParticleWorld.setTendril`). */
@@ -93,10 +110,15 @@ export function createSolverBridge(): SolverBridge {
     else preReadyQueue.push(message);
   };
 
-  /** The freshest positions; starts as (and resets to) the seed lattice. */
-  let latest: Float32Array = seed.slice();
-  /** Whether `latest` is a worker buffer that should be recycled. */
-  let latestIsPooled = false;
+  /** The two most recent snapshots, each stamped with its main-thread
+   * arrival time, so `readPositions` can blend between them — see module
+   * doc. Both start as (and reset to) the seed lattice, span-less, so
+   * interpolation is a no-op (serves `curr` verbatim) until the worker has
+   * spoken at least twice. */
+  let currPositions: Float32Array = seed.slice();
+  let prevPositions: Float32Array = seed.slice();
+  let currTimeMs = 0;
+  let prevTimeMs = 0;
   let handState: HandState = 'idle';
   /** The play ball's last-snapshot pose; primed optimistically on setBall so
    * the toy renders somewhere honest before the worker's first word. */
@@ -125,10 +147,17 @@ export function createSolverBridge(): SolverBridge {
       recycle(msg.buffer);
       return;
     }
-    // snapshot: adopt the new buffer, send the old one home.
-    if (latestIsPooled) recycle(latest.buffer);
-    latest = new Float32Array(msg.buffer);
-    latestIsPooled = true;
+    // snapshot: copy out and send the buffer straight home — the pool
+    // doesn't wait on the render loop to catch up. `curr` and `prev` just
+    // swap roles rather than allocate; the old `prev` becomes the new
+    // `curr`'s backing store.
+    const swap = prevPositions;
+    prevPositions = currPositions;
+    prevTimeMs = currTimeMs;
+    currPositions = swap;
+    currPositions.set(new Float32Array(msg.buffer));
+    currTimeMs = performance.now();
+    recycle(msg.buffer);
     handState = msg.handState;
     ball = msg.ball;
   };
@@ -139,11 +168,13 @@ export function createSolverBridge(): SolverBridge {
     spawn() {
       generation += 1;
       send({ type: 'spawn', generation });
-      // Serve the newborn lattice until the worker speaks; a stale pooled
-      // buffer from a previous body goes home rather than lingering.
-      if (latestIsPooled) recycle(latest.buffer);
-      latest = seed.slice();
-      latestIsPooled = false;
+      // Serve the newborn lattice until the worker speaks. Both snapshots
+      // reset span-less — a stale pair from a previous body must not get
+      // interpolated into the new one's first frames.
+      currPositions = seed.slice();
+      prevPositions = seed.slice();
+      currTimeMs = 0;
+      prevTimeMs = 0;
       handState = 'idle';
     },
     despawn() {
@@ -151,8 +182,20 @@ export function createSolverBridge(): SolverBridge {
       send({ type: 'despawn' });
       handState = 'idle';
     },
-    readPositions(out) {
-      out.set(latest);
+    readPositions(out, nowMs) {
+      const span = currTimeMs - prevTimeMs;
+      if (nowMs === undefined || span <= 0) {
+        out.set(currPositions);
+        return;
+      }
+      // Render `INTERP_DELAY_MS` behind now, blended between the pair of
+      // snapshots that bracket that instant. Clamps to `curr` once `now`
+      // outruns both — a stalled worker degrades to the old raw-serve
+      // behaviour rather than extrapolating into the unknown.
+      const t = Math.min(1, Math.max(0, (nowMs - INTERP_DELAY_MS - prevTimeMs) / span));
+      for (let i = 0; i < out.length; i++) {
+        out[i] = prevPositions[i] + (currPositions[i] - prevPositions[i]) * t;
+      }
     },
     setLure(x, z, urgency) {
       send({ type: 'lure', x, z, urgency });
