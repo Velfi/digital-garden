@@ -5,11 +5,9 @@
     tool: SlimeTool;
     /** Some pane could use a squeegee — puts a nudge dot on the drawer. */
     grimy: boolean;
-    /** Awake and hungry enough that the oats are worth offering. */
+    /** Awake and hungry — the next flake will actually be eaten. */
     canFeed: boolean;
-    /** A flake is already out — falling, luring, being eaten, or moldering. */
-    feeding: boolean;
-    /** The flake out there went moldy and wants clicking away. */
+    /** A flake out there went moldy and wants clicking away. */
     moldy: boolean;
     /** Still a crust: no mouth, no oats. */
     dormant: boolean;
@@ -26,7 +24,6 @@
     tool,
     grimy,
     canFeed,
-    feeding,
     moldy,
     dormant,
     canSparkle,
@@ -36,15 +33,13 @@
   }: Props = $props();
   let open = $state(false);
 
-  const oatsDisabled = $derived(!canFeed || feeding);
+  // Sprinkle as many as you like — hunger gates the eating, not the pantry.
   const oatsTitle = $derived(
     moldy
-      ? 'The oat is moldy — click it to remove it'
-      : feeding
-        ? 'A flake is already out'
-        : canFeed
-          ? 'Drop flakes where you click'
-          : 'Not hungry right now'
+      ? 'An oat has gone moldy — click it to remove it'
+      : canFeed
+        ? 'Drop flakes where you click'
+        : 'Drop flakes where you click — not hungry right now, so they will sit'
   );
 
   const micaTitle = $derived(
@@ -145,7 +140,6 @@
           type="button"
           class:active={tool === 'oats'}
           aria-pressed={tool === 'oats'}
-          disabled={oatsDisabled}
           title={oatsTitle}
           onclick={() => choose('oats')}
         >

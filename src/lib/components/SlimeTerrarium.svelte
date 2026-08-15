@@ -45,7 +45,6 @@
 
   let snapshot = $state<SlimeState | null>(null);
   let canFeed = $state(false);
-  let feeding = $state(false);
   let holding = $state(false);
   let absenceLine = $state<string | null>(null);
   let fpsText = $state('  --');
@@ -128,13 +127,10 @@
     scene?.setTool(next);
   }
 
-  // Holding oats the pet cannot eat is a dead cursor; the hand comes back
-  // out on its own. `feeding` keeps the tool through the meal itself.
-  $effect(() => {
-    if (tool === 'oats' && !canFeed && !feeding) selectTool('hand');
-  });
+  // The oats stay in hand as long as the player likes — sprinkling is
+  // never rationed; hunger gates the eating, not the pantry.
 
-  // Likewise the shaker: at full pearl (or over a crust) it goes back in
+  // The shaker: at full pearl (or over a crust) it goes back in
   // the drawer on its own.
   $effect(() => {
     if (tool === 'mica' && !canSparkle) selectTool('hand');
@@ -165,7 +161,6 @@
       lastUiPaint = now;
       snapshot = result.state;
       canFeed = result.canFeed;
-      feeding = result.feeding;
       moldy = result.moldy;
       grimeWorst = result.grimeWorst;
       canSparkle = result.canSparkle;
@@ -346,7 +341,6 @@
           {tool}
           grimy={grimeWorst > 0.08}
           {canFeed}
-          {feeding}
           {moldy}
           dormant={snapshot?.stage === 'sclerotium'}
           {canSparkle}

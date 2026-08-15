@@ -87,6 +87,8 @@ export interface ParticleEyesBundle {
    * snaps the blinks; `poke` swims the beads to crowd a poked world point,
    * `ease` 0..1 owned by the caller. `squint` 0..1 squashes the orbs into
    * contented crescents — the being-petted face — eased by the caller.
+   * `perk` 0..1 is anticipation: a small lift and widening on top of the
+   * mood's pose — the ears-up face of a pet that saw the treat jar move.
    */
   update(
     positions: Float32Array,
@@ -95,7 +97,8 @@ export interface ParticleEyesBundle {
     gaze: readonly number[] | null,
     emotion: Emotion,
     poke?: { point: readonly number[]; ease: number } | null,
-    squint?: number
+    squint?: number,
+    perk?: number
   ): void;
   /**
    * No eyes right now: unform the pair. The next update births them —
@@ -226,7 +229,7 @@ export function createParticleEyes(
   return {
     group,
 
-    update(positions, count, timeSec, gaze, emotion, poke = null, squint = 0) {
+    update(positions, count, timeSec, gaze, emotion, poke = null, squint = 0, perk = 0) {
       const { valence, arousal } = emotion;
       const dt = lastTime < 0 ? 1 : Math.max(0, timeSec - lastTime);
       if (timeSec < lastTime) blinkStarted = -1;
@@ -265,7 +268,9 @@ export function createParticleEyes(
         formed *
         (BLINK_MIN_SIZE + (1 - BLINK_MIN_SIZE) * blink) *
         (0.7 + 0.3 * valence) *
-        (0.92 + 0.16 * arousal);
+        (0.92 + 0.16 * arousal) *
+        // Perk widens on top of everything: the expectant saucer.
+        (1 + 0.1 * perk);
       material.uniforms.uOpenness.value = orbSize;
 
       // ---- body statistics: centroid and height range --------------------
@@ -289,7 +294,7 @@ export function createParticleEyes(
       // half-mast, with a small lift when something has its attention.
       const heightFraction = Math.min(
         EYE_HEIGHT_HIGH,
-        EYE_HEIGHT_LOW + 0.12 * valence + 0.05 * arousal
+        EYE_HEIGHT_LOW + 0.12 * valence + 0.05 * arousal + 0.03 * perk
       );
       const eyeLevel = minY + Math.max(0.004, (maxY - minY) * heightFraction);
 

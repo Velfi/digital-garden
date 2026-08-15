@@ -63,7 +63,7 @@
   {/if}
 
   {#if moldy}
-    <p class="chore">The oat flake has gone moldy. Click it to remove it.</p>
+    <p class="chore">An oat flake has gone moldy. Click it to remove it.</p>
   {/if}
 
   {#if fullness && !dormant}

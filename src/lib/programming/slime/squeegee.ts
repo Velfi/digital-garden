@@ -122,42 +122,92 @@ export function createSqueegee(
   // Local axes: x along the blade, y up the pane, +z pointing into the box.
   const disposables: Array<{ dispose(): void }> = [];
   const rubberMaterial = new THREE.MeshStandardMaterial({
-    color: 0x2b2f31,
-    roughness: 0.65,
+    color: 0x24272a,
+    roughness: 0.9,
     transparent: true
   });
-  const barMaterial = new THREE.MeshStandardMaterial({
-    color: 0xcfd6d2,
-    roughness: 0.35,
-    metalness: 0.6,
+  const steelMaterial = new THREE.MeshStandardMaterial({
+    color: 0xd4dad8,
+    roughness: 0.28,
+    metalness: 0.85,
     transparent: true
   });
   const handleMaterial = new THREE.MeshStandardMaterial({
     color: 0xd8a03e,
-    roughness: 0.55,
+    roughness: 0.5,
     transparent: true
   });
-  const materials = [rubberMaterial, barMaterial, handleMaterial];
+  const materials = [rubberMaterial, steelMaterial, handleMaterial];
   disposables.push(...materials);
 
-  const rubberGeometry = new THREE.BoxGeometry(0.03, 0.007, 0.003);
+  // The blade assembly leans into the box at a working angle, the way a
+  // squeegee is actually held, with only the rubber's edge kissing the glass.
+  const bladeAssembly = new THREE.Group();
+  bladeAssembly.rotation.x = -0.55;
+  bladeAssembly.position.set(0, 0.0015, 0.002);
+
+  // Rubber strip, longer than its channel so the working edge shows.
+  const rubberGeometry = new THREE.BoxGeometry(0.036, 0.008, 0.002);
   const rubber = new THREE.Mesh(rubberGeometry, rubberMaterial);
-  rubber.position.set(0, 0, 0.0022);
+  rubber.position.set(0, 0.003, 0);
   disposables.push(rubberGeometry);
 
-  const barGeometry = new THREE.BoxGeometry(0.032, 0.0045, 0.005);
-  const bar = new THREE.Mesh(barGeometry, barMaterial);
-  bar.position.set(0, 0.004, 0.004);
-  disposables.push(barGeometry);
+  // Steel channel gripping the rubber's upper half.
+  const channelGeometry = new THREE.BoxGeometry(0.032, 0.005, 0.0055);
+  const channel = new THREE.Mesh(channelGeometry, steelMaterial);
+  channel.position.set(0, 0.0075, 0.001);
+  disposables.push(channelGeometry);
 
-  const handleGeometry = new THREE.CylinderGeometry(0.0032, 0.0042, 0.034, 10);
+  // Plastic caps closing off the channel's ends.
+  const capGeometry = new THREE.BoxGeometry(0.003, 0.0056, 0.006);
+  const capLeft = new THREE.Mesh(capGeometry, handleMaterial);
+  capLeft.position.set(-0.0165, 0.0075, 0.001);
+  const capRight = new THREE.Mesh(capGeometry, handleMaterial);
+  capRight.position.set(0.0165, 0.0075, 0.001);
+  disposables.push(capGeometry);
+
+  bladeAssembly.add(rubber, channel, capLeft, capRight);
+
+  // Neck joining the channel to the grip, along the handle's lean.
+  const neckGeometry = new THREE.CylinderGeometry(0.002, 0.0026, 0.009, 10);
+  const neck = new THREE.Mesh(neckGeometry, steelMaterial);
+  neck.rotation.x = -0.85;
+  neck.position.set(0, 0.0095, 0.0065);
+  disposables.push(neckGeometry);
+
+  // Collar where the grip swallows the neck.
+  const collarGeometry = new THREE.CylinderGeometry(0.0042, 0.0046, 0.004, 12);
+  const collar = new THREE.Mesh(collarGeometry, handleMaterial);
+  collar.rotation.x = -0.85;
+  collar.position.set(0, 0.0125, 0.0095);
+  disposables.push(collarGeometry);
+
+  // Rounded grip, leaning up and into the box like a hand over the rim.
+  const handleGeometry = new THREE.CapsuleGeometry(0.004, 0.024, 4, 12);
   const handle = new THREE.Mesh(handleGeometry, handleMaterial);
-  // Leaning up and into the box, like a hand reaching over the rim.
   handle.rotation.x = -0.85;
-  handle.position.set(0, 0.017, 0.015);
+  handle.position.set(0, 0.021, 0.018);
   disposables.push(handleGeometry);
 
-  group.add(rubber, bar, handle);
+  group.add(bladeAssembly, neck, collar, handle);
+
+  // --- the squish -----------------------------------------------------------
+  // The same trick as the slime's eyes: pressing doesn't swap geometry, it
+  // scales the rubber non-uniformly against the surface. Flattened into the
+  // glass, shortened in height, bulged along the blade — with the working
+  // edge pinned to the pane and the whole assembly leaning harder, the way
+  // rubber loads up under a real stroke.
+  const RUBBER_HALF_HEIGHT = 0.004;
+  const RUBBER_EDGE_Y = 0.003 - RUBBER_HALF_HEIGHT;
+  let squish = 0;
+  let squishTarget = 0;
+
+  function applySquish(s: number): void {
+    rubber.scale.set(1 + 0.1 * s, 1 - 0.35 * s, 1 - 0.45 * s);
+    // Keep the working edge on the glass as the strip shortens.
+    rubber.position.y = RUBBER_EDGE_Y + RUBBER_HALF_HEIGHT * (1 - 0.35 * s);
+    bladeAssembly.rotation.x = -0.55 - 0.18 * s;
+  }
 
   function setGhost(alpha: number): void {
     for (const material of materials) material.opacity = alpha;
@@ -218,6 +268,7 @@ export function createSqueegee(
       if (!hit) return false;
       last = hit;
       setGhost(1);
+      squishTarget = 1;
       placeProp(hit, 1);
       // A press is already a wipe the size of the blade's rest.
       wipeBoth(hit.pane, hit.u, hit.v, hit.u, hit.v);
@@ -273,11 +324,17 @@ export function createSqueegee(
         blade = null;
       }
       last = null;
+      squishTarget = 0;
       group.visible = false;
     },
 
     step(dt) {
       if (blade) world.moveKinematic(blade, bladeTarget, dt);
+      if (Math.abs(squishTarget - squish) > 1e-4) {
+        // Quick load-up, same-speed relax: ~50ms to settle either way.
+        squish += (squishTarget - squish) * (1 - Math.exp(-dt * 22));
+        applySquish(squish);
+      }
     },
 
     wiping() {

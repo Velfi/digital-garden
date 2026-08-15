@@ -43,6 +43,7 @@ import { createSqueegee, type SqueegeeBundle } from './squeegee';
 import { createDof, type DofBundle } from './dof';
 import { REGION_BOTTOM, buildEggMesh } from './eggMesh';
 import { createEmotionMeter, type Emotion } from './emotion';
+import { createErrandArbiter, type ErrandOutputs, type ErrandState } from './errands';
 import type { BreedId } from './breeds';
 import type { SlimeFinish } from './settings';
 import { createEyes, type EyesBundle } from './eyes';
@@ -56,9 +57,17 @@ import {
 import { createParticleEyes, type ParticleEyesBundle } from './particleEyes';
 import { createSolverBridge, type SolverBridge } from './solverBridge';
 import { createParticleSkin, type ParticleSkinBundle } from './particleSkin';
-import { flushGrime, flushSlime, loadSlime, loadTankSeed, readGrime, saveGrime, saveSlime } from './persist';
+import {
+  flushGrime,
+  flushSlime,
+  loadSlime,
+  loadTankSeed,
+  readGrime,
+  saveGrime,
+  saveSlime
+} from './persist';
 import { awayActivity, deserializeGrime, serializeGrime, simulateGrimeAway } from './grimePersist';
-import { buildOatGeometry, createOatMaterial } from './oatMesh';
+import { buildOatGeometry, createOatMaterial, type OatMaterial } from './oatMesh';
 import { BALL_RADIUS, createBallMesh, type BallMeshBundle } from './ballMesh';
 import { createSclerotium, type SclerotiumBundle } from './sclerotiumMesh';
 import { createCrustShards, type CrustShardsBundle } from './crustShards';
@@ -143,9 +152,9 @@ export interface SlimeSnapshot {
   displayFps: number;
   grabbing: boolean;
   canFeed: boolean;
-  /** A flake is out — falling, luring, being eaten, or moldering. */
+  /** A meal is being engulfed right now. */
   feeding: boolean;
-  /** The flake out there has gone over, and wants clicking away. */
+  /** At least one flake out there has gone over, and wants clicking away. */
   moldy: boolean;
   /** Mean grime on the dirtiest pane, 0..1 — the drawer's nudge to squeegee.
    * The worst of all four, because the orbit reaches all four. */
@@ -175,9 +184,10 @@ export interface SlimeScene {
    */
   spray(ndc?: readonly [number, number]): void;
   /**
-   * Drop an oat flake, if it is awake and hungry. With `ndc`, the flake
-   * falls over the pointed-at spot — aim well, or the meal sits where it
-   * lands until it is quietly tidied away.
+   * Drop an oat flake — as many as the player likes, whenever the pet is
+   * out. With `ndc`, the flake falls over the pointed-at spot. Hunger
+   * gates the eating, not the sprinkling: extras lie, mold, and are
+   * cleared by the crew or a click.
    */
   feed(ndc?: readonly [number, number]): void;
   /**
@@ -409,7 +419,6 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
   scene.add(terrarium.group);
   placeCamera();
 
-
   const trails: TrailBundle = createTrailMap();
   scene.add(trails.mesh);
 
@@ -424,6 +433,7 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
 
   const sprayFx: SprayBundle = createSpray();
   scene.add(sprayFx.points);
+  scene.add(sprayFx.group);
 
   const powderFx: PowderBundle = createPowder();
   scene.add(powderFx.points);
@@ -711,27 +721,65 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
     return false;
   }
 
-  // --------------------------------------------------------------- the flake
+  // -------------------------------------------------------------- the flakes
   // Geometry and material live in oatMesh.ts — the flake earned its own
-  // file the day it stopped being a box. The scene drives its two life
-  // events through the material's uniforms.
+  // file the day it stopped being a box. Any number may be out at once (the
+  // player sprinkles freely); each carries its own material so mold and
+  // digestion are per-flake, but they all share one geometry. The slime
+  // eats one at a time — one mouth — and only while genuinely hungry;
+  // whatever it never gets to molds where it lies, and the springtail crew
+  // clears molds at their own pace, so a scattered handful tidies itself.
   const oatGeometry = buildOatGeometry(seed);
-  const oatMaterial = createOatMaterial();
-  const flakeDigestUniform = oatMaterial.digest;
-  const flakeMoldUniform = oatMaterial.mold;
-  let flake: {
+  interface Flake {
     body: TerrariumBody;
     mesh: THREE.Mesh;
+    material: OatMaterial;
     age: number;
     /** null while falling; engulf progress 0..engulfSec once caught. */
     engulfing: number | null;
     /** This meal's duration, rolled when the engulf starts. */
     engulfSec: number;
-  } | null = null;
+    pose: [number, number, number];
+  }
+  let flakes: Flake[] = [];
 
-  const flakePose: [number, number, number] = [0, 0, 0];
   const flakeQuat: [number, number, number, number] = [0, 0, 0, 1];
   const flakeVelocity: [number, number, number] = [0, 0, 0];
+
+  /** The meal in progress, if any — the slime has one mouth. */
+  function engulfingFlake(): Flake | null {
+    for (const f of flakes) if (f.engulfing !== null) return f;
+    return null;
+  }
+
+  /** A settled, still-good flake — the lure's and the tongue's kind. */
+  function flakeIsGood(f: Flake): boolean {
+    return f.engulfing === null && f.age > 0.5 && f.age < OAT_MOLD_SEC;
+  }
+
+  function flakeIsMoldy(f: Flake): boolean {
+    return f.engulfing === null && f.age >= OAT_MOLD_SEC;
+  }
+
+  /** The nearest still-good flake to the body, or null. */
+  function nearestGoodFlake(): Flake | null {
+    let best: Flake | null = null;
+    let bestD = Infinity;
+    for (const f of flakes) {
+      if (!flakeIsGood(f)) continue;
+      const d = Math.hypot(f.pose[0] - slimeCenter[0], f.pose[2] - slimeCenter[2]);
+      if (d < bestD) {
+        bestD = d;
+        best = f;
+      }
+    }
+    return best;
+  }
+
+  /** The meal being eaten, else the nearest good flake: what the will wants. */
+  function mealFlake(): Flake | null {
+    return engulfingFlake() ?? (canFeed(state) ? nearestGoodFlake() : null);
+  }
   // The pseudopod: how far the feeding tongue has extended, 0..1. The tip
   // walks out from the body toward the flake as this rises, and the solver's
   // tendril attractor pulls a stream of particles after it — the skin wraps
@@ -740,11 +788,15 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
   /** Whether the solver currently holds a tendril, so clears send once. */
   let tendrilOn = false;
 
-  function removeFlake(): void {
-    if (!flake) return;
-    world.remove(flake.body);
-    scene.remove(flake.mesh);
-    flake = null;
+  function removeFlake(f: Flake): void {
+    world.remove(f.body);
+    scene.remove(f.mesh);
+    f.material.material.dispose();
+    flakes = flakes.filter((other) => other !== f);
+  }
+
+  function removeAllFlakes(): void {
+    for (const f of [...flakes]) removeFlake(f);
   }
 
   // ---------------------------------------------------------------- emotion
@@ -757,44 +809,32 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
   let wavePhase = 0;
   /** Session clock for the amble scheduler, seconds. */
   let sceneSec = 0;
-  // The amble: an aroused, content slime sometimes picks a spot and oozes
-  // there for no reason but its own. Food and the hand always outrank it.
-  const emotionRand = mulberry32((seed ^ 0x3a7e) >>> 0);
-  let nextAmbleAt = 20 + emotionRand() * 20;
-  let ambleUntil = 0;
-  const ambleTarget: [number, number] = [0, 0];
-  // The popcorn: a genuinely excited, happy slime pops off the floor in a
-  // little burst of short hops, the way a delighted young mouse popcorns.
-  // Same scheduler idiom as the amble; the hand and a meal outrank it, and
-  // reduced motion keeps the pet's feet on the ground for good.
-  let nextPopcornAt = 15 + emotionRand() * 15;
-  let popcornHopsLeft = 0;
-  let nextPopHopAt = 0;
+  // The errands: what the pet does with its own time. The five old
+  // schedulers (amble, popcorn, ball play, springtail chase, perch) live in
+  // the arbiter now — same clocks, same gates — plus the part that makes
+  // them read as intentions: an errand preempted by the hand or a meal is
+  // remembered, glanced back at, and resumed. The scene stays the senses
+  // and the hands: it answers quarry picks, reports perch arrival, and
+  // turns the arbiter's errand into a lure.
+  const emotionRand = mulberry32((seed ^ 0xa11ce) >>> 0);
+  const errandArbiter = createErrandArbiter((seed ^ 0x3a7e) >>> 0);
+  let errandOut: ErrandOutputs = {
+    errand: null,
+    resumeGlance: null,
+    wantQuarryPick: false,
+    hop: null
+  };
+  /** The scene's answer to the arbiter's quarry request, fed back next frame. */
+  let quarryPickAnswer = -1;
+  /** Extensions owed to a live chase (savor holds, player-poked ptooeys). */
+  let chaseBoostSec = 0;
 
   // ------------------------------------------------------------ the play ball
-  // The toy out in the tank. The pet plays in *bouts* — a stretch of chasing
-  // and nosing the ball, then a rest — on the amble's own scheduler idiom,
-  // so a ball left out overnight is company, not a treadmill. A nudge (the
-  // ball suddenly scooting while the body is on it) is a little delight.
+  // The toy out in the tank. A nudge (the ball suddenly scooting while the
+  // body is on it) is a little delight.
   let ballOut = false;
-  let playUntil = 0;
-  let nextPlayAt = 0;
-  // Chasing springtails: the toyless game. A content, well-fed slime
-  // sometimes picks the nearest critter and ambles after it; the critter
-  // pings away on its furcula, the chase retargets, nobody gets eaten.
-  // Bouts on the ball's scheduler idiom — a stretch of tag, then a rest.
-  let chaseIdx = -1;
-  let chaseUntil = 0;
-  let nextChaseAt = 30 + emotionRand() * 30;
-  // The perch: a damp, content slime sometimes climbs one of the tank's
-  // rocks and sits up there a while — the old glass-climb's wanderlust,
-  // pointed at the furniture. The scene only parks the lure on the rock's
-  // footprint; the actual ascent is the solver's grip-haul (moisture is
-  // grip, so a dry crust never gets asked). Bouts on the amble scheduler
-  // idiom; food, the hand, and every game outrank it.
-  let perchRock = -1;
-  let perchUntil = 0;
-  let nextPerchAt = 45 + emotionRand() * 45;
+  /** True for the frame after a toss: a beat of regard before the pounce. */
+  let ballJustTossed = false;
   // The gaze's tie to the will: whatever errand holds the lure also holds
   // the eyes — the meal, the ball, the quarry, the rock being climbed.
   // Strength eases so attention drifts on and off; the hand's poke and the
@@ -802,6 +842,21 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
   const attentionWorld = new THREE.Vector3();
   let attentionWant = 0;
   let attentionEase = 0;
+  // The glance: a softer, quicker cousin of the attention above, shared by
+  // two tells of an inner life — the look back at a remembered errand on
+  // resume, and anticipation's watch on a promising tool. Layered into the
+  // gaze after the errand's attention and before the spit-watch and the
+  // poke, so the hand still outranks every expectation.
+  const glanceWorld = new THREE.Vector3();
+  let glanceWant = 0;
+  let glanceEase = 0;
+  /**
+   * Anticipation, 0..1: the pet saw what you picked up and expects what
+   * usually follows — the mister's drink, the oats. Decays on its own
+   * (exact exponential, the house rule) if the promise never lands.
+   */
+  let anticipation = 0;
+  const ANTICIPATION_TAU = 4;
   let chaseThrillCooldownSec = 0;
   // The slurp-and-ptooey: a chase that actually corners its quarry sucks
   // the critter in, savors it a beat, and spits it out in a lofted arc.
@@ -829,6 +884,31 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
   const BALL_CLICK_RADIUS = 0.014;
   /** Ball motion past this, beside the body, reads as "it batted it". */
   const NUDGE_SPEED = 0.025;
+
+  /** Point the glance at whatever an errand is about; false if it's gone. */
+  function setGlanceAtErrand(e: ErrandState): boolean {
+    if (e.kind === 'amble' && e.ambleTarget) {
+      glanceWorld.set(e.ambleTarget[0], FLOOR_Y + 0.002, e.ambleTarget[1]);
+      return true;
+    }
+    if (e.kind === 'perch' && e.rockIndex >= 0) {
+      const rock = terrarium.rocks[e.rockIndex];
+      glanceWorld.set(rock.x, rock.y + rock.radius * 0.6, rock.z);
+      return true;
+    }
+    if (e.kind === 'play' && ballPrevValid) {
+      glanceWorld.set(ballPrev[0], ballPrev[1], ballPrev[2]);
+      return true;
+    }
+    if (e.kind === 'chase') {
+      const q = springtails.positionOf(e.quarryIndex);
+      if (q) {
+        glanceWorld.set(q[0], FLOOR_Y + 0.002, q[1]);
+        return true;
+      }
+    }
+    return false;
+  }
 
   function putBallAway(): void {
     if (!ballOut) return;
@@ -1155,6 +1235,30 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
   let pokeFace = -1;
   /** Where the poke landed in the world — the particle body's "nose". */
   const pokeWorld = new THREE.Vector3();
+  /**
+   * The particle the poke landed nearest — the particle path's answer to the
+   * mesh path's pokeFace. The looked-at spot is re-read from this particle
+   * every frame, so a body that sprints off mid-chase carries its "nose"
+   * (and the eyes crowding it) along instead of leaving them hovering over
+   * the empty spot where the finger landed. -1 when unanchored.
+   */
+  let pokeParticle = -1;
+
+  /** Pin pokeWorld to its nearest particle in last frame's readback. */
+  function anchorPokeToBody(): void {
+    pokeParticle = -1;
+    let bestSq = Infinity;
+    for (let i = 0; i * 3 + 2 < particlePositions.length; i++) {
+      const dx = particlePositions[i * 3] - pokeWorld.x;
+      const dy = particlePositions[i * 3 + 1] - pokeWorld.y;
+      const dz = particlePositions[i * 3 + 2] - pokeWorld.z;
+      const dSq = dx * dx + dy * dy + dz * dz;
+      if (dSq < bestSq) {
+        bestSq = dSq;
+        pokeParticle = i;
+      }
+    }
+  }
   let pokeLookSec = 0;
   let pokeBoutSec = 0;
   let pokesSeen = 0;
@@ -1170,9 +1274,9 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
       state: { ...state },
       displayFps,
       grabbing: handState() === 'grabbing',
-      canFeed: canFeed(state) && !flake,
-      feeding: !!flake,
-      moldy: !!flake && flake.engulfing === null && flake.age >= OAT_MOLD_SEC,
+      canFeed: canFeed(state),
+      feeding: flakes.some((f) => f.engulfing !== null),
+      moldy: flakes.some(flakeIsMoldy),
       grimeWorst,
       canSparkle: canSparkle(state),
       roaming,
@@ -1245,6 +1349,8 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
       petSquint += (squintTarget - petSquint) * Math.min(1, frameSec / squintTau);
       mood = emotionMeter.update(frameSec, state);
       volume.setEmotion(mood.valence, mood.arousal);
+      // Anticipation wears off on its own if the promised thing never comes.
+      anticipation *= Math.exp(-frameSec / ANTICIPATION_TAU);
 
       // Droop eases in while dangling, and recovers on touch-down — quickly,
       // because plumping back up is half of what makes the sag read.
@@ -1263,23 +1369,21 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
       // The will's appetite, refreshed once per frame. Only actually eating
       // holds it still; a flake merely *lying there* is the opposite of a
       // reason to freeze — it is the errand.
-      const eating = !!flake && flake.engulfing !== null;
+      const eating = engulfingFlake() !== null;
       climbInputs.handBusy = handState() !== 'idle';
       climbInputs.zest = state.stage === 'active' && !eating ? Math.max(0.2, state.vigor) : 0;
       climbInputs.moisture = state.moisture;
       climbInputs.speed = motionScale;
-      // The lure: a landed, still-good flake, offered only while genuinely
-      // hungry. A full slime is enticed by nothing, and mold entices no one.
-      // The lure survives into the engulf: the flake is eaten where it lies,
-      // so the body must stay parked on top of it until the meal is done.
-      if (
-        flake &&
-        (flake.engulfing !== null ||
-          (flake.age > 0.5 && flake.age < OAT_MOLD_SEC && canFeed(state)))
-      ) {
-        foodScratch[0] = flakePose[0];
-        foodScratch[1] = flakePose[1];
-        foodScratch[2] = flakePose[2];
+      // The lure: the meal in progress, else the nearest landed, still-good
+      // flake — offered only while genuinely hungry. A full slime is enticed
+      // by nothing, and mold entices no one. The lure survives into the
+      // engulf: the flake is eaten where it lies, so the body must stay
+      // parked on top of it until the meal is done.
+      const wantedFlake = mealFlake();
+      if (wantedFlake) {
+        foodScratch[0] = wantedFlake.pose[0];
+        foodScratch[1] = wantedFlake.pose[1];
+        foodScratch[2] = wantedFlake.pose[2];
         climbInputs.food = foodScratch;
       } else {
         climbInputs.food = null;
@@ -1291,8 +1395,47 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
       if (particles) {
         const willFree = !climbInputs.handBusy && state.stage === 'active';
         attentionWant = 0;
+        glanceWant = 0;
+
+        // The arbiter's senses, read against LAST frame's errand: whether
+        // the chased critter still exists, and whether the perch is topped.
+        const prevErrand = errandOut.errand;
+        const quarryLost =
+          prevErrand?.kind === 'chase' &&
+          heldIdx < 0 &&
+          !springtails.flightPositionOf(prevErrand.quarryIndex) &&
+          !springtails.positionOf(prevErrand.quarryIndex);
+        let perchArrived = false;
+        if (prevErrand?.kind === 'perch') {
+          const rock = terrarium.rocks[prevErrand.rockIndex];
+          perchArrived =
+            Math.hypot(slimeCenter[0] - rock.x, slimeCenter[2] - rock.z) < rock.radius * 0.7;
+        }
+        errandOut = errandArbiter.update({
+          dt: frameSec,
+          mood,
+          willFree,
+          foodClaimed: !!climbInputs.food,
+          eating,
+          ballOut,
+          ballJustTossed,
+          rockCount: terrarium.rocks.length,
+          moisture: state.moisture,
+          canFeed: canFeed(state),
+          reducedMotion,
+          quarryPick: quarryPickAnswer,
+          quarryLost,
+          perchArrived,
+          chaseBoostSec
+        });
+        ballJustTossed = false;
+        chaseBoostSec = 0;
+        quarryPickAnswer = errandOut.wantQuarryPick
+          ? springtails.nearestLive(slimeCenter[0], slimeCenter[2])
+          : -1;
+
+        const errand = errandOut.errand;
         if (climbInputs.food && willFree) {
-          ambleUntil = 0;
           // While actually eating the lure softens to a hold: enough to keep
           // the mound draped over the flake, not enough to churn.
           particles.setLure(
@@ -1303,49 +1446,46 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
           attentionWorld.set(foodScratch[0], foodScratch[1], foodScratch[2]);
           attentionWant = 1;
           roaming = true;
-        } else if (willFree && ballOut && ballPrevValid && sceneSec < playUntil) {
+        } else if (errand?.kind === 'play' && ballPrevValid) {
           // Playtime: chase the ball where it actually is. The nose-push
           // that follows is pure physics — the corral crawls the body onto
           // the toy, the toy gets batted away, the chase resumes.
-          ambleUntil = 0;
           particles.setLure(ballPrev[0], ballPrev[2], (0.6 + 0.9 * mood.arousal) * motionScale);
           attentionWorld.set(ballPrev[0], ballPrev[1], ballPrev[2]);
           attentionWant = 1;
           roaming = true;
-        } else if (willFree && sceneSec < chaseUntil) {
+        } else if (errand?.kind === 'chase') {
           // Chasing springtails: the lure tracks the quarry, so every
           // furcula ping yanks the chase to wherever it landed.
-          const quarry = springtails.positionOf(chaseIdx);
+          const quarry = springtails.positionOf(errand.quarryIndex);
           if (heldIdx >= 0) {
             // Mouth full: the slime sits with its prize, going nowhere.
             particles.clearLure();
             roaming = false;
-          } else if (springtails.flightPositionOf(chaseIdx)) {
+          } else if (springtails.flightPositionOf(errand.quarryIndex)) {
             // The quarry is still mid-ptooey: the slime sits and watches
             // its own throw come down — the chase resumes at touchdown,
             // not under it. (The eyes are already tracking the arc.)
             particles.clearLure();
             roaming = false;
           } else if (quarry) {
-            ambleUntil = 0;
             particles.setLure(quarry[0], quarry[1], (0.5 + 0.8 * mood.arousal) * motionScale);
             attentionWorld.set(quarry[0], FLOOR_Y + 0.002, quarry[1]);
             attentionWant = 1;
             roaming = true;
           } else {
             // The quarry is gone (a hunger flip mid-game turns tag into
-            // dinner): pick whoever is nearest, or let the bout lapse.
-            chaseIdx = springtails.nearestLive(slimeCenter[0], slimeCenter[2]);
-            if (chaseIdx < 0) chaseUntil = 0;
+            // dinner): the arbiter is already asking for a new pick, and
+            // lapses the bout if the answer is nobody.
             particles.clearLure();
             roaming = false;
           }
-        } else if (willFree && sceneSec < perchUntil && perchRock >= 0) {
+        } else if (errand?.kind === 'perch') {
           // Climbing a rock: the lure parks on its footprint and the
           // solver's grip-haul does the ascent. Once the body is up, the
           // lure softens to a hold — enough to keep it perched, not enough
           // to churn — the same idiom as eating's drape over the flake.
-          const rock = terrarium.rocks[perchRock];
+          const rock = terrarium.rocks[errand.rockIndex];
           const up =
             Math.hypot(slimeCenter[0] - rock.x, slimeCenter[2] - rock.z) < rock.radius * 0.7;
           particles.setLure(rock.x, rock.z, (up ? 0.35 : 0.6 + 0.5 * mood.arousal) * motionScale);
@@ -1356,112 +1496,51 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
             attentionWant = 0.7;
           }
           roaming = true;
-        } else if (willFree && sceneSec < ambleUntil) {
+        } else if (errand?.kind === 'amble' && errand.ambleTarget) {
           particles.setLure(
-            ambleTarget[0],
-            ambleTarget[1],
+            errand.ambleTarget[0],
+            errand.ambleTarget[1],
             (0.4 + 0.6 * mood.arousal) * motionScale
           );
           // An ambling slime half-watches where it's going.
-          attentionWorld.set(ambleTarget[0], FLOOR_Y + 0.002, ambleTarget[1]);
+          attentionWorld.set(errand.ambleTarget[0], FLOOR_Y + 0.002, errand.ambleTarget[1]);
           attentionWant = 0.35;
           roaming = true;
         } else {
-          if (sceneSec >= ambleUntil) ambleUntil = 0;
           particles.clearLure();
           roaming = false;
         }
-        // The amble scheduler: a dispirited or sleepy slime stays put; an
-        // excited one trips more often. Interruptions (food, the hand)
-        // simply preempt the lure above — the errand quietly lapses.
-        if (willFree && !climbInputs.food && ambleUntil === 0 && sceneSec >= nextAmbleAt) {
-          if (mood.valence > 0.3 && mood.arousal > 0.2) {
-            const reach = 0.75;
-            ambleTarget[0] = (emotionRand() * 2 - 1) * BOX_HALF_X * reach;
-            ambleTarget[1] = (emotionRand() * 2 - 1) * BOX_HALF_Z * reach;
-            ambleUntil = sceneSec + 4 + emotionRand() * 5;
-            nextAmbleAt = ambleUntil + (12 + emotionRand() * 30) / (0.4 + mood.arousal);
-          } else {
-            nextAmbleAt = sceneSec + 10;
-          }
+
+        // The look back: freed within its patience, the pet first turns to
+        // the errand it was pulled off of — the body follows a beat later.
+        if (errandOut.resumeGlance) {
+          const glance = errandOut.resumeGlance;
+          if (setGlanceAtErrand(glance)) glanceWant = 0.8;
         }
-        // The popcorn scheduler. Bursts only fire out of real excitement —
-        // high arousal on a content baseline — so they cluster right after
-        // play, a treat, a spray: the moments a mouse would popcorn too.
-        // The solver's own grounded gate makes each hop honest; anything
-        // that lifts the body mid-burst simply eats the remaining hops.
-        if (!reducedMotion && willFree && !eating) {
-          if (popcornHopsLeft > 0 && sceneSec >= nextPopHopAt) {
-            popcornHopsLeft -= 1;
-            const ang = emotionRand() * Math.PI * 2;
-            const drift = 0.03 * emotionRand();
-            particles.hop(
-              (0.5 + 0.2 * mood.arousal) * motionScale,
-              Math.cos(ang) * drift,
-              Math.sin(ang) * drift
-            );
-            nextPopHopAt = sceneSec + 0.35 + emotionRand() * 0.3;
-          }
-          if (popcornHopsLeft === 0 && sceneSec >= nextPopcornAt) {
-            if (mood.arousal > 0.55 && mood.valence > 0.45) {
-              popcornHopsLeft = 2 + Math.floor(emotionRand() * 3);
-              nextPopHopAt = sceneSec;
-              nextPopcornAt = sceneSec + 18 + emotionRand() * 40;
-            } else {
-              nextPopcornAt = sceneSec + 5;
-            }
-          }
-        } else {
-          popcornHopsLeft = 0;
+        // The popcorn hop, planned by the arbiter, thrown by the solver.
+        if (errandOut.hop) {
+          particles.hop(
+            errandOut.hop.impulse * motionScale,
+            errandOut.hop.dx,
+            errandOut.hop.dz
+          );
         }
-        // The play scheduler: with the ball out, a content-enough slime
-        // takes it in bouts — chase for a stretch, rest, come back to it.
-        // A miserable or torpid pet leaves the toy where it lies.
-        if (willFree && ballOut && !climbInputs.food && playUntil <= sceneSec) {
-          if (sceneSec >= nextPlayAt) {
-            if (mood.valence > 0.2 && mood.arousal > 0.1) {
-              playUntil = sceneSec + 6 + emotionRand() * 8;
-              nextPlayAt = playUntil + (8 + emotionRand() * 17) / (0.4 + mood.arousal);
-            } else {
-              nextPlayAt = sceneSec + 8;
-            }
-          }
+
+        // Anticipation's watch: a promising tool in the hand draws the eyes
+        // to wherever it hovers — keener for the oats than the mister — and
+        // a fresh flake is news the moment it drops, half a second before
+        // the will is allowed to want it. Eyes only; the body never jumps
+        // the gun, so reduced motion needs no extra gate here.
+        if (anticipation > 0.02 && (tool === 'mister' || tool === 'oats')) {
+          const at = aimPoint(lastPointer[0], lastPointer[1]);
+          glanceWorld.set(at[0], at[1], at[2]);
+          glanceWant = Math.max(glanceWant, (tool === 'oats' ? 0.8 : 0.5) * anticipation);
         }
-        // The perch scheduler: damp enough to grip (the old glass-climb's
-        // moisture gate), content enough to wander — sometimes the trip is
-        // *up*. Dries the same way it always did: a crusting pet never has
-        // the moisture, so the gate answers the lifecycle for free.
-        if (
-          willFree &&
-          !climbInputs.food &&
-          perchUntil <= sceneSec &&
-          sceneSec >= nextPerchAt &&
-          terrarium.rocks.length > 0
-        ) {
-          if (state.moisture >= 0.35 && mood.valence > 0.2 && mood.arousal > 0.1) {
-            perchRock = Math.floor(emotionRand() * terrarium.rocks.length);
-            perchUntil = sceneSec + 12 + emotionRand() * 15;
-            nextPerchAt = perchUntil + (40 + emotionRand() * 80) / (0.4 + mood.arousal);
-          } else {
-            nextPerchAt = sceneSec + 15;
-          }
-        }
-        // The chase scheduler: no toy out, nothing to eat, a bright mood
-        // on a full belly — sometimes the crew itself is the game. A
-        // hungry slime never "plays" this; that would be hunting.
-        if (willFree && !ballOut && !climbInputs.food && chaseUntil <= sceneSec) {
-          if (sceneSec >= nextChaseAt) {
-            if (mood.valence > 0.25 && mood.arousal > 0.2 && !canFeed(state)) {
-              chaseIdx = springtails.nearestLive(slimeCenter[0], slimeCenter[2]);
-              if (chaseIdx >= 0) {
-                chaseUntil = sceneSec + 5 + emotionRand() * 7;
-                nextChaseAt = chaseUntil + (25 + emotionRand() * 50) / (0.4 + mood.arousal);
-              } else {
-                nextChaseAt = sceneSec + 15;
-              }
-            } else {
-              nextChaseAt = sceneSec + 10;
-            }
+        for (let i = flakes.length - 1; i >= 0; i--) {
+          if (flakes[i].age < 0.5) {
+            glanceWorld.set(flakes[i].pose[0], flakes[i].pose[1], flakes[i].pose[2]);
+            glanceWant = 1;
+            break;
           }
         }
       }
@@ -1478,14 +1557,16 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
       // its own time, so dropped sim time is purely cosmetic.
       // The crew's senses, computed once per frame from last frame's
       // readback — frame-stable inputs, fed to every physics substep.
-      const springtailMoldAt =
-        flake && flake.engulfing === null && flake.age >= OAT_MOLD_SEC ? flakePose : null;
+      // The crew clears one mold at a time — the oldest first, so a
+      // scattered handful is worked through in the order it went over.
+      const moldChore = flakes.find(flakeIsMoldy) ?? null;
+      const springtailMoldAt = moldChore ? moldChore.pose : null;
       const springtailBodyRadius = state.radiusMm / 1000;
       const springtailGrounded = slimeCenter[1] < FLOOR_Y + springtailBodyRadius * 1.2;
       // The footprint goes in hungry-lethal, or playful while a chase
       // bout is on — same startle, same pings, nobody eaten.
       const springtailPredator =
-        springtailGrounded && (canFeed(state) || sceneSec < chaseUntil)
+        springtailGrounded && (canFeed(state) || errandOut.errand?.kind === 'chase')
           ? {
               x: slimeCenter[0],
               z: slimeCenter[2],
@@ -1546,9 +1627,7 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
         // A mouthful adds a shimmer of its own — the held breath shows
         // on the skin as well as in the pressure.
         const savorAmp = heldIdx >= 0 ? 0.0006 : 0;
-        const waveAmp = reducedMotion
-          ? 0
-          : 0.0011 * Math.max(0, mood.arousal - 0.15) + savorAmp;
+        const waveAmp = reducedMotion ? 0 : 0.0011 * Math.max(0, mood.arousal - 0.15) + savorAmp;
         surface.update(
           particlePositions,
           particleCount,
@@ -1598,8 +1677,15 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
         // The will's errand draws the gaze off the room: eyes on the meal,
         // the ball, the quarry, the summit. Eased both ways, so attention
         // drifts on and lets go rather than snapping.
-        attentionEase += (attentionWant - attentionEase) * Math.min(1, frameSec / ATTENTION_EASE_SEC);
+        attentionEase +=
+          (attentionWant - attentionEase) * Math.min(1, frameSec / ATTENTION_EASE_SEC);
         if (attentionEase > 0.001) gazePoint.lerp(attentionWorld, Math.min(1, attentionEase));
+
+        // The glance — a remembered errand, or anticipation watching a
+        // promising tool — leans on the errand's own attention, and yields
+        // to the spit-watch and the poke after it.
+        glanceEase += (glanceWant - glanceEase) * Math.min(1, frameSec / ATTENTION_EASE_SEC);
+        if (glanceEase > 0.001) gazePoint.lerp(glanceWorld, Math.min(1, glanceEase));
 
         // The flying critter steals the gaze — but the hand still
         // outranks the show, so the poke lerp lands after this one.
@@ -1610,6 +1696,16 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
         else pokeLookSec = Math.max(0, pokeLookSec - frameSec);
         const wantPokeLook = pokeLookSec > 0 && pokeFace >= 0 ? 1 : 0;
         pokeLookEase += (wantPokeLook - pokeLookEase) * Math.min(1, frameSec / POKE_LOOK_EASE_SEC);
+        // The "nose" rides the goo: re-read the poked spot from its anchor
+        // particle in this frame's readback — the particle path's version of
+        // the mesh path reading the poked face's centroid fresh each frame.
+        if (pokeParticle >= 0 && pokeParticle * 3 + 2 < particlePositions.length) {
+          pokeWorld.set(
+            particlePositions[pokeParticle * 3],
+            particlePositions[pokeParticle * 3 + 1],
+            particlePositions[pokeParticle * 3 + 2]
+          );
+        }
         if (pokeLookEase > 0.001) {
           gazePoint.lerp(pokeWorld, pokeLookEase);
           particlePokeArg.point[0] = pokeWorld.x;
@@ -1628,7 +1724,8 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
             [gazePoint.x, gazePoint.y, gazePoint.z],
             mood,
             pokeLookEase > 0.001 ? particlePokeArg : null,
-            petSquint
+            petSquint,
+            anticipation
           );
         else particleEyes.conceal();
 
@@ -1814,26 +1911,27 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
         // sucked in; a savoring beat later it is spat back out in an arc.
         // Losing the ground (or the mood ending the bout) spits early —
         // a critter is never left swallowed.
+        const chaseErrand = errandOut.errand?.kind === 'chase' ? errandOut.errand : null;
         if (heldIdx >= 0) {
-          if (sceneSec >= heldUntil || sceneSec >= chaseUntil || !grounded) {
+          if (sceneSec >= heldUntil || !chaseErrand || !grounded) {
             springtails.eject(heldIdx, slimeCenter[0], slimeCenter[2]);
             // Ptooey! The spit is the punchline of the whole game —
             // and the eyes follow their own handiwork. The bout stays
             // open long enough to watch the landing and give chase.
             spitWatchIdx = heldIdx;
-            chaseUntil = Math.max(chaseUntil, sceneSec + 3);
+            chaseBoostSec = Math.max(chaseBoostSec, 3);
             emotionMeter.excite(0.35, 0.15);
             heldIdx = -1;
           }
-        } else if (sceneSec < chaseUntil && grounded && !canFeed(state)) {
-          const q = springtails.positionOf(chaseIdx);
+        } else if (chaseErrand && grounded && !canFeed(state)) {
+          const q = springtails.positionOf(chaseErrand.quarryIndex);
           if (q && Math.hypot(q[0] - slimeCenter[0], q[1] - slimeCenter[2]) < bodyRadius * 0.5) {
-            if (springtails.capture(chaseIdx)) {
-              heldIdx = chaseIdx;
+            if (springtails.capture(chaseErrand.quarryIndex)) {
+              heldIdx = chaseErrand.quarryIndex;
               heldDur = 0.8 + emotionRand() * 0.9;
               heldUntil = sceneSec + heldDur;
               // The bout stretches to cover the savor and the spit.
-              chaseUntil = Math.max(chaseUntil, heldUntil + 1.5);
+              chaseBoostSec = Math.max(chaseBoostSec, heldDur + 1.5);
               emotionMeter.excite(0.2, 0.1);
             }
           }
@@ -1863,8 +1961,7 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
         }
         // The eyes' spit-watch target: eased in at launch, lingering on
         // the landing spot for a beat after touchdown.
-        const flightPos =
-          spitWatchIdx >= 0 ? springtails.flightPositionOf(spitWatchIdx) : null;
+        const flightPos = spitWatchIdx >= 0 ? springtails.flightPositionOf(spitWatchIdx) : null;
         if (flightPos) spitWorld.set(flightPos[0], flightPos[1], flightPos[2]);
         const wantSpitLook = flightPos ? 1 : 0;
         spitLookEase += (wantSpitLook - spitLookEase) * Math.min(1, frameSec / SPIT_LOOK_EASE_SEC);
@@ -1872,17 +1969,17 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
         // Tagging a critter mid-chase is the game's little payoff: the
         // ping right underfoot lands like batting the ball.
         chaseThrillCooldownSec = Math.max(0, chaseThrillCooldownSec - frameSec);
-        if (crew.pinged > 0 && sceneSec < chaseUntil && chaseThrillCooldownSec <= 0) {
+        if (crew.pinged > 0 && chaseErrand && chaseThrillCooldownSec <= 0) {
           emotionMeter.excite(0.25, 0.12);
           chaseThrillCooldownSec = 1.5;
         }
         // The crew's progress shows: the moldy flake is nibbled smaller
         // as they work, so the chore visibly answers itself.
-        if (moldAt && flake) {
+        if (moldAt && moldChore) {
           const nibbled = 1 - crew.feedProgress * 0.75;
-          flake.mesh.scale.set(nibbled, nibbled, nibbled);
+          moldChore.mesh.scale.set(nibbled, nibbled, nibbled);
         }
-        if (crew.moldCleared) removeFlake();
+        if (crew.moldCleared && moldChore) removeFlake(moldChore);
         // Touchdown dust: a spat critter hitting the moss kicks up a puff.
         if (crew.landings && !reducedMotion) {
           for (const [lx, lz] of crew.landings) {
@@ -1916,11 +2013,8 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
             nudgeCooldownSec = Math.max(0, nudgeCooldownSec - frameSec);
             if (ballPrevValid && frameSec > 1e-6) {
               const speed =
-                Math.hypot(
-                  pose[0] - ballPrev[0],
-                  pose[1] - ballPrev[1],
-                  pose[2] - ballPrev[2]
-                ) / frameSec;
+                Math.hypot(pose[0] - ballPrev[0], pose[1] - ballPrev[1], pose[2] - ballPrev[2]) /
+                frameSec;
               const nearBody =
                 Math.hypot(pose[0] - slimeCenter[0], pose[2] - slimeCenter[2]) < 0.032;
               if (speed > NUDGE_SPEED && nearBody && nudgeCooldownSec <= 0) {
@@ -1937,30 +2031,30 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
         }
       }
 
-      // The flake: fall, get caught, be engulfed.
-      if (flake) {
-        flake.age += frameSec;
-        if (flake.engulfing === null) {
-          world.readPose(flake.body, flakePose, flakeQuat);
-          flake.mesh.position.set(flakePose[0], flakePose[1], flakePose[2]);
-          flake.mesh.quaternion.set(flakeQuat[0], flakeQuat[1], flakeQuat[2], flakeQuat[3]);
-          world.readVelocity(flake.body, flakeVelocity);
+      // The flakes: fall, get caught (one at a time), be engulfed, or mold.
+      for (const f of [...flakes]) {
+        f.age += frameSec;
+        if (f.engulfing === null) {
+          world.readPose(f.body, f.pose, flakeQuat);
+          f.mesh.position.set(f.pose[0], f.pose[1], f.pose[2]);
+          f.mesh.quaternion.set(flakeQuat[0], flakeQuat[1], flakeQuat[2], flakeQuat[3]);
+          world.readVelocity(f.body, flakeVelocity);
           // The meal starts only once the body has actually crawled over the
           // flake — for the particle body that means particles genuinely
           // lapping above it, not mere proximity to the centroid. Without
           // that, the flake used to be declared "caught" from a body-radius
           // away and had to slide itself the rest of the way, which read as
           // the oat walking to the slime.
-          const dx = flakePose[0] - slimeCenter[0];
-          const dz = flakePose[2] - slimeCenter[2];
+          const dx = f.pose[0] - slimeCenter[0];
+          const dz = f.pose[2] - slimeCenter[2];
           let covered: boolean;
           if (USE_PARTICLES && particles) {
             let lapping = 0;
             const n = particles.particleCount;
             for (let i = 0; i < n; i++) {
-              const px = particlePositions[i * 3] - flakePose[0];
-              const py = particlePositions[i * 3 + 1] - flakePose[1];
-              const pz = particlePositions[i * 3 + 2] - flakePose[2];
+              const px = particlePositions[i * 3] - f.pose[0];
+              const py = particlePositions[i * 3 + 1] - f.pose[1];
+              const pz = particlePositions[i * 3 + 2] - f.pose[2];
               if (px * px + pz * pz < 0.012 * 0.012 && py > 0.002) lapping += 1;
             }
             // A handful of particles overhead, or the flake tucked right
@@ -1968,56 +2062,51 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
             // beside it.
             covered =
               lapping >= Math.max(4, n * 0.004) ||
-              (Math.hypot(dx, dz) < 0.018 && flakePose[1] < slimeCenter[1]);
+              (Math.hypot(dx, dz) < 0.018 && f.pose[1] < slimeCenter[1]);
           } else {
             // The legacy soft body has no particle field to test; keep the
             // old generous-sideways, strict-upward sphere.
-            covered = Math.hypot(dx, dz) < 0.036 && flakePose[1] < slimeCenter[1] + 0.02;
+            covered = Math.hypot(dx, dz) < 0.036 && f.pose[1] < slimeCenter[1] + 0.02;
           }
           const settled = Math.hypot(...flakeVelocity) < 0.04;
           // Eating is gated on hunger *now*, not at drop time — a slime
           // never eats because food happens to be touching it — and on the
-          // flake still being good. A missed meal is no longer tidied away:
-          // it molds where it lies, and binning it is the player's chore.
-          const edible = flake.age < OAT_MOLD_SEC && canFeed(state);
-          if (
-            (USE_PARTICLES ? particles : slime) &&
-            flake.age > 0.4 &&
-            covered &&
-            settled &&
-            edible
-          ) {
-            flake.engulfing = 0;
+          // flake still being good, and on the mouth being free (one meal
+          // at a time, however thick the flakes lie). A missed meal is not
+          // tidied away: it molds where it lies, for the crew or the click.
+          const edible = f.age < OAT_MOLD_SEC && canFeed(state) && !engulfingFlake();
+          if ((USE_PARTICLES ? particles : slime) && f.age > 0.4 && covered && settled && edible) {
+            f.engulfing = 0;
             // Roll this meal's length: half appetite, half chance. Satiety 0
             // leans hard toward the 5 s gobble; a nearly-full slime lingers.
-            flake.engulfSec =
+            f.engulfSec =
               ENGULF_MIN_SEC +
               (ENGULF_MAX_SEC - ENGULF_MIN_SEC) * (0.5 * state.satiety + 0.5 * Math.random());
-            world.freeze(flake.body);
+            world.freeze(f.body);
             // Catching a meal is the day's big event.
             emotionMeter.excite(0.5, 0.2);
           }
           // The mold blooms in once the flake has lain too long.
-          flakeMoldUniform.value = THREE.MathUtils.clamp(
-            (flake.age - OAT_MOLD_SEC) / OAT_MOLD_RAMP_SEC,
+          f.material.mold.value = THREE.MathUtils.clamp(
+            (f.age - OAT_MOLD_SEC) / OAT_MOLD_RAMP_SEC,
             0,
             1
           );
         } else {
-          flake.engulfing += frameSec;
-          const t = Math.min(1, flake.engulfing / flake.engulfSec);
-          flakeDigestUniform.value = t;
+          f.engulfing += frameSec;
+          const t = Math.min(1, f.engulfing / f.engulfSec);
+          f.material.digest.value = t;
           // Drawn in under the skirt, at floor level, shrinking as it goes —
           // the body is already draped over it by the coverage gate, so the
           // slide reads as digestion, not as the oat walking over.
           flakeDrawScratch.set(slimeCenter[0], FLOOR_Y + 0.001, slimeCenter[2]);
           // The draw-in paces itself to the meal, so a longer engulf means a
           // slower slide, not a quick slide and a long wait.
-          flake.mesh.position.lerp(flakeDrawScratch, frameSec * (3.6 / flake.engulfSec));
+          f.mesh.position.lerp(flakeDrawScratch, frameSec * (3.6 / f.engulfSec));
           const shrink = 1 - t * 0.9;
-          flake.mesh.scale.set(shrink, shrink, shrink);
+          f.mesh.scale.set(shrink, shrink, shrink);
           if (t >= 1) {
-            removeFlake();
+            removeFlake(f);
             applyFeed(state, Date.now());
             // A full belly is contentment more than excitement.
             emotionMeter.excite(0.1, 0.3);
@@ -2036,39 +2125,37 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
       // wraps them into the visible goo. Extension is slower than release —
       // a deliberate reach, a quick let-go.
       if (USE_PARTICLES && particles) {
+        // The tongue reaches for the meal in progress, else the nearest
+        // good flake — same choice the lure just made.
+        const tongueFor = mealFlake();
         let want = 0;
-        if (flake) {
-          const fp = flake.mesh.position;
+        if (tongueFor) {
+          const fp = tongueFor.mesh.position;
           // Tongue range is the last stretch, not the whole tank: the lure
           // walks the body most of the way to a flake, and the tongue does
           // the final reach — a longer reach entrains the mound after it.
           const near = Math.hypot(fp.x - slimeCenter[0], fp.z - slimeCenter[2]) < 0.035;
-          if (flake.engulfing !== null) {
+          if (tongueFor.engulfing !== null) {
             // Hold through the meal, letting go as the flake dissolves.
-            const t = Math.min(1, flake.engulfing / flake.engulfSec);
+            const t = Math.min(1, tongueFor.engulfing / tongueFor.engulfSec);
             want = 1 - t * t;
-          } else if (near && flake.age > 0.4 && flake.age < OAT_MOLD_SEC && canFeed(state)) {
+          } else if (near && tongueFor.age > 0.4) {
             want = 1;
           }
         }
         tendrilReach +=
           (want - tendrilReach) * Math.min(1, frameSec * (want > tendrilReach ? 2.2 : 5));
-        if (flake && tendrilReach > 0.05) {
+        if (tongueFor && tendrilReach > 0.05) {
           // Aim just above the flake, so the tongue drapes over the meal
           // rather than butting it; the solver walks its own tip out at goo
           // pace (see TENDRIL_TIP_SPEED).
-          const fp = flake.mesh.position;
-          particles.setTendril(
-            fp.x,
-            Math.max(FLOOR_Y + 0.004, fp.y + 0.004),
-            fp.z,
-            tendrilReach
-          );
+          const fp = tongueFor.mesh.position;
+          particles.setTendril(fp.x, Math.max(FLOOR_Y + 0.004, fp.y + 0.004), fp.z, tendrilReach);
           tendrilOn = true;
         } else if (tendrilOn) {
           particles.clearTendril();
           tendrilOn = false;
-          if (!flake) tendrilReach = 0;
+          if (!tongueFor) tendrilReach = 0;
         }
       }
 
@@ -2081,9 +2168,10 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
       camera.updateMatrixWorld();
 
       // The digestion cloud: tracks the engulf while it runs, then thins out.
-      if (flake && flake.engulfing !== null) {
-        digestValue = Math.min(1, flake.engulfing / flake.engulfSec);
-        oatWorldScratch.copy(flake.mesh.position);
+      const digesting = engulfingFlake();
+      if (digesting) {
+        digestValue = Math.min(1, digesting.engulfing! / digesting.engulfSec);
+        oatWorldScratch.copy(digesting.mesh.position);
       } else {
         digestValue = Math.max(0, digestValue - frameSec / 2);
       }
@@ -2195,16 +2283,19 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
       lastPointer = [nx, ny];
       // A moldy oat is binned by clicking it, whatever is in hand — the
       // chore should never require a trip back to the drawer.
-      if (!orbit && flake && flake.engulfing === null && flake.age >= OAT_MOLD_SEC) {
+      if (!orbit) {
         const ray = pointerRay(nx, ny);
-        const px = flakePose[0] - ray.origin[0];
-        const py = flakePose[1] - ray.origin[1];
-        const pz = flakePose[2] - ray.origin[2];
-        const along = px * ray.dir[0] + py * ray.dir[1] + pz * ray.dir[2];
-        const missSq = px * px + py * py + pz * pz - along * along;
-        if (along > 0 && missSq < OAT_CLICK_RADIUS * OAT_CLICK_RADIUS) {
-          removeFlake();
-          return;
+        for (const f of flakes) {
+          if (!flakeIsMoldy(f)) continue;
+          const px = f.pose[0] - ray.origin[0];
+          const py = f.pose[1] - ray.origin[1];
+          const pz = f.pose[2] - ray.origin[2];
+          const along = px * ray.dir[0] + py * ray.dir[1] + pz * ray.dir[2];
+          const missSq = px * px + py * py + pz * pz - along * along;
+          if (along > 0 && missSq < OAT_CLICK_RADIUS * OAT_CLICK_RADIUS) {
+            removeFlake(f);
+            return;
+          }
         }
       }
       if (!orbit && tool === 'squeegee') {
@@ -2240,9 +2331,12 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
         if (along > 0 && missSq < BALL_CLICK_RADIUS * BALL_CLICK_RADIUS) {
           const angle = Math.random() * 2 * Math.PI;
           const speed = 0.12 + Math.random() * 0.22;
+          // Upward speed is √2 the old range: bounce height goes with v²,
+          // so this doubles how high the toy flies without touching the arc's
+          // horizontal reach.
           solver.kickBall(
             Math.cos(angle) * speed,
-            0.3 + Math.random() * 0.25,
+            0.424 + Math.random() * 0.354,
             Math.sin(angle) * speed
           );
           // A booted ball is exciting — and the pet saw who did it.
@@ -2261,6 +2355,7 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
           // and it is pleasant from the first moment.
           pokeFace = hit.faceIndex;
           pokeWorld.copy(hit.point);
+          anchorPokeToBody();
           pokeLookSec = POKE_LOOK_SEC;
           emotionMeter.excite(0.05, 0.08);
           return;
@@ -2284,7 +2379,7 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
             springtails.eject(heldIdx, slimeCenter[0], slimeCenter[2]);
             spitWatchIdx = heldIdx;
             // The bout survives the flight: watch the landing, then chase.
-            chaseUntil = Math.max(chaseUntil, sceneSec + 3);
+            chaseBoostSec = Math.max(chaseBoostSec, 3);
             heldIdx = -1;
             if (telegraphActive) {
               telegraphActive = false;
@@ -2303,6 +2398,7 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
           if (pokesSeen >= pokesToNotice) {
             pokeFace = hit.faceIndex;
             pokeWorld.copy(hit.point);
+            anchorPokeToBody();
             pokeLookSec = POKE_LOOK_SEC;
           }
           return;
@@ -2325,6 +2421,7 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
         if (USE_PARTICLES) particleHand?.move(pointerRay(nx, ny));
         else interaction?.move(pointerRay(nx, ny), [nx, ny]);
         if (tool === 'squeegee') squeegee.hover(pointerRay(nx, ny));
+        if (tool === 'mister') sprayFx.aim(aimPoint(nx, ny));
         if (handState() === 'petting') {
           petTravel += Math.hypot(nx - lastPointer[0], ny - lastPointer[1]);
         }
@@ -2345,6 +2442,19 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
       if (next !== 'squeegee') {
         squeegeeStroke = false;
         squeegee.release();
+      }
+      if (next !== 'mister') sprayFx.hide();
+      // Anticipation: the pet knows what these tools mean. The mister is a
+      // pleasant prospect; the oats, when genuinely hungry, are the whole
+      // point of existence. Any other pick lets the expectation ease off.
+      if (next === 'mister' && state.stage === 'active') {
+        emotionMeter.excite(0.12);
+        anticipation = Math.max(anticipation, 0.6);
+      } else if (next === 'oats' && state.stage === 'active' && canFeed(state)) {
+        emotionMeter.excite(0.2, 0.05);
+        anticipation = Math.max(anticipation, 1);
+      } else {
+        anticipation = 0;
       }
     },
 
@@ -2372,8 +2482,7 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
       );
       ballOut = true;
       ballPrevValid = false;
-      playUntil = 0;
-      nextPlayAt = sceneSec + 1.5;
+      ballJustTossed = true;
       // A new toy in the tank is exciting all by itself.
       emotionMeter.excite(0.3, 0.15);
     },
@@ -2394,7 +2503,11 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
     },
 
     feed(ndc) {
-      if (!canFeed(state) || flake || !(USE_PARTICLES ? particles : slime)) return;
+      // No ration and no meter: the player sprinkles as many as they like,
+      // whenever the pet is out. Hunger gates the EATING, not the pantry —
+      // extras lie where they fall, mold in their own time, and the crew
+      // (or a click) clears them.
+      if (state.stage !== 'active' || !(USE_PARTICLES ? particles : slime)) return;
       // Aimed, the flake falls over the pointed-at spot — onto the pet, or
       // wherever the aim actually was; the engulf check stays honest about
       // misses. Unaimed, it drops considerately over the pet.
@@ -2406,11 +2519,23 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
         z = at[2];
       }
       const body = world.addFlake([x, FLOOR_Y + 0.055, z]);
-      const mesh = new THREE.Mesh(oatGeometry.geometry, oatMaterial.material);
+      const material = createOatMaterial();
+      const mesh = new THREE.Mesh(oatGeometry.geometry, material.material);
       scene.add(mesh);
-      flakeDigestUniform.value = 0;
-      flakeMoldUniform.value = 0;
-      flake = { body, mesh, age: 0, engulfing: null, engulfSec: ENGULF_MAX_SEC };
+      flakes.push({
+        body,
+        mesh,
+        material,
+        age: 0,
+        engulfing: null,
+        engulfSec: ENGULF_MAX_SEC,
+        pose: [x, FLOOR_Y + 0.055, z]
+      });
+      // The wait is over: the falling flake is watched from this very frame
+      // (the young-flake glance in the will block), well before the lure is
+      // allowed to want it at age 0.5.
+      anticipation = 0;
+      emotionMeter.excite(0.1, 0.05);
     },
 
     sprinkle(ndc) {
@@ -2535,7 +2660,7 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
     dispose() {
       flushSlime(state);
       flushGrime(() => serializeGrime(grime.field));
-      removeFlake();
+      removeAllFlakes();
       interaction?.dispose();
       climb?.dispose();
       squeegee.dispose();
@@ -2556,7 +2681,6 @@ export function createSlimeScene(container: HTMLElement, options: SlimeSceneOpti
       grime.dispose();
       condensation.dispose();
       oatGeometry.dispose();
-      oatMaterial.dispose();
       solver.dispose();
       volume.dispose();
       backDepthMaterial.dispose();
